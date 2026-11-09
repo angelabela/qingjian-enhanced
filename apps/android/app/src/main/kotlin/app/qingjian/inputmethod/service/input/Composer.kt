@@ -457,11 +457,24 @@ class Composer(private val engine: Engine, private val host: Host) {
             return
         }
         val connection = host.connection ?: return
-        val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-        val removed = beforeBackspace?.takeIf { it.startsWith(remaining) } ?: remaining
+        // 有选区时不执行整段清空，避免部分输入框把选区/周围文字一并删除。
+        if (!connection.getSelectedText(0).isNullOrEmpty()) {
+            beforeBackspace = null
+            return
+        }
+        // 只信删除键按下时捕获的光标左侧快照；取不到快照时宁可不清空，
+        // 也不能退回到不确定的上下文范围，避免误删整个输入框。
+        val snapshot = beforeBackspace ?: return
+        val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString() ?: return
         beforeBackspace = null
-        if (remaining.isNotEmpty()) connection.deleteSurroundingText(remaining.length, 0)
-        if (removed.isNotEmpty()) apply(engine.cleared(removed))
+        if (remaining.isEmpty() || !snapshot.startsWith(remaining)) return
+        connection.beginBatchEdit()
+        try {
+            connection.deleteSurroundingText(remaining.length, 0)
+        } finally {
+            connection.endBatchEdit()
+        }
+        apply(engine.cleared(snapshot))
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
