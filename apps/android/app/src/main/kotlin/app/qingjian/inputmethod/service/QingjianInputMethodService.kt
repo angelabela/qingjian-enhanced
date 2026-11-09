@@ -436,6 +436,12 @@ class QingjianInputMethodService :
 
     override fun onSelect(index: Int) = composer.select(index)
 
+    /** 从候选栏 GIF 图标打开搜索；候选首选词作为默认关键词。 */
+    override fun onGifSearch(query: String) {
+        val term = query.ifBlank { currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()?.trim().orEmpty() }
+        panel?.open(PanelKind.GIFS, term)
+    }
+
     override fun onMoveCaret(index: Int) = composer.moveCaret(index)
 
     override fun onSelectTranslation(index: Int, sense: Int) = composer.selectTranslation(index, sense)
