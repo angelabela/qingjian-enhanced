@@ -64,7 +64,7 @@ class AdvancedActivity : PageActivity() {
     )
 
     private fun pickTarget(request: Int = CREATE_ZIP) {
-        val name = if (request == PACK_LOGS) "qingjian-logs" else "qingjian-data"
+        val name = when (request) { PACK_LOGS -> "qingjian-logs"; SETTINGS_ZIP -> "qingjian-settings"; else -> "qingjian-data" }
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("application/zip")
@@ -82,7 +82,12 @@ class AdvancedActivity : PageActivity() {
             return
         }
         if (requestCode == RESTORE_DATA || requestCode == RESTORE_SETTINGS) {
-            restoreZip(target, requestCode)
+            AlertDialog.Builder(this)
+                .setTitle(if (requestCode == RESTORE_DATA) R.string.restore_data_title else R.string.settings_restore_title)
+                .setMessage(if (requestCode == RESTORE_DATA) R.string.restore_data_confirm else R.string.settings_restore_confirm)
+                .setPositiveButton(R.string.restore_confirm) { _, _ -> restoreZip(target, requestCode) }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
             return
         }
         if (requestCode == SETTINGS_ZIP) {
@@ -144,13 +149,16 @@ class AdvancedActivity : PageActivity() {
             val result = runCatching {
                 val input = contentResolver.openInputStream(uri) ?: error("无法读取备份")
                 val entries = linkedMapOf<String, ByteArray>()
+                var totalBytes = 0L
                 ZipInputStream(input).use { zip ->
                     while (true) {
                         val entry = zip.nextEntry ?: break
                         if (!entry.isDirectory && entry.name.length <= 180 && !entry.name.contains("..") &&
                             !entry.name.startsWith("/") && !entry.name.contains('\\')) {
                             val bytes = zip.readBytes()
-                            if (bytes.size <= 64 * 1024 * 1024) entries[entry.name] = bytes
+                            totalBytes += bytes.size
+                            if (bytes.size <= 64 * 1024 * 1024 && totalBytes <= 128L * 1024 * 1024) entries[entry.name] = bytes
+                            else error("备份文件过大")
                         }
                         zip.closeEntry()
                     }
