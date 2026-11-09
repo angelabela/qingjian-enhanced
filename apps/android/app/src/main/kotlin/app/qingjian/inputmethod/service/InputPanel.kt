@@ -16,6 +16,7 @@ import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
+import app.qingjian.inputmethod.panel.GifPanel
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.panel.PanelKind
@@ -105,6 +106,7 @@ class InputPanel(
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
+            PanelKind.GIFS -> GifPanel(context, actions)
             // 语音面板带着回调，由 [openVoice] 盖上
             PanelKind.VOICE -> return
         }
