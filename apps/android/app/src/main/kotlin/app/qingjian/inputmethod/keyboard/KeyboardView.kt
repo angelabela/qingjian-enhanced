@@ -31,8 +31,11 @@ class KeyboardView(
     private val settings: Settings,
     private val listener: Listener,
 ) : View(context) {
+    enum class EditShortcut { SELECT_ALL, CUT, COPY, PASTE }
+
     interface Listener {
         fun onKey(key: Key)
+        fun onEditShortcut(action: EditShortcut)
 
         /** 长按气泡里选了一项（字母、数字或符号）。 */
         fun onKeyChoice(text: String)
@@ -128,6 +131,13 @@ class KeyboardView(
     private var flickY = 0f
     private var flickArmed = false
     private var flickBroken = false
+
+    /** Z/X/C/V 键向下滑动手势；未达到阈值时仍按原有点按/滑行逻辑处理。 */
+    private var editPointer = -1
+    private var editAction: EditShortcut? = null
+    private var editStartX = 0f
+    private var editStartY = 0f
+    private var editTriggered = false
 
     /** 这一套键位能不能滑行（全键盘拼音与英文键盘，服务按当前键盘设）；还要设置里开着「滑行输入」。 */
     var swipeLayout = false
@@ -245,6 +255,13 @@ class KeyboardView(
                 if (swipeOn && slot.key is Key.Letter && pressed.isEmpty()) {
                     trail.begin(pointer, event.getX(index), event.getY(index), slot.bounds.width())
                 }
+                editShortcutOf(slot.key)?.let { action ->
+                    editPointer = pointer
+                    editAction = action
+                    editStartX = event.getX(index)
+                    editStartY = event.getY(index)
+                    editTriggered = false
+                }
                 pressed[pointer] = slot
                 if (flickPointer < 0 && flickable(slot.key)) {
                     flickPointer = pointer
@@ -281,6 +298,7 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                trackEditShortcut(event)
                 trackFlick(event)
                 trackSwipe(event)
                 trackChoices(event)
@@ -288,6 +306,22 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointer == editPointer) {
+                    val action = editAction.takeIf { editTriggered }
+                    endEditShortcut()
+                    if (action != null) {
+                        if (pointer == flickPointer) endFlick()
+                        if (pointer == trail.pointer) trail.clear()
+                        pressed.remove(pointer)
+                        if (longPressPointer == pointer) {
+                            timer.removeCallbacks(longPress)
+                            longPressPointer = -1
+                        }
+                        listener.onEditShortcut(action)
+                        invalidate()
+                        return true
+                    }
+                }
                 if (pointer == flickPointer) {
                     val flicked = flickSlot?.takeIf { flickArmed }
                     endFlick()
@@ -339,6 +373,40 @@ class KeyboardView(
         }
         invalidate()
         return true
+    }
+
+    /** 只有从 Z/X/C/V 键开始并明显向下滑动才触发编辑操作；水平偏移过大则交还原手势。 */
+    private fun trackEditShortcut(event: MotionEvent) {
+        if (editPointer < 0 || editTriggered || editAction == null) return
+        val at = event.findPointerIndex(editPointer)
+        if (at < 0) return
+        val dx = event.getX(at) - editStartX
+        val dy = event.getY(at) - editStartY
+        if (dy > metrics.density * EDIT_SWIPE_DP && abs(dx) < dy * EDIT_SWIPE_MAX_SLOPE) {
+            editTriggered = true
+            trail.clear()
+            pressed.remove(editPointer)
+            if (longPressPointer == editPointer) {
+                timer.removeCallbacks(longPress)
+                longPressPointer = -1
+            }
+            if (flickPointer == editPointer) endFlick()
+            invalidate()
+        }
+    }
+
+    private fun editShortcutOf(key: Key): EditShortcut? = when ((key as? Key.Letter)?.char?.lowercaseChar()) {
+        'z' -> EditShortcut.SELECT_ALL
+        'x' -> EditShortcut.CUT
+        'c' -> EditShortcut.COPY
+        'v' -> EditShortcut.PASTE
+        else -> null
+    }
+
+    private fun endEditShortcut() {
+        editPointer = -1
+        editAction = null
+        editTriggered = false
     }
 
     /** 记着的那根手指挪动：点都记上（含两帧之间的历史点），刚挪够远就转成滑行，撤掉点按的按下态、气泡与长按。 */
@@ -505,6 +573,7 @@ class KeyboardView(
         pressed.clear()
         trail.clear()
         endFlick()
+        endEditShortcut()
         timer.removeCallbacks(repeatBackspace)
         timer.removeCallbacks(longPress)
         timer.removeCallbacks(spaceHold)
@@ -544,6 +613,8 @@ class KeyboardView(
 
         /** 往上划多远算上滑：点按时手指一般挪不到 10dp，再长短距离一划就够不着。 */
         const val FLICK_DP = 18f
+        const val EDIT_SWIPE_DP = 26f
+        const val EDIT_SWIPE_MAX_SLOPE = 1.35f
 
         /**
          * 上滑的扇形：横向挪的不超过往上的这么多倍，约偏离竖直 50°（tan 50° ≈ 1.2），比横竖一样多（45°）再宽一点，
