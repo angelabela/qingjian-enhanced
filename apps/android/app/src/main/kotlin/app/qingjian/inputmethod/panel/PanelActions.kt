@@ -78,10 +78,6 @@ interface PanelActions {
     /** 放进系统剪贴板（拆词的「复制」）。 */
     fun copyToClipboard(text: String)
 
-    /** AI 表达：只传用户当前输入与可选的短上下文。 */
-    fun textBeforeCursor(maxChars: Int): String
-
-    fun generateExpression(input: String, tone: String, contextText: String?, done: (List<String>?, String?) -> Unit)
 
     fun toast(message: String)
 
