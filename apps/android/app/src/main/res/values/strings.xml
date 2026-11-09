@@ -276,6 +276,9 @@
     <string name="voice_none_note">没选识别服务时语音输入用不了</string>
     <string name="voice_note">在火山引擎开通「豆包流式语音识别」，把 API Key 填在这里，计费方式选你开通的那种；说话的录音会发给火山引擎，会产生费用</string>
     <string name="restore_data_title">恢复数据</string>
+    <string name="restore_data_confirm">将用备份中的学习数据覆盖本机对应数据，建议先另存一份当前数据。确定继续？</string>
+    <string name="settings_restore_confirm">将覆盖当前键盘设置。云端和语音服务密钥不会被恢复。确定继续？</string>
+    <string name="restore_confirm">确认恢复</string>
     <string name="restore_value">从 ZIP 备份恢复</string>
     <string name="restore_running">恢复中…</string>
     <string name="restore_data_done">已恢复 %1$d 项学习数据</string>
