@@ -14,6 +14,7 @@ import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
+import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
