@@ -126,7 +126,7 @@ class AiExpressionPanel(
                 card.addView(label("表达 ${index + 1}", 11f).apply { setTextColor(palette.gloss) })
                 card.addView(label(text, 15f).apply { setPadding(0, dp(5), 0, dp(8)) })
                 val insert = Button(context).apply {
-                    text = "插入输入框"
+                    this.text = "插入输入框"
                     isAllCaps = false
                     setOnClickListener { actions.insert(text) }
                 }
