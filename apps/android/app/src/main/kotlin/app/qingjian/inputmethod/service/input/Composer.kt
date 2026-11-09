@@ -460,13 +460,13 @@ class Composer(private val engine: Engine, private val host: Host) {
                 connection.commitText("", 1)
             } else {
                 // 兼容不支持全选动作的输入框：同时删除光标前后内容。
-                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                 val selected = connection.getSelectedText(0)?.toString().orEmpty()
+                if (selected.isNotEmpty()) connection.commitText("", 1)
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                 val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                 removed = before + selected + after
-                if (before.isNotEmpty() || selected.isNotEmpty() || after.isNotEmpty()) {
+                if (before.isNotEmpty() || after.isNotEmpty()) {
                     connection.deleteSurroundingText(before.length, after.length)
-                    if (selected.isNotEmpty()) connection.commitText("", 1)
                 }
             }
         } finally {
