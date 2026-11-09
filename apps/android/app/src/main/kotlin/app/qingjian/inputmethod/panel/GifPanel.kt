@@ -145,7 +145,7 @@ class GifPanel(
         }
         results.addView(tile, lp)
         thread(name = "qingjian-giphy-preview") {
-            val bitmap = runCatching { BitmapFactory.decodeByteArray(request(preview, 3 * 1024 * 1024), 0, request(preview, 3 * 1024 * 1024).size) }.getOrNull()
+            val bitmap = runCatching { val bytes = request(preview, 3 * 1024 * 1024); BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
             tile.post {
                 if (bitmap != null && tile.childCount > 0) (tile.getChildAt(0) as ImageView).setImageBitmap(bitmap)
             }
