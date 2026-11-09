@@ -139,7 +139,7 @@ class AiExpressionPanel(
         }
     }
 
-    private fun actionsContext(): String? = input.text.toString().let { actionsContextProvider?.invoke() }
+    private fun actionsContext(): String? = actionsContextProvider?.invoke()
 
     private var actionsContextProvider: (() -> String?)? = null
 
