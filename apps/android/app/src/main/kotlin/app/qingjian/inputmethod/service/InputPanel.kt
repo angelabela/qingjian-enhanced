@@ -106,7 +106,7 @@ class InputPanel(
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
-            PanelKind.GIFS -> GifPanel(context, actions)
+            PanelKind.GIFS -> GifPanel(context, actions, text)
             // 语音面板带着回调，由 [openVoice] 盖上
             PanelKind.VOICE -> return
         }
