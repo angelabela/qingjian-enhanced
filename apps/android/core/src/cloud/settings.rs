@@ -51,10 +51,10 @@ const TIMEOUT_MS: u64 = 10_000;
 const MIN_INTERVAL_MS: u64 = 300;
 
 /// 开着云联想时的最短间隔：手机上停键 500 ms 已经滤掉多数半截请求，再隔 1 秒省流量和费用（PC 是 3 秒）。
-const PREDICT_INTERVAL_MS: u64 = 1_000;
+const PREDICT_INTERVAL_MS: u64 = 800;
 
 /// 停键多久才发联想：手机打字比电脑慢、停顿多，比 PC 的 300 ms 长。
-const DEBOUNCE_MS: u64 = 500;
+const DEBOUNCE_MS: u64 = 350;
 
 /// 云端词最多几个（同 PC 缺省）。
-const SLOTS: usize = 2;
+const SLOTS: usize = 3;
