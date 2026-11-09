@@ -219,7 +219,7 @@ class VoicePanel(
             // 两头淡、中间浓
             val edge = 1f - abs(i - (BARS - 1) / 2f) / BARS
             val phase = animationPhase * (Math.PI * 2).toFloat() + i * 0.42f
-            val idle = (0.035f + 0.055f * (0.5f + 0.5f * sin(phase))).toFloat()
+            val idle = (0.035f + 0.055f * (0.5f + 0.5f * sin(phase.toDouble()).toFloat())).toFloat()
             val level = if (recognizing) idle * 1.8f else maxOf(levels[i], idle)
             val half = barWidth / 2 + (maxHalf - barWidth / 2) * level * edge
             val x = left + step * (i + 0.5f)
