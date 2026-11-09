@@ -453,6 +453,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             if (connection.performContextMenuAction(android.R.id.selectAll)) {
                 connection.commitText("", 1)
             } else {
+                if (!connection.getSelectedText(0).isNullOrEmpty()) connection.commitText("", 1)
                 repeat(100) {
                     val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
