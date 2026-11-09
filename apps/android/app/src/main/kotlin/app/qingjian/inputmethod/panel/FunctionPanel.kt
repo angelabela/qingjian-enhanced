@@ -35,7 +35,6 @@ class FunctionPanel(
 
     private val features = listOf(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
-        Feature(null, "GIF动图", glyph = "GIF") { openPanel(PanelKind.GIFS) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
         Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
         Feature(null, "繁体", glyph = "繁", on = settings.traditional) {
