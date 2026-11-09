@@ -101,13 +101,28 @@ class AdvancedActivity : PageActivity() {
             BACKUP_SETTINGS -> runBackground("qingjian-settings-backup", { writeSettingsZip(target) }) { count ->
                 getString(R.string.settings_backup_done, count)
             }
-            RESTORE_ZIP -> runBackground("qingjian-data-restore", { restoreUserData(target) }) { count ->
-                getString(R.string.restore_data_done, count)
-            }
-            RESTORE_SETTINGS -> runBackground("qingjian-settings-restore", { restoreSettings(target) }) { count ->
-                getString(R.string.settings_restore_done, count)
-            }
+            RESTORE_ZIP -> confirmRestore(target, settings = false)
+            RESTORE_SETTINGS -> confirmRestore(target, settings = true)
         }
+    }
+
+    private fun confirmRestore(source: Uri, settings: Boolean) {
+        AlertDialog.Builder(this)
+            .setTitle(if (settings) R.string.settings_restore_title else R.string.restore_data_title)
+            .setMessage(if (settings) R.string.settings_restore_confirm else R.string.restore_data_confirm)
+            .setPositiveButton(R.string.restore_confirm) { _, _ ->
+                if (settings) {
+                    runBackground("qingjian-settings-restore", { restoreSettings(source) }) { count ->
+                        getString(R.string.settings_restore_done, count)
+                    }
+                } else {
+                    runBackground("qingjian-data-restore", { restoreUserData(source) }) { count ->
+                        getString(R.string.restore_data_done, count)
+                    }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** 发出去排第一：手机上存下来的文件多数人找不到，反馈又多在 QQ 群里。 */
