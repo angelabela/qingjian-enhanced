@@ -116,9 +116,8 @@ class AiExpressionPanel(
             results.removeAllViews()
             if (items.isNullOrEmpty()) {
                 results.addView(label(error ?: "暂时没有生成结果，请重试", 13f))
-                return@generate
-            }
-            items.take(5).forEachIndexed { index, text ->
+            } else {
+                items.take(5).forEachIndexed { index, text ->
                 val card = LinearLayout(context).apply {
                     orientation = VERTICAL
                     setPadding(dp(12), dp(10), dp(12), dp(8))
@@ -132,9 +131,10 @@ class AiExpressionPanel(
                     setOnClickListener { actions.insert(text) }
                 }
                 card.addView(insert)
-                results.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(8)
-                })
+                    results.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                        bottomMargin = dp(8)
+                    })
+                }
             }
         }
     }
