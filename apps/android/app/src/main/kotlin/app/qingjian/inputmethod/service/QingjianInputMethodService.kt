@@ -408,6 +408,19 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) = composer.onKey(key)
 
+    /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
+    override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        val actionId = when (action) {
+            KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
+            KeyboardView.EditShortcut.CUT -> android.R.id.cut
+            KeyboardView.EditShortcut.COPY -> android.R.id.copy
+            KeyboardView.EditShortcut.PASTE -> android.R.id.paste
+        }
+        if (currentInputConnection?.performContextMenuAction(actionId) != true) {
+            toast("当前输入框暂不支持此操作")
+        }
+    }
+
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
     override fun onLanguageChoice(index: Int) = composer.chooseLanguage(Language.entries[index])
@@ -506,11 +519,13 @@ class QingjianInputMethodService :
                 val prompt = contextLine +
                     "用户想表达的内容：$input\n语气：$tone\n" +
                     "请生成恰好 5 条自然、完整、适合直接发送的中文表达。保留原意，不要编造事实；" +
-                    "每条风格有适度差异。只返回 JSON 字符串数组，不要 Markdown 或其他说明。"
+                    "每条风格有适度差异。只返回 JSON 对象，格式为 {\"items\":[\"表达1\",\"表达2\",\"表达3\",\"表达4\",\"表达5\"]}，不要 Markdown 或其他说明。"
                 val body = JSONObject()
                     .put("model", config.model)
                     .put("temperature", 0.8)
-                    .put("max_tokens", 900)
+                    .put("thinking", JSONObject().put("type", "disabled"))
+                    .put("response_format", JSONObject().put("type", "json_object"))
+                    .put("max_tokens", 1200)
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", "你是中文表达助手，擅长自然改写、扩写和聊天回复。"))
                         .put(JSONObject().put("role", "user").put("content", prompt)))
@@ -526,8 +541,16 @@ class QingjianInputMethodService :
                 val cleaned = content.trim().removePrefix("\u0060\u0060\u0060json").removePrefix("\u0060\u0060\u0060")
                     .removeSuffix("\u0060\u0060\u0060").trim()
                 items = try {
-                    val array = JSONArray(cleaned)
-                    (0 until array.length()).mapNotNull { array.optString(it).trim().takeIf { value -> value.isNotEmpty() } }.take(5)
+                    val objectArray = runCatching {
+                        val result = JSONObject(cleaned)
+                        result.optJSONArray("items")
+                            ?: result.optJSONArray("results")
+                            ?: result.optJSONArray("expressions")
+                    }.getOrNull()
+                    val array = objectArray ?: JSONArray(cleaned)
+                    (0 until array.length()).mapNotNull {
+                        array.optString(it).trim().takeIf { value -> value.isNotEmpty() }
+                    }.take(5)
                 } catch (_: Exception) {
                     cleaned.lines().map { it.trim().replace(Regex("^[-*0-9.、)） ]+"), "").trim() }
                         .filter { it.isNotEmpty() }.take(5)
