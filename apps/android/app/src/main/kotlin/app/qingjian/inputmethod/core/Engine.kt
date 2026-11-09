@@ -329,5 +329,31 @@ class Engine(context: Context, private val onReady: () -> Unit) {
                 array.getJSONObject(i).let { it.getString("name") to File(it.getString("path")) }
             }
         }
+
+        /**
+         * 恢复完整用户数据目录。先卸下所有正在使用的引擎，再原子替换 user 目录，
+         * 最后重新装配，避免内存中的旧学习数据覆盖刚恢复的文件。
+         */
+        fun replaceUserData(context: Context, staged: File): Boolean {
+            val engines = live.toList()
+            engines.forEach(Engine::unload)
+            val target = File(context.filesDir, "user")
+            val backup = File(context.filesDir, "user-before-restore")
+            return try {
+                backup.deleteRecursively()
+                if (target.exists() && !target.renameTo(backup)) error("无法备份当前用户数据")
+                if (!staged.renameTo(target)) {
+                    backup.renameTo(target)
+                    error("无法写入恢复数据")
+                }
+                backup.deleteRecursively()
+                true
+            } catch (_: Exception) {
+                if (!target.exists() && backup.exists()) backup.renameTo(target)
+                false
+            } finally {
+                engines.forEach(Engine::load)
+            }
+        }
     }
 }
