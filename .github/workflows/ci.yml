@@ -336,8 +336,20 @@ jobs:
           cargo install cargo-ndk --version 4.1.2 --locked
           echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
 
+      - name: Fetch and verify full product data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tools/release/data-fetch.sh
+          test -s data/generated/dict.qj
+          test -s data/generated/lm.qj
+          test -d data/generated/dicts
+          find data/generated/dicts -type f -print -quit | grep -q .
+
       - name: Build debug APK
         working-directory: apps/android
+        env:
+          QINGJIAN_REQUIRE_PRODUCT_DATA: "true"
         run: ./gradlew assembleDebug --no-daemon --console=plain
 
       - name: Upload debug APK
