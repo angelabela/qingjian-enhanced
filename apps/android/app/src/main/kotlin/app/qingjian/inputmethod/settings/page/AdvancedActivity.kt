@@ -9,9 +9,15 @@ import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
+import app.qingjian.inputmethod.settings.Settings
+import java.io.BufferedInputStream
+import java.io.File
 import java.time.LocalDate
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 /**
@@ -25,14 +31,24 @@ class AdvancedActivity : PageActivity() {
 
     /** 正在写压缩包（后台线程），行上显示「导出中…」。 */
     private var exporting = false
+    private var restoring = false
 
     override fun content(): List<View> = listOf(
         ui.group(
-            null,
+            R.string.data_backup_section,
             ui.action(R.string.export_title, getString(if (exporting) R.string.export_running else R.string.export_value)) {
-                if (!exporting) pickTarget()
+                if (!exporting && !restoring) pickTarget(CREATE_ZIP)
             },
-            footer = R.string.export_note,
+            ui.action(R.string.restore_data_title, getString(if (restoring) R.string.restore_running else R.string.restore_data_value)) {
+                if (!exporting && !restoring) pickSource(RESTORE_ZIP)
+            },
+            footer = R.string.data_backup_note,
+        ),
+        ui.group(
+            R.string.settings_backup_section,
+            ui.action(R.string.settings_backup_title, null) { if (!exporting && !restoring) pickTarget(BACKUP_SETTINGS) },
+            ui.action(R.string.settings_restore_title, null) { if (!exporting && !restoring) pickSource(RESTORE_SETTINGS) },
+            footer = R.string.settings_backup_note,
         ),
         ui.group(
             null,
@@ -49,12 +65,23 @@ class AdvancedActivity : PageActivity() {
         ),
     )
 
-    private fun pickTarget(request: Int = CREATE_ZIP) {
-        val name = if (request == PACK_LOGS) "qingjian-logs" else "qingjian-data"
+    private fun pickTarget(request: Int) {
+        val name = when (request) {
+            PACK_LOGS -> "qingjian-logs"
+            BACKUP_SETTINGS -> "qingjian-settings"
+            else -> "qingjian-data"
+        }
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("application/zip")
             .putExtra(Intent.EXTRA_TITLE, "$name-${LocalDate.now()}.zip")
+        startActivityForResult(intent, request)
+    }
+
+    private fun pickSource(request: Int) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/zip")
         startActivityForResult(intent, request)
     }
 
@@ -63,23 +90,22 @@ class AdvancedActivity : PageActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         val target = data?.data
         if (resultCode != RESULT_OK || target == null) return
-        if (requestCode == PACK_LOGS) {
-            packLogs(target)
-            return
-        }
-        if (requestCode != CREATE_ZIP) return
-        Engine.flushAll()
-        val files = Engine.learningFiles(this)
-        exporting = true
-        rebuild()
-        thread(name = "qingjian-export") {
-            val message = runCatching { writeZip(target, files) }
-                .fold({ getString(R.string.export_done, it) }, { getString(R.string.export_failed) })
-            runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                exporting = false
-                rebuild()
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        when (requestCode) {
+            PACK_LOGS -> { packLogs(target); return }
+            CREATE_ZIP -> {
+                Engine.flushAll()
+                runBackground("qingjian-export", { writeUserDataZip(target) }) { count ->
+                    getString(R.string.export_done, count)
+                }
+            }
+            BACKUP_SETTINGS -> runBackground("qingjian-settings-backup", { writeSettingsZip(target) }) { count ->
+                getString(R.string.settings_backup_done, count)
+            }
+            RESTORE_ZIP -> runBackground("qingjian-data-restore", { restoreUserData(target) }) { count ->
+                getString(R.string.restore_data_done, count)
+            }
+            RESTORE_SETTINGS -> runBackground("qingjian-settings-restore", { restoreSettings(target) }) { count ->
+                getString(R.string.settings_restore_done, count)
             }
         }
     }
@@ -133,20 +159,182 @@ class AdvancedActivity : PageActivity() {
         }
     }
 
-    /** 文件平铺在压缩包根上；读不到的跳过。返回写进去几个。 */
-    private fun writeZip(target: Uri, files: List<Pair<String, java.io.File>>): Int {
+
+    private fun <T> runBackground(name: String, work: () -> T, message: (T) -> String) {
+        exporting = true
+        restoring = name.contains("restore")
+        rebuild()
+        thread(name = name) {
+            val result = runCatching(work)
+            val notice = result.fold(message) { getString(R.string.export_failed) }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                exporting = false
+                restoring = false
+                rebuild()
+                Toast.makeText(this, notice, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** 导出整个 user 目录：学习习惯、生词本、统计、剪贴板、常用语、导入词库与自定义数据。 */
+    private fun writeUserDataZip(target: Uri): Int {
+        val root = Engine.userDir(this)
+        val files = root.walkTopDown().filter { it.isFile }.toList()
         val output = contentResolver.openOutputStream(target, "wt") ?: error("打不开导出位置")
         var written = 0
         ZipOutputStream(output).use { zip ->
-            for ((name, file) in files) {
-                val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
-                zip.putNextEntry(ZipEntry(name).apply { time = file.lastModified() })
-                zip.write(bytes)
+            zip.putNextEntry(ZipEntry("manifest.json"))
+            zip.write(JSONObject().put("format", "qingjian-user-data").put("version", 1).toString().toByteArray())
+            zip.closeEntry()
+            for (file in files) {
+                val relative = file.relativeTo(root).invariantSeparatorsPath
+                zip.putNextEntry(ZipEntry("user/$relative").apply { time = file.lastModified() })
+                file.inputStream().use { it.copyTo(zip) }
                 zip.closeEntry()
                 written++
             }
         }
         return written
+    }
+
+    /** 恢复整个用户数据目录；兼容旧版根目录平铺的学习数据 ZIP。 */
+    private fun restoreUserData(source: Uri): Int {
+        val staging = File(cacheDir, "qingjian-restore-${System.currentTimeMillis()}").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val root = Engine.userDir(this)
+        val legacy = Engine.learningFiles(this).mapNotNull { (name, file) ->
+            runCatching { name to file.relativeTo(root).invariantSeparatorsPath }.getOrNull()
+        }.toMap()
+        var written = 0
+        var totalBytes = 0L
+        val input = contentResolver.openInputStream(source) ?: error("无法读取备份文件")
+        ZipInputStream(BufferedInputStream(input)).use { zip ->
+            var entry = zip.nextEntry
+            var entries = 0
+            while (entry != null) {
+                entries++
+                if (entries > 10000) error("备份文件项目过多")
+                if (!entry.isDirectory) {
+                    val relative = when {
+                        entry.name.startsWith("user/") -> entry.name.removePrefix("user/")
+                        else -> legacy[entry.name]
+                    }
+                    if (!relative.isNullOrBlank()) {
+                        if (relative.startsWith("/") || relative.split('/').any { it == ".." || it.isBlank() }) {
+                            error("备份文件路径无效")
+                        }
+                        val destination = File(staging, relative).canonicalFile
+                        if (!destination.path.startsWith(staging.canonicalPath + File.separator)) error("备份文件路径无效")
+                        destination.parentFile?.mkdirs()
+                        destination.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val count = zip.read(buffer)
+                                if (count < 0) break
+                                totalBytes += count
+                                if (totalBytes > 512L * 1024 * 1024) error("备份文件超过 512 MB")
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                        written++
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        if (written == 0) error("备份里没有可恢复的青简数据")
+        if (!Engine.replaceUserData(this, staging)) error("恢复失败，原有数据已保留")
+        return written
+    }
+
+    /** 备份应用内全部 SharedPreferences；每个值带类型，避免恢复时把整数变成长整数。 */
+    private fun writeSettingsZip(target: Uri): Int {
+        val directory = File(applicationInfo.dataDir, "shared_prefs")
+        val files = directory.listFiles()?.filter { it.isFile && it.name.endsWith(".xml") }.orEmpty()
+        val output = contentResolver.openOutputStream(target, "wt") ?: error("打不开导出位置")
+        var written = 0
+        ZipOutputStream(output).use { zip ->
+            zip.putNextEntry(ZipEntry("manifest.json"))
+            zip.write(JSONObject().put("format", "qingjian-settings").put("version", 1).toString().toByteArray())
+            zip.closeEntry()
+            for (file in files) {
+                val name = file.name.removeSuffix(".xml")
+                val preferences = getSharedPreferences(name, MODE_PRIVATE)
+                val json = JSONObject()
+                preferences.all.forEach { (key, value) ->
+                    val encoded = JSONObject()
+                    when (value) {
+                        is String -> encoded.put("type", "string").put("value", value)
+                        is Boolean -> encoded.put("type", "boolean").put("value", value)
+                        is Int -> encoded.put("type", "int").put("value", value)
+                        is Long -> encoded.put("type", "long").put("value", value)
+                        is Float -> encoded.put("type", "float").put("value", value.toDouble())
+                        is Set<*> -> encoded.put("type", "set").put("value", JSONArray(value.filterIsInstance<String>()))
+                        else -> return@forEach
+                    }
+                    json.put(key, encoded)
+                }
+                zip.putNextEntry(ZipEntry("prefs/$name.json"))
+                zip.write(json.toString().toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+                written++
+            }
+        }
+        return written
+    }
+
+    /** 恢复设置前先完整解析备份；只接受 prefs/ 下的 JSON，不执行压缩包里的路径。 */
+    private fun restoreSettings(source: Uri): Int {
+        val backups = linkedMapOf<String, JSONObject>()
+        val input = contentResolver.openInputStream(source) ?: error("无法读取设置备份")
+        ZipInputStream(BufferedInputStream(input)).use { zip ->
+            var entry = zip.nextEntry
+            var total = 0
+            while (entry != null) {
+                if (++total > 1000) error("设置备份项目过多")
+                if (!entry.isDirectory && entry.name.startsWith("prefs/") && entry.name.endsWith(".json")) {
+                    val name = entry.name.removePrefix("prefs/").removeSuffix(".json")
+                    if (!name.matches(Regex("[A-Za-z0-9_.-]+"))) error("设置备份名称无效")
+                    val bytes = zip.readBytes()
+                    if (bytes.size > 2 * 1024 * 1024) error("设置备份文件过大")
+                    backups[name] = JSONObject(String(bytes, Charsets.UTF_8))
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        if (backups.isEmpty()) error("备份里没有设置")
+        val current = File(applicationInfo.dataDir, "shared_prefs").listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".xml") }
+            ?.map { it.name.removeSuffix(".xml") }.orEmpty()
+        (current + backups.keys).distinct().forEach { name ->
+            val editor = getSharedPreferences(name, MODE_PRIVATE).edit().clear()
+            backups[name]?.let { json ->
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val encoded = json.getJSONObject(key)
+                    when (encoded.getString("type")) {
+                        "string" -> editor.putString(key, encoded.getString("value"))
+                        "boolean" -> editor.putBoolean(key, encoded.getBoolean("value"))
+                        "int" -> editor.putInt(key, encoded.getInt("value"))
+                        "long" -> editor.putLong(key, encoded.getLong("value"))
+                        "float" -> editor.putFloat(key, encoded.getDouble("value").toFloat())
+                        "set" -> {
+                            val array = encoded.getJSONArray("value")
+                            editor.putStringSet(key, List(array.length()) { array.getString(it) }.toSet())
+                        }
+                    }
+                }
+            }
+            if (!editor.commit()) error("写入设置失败")
+        }
+        Settings.preferences(this).edit().putLong(Settings.KEY_DICTIONARIES_STAMP, System.currentTimeMillis()).apply()
+        return backups.size
     }
 
     /** 第一次：勾清哪几样（缺省全勾）；第二次：确认不能恢复。 */
@@ -185,5 +373,8 @@ class AdvancedActivity : PageActivity() {
     private companion object {
         const val CREATE_ZIP = 1
         const val PACK_LOGS = 2
+        const val RESTORE_ZIP = 3
+        const val BACKUP_SETTINGS = 4
+        const val RESTORE_SETTINGS = 5
     }
 }
