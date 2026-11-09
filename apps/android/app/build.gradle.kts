@@ -93,12 +93,21 @@ val cargoNdk by tasks.registering(Exec::class) {
     outputs.upToDateWhen { false }
 }
 
-// 随包数据：data/generated/ 的产品数据优先，没有就退回 assets/sample/ 样例（与 mac 的 bundle.sh 同一规矩）。
+// 随包数据：data/generated/ 的产品数据优先；CI 可设置 QINGJIAN_REQUIRE_PRODUCT_DATA=true 禁止静默退回样例。
 val stageData by tasks.registering(Sync::class) {
     group = "qingjian"
     description = "把随包数据放进 assets/data/"
     val generated = repoRoot.resolve("data/generated")
-    val hasGenerated = generated.resolve("dict.qj").isFile
+    val requiredProductFiles = listOf("dict.qj", "lm.qj")
+    val missingProductFiles = requiredProductFiles.filterNot { generated.resolve(it).isFile }
+    val hasProductDictionaries = generated.resolve("dicts").listFiles()?.any { it.isFile } == true
+    val hasGenerated = missingProductFiles.isEmpty() && hasProductDictionaries
+    if (System.getenv("QINGJIAN_REQUIRE_PRODUCT_DATA") == "true" && !hasGenerated) {
+        throw GradleException(
+            "CI 要求完整产品词库，但 data/generated 缺少：${(missingProductFiles + if (hasProductDictionaries) emptyList() else listOf("dicts/*.qj")).joinToString()}. " +
+                "请先运行 tools/release/data-fetch.sh 并校验 data.lock。"
+        )
+    }
     into(bundledAssets.map { it.dir("data") })
     if (hasGenerated) {
         from(generated) {
