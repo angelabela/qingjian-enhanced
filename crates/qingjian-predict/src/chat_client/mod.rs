@@ -206,7 +206,7 @@ impl ChatClient {
             .find_map(|choice| choice.message.content.filter(|c| !c.trim().is_empty()))
             .ok_or_else(|| {
                 // 正文为空时原因五花八门（思考占满额度、模型名不对、接口字段不标准），留下原始响应才查得了
-                tracing::warn!(model = %self.model, response_chars = raw.chars().count(), "接口回复里没有正文");
+                tracing::warn!(model = %self.model, response_chars = raw.to_string().chars().count(), "接口回复里没有正文");
                 if cut_off {
                     PredictError::BudgetExhausted
                 } else {
