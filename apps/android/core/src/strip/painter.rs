@@ -80,8 +80,9 @@ impl StripPainter {
             sentence: None,
             status: (!frame.notice.is_empty()).then(|| frame.notice.clone()),
             mode: Mode::default(),
-            columns: 0,
-            column_ems: Vec::new(),
+            // 手机候选条固定两行：候选按从左到右、从上到下排布，仍由原主题组件绘制。
+            columns: frame.candidates.len().div_ceil(2),
+            column_ems: vec![4.0; frame.candidates.len().div_ceil(2)],
             reversed: false,
         };
     }
