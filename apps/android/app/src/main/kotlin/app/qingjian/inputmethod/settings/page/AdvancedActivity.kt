@@ -3,12 +3,16 @@ package app.qingjian.inputmethod.settings.page
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.zip.ZipInputStream
 import android.net.Uri
 import android.view.View
 import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
+import app.qingjian.inputmethod.settings.Settings
 import java.time.LocalDate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -25,6 +29,7 @@ class AdvancedActivity : PageActivity() {
 
     /** 正在写压缩包（后台线程），行上显示「导出中…」。 */
     private var exporting = false
+    private var restoring = false
 
     override fun content(): List<View> = listOf(
         ui.group(
@@ -32,7 +37,16 @@ class AdvancedActivity : PageActivity() {
             ui.action(R.string.export_title, getString(if (exporting) R.string.export_running else R.string.export_value)) {
                 if (!exporting) pickTarget()
             },
+            ui.action(R.string.restore_data_title, getString(if (restoring) R.string.restore_running else R.string.restore_value)) {
+                if (!restoring) pickRestoreTarget(RESTORE_DATA)
+            },
             footer = R.string.export_note,
+        ),
+        ui.group(
+            R.string.settings_backup_section,
+            ui.action(R.string.settings_backup_title, getString(R.string.settings_backup_value)) { pickTarget(SETTINGS_ZIP) },
+            ui.action(R.string.settings_restore_title, getString(R.string.settings_restore_value)) { pickRestoreTarget(RESTORE_SETTINGS) },
+            footer = R.string.settings_backup_note,
         ),
         ui.group(
             null,
@@ -67,6 +81,14 @@ class AdvancedActivity : PageActivity() {
             packLogs(target)
             return
         }
+        if (requestCode == RESTORE_DATA || requestCode == RESTORE_SETTINGS) {
+            restoreZip(target, requestCode)
+            return
+        }
+        if (requestCode == SETTINGS_ZIP) {
+            writeSettingsBackup(target)
+            return
+        }
         if (requestCode != CREATE_ZIP) return
         Engine.flushAll()
         val files = Engine.learningFiles(this)
@@ -80,6 +102,91 @@ class AdvancedActivity : PageActivity() {
                 exporting = false
                 rebuild()
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun pickRestoreTarget(request: Int) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/zip")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivityForResult(intent, request)
+    }
+
+    private fun writeSettingsBackup(target: Uri) {
+        val values = JSONObject()
+        for ((key, value) in Settings.preferences(this).all) {
+            when (value) {
+                is Set<*> -> values.put(key, JSONArray(value.filterIsInstance<String>()))
+                is String, is Boolean, is Int, is Long, is Float -> values.put(key, value)
+            }
+        }
+        val payload = JSONObject().put("format", "qingjian-settings").put("version", 1).put("values", values)
+        runCatching {
+            val output = contentResolver.openOutputStream(target, "wt") ?: error("无法写入")
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("settings.json"))
+                zip.write(payload.toString().toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+            }
+        }.onSuccess {
+            Toast.makeText(this, R.string.settings_backup_done, Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(this, R.string.export_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun restoreZip(uri: Uri, request: Int) {
+        if (request == RESTORE_DATA) restoring = true
+        rebuild()
+        thread(name = "qingjian-restore") {
+            val result = runCatching {
+                val input = contentResolver.openInputStream(uri) ?: error("无法读取备份")
+                val entries = linkedMapOf<String, ByteArray>()
+                ZipInputStream(input).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        if (!entry.isDirectory && entry.name.length <= 180 && !entry.name.contains("..") &&
+                            !entry.name.startsWith("/") && !entry.name.contains('\\')) {
+                            val bytes = zip.readBytes()
+                            if (bytes.size <= 64 * 1024 * 1024) entries[entry.name] = bytes
+                        }
+                        zip.closeEntry()
+                    }
+                }
+                if (request == RESTORE_DATA) {
+                    Engine.flushAll()
+                    val count = Engine.restoreLearning(this, entries)
+                    if (count < 0) error("备份中没有可识别的学习数据")
+                    getString(R.string.restore_data_done, count)
+                } else {
+                    val raw = entries["settings.json"] ?: error("不是青简设置备份")
+                    val root = JSONObject(raw.toString(Charsets.UTF_8))
+                    if (root.optString("format") != "qingjian-settings" || root.optInt("version") != 1) error("设置备份版本不兼容")
+                    val values = root.getJSONObject("values")
+                    val editor = Settings.preferences(this).edit().clear()
+                    val keys = values.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        when (val value = values.get(key)) {
+                            is Boolean -> editor.putBoolean(key, value)
+                            is Int -> editor.putInt(key, value)
+                            is Long -> editor.putLong(key, value)
+                            is Double -> editor.putFloat(key, value.toFloat())
+                            is String -> editor.putString(key, value)
+                            is JSONArray -> editor.putStringSet(key, buildSet { for (i in 0 until value.length()) add(value.getString(i)) })
+                        }
+                    }
+                    if (!editor.commit()) error("设置写入失败")
+                    getString(R.string.settings_restore_done)
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                restoring = false
+                rebuild()
+                Toast.makeText(this, result.getOrElse { getString(R.string.restore_failed) }, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -185,5 +292,8 @@ class AdvancedActivity : PageActivity() {
     private companion object {
         const val CREATE_ZIP = 1
         const val PACK_LOGS = 2
+        const val SETTINGS_ZIP = 3
+        const val RESTORE_DATA = 4
+        const val RESTORE_SETTINGS = 5
     }
 }
