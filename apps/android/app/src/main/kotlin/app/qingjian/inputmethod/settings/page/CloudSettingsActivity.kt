@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.settings.page
 import android.view.View
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.cloud.CloudConfig
+import app.qingjian.inputmethod.cloud.GifConfig
 import app.qingjian.inputmethod.cloud.SecretStore
 import app.qingjian.inputmethod.core.Native
 import app.qingjian.inputmethod.settings.Settings
@@ -24,6 +25,7 @@ class CloudSettingsActivity : PageActivity() {
         return listOf(
             ui.group(getString(R.string.section_service), serviceRows(cloud), getString(R.string.cloud_note)),
             ui.group(null, actionRows(cloud)),
+            ui.group(getString(R.string.giphy_section), giphyRows(), getString(R.string.giphy_note)),
             ui.group(getString(R.string.section_cloud_uses), useRows(cloud), getString(R.string.cloud_uses_note)),
         )
     }
@@ -52,6 +54,22 @@ class CloudSettingsActivity : PageActivity() {
             rows += ui.action(R.string.cloud_clear_key, null, color = ui.colors.danger) {
                 SecretStore.clear(this)
                 testResult = null
+                rebuild()
+            }
+        }
+        return rows
+    }
+
+    private fun giphyRows(): List<View> {
+        val rows = mutableListOf<View>(
+            ui.input(R.string.giphy_api_key, GifConfig.hint(this) ?: getString(R.string.giphy_key_empty), "", secret = true) {
+                if (it.isNotEmpty()) GifConfig.save(this, it)
+                rebuild()
+            },
+        )
+        if (GifConfig.hint(this) != null) {
+            rows += ui.action(R.string.giphy_clear_key, null, color = ui.colors.danger) {
+                GifConfig.clear(this)
                 rebuild()
             }
         }

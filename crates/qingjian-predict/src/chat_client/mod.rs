@@ -92,7 +92,8 @@ impl ChatClient {
 
     pub async fn complete(&self, request: &PredictionRequest) -> Result<Reply, PredictError> {
         let user = prompt::user_prompt(request);
-        tracing::debug!(sequence = request.sequence, %user, "联想请求");
+        // 输入法上下文可能包含密码以外的私人文本；日志只记录长度，不记录原文。
+        tracing::debug!(sequence = request.sequence, kind = ?request.kind, user_chars = user.chars().count(), "联想请求");
         let content = self
             .chat(
                 prompt::system_prompt(request),
@@ -205,14 +206,14 @@ impl ChatClient {
             .find_map(|choice| choice.message.content.filter(|c| !c.trim().is_empty()))
             .ok_or_else(|| {
                 // 正文为空时原因五花八门（思考占满额度、模型名不对、接口字段不标准），留下原始响应才查得了
-                tracing::warn!(model = %self.model, response = %truncated(&raw), "接口回复里没有正文");
+                tracing::warn!(model = %self.model, response_chars = raw.to_string().chars().count(), "接口回复里没有正文");
                 if cut_off {
                     PredictError::BudgetExhausted
                 } else {
                     PredictError::EmptyReply
                 }
             })?;
-        tracing::debug!(%content, "模型回复");
+        tracing::debug!(response_chars = content.chars().count(), "模型回复");
         Ok(reply::unfenced(&content).to_owned())
     }
 }
@@ -226,17 +227,6 @@ fn chat_response(
         object.remove("service_tier");
     }
     serde_json::from_value(raw)
-}
-
-/// 日志里的原始响应最多留这么多字符。
-const LOGGED_RESPONSE_CHARS: usize = 2000;
-
-fn truncated(response: &serde_json::Value) -> String {
-    let text = response.to_string();
-    match text.char_indices().nth(LOGGED_RESPONSE_CHARS) {
-        Some((end, _)) => format!("{}…", &text[..end]),
-        None => text,
-    }
 }
 
 /// 各家关思考的参数不一样，严格的接口遇到不认识的参数会报 400，所以按接口地址只发对的那个。

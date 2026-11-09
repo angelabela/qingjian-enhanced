@@ -32,6 +32,9 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     val isEmpty: Boolean get() = preedit.isEmpty() && candidates.isEmpty()
 
+    /** 候选栏 GIF 搜索的默认关键词：优先当前首选词，其次拼音输入串。 */
+    val gifQuery: String get() = candidates.firstOrNull()?.text?.takeIf { it.isNotBlank() } ?: preedit
+
     /** 主题底色；还没画过为透明。 */
     val background: Int get() = image?.background ?: 0
 

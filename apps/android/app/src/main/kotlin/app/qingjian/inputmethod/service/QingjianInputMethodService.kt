@@ -402,6 +402,19 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) = composer.onKey(key)
 
+    /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
+    override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        val actionId = when (action) {
+            KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
+            KeyboardView.EditShortcut.CUT -> android.R.id.cut
+            KeyboardView.EditShortcut.COPY -> android.R.id.copy
+            KeyboardView.EditShortcut.PASTE -> android.R.id.paste
+        }
+        if (currentInputConnection?.performContextMenuAction(actionId) != true) {
+            toast("当前输入框暂不支持此操作")
+        }
+    }
+
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
     override fun onLanguageChoice(index: Int) = composer.chooseLanguage(Language.entries[index])
@@ -422,6 +435,12 @@ class QingjianInputMethodService :
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
     override fun onSelect(index: Int) = composer.select(index)
+
+    /** 从候选栏 GIF 图标打开搜索；候选首选词作为默认关键词。 */
+    override fun onGifSearch(query: String) {
+        val term = query.ifBlank { currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()?.trim().orEmpty() }
+        panel?.open(PanelKind.GIFS, term)
+    }
 
     override fun onMoveCaret(index: Int) = composer.moveCaret(index)
 
@@ -449,7 +468,10 @@ class QingjianInputMethodService :
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
 
     override fun openPanel(kind: PanelKind) {
-        panel?.open(kind)
+        val query = if (kind == PanelKind.GIFS) {
+            currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()?.trim().orEmpty()
+        } else ""
+        panel?.open(kind, query)
     }
 
     override fun closePanel() {

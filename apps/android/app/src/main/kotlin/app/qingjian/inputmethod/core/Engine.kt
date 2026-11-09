@@ -321,6 +321,37 @@ class Engine(context: Context, private val onReady: () -> Unit) {
             return removed
         }
 
+        /**
+         * 恢复学习数据。只接受当前版本导出清单中的文件名，先写临时文件再原子替换；
+         * 恢复前卸下所有活动引擎，完成后重新装配，避免内存里的旧状态覆盖恢复结果。
+         */
+        fun restoreLearning(context: Context, restored: Map<String, ByteArray>): Int {
+            val known = learningFiles(context).associate { it.first to it.second }
+            val accepted = restored.filter { (name, bytes) ->
+                name in known && name.isNotBlank() && !name.contains('/') && !name.contains('\\') &&
+                    bytes.isNotEmpty() && bytes.size <= 64 * 1024 * 1024
+            }
+            if (accepted.isEmpty()) return -1
+            live.forEach(Engine::unload)
+            return try {
+                var count = 0
+                for ((name, bytes) in accepted) {
+                    val target = known.getValue(name)
+                    target.parentFile?.mkdirs()
+                    val temp = File(target.parentFile, target.name + ".restore-tmp")
+                    temp.writeBytes(bytes)
+                    if (target.exists() && !target.delete()) error("无法替换学习数据")
+                    if (!temp.renameTo(target)) error("无法写入学习数据")
+                    count++
+                }
+                count
+            } catch (_: Exception) {
+                -1
+            } finally {
+                live.forEach(Engine::load)
+            }
+        }
+
         /** 导出数据要打包的文件：(压缩包里的名字, 文件)。 */
         fun learningFiles(context: Context): List<Pair<String, File>> {
             val json = runCatching { Native.learningFiles(userDir(context).path) }.getOrNull() ?: return emptyList()

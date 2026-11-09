@@ -4,18 +4,19 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.Shader
+import android.animation.ValueAnimator
+import android.view.animation.LinearInterpolator
 import android.view.MotionEvent
 import android.view.View
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.Palette
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.math.sin
+import kotlin.math.cos
 
 /**
  * 说话时盖住候选条与键盘的面板：底板上一团主题色的光，上方一条细波形，中间一段弧，
@@ -44,9 +45,10 @@ class VoicePanel(
 
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
     private val location = IntArray(2)
+    private var animationPhase = 0f
+    private var pulseAnimator: ValueAnimator? = null
 
     /** 按着空格说（松手结束）；否则是点按进来的。 */
     var holding = false
@@ -70,6 +72,29 @@ class VoicePanel(
 
     init {
         setBackgroundColor(palette.board)
+    }
+
+    // 用时间驱动而不是每次录音回调才重画：静音、识别等待时也保持柔和连续的呼吸动效。
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (pulseAnimator == null) {
+            pulseAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 1_200L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    animationPhase = it.animatedValue as Float
+                    postInvalidateOnAnimation()
+                }
+                start()
+            }
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        super.onDetachedFromWindow()
     }
 
     /** 新到一截录音的音量（0 到 1）：波形往左挪一格。 */
@@ -118,27 +143,21 @@ class VoicePanel(
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
-        glow.shader = RadialGradient(
-            w / 2, h * 0.55f, w * 0.6f,
-            withAlpha(palette.brand, 0x38), withAlpha(palette.brand, 0),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(0f, 0f, w, h, glow)
-
-        drawWave(canvas, h * 0.17f)
+        // 全新「轨道声波」动画：中心麦克风、三颗沿轨道运行的光点与脉冲圆环。
+        drawOrbit(canvas, w / 2f, h * 0.20f)
         drawPad(canvas, Target.CANCEL, "撤回输入")
         drawPad(canvas, Target.ACTION, actionLabel)
         ink.text(canvas, hint(), 13f, palette.gloss, w / 2, arcTop + thickness / 2 + h * 0.09f)
 
         // 圆钮：按着说时是手指的位置提示，点按进来时是「说完了」
         val buttonY = h * 0.8f
-        val buttonRadius = ink.dp(if (holding) 18f else 24f)
+        val buttonRadius = ink.dp(if (holding) 19f else 24f)
         paint.style = Paint.Style.FILL
         paint.color = palette.surface
         canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = ink.dp(1.5f)
-        paint.color = withAlpha(palette.brand, 0x80)
+        paint.color = withAlpha(palette.brand, 0x90)
         canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
         paint.style = Paint.Style.FILL
         if (!holding) ink.icon(canvas, Icon.MIC, w / 2, buttonY, 22f, palette.brand)
@@ -174,25 +193,34 @@ class VoicePanel(
         canvas.restore()
     }
 
-    /** 一排细竖条，高度按最近的音量；等结果时压成一排点。 */
-    private fun drawWave(canvas: Canvas, cy: Float) {
-        val span = width * 0.42f
-        val left = (width - span) / 2
-        val step = span / BARS
-        val barWidth = ink.dp(3f)
-        val maxHalf = ink.dp(18f)
-        for (i in 0 until BARS) {
-            // 两头淡、中间浓
-            val edge = 1f - abs(i - (BARS - 1) / 2f) / BARS
-            val level = if (recognizing) 0f else levels[i]
-            val half = barWidth / 2 + (maxHalf - barWidth / 2) * level * edge
-            val x = left + step * (i + 0.5f)
-            paint.color = withAlpha(palette.brand, (140 + 115 * edge).toInt().coerceAtMost(255))
-            rect.set(x - barWidth / 2, cy - half, x + barWidth / 2, cy + half)
-            canvas.drawRoundRect(rect, barWidth / 2, barWidth / 2, paint)
+    /** 环形轨道动效：脉冲圆环与三颗旋转光点，录音音量会轻微影响圆环幅度。 */
+    private fun drawOrbit(canvas: Canvas, cx: Float, cy: Float) {
+        val base = ink.dp(27f)
+        val phase = animationPhase * (Math.PI * 2.0)
+        val level = levels.lastOrNull() ?: 0f
+        val pulse = (0.5 + 0.5 * sin(phase)).toFloat()
+        for (ring in 0..2) {
+            val radius = base + ink.dp(ring * 13f) + ink.dp(4f) * pulse * (if (ring == 0) 1f else 0.45f)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = ink.dp(if (ring == 0) 2.2f else 1.2f)
+            paint.color = withAlpha(palette.brand, (150 - ring * 38).coerceIn(35, 180))
+            canvas.drawCircle(cx, cy, radius, paint)
         }
+        paint.style = Paint.Style.FILL
+        val orbitRadius = base + ink.dp(19f)
+        for (dot in 0..2) {
+            val angle = phase + dot * (Math.PI * 2.0 / 3.0)
+            val x = cx + cos(angle).toFloat() * orbitRadius
+            val y = cy + sin(angle).toFloat() * orbitRadius
+            val dotRadius = ink.dp(3.5f + level * 2f)
+            paint.color = if (dot == 0) palette.brand else withAlpha(palette.brand, 170)
+            canvas.drawCircle(x, y, dotRadius, paint)
+        }
+        paint.color = palette.brand
+        canvas.drawCircle(cx, cy, ink.dp(15f), paint)
+        ink.icon(canvas, Icon.MIC, cx, cy, 17f, palette.onBrand)
+        paint.style = Paint.Style.FILL
     }
-
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked != MotionEvent.ACTION_UP || holding || recognizing) return true

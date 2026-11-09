@@ -275,6 +275,22 @@
     <string name="voice_key">API Key</string>
     <string name="voice_none_note">没选识别服务时语音输入用不了</string>
     <string name="voice_note">在火山引擎开通「豆包流式语音识别」，把 API Key 填在这里，计费方式选你开通的那种；说话的录音会发给火山引擎，会产生费用</string>
+    <string name="restore_data_title">恢复数据</string>
+    <string name="restore_data_confirm">将用备份中的学习数据覆盖本机对应数据，建议先另存一份当前数据。确定继续？</string>
+    <string name="settings_restore_confirm">将覆盖当前键盘设置。云端和语音服务密钥不会被恢复。确定继续？</string>
+    <string name="restore_confirm">确认恢复</string>
+    <string name="restore_value">从 ZIP 备份恢复</string>
+    <string name="restore_running">恢复中…</string>
+    <string name="restore_data_done">已恢复 %1$d 项学习数据</string>
+    <string name="restore_failed">恢复失败：文件无效或版本不兼容</string>
+    <string name="settings_backup_section">设置备份与恢复</string>
+    <string name="settings_backup_title">备份设置</string>
+    <string name="settings_backup_value">保存为 ZIP</string>
+    <string name="settings_restore_title">恢复设置</string>
+    <string name="settings_restore_value">从 ZIP 备份恢复</string>
+    <string name="settings_backup_note">备份键盘布局、主题、输入选项和工具栏设置。云端与语音服务密钥不会写入备份。</string>
+    <string name="settings_backup_done">设置备份已保存</string>
+    <string name="settings_restore_done">设置已恢复，返回键盘后生效</string>
     <string name="export_title">导出数据</string>
     <string name="export_value">存为 zip</string>
     <string name="export_running">导出中…</string>
@@ -361,4 +377,9 @@
     <string name="section_cloud_uses">用在哪里</string>
     <string name="stats_quality">打字质量</string>
     <string name="cloud_uses_note">快捷翻译和翻译选中的文字也用这里的服务。</string>
+    <string name="giphy_section">GIF 动图搜索</string>
+    <string name="giphy_api_key">GIPHY API Key</string>
+    <string name="giphy_key_empty">尚未填写</string>
+    <string name="giphy_clear_key">清除 GIPHY 密钥</string>
+    <string name="giphy_note">申请 GIPHY 开发者 Beta API Key 后填入。搜索 GIF 时会联网访问 GIPHY；结果面板会显示 Powered by GIPHY。密钥加密保存在本机。</string>
 </resources>
