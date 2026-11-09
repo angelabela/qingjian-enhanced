@@ -10,6 +10,8 @@ import app.qingjian.inputmethod.core.strip.StripImage
 import app.qingjian.inputmethod.voice.VoiceConfig
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.json.JSONObject
 
@@ -335,6 +337,16 @@ class Engine(context: Context, private val onReady: () -> Unit) {
          * 最后重新装配，避免内存中的旧学习数据覆盖刚恢复的文件。
          */
         fun replaceUserData(context: Context, staged: File): Boolean {
+            // Engine 句柄只允许主线程操作；ZIP 解压可在后台完成，目录切换在主线程短暂执行。
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                val latch = CountDownLatch(1)
+                var restored = false
+                Handler(Looper.getMainLooper()).post {
+                    restored = replaceUserData(context, staged)
+                    latch.countDown()
+                }
+                return runCatching { latch.await(30, TimeUnit.SECONDS) && restored }.getOrDefault(false)
+            }
             val engines = live.toList()
             engines.forEach(Engine::unload)
             val target = File(context.filesDir, "user")
