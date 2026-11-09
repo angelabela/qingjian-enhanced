@@ -462,7 +462,10 @@ class QingjianInputMethodService :
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
 
     override fun openPanel(kind: PanelKind) {
-        panel?.open(kind)
+        val query = if (kind == PanelKind.GIFS) {
+            currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()?.trim().orEmpty()
+        } else ""
+        panel?.open(kind, query)
     }
 
     override fun closePanel() {
