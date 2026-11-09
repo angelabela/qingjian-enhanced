@@ -287,6 +287,9 @@
     <string name="restore_running">恢复中…</string>
     <string name="data_backup_note">导出包含学习记录、生词本、统计、常用语、剪贴板历史和导入词库。恢复会替换当前个人数据，建议先导出一份当前备份。</string>
     <string name="restore_data_done">已恢复 %1$d 个数据文件，输入法数据正在重新加载</string>
+    <string name="restore_data_confirm">恢复会替换当前个人数据，包括剪贴板、常用语和导入词库。建议先导出当前数据备份。确认继续吗？</string>
+    <string name="settings_restore_confirm">恢复会替换当前应用设置，包括键盘、外观、语音和云端配置。确认继续吗？</string>
+    <string name="restore_confirm">确认恢复</string>
     <string name="settings_backup_section">设置备份与恢复</string>
     <string name="settings_backup_title">备份设置</string>
     <string name="settings_restore_title">恢复设置</string>
