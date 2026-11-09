@@ -34,6 +34,9 @@ class CandidateBarView(
     interface Listener {
         fun onSelect(index: Int)
 
+        /** 候选栏 GIF 图标：用当前首选词打开动图搜索。 */
+        fun onGifSearch(query: String)
+
         /** 点了拼音行：光标挪到第 [index] 个字之后。 */
         fun onMoveCaret(index: Int)
 
@@ -84,6 +87,8 @@ class CandidateBarView(
 
     /** 候选右端 ⌄ 那一格的宽；候选滚到它底下为止。 */
     private val expandSlot = 46f * density
+    private val gifSlot = 48f * density
+    private val gifVisible: Boolean get() = !strip.isEmpty
     private val expandFill = Paint()
     private val expandIcon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.text }
 
@@ -100,7 +105,7 @@ class CandidateBarView(
     private val toolbarShown: Boolean get() = !resizing && strip.isEmpty && notice == null
 
     /** 候选能用的宽度：有 ⌄ 时让出那一格。 */
-    private val stripWidth: Int get() = if (expandable) width - expandSlot.toInt() else width
+    private val stripWidth: Int get() = width - (if (gifVisible) gifSlot.toInt() else 0) - (if (expandable) expandSlot.toInt() else 0)
 
     /** 气泡对着的候选下标；气泡开着时高亮跟到它上面。 */
     private var popupIndex = -1
@@ -208,6 +213,7 @@ class CandidateBarView(
         strip.isEmpty -> toolbar.draw(canvas, width)
         else -> {
             strip.draw(canvas, scrollX, stripWidth)
+            if (gifVisible) drawGif(canvas)
             if (expandable) drawExpand(canvas)
             // 候选条与键盘之间一道细线，分出层次；滚动时线不跟着走
             canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
@@ -231,12 +237,30 @@ class CandidateBarView(
 
     /** 钉在右端的 ⌄：与候选行同一高度居中，左边一道短竖线隔开。 */
     private fun drawExpand(canvas: Canvas) {
-        val left = scrollX + stripWidth.toFloat()
+        val left = scrollX + stripWidth + if (gifVisible) gifSlot else 0f
         expandFill.color = strip.background
         canvas.drawRect(left, 0f, scrollX + width.toFloat(), height.toFloat(), expandFill)
         val cy = (strip.candidatesTop + height) / 2f
         canvas.drawRect(left, cy - 12 * density, left + divider.strokeWidth, cy + 12 * density, divider)
         PanelIcons.draw(canvas, PanelIcons.Icon.EXPAND, left + expandSlot / 2, cy, 24 * density, expandIcon)
+    }
+
+    /** 候选条中的 GIF 入口，固定在展开按钮左侧，不参与候选横向滚动。 */
+    private fun drawGif(canvas: Canvas) {
+        val left = scrollX + stripWidth.toFloat()
+        val cy = (strip.candidatesTop + height) / 2f
+        expandFill.color = strip.background
+        canvas.drawRect(left, 0f, left + gifSlot, height.toFloat(), expandFill)
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = palette.brand
+            textAlign = Paint.Align.CENTER
+            textSize = 12f * density
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        val badge = android.graphics.RectF(left + 7f * density, cy - 12f * density, left + gifSlot - 7f * density, cy + 12f * density)
+        canvas.drawRoundRect(badge, 8f * density, 8f * density, expandIcon.apply { color = palette.brand })
+        labelPaint.color = palette.onBrand
+        canvas.drawText("GIF", badge.centerX(), cy - (labelPaint.ascent() + labelPaint.descent()) / 2f, labelPaint)
     }
 
     /**
@@ -252,7 +276,11 @@ class CandidateBarView(
     }
 
     private fun tap(x: Float, y: Float) {
-        if (expandable && x >= stripWidth) {
+        if (gifVisible && x >= stripWidth && x < stripWidth + gifSlot) {
+            listener.onGifSearch(strip.gifQuery)
+            return
+        }
+        if (expandable && x >= stripWidth + if (gifVisible) gifSlot else 0f) {
             listener.onExpand()
             return
         }
