@@ -111,6 +111,7 @@ class AiExpressionPanel(
         val selectedTone = tones.getOrElse(tone.selectedItemPosition) { "自然" }
         val contextText = if (contextCheck.isChecked) actionsContext() else null
         actions.generate(value, selectedTone, contextText) { items, error ->
+            post {
             generate.isEnabled = true
             progress.visibility = View.GONE
             results.removeAllViews()
@@ -135,6 +136,7 @@ class AiExpressionPanel(
                         bottomMargin = dp(8)
                     })
                 }
+            }
             }
         }
     }
