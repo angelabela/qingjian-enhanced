@@ -442,39 +442,39 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 接着上划清空时撤销要连按下时删掉的那个字一起放回。
      */
     fun onBackspaceDown() {
-        backspaceComposing = composing
-        beforeBackspace = if (composing) null else host.connection?.getTextBeforeCursor(MAX_CLEAR, 0)?.toString()
+        // 清空手势不依赖光标位置；记录按下时的编辑器上下文仅用于学习数据同步。
+        beforeBackspace = null
     }
 
-    /**
-     * 删除键上划：按下时在组句就只清拼音（删到没拼音了也不去动输入框里的字）；否则删掉光标前的文字（最多 [MAX_CLEAR] 个），
-     * 候选条上放「撤销」，点了原样放回。按下时那一下已经删的字（按键事件可能还没到应用）也算在撤销里。
-     */
+    /** 删除键上划：无论光标位置与是否有选区，都清空当前输入框的全部文字。 */
     fun clearBefore() {
-        if (backspaceComposing || composing) {
-            backspaceComposing = false
-            if (composing) apply(engine.clear())
-            return
-        }
         val connection = host.connection ?: return
-        // 有选区时不执行整段清空，避免部分输入框把选区/周围文字一并删除。
-        if (!connection.getSelectedText(0).isNullOrEmpty()) {
-            beforeBackspace = null
-            return
-        }
-        // 只信删除键按下时捕获的光标左侧快照；取不到快照时宁可不清空，
-        // 也不能退回到不确定的上下文范围，避免误删整个输入框。
-        val snapshot = beforeBackspace ?: return
-        val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString() ?: return
         beforeBackspace = null
-        if (remaining.isEmpty() || !snapshot.startsWith(remaining)) return
+        var removed = ""
         connection.beginBatchEdit()
         try {
-            connection.deleteSurroundingText(remaining.length, 0)
+            // 优先使用编辑器的全选动作，再用空文本替换整个选区。
+            val selectedAll = connection.performContextMenuAction(android.R.id.selectAll)
+            if (selectedAll) {
+                removed = connection.getSelectedText(0)?.toString().orEmpty()
+                connection.commitText("", 1)
+            } else {
+                // 兼容不支持全选动作的输入框：同时删除光标前后内容。
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                val selected = connection.getSelectedText(0)?.toString().orEmpty()
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                removed = before + selected + after
+                if (before.isNotEmpty() || selected.isNotEmpty() || after.isNotEmpty()) {
+                    connection.deleteSurroundingText(before.length, after.length)
+                    if (selected.isNotEmpty()) connection.commitText("", 1)
+                }
+            }
         } finally {
             connection.endBatchEdit()
         }
-        apply(engine.cleared(snapshot))
+        // 同时清除输入法内部正在组句的拼音状态。
+        apply(engine.clear())
+        if (removed.isNotEmpty()) apply(engine.cleared(removed))
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
