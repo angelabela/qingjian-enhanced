@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.panel
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
@@ -273,7 +274,7 @@ class VoicePanel(
             val level = (live * 0.86f + idle).coerceIn(0.04f, 1f)
             val half = barWidth / 2f + (maxHalf - barWidth / 2f) * level * edge
             val x = left + step * (i + 0.5f)
-            paint.shader = Shader.LinearGradient(
+            paint.shader = LinearGradient(
                 x, cy - half, x, cy + half,
                 palette.fresh, palette.accent, Shader.TileMode.CLAMP
             )
