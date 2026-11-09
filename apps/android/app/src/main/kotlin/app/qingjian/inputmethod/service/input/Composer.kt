@@ -437,31 +437,36 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showComposition("", frame.candidates)
     }
 
-    /**
-     * 删除键按下那一刻（删字之前）：组句中记下「这一下是在删拼音」，否则记下光标前的文字，
-     * 接着上划清空时撤销要连按下时删掉的那个字一起放回。
-     */
+    /** 删除键按下时记录状态；清空动作本身统一处理整个输入框。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
-        beforeBackspace = if (composing) null else host.connection?.getTextBeforeCursor(MAX_CLEAR, 0)?.toString()
+        beforeBackspace = null
     }
 
-    /**
-     * 删除键上划：按下时在组句就只清拼音（删到没拼音了也不去动输入框里的字）；否则删掉光标前的文字（最多 [MAX_CLEAR] 个），
-     * 候选条上放「撤销」，点了原样放回。按下时那一下已经删的字（按键事件可能还没到应用）也算在撤销里。
-     */
-    fun clearBefore() {
-        if (backspaceComposing || composing) {
-            backspaceComposing = false
-            if (composing) apply(engine.clear())
-            return
-        }
+    /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
+    fun clearAll() {
         val connection = host.connection ?: return
-        val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-        val removed = beforeBackspace?.takeIf { it.startsWith(remaining) } ?: remaining
+        backspaceComposing = false
         beforeBackspace = null
-        if (remaining.isNotEmpty()) connection.deleteSurroundingText(remaining.length, 0)
-        if (removed.isNotEmpty()) apply(engine.cleared(removed))
+        connection.beginBatchEdit()
+        try {
+            if (connection.performContextMenuAction(android.R.id.selectAll)) {
+                connection.commitText("", 1)
+            } else {
+                repeat(100) {
+                    val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    if (before.isEmpty() && after.isEmpty()) return@repeat
+                    connection.deleteSurroundingText(before.length, after.length)
+                    val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    if (nextBefore == before && nextAfter == after) return@repeat
+                }
+            }
+        } finally {
+            connection.endBatchEdit()
+        }
+        apply(engine.clear())
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
