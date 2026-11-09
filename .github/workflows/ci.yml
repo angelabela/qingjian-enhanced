@@ -340,6 +340,14 @@ jobs:
         working-directory: apps/android
         run: ./gradlew assembleDebug --no-daemon --console=plain
 
+      - name: Upload debug APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qingjian-android-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 15
