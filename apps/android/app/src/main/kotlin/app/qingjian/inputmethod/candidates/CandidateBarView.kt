@@ -38,7 +38,6 @@ class CandidateBarView(
         fun onGifSearch(query: String)
 
         /** 候选栏 GIF 图标：用当前首选词打开动图搜索。 */
-        fun onGifSearch(query: String)
 
         /** 点了拼音行：光标挪到第 [index] 个字之后。 */
         fun onMoveCaret(index: Int)
