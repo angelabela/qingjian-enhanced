@@ -4,9 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.Shader
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
 import android.view.MotionEvent
@@ -47,7 +45,6 @@ class VoicePanel(
 
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
     private val location = IntArray(2)
     private var animationPhase = 0f
@@ -146,33 +143,21 @@ class VoicePanel(
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
-        val breath = (0.5f + 0.5f * sin(animationPhase * Math.PI * 2)).toFloat()
-        glow.shader = RadialGradient(
-            w / 2, h * 0.55f, w * (0.57f + breath * 0.045f),
-            withAlpha(palette.brand, (0x28 + breath * 0x18).toInt()), withAlpha(palette.brand, 0),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(0f, 0f, w, h, glow)
-
-        drawWave(canvas, h * 0.17f)
+        // 新版采用干净的音频均衡器视觉：不再使用旧版的呼吸光晕、扩散圆环。
+        drawWave(canvas, h * 0.20f)
         drawPad(canvas, Target.CANCEL, "撤回输入")
         drawPad(canvas, Target.ACTION, actionLabel)
         ink.text(canvas, hint(), 13f, palette.gloss, w / 2, arcTop + thickness / 2 + h * 0.09f)
 
         // 圆钮：按着说时是手指的位置提示，点按进来时是「说完了」
         val buttonY = h * 0.8f
-        val buttonRadius = ink.dp((if (holding) 18f else 24f) + breath * 1.8f)
-        // 外圈缓慢扩张、淡出；与麦克风图标分层，避免整块按钮闪烁。
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.5f)
-        paint.color = withAlpha(palette.brand, (0x20 + (1f - breath) * 0x35).toInt())
-        canvas.drawCircle(w / 2, buttonY, buttonRadius + ink.dp(5f + breath * 5f), paint)
+        val buttonRadius = ink.dp(if (holding) 19f else 24f)
         paint.style = Paint.Style.FILL
         paint.color = palette.surface
         canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = ink.dp(1.5f)
-        paint.color = withAlpha(palette.brand, 0x80)
+        paint.color = withAlpha(palette.brand, 0x90)
         canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
         paint.style = Paint.Style.FILL
         if (!holding) ink.icon(canvas, Icon.MIC, w / 2, buttonY, 22f, palette.brand)
@@ -208,22 +193,24 @@ class VoicePanel(
         canvas.restore()
     }
 
-    /** 一排细竖条，高度按最近的音量；等结果时压成一排点。 */
+    /** 平滑均衡器：左右对称、中心更高，音量与时间相位共同驱动，识别等待时也有轻微律动。 */
     private fun drawWave(canvas: Canvas, cy: Float) {
-        val span = width * 0.42f
-        val left = (width - span) / 2
-        val step = span / BARS
-        val barWidth = ink.dp(3f)
-        val maxHalf = ink.dp(18f)
-        for (i in 0 until BARS) {
-            // 两头淡、中间浓
-            val edge = 1f - abs(i - (BARS - 1) / 2f) / BARS
-            val phase = animationPhase * (Math.PI * 2).toFloat() + i * 0.42f
-            val idle = (0.035f + 0.055f * (0.5f + 0.5f * sin(phase.toDouble()).toFloat())).toFloat()
-            val level = if (recognizing) idle * 1.8f else maxOf(levels[i], idle)
-            val half = barWidth / 2 + (maxHalf - barWidth / 2) * level * edge
+        val bars = 27
+        val span = width * 0.72f
+        val left = (width - span) / 2f
+        val step = span / bars
+        val barWidth = minOf(ink.dp(4.5f), step * 0.56f)
+        val maxHalf = ink.dp(25f)
+        for (i in 0 until bars) {
+            val position = i / (bars - 1f)
+            val centreWeight = (1f - abs(position - 0.5f) * 1.55f).coerceIn(0.12f, 1f)
+            val phase = animationPhase * (Math.PI * 2.0) + i * 0.34
+            val travelling = (0.5 + 0.5 * sin(phase)).toFloat()
+            val source = levels[(i * (BARS - 1) / (bars - 1)).coerceIn(0, BARS - 1)]
+            val motion = if (recognizing) 0.10f + travelling * 0.12f else maxOf(source, 0.07f + travelling * 0.10f)
+            val half = ink.dp(2.5f) + maxHalf * motion * centreWeight
             val x = left + step * (i + 0.5f)
-            paint.color = withAlpha(palette.brand, (140 + 115 * edge).toInt().coerceAtMost(255))
+            paint.color = withAlpha(palette.brand, (150 + 100 * centreWeight).toInt().coerceIn(0, 255))
             rect.set(x - barWidth / 2, cy - half, x + barWidth / 2, cy + half)
             canvas.drawRoundRect(rect, barWidth / 2, barWidth / 2, paint)
         }
