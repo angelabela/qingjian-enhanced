@@ -377,4 +377,9 @@
     <string name="section_cloud_uses">用在哪里</string>
     <string name="stats_quality">打字质量</string>
     <string name="cloud_uses_note">快捷翻译和翻译选中的文字也用这里的服务。</string>
+    <string name="giphy_section">GIF 动图搜索</string>
+    <string name="giphy_api_key">GIPHY API Key</string>
+    <string name="giphy_key_empty">尚未填写</string>
+    <string name="giphy_clear_key">清除 GIPHY 密钥</string>
+    <string name="giphy_note">申请 GIPHY 开发者 Beta API Key 后填入。搜索 GIF 时会联网访问 GIPHY；结果面板会显示 Powered by GIPHY。密钥加密保存在本机。</string>
 </resources>
