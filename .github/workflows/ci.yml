@@ -336,6 +336,17 @@ jobs:
           cargo install cargo-ndk --version 4.1.2 --locked
           echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
 
+      # 与正式版使用同一份完整产品词库，禁止 Debug APK 回退到 assets/sample 样例词库
+      - name: Fetch and verify full dictionary data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tools/release/data-fetch.sh
+          test -s data/generated/dict.qj
+          test -d data/generated/dicts
+          find data/generated/dicts -type f -name '*.qj' -size +0c | grep -q .
+          ls -lh data/generated/dict.qj data/generated/lm.qj data/generated/dicts
+
       - name: Build debug APK
         working-directory: apps/android
         run: ./gradlew assembleDebug --no-daemon --console=plain
