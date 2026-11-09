@@ -29,6 +29,7 @@ import kotlin.concurrent.thread
 class GifPanel(
     context: Context,
     private val actions: PanelActions,
+    private val initialQuery: String = "",
 ) : FrameLayout(context) {
     private val query = EditText(context).apply {
         hint = "搜索表情包，例如：谢谢"
@@ -83,6 +84,9 @@ class GifPanel(
         if (GifConfig.load(context).isNullOrBlank()) {
             status.text = "请先到「设置 → 云端大模型」填写 GIPHY API Key"
             search.isEnabled = false
+        } else if (initialQuery.isNotBlank()) {
+            query.setText(initialQuery.take(64))
+            post { search(initialQuery) }
         }
     }
 
