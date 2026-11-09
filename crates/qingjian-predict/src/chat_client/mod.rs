@@ -229,17 +229,6 @@ fn chat_response(
     serde_json::from_value(raw)
 }
 
-/// 日志里的原始响应最多留这么多字符。
-const LOGGED_RESPONSE_CHARS: usize = 2000;
-
-fn truncated(response: &serde_json::Value) -> String {
-    let text = response.to_string();
-    match text.char_indices().nth(LOGGED_RESPONSE_CHARS) {
-        Some((end, _)) => format!("{}…", &text[..end]),
-        None => text,
-    }
-}
-
 /// 各家关思考的参数不一样，严格的接口遇到不认识的参数会报 400，所以按接口地址只发对的那个。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThinkingSwitch {
