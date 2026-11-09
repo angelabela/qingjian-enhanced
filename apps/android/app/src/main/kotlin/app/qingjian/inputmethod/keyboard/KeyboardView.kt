@@ -64,8 +64,8 @@ class KeyboardView(
         /** 删除键按下（在它删字之前）：上划清空的撤销要记下这一刻光标前的文字。 */
         fun onBackspaceDown()
 
-        /** 在删除键上往上一划（开着「上划删除键清空」）：清掉光标前的全部文字，组句中只清拼音。 */
-        fun onClearBefore()
+        /** 在删除键上往上一划（开着「上划删除键清空」）：清空整个输入框，不受光标位置与选区影响。 */
+        fun onClearAll()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -471,7 +471,7 @@ class KeyboardView(
     }
 
     private fun flick(key: Key) = when {
-        key == Key.Backspace -> listener.onClearBefore()
+        key == Key.Backspace -> listener.onClearAll()
         (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
         else -> key.flick?.let(listener::onKeyChoice)
     }
