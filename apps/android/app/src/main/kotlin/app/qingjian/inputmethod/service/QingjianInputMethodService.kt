@@ -402,6 +402,19 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) = composer.onKey(key)
 
+    /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
+    override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        val actionId = when (action) {
+            KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
+            KeyboardView.EditShortcut.CUT -> android.R.id.cut
+            KeyboardView.EditShortcut.COPY -> android.R.id.copy
+            KeyboardView.EditShortcut.PASTE -> android.R.id.paste
+        }
+        if (currentInputConnection?.performContextMenuAction(actionId) != true) {
+            toast("当前输入框暂不支持此操作")
+        }
+    }
+
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
     override fun onLanguageChoice(index: Int) = composer.chooseLanguage(Language.entries[index])
