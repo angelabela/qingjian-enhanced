@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -16,11 +18,15 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
+import app.qingjian.inputmethod.cloud.CloudConfig
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
 import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
 import app.qingjian.inputmethod.clipboard.ClipboardWatcher
 import app.qingjian.inputmethod.clipboard.sync.NeonEdgeView
 import org.json.JSONObject
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
 import app.qingjian.inputmethod.contacts.ContactsSync
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
@@ -465,6 +471,77 @@ class QingjianInputMethodService :
     }
 
     override fun commitText(text: String) = composer.commitPanelText(text)
+
+    override fun textBeforeCursor(maxChars: Int): String =
+        currentInputConnection?.getTextBeforeCursor(maxChars.coerceIn(1, 120), 0)?.toString().orEmpty()
+
+    /** 使用用户已配置的 OpenAI 兼容 DeepSeek 接口；密钥只在请求时从 Keystore 解密到内存。 */
+    override fun generateExpression(
+        input: String,
+        tone: String,
+        contextText: String?,
+        done: (List<String>?, String?) -> Unit,
+    ) {
+        val config = CloudConfig.load(this)
+        if (!config.ready) {
+            Handler(Looper.getMainLooper()).post { done(null, "请先在「设置 → 云端大模型」配置 DeepSeek 接口和密钥") }
+            return
+        }
+        Thread({
+            var connection: HttpURLConnection? = null
+            var items: List<String>? = null
+            var failure: String? = null
+            try {
+                val base = config.baseUrl.trimEnd('/')
+                val endpoint = if (base.endsWith("/v1")) "$base/chat/completions" else "$base/v1/chat/completions"
+                connection = URL(endpoint).openConnection() as HttpURLConnection
+                connection!!.requestMethod = "POST"
+                connection!!.connectTimeout = 12000
+                connection!!.readTimeout = 35000
+                connection!!.doOutput = true
+                connection!!.setRequestProperty("Content-Type", "application/json")
+                connection!!.setRequestProperty("Authorization", "Bearer " + config.apiKey().orEmpty())
+                val contextLine = contextText?.takeLast(120)?.takeIf { it.isNotBlank() }
+                    ?.let { "光标附近上下文（仅供理解，不要复述）：$it\n" }.orEmpty()
+                val prompt = contextLine +
+                    "用户想表达的内容：$input\n语气：$tone\n" +
+                    "请生成恰好 5 条自然、完整、适合直接发送的中文表达。保留原意，不要编造事实；" +
+                    "每条风格有适度差异。只返回 JSON 字符串数组，不要 Markdown 或其他说明。"
+                val body = JSONObject()
+                    .put("model", config.model)
+                    .put("temperature", 0.8)
+                    .put("max_tokens", 900)
+                    .put("messages", JSONArray()
+                        .put(JSONObject().put("role", "system").put("content", "你是中文表达助手，擅长自然改写、扩写和聊天回复。"))
+                        .put(JSONObject().put("role", "user").put("content", prompt)))
+                    .toString()
+                connection!!.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val status = connection!!.responseCode
+                val stream = if (status in 200..299) connection!!.inputStream else connection!!.errorStream
+                val raw = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                if (status !in 200..299) throw IllegalStateException("接口请求失败（HTTP $status）")
+                val content = JSONObject(raw).optJSONArray("choices")
+                    ?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
+                    ?: throw IllegalStateException("接口没有返回有效内容")
+                val cleaned = content.trim().removePrefix("\u0060\u0060\u0060json").removePrefix("\u0060\u0060\u0060")
+                    .removeSuffix("\u0060\u0060\u0060").trim()
+                items = try {
+                    val array = JSONArray(cleaned)
+                    (0 until array.length()).mapNotNull { array.optString(it).trim().takeIf { value -> value.isNotEmpty() } }.take(5)
+                } catch (_: Exception) {
+                    cleaned.lines().map { it.trim().replace(Regex("^[-*0-9.、)） ]+"), "").trim() }
+                        .filter { it.isNotEmpty() }.take(5)
+                }
+                if (items.isNullOrEmpty()) throw IllegalStateException("没有解析到生成结果")
+            } catch (error: Exception) {
+                failure = error.message ?: "生成失败，请稍后重试"
+            } finally {
+                connection?.disconnect()
+            }
+            Handler(Looper.getMainLooper()).post { done(items, failure) }
+        }, "qingjian-ai-expression").start()
+    }
+
 
     override fun deleteBackward() = composer.onKey(Key.Backspace)
 
