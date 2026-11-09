@@ -33,7 +33,7 @@ class GifPanel(
 ) : FrameLayout(context) {
     private val query = EditText(context).apply {
         hint = "搜索表情包，例如：谢谢"
-        singleLine = true
+        setSingleLine(true)
         imeOptions = EditorInfo.IME_ACTION_SEARCH
         textSize = 16f
         setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -67,16 +67,16 @@ class GifPanel(
         }
         val list = ScrollView(context).apply {
             isFillViewport = true
-            addView(results, ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(results, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(bar)
             addView(status)
-            addView(list, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(attribution)
         }
-        addView(column, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         search.setOnClickListener { search(query.text.toString()) }
         query.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) { search(query.text.toString()); true } else false
