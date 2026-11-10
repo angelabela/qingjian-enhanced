@@ -217,7 +217,8 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     fun space(): Frame = Frame.parse(Native.space(handle))
 
     /** 光标前是「用户名@」时，帧的候选是常见邮箱域名，选中上屏剩下的那截；别的情况是空帧。 */
-    fun complete(beforeCursor: String): Frame = Frame.parse(Native.complete(handle, beforeCursor))
+    fun complete(beforeCursor: String, afterCursor: String): Frame =
+        Frame.parse(Native.complete(handle, beforeCursor, afterCursor))
 
     /** 算式里按了 [c]：要交给 [push] 的字符（× ÷ 换成 Core 认的 * /）；不是算式字符为 null。按 Core 的规则，不要句柄。 */
     fun expressionChar(c: Char): Char? = Native.expressionChar(c).takeIf { it != '\u0000' }
