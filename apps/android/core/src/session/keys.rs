@@ -3,9 +3,6 @@
 use super::Session;
 use crate::frame::{Frame, FrameCandidate};
 
-/// 清空之后候选条上那一项的字。
-const UNDO_LABEL: &str = "撤销";
-
 impl Session {
     /// 不在组句时按光标前的文字给补全（「用户名@」之后的邮箱后缀、刚打完的算式的结果），放进帧的候选；组句中不动。
     pub fn complete(&mut self, before_cursor: &str, after_cursor: &str) -> Frame {
@@ -18,10 +15,14 @@ impl Session {
         let context = format!("{before_cursor}{after_cursor}");
         let after_contact = self.after_contact.take();
         let after_commit = self.after_commit.take();
-        let cleared = self.cleared.take();
+        self.cleared = None;
         let mut frame = self.refresh(String::new());
-        if let Some(text) = cleared.filter(|_| context.is_empty()) {
-            self.offer_undo(text, &mut frame);
+        // 中文文本上下文存在时，候选栏直接提供常用中文标点；点选后由 completions 映射为真实上屏文本。
+        if context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)) {
+            for punctuation in ["，", "。", "！", "？"] {
+                frame.candidates.push(FrameCandidate::plain(punctuation));
+                self.completions.push((0, punctuation.to_owned()));
+            }
         }
         if let Some(name) = after_contact.filter(|name| context.contains(name.as_str())) {
             self.offer_contact(&name, &mut frame);
@@ -42,13 +43,6 @@ impl Session {
         frame
             .candidates
             .extend(labels.iter().map(|label| FrameCandidate::plain(label)));
-        // 中文文本上下文存在时，候选栏直接提供常用中文标点；点选后由 completions 映射为真实上屏文本。
-        if context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)) {
-            for punctuation in ["，", "。", "！", "？"] {
-                frame.candidates.push(FrameCandidate::plain(punctuation));
-                self.completions.push((0, punctuation.to_owned()));
-            }
-        }
         frame
     }
 
