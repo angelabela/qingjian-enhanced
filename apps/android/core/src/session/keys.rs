@@ -193,25 +193,15 @@ impl Session {
         }
     }
 
-    /// 删除键上划清掉了光标前的 `text`（壳已经删了）：候选条放一个「撤销」，点了原样放回；光标前又有字就收起。
-    /// 组句中的上划只清拼音，壳调 [`Self::clear`]，不经这里。
-    pub fn cleared(&mut self, text: &str) -> Frame {
-        let mut frame = self.refresh(String::new());
-        if !text.is_empty() {
-            self.offer_undo(text.to_owned(), &mut frame);
-        }
-        frame
+    /// 清空后只刷新候选状态；撤销由 Android 删除键下滑手势处理，不显示在候选栏。
+    pub fn cleared(&mut self, _text: &str) -> Frame {
+        self.cleared = None;
+        self.refresh(String::new())
     }
 
-    /// 候选条上放着上屏名字后的电话邮箱、或清空后的「撤销」：删除键、重输键先只收起它们，不动输入框里的字。
+    /// 候选条上放着上屏名字后的电话邮箱：删除键、重输键先只收起它们，不动输入框里的字。
     pub fn has_offer(&self) -> bool {
-        self.after_contact.is_some() || self.cleared.is_some()
-    }
-
-    fn offer_undo(&mut self, text: String, frame: &mut Frame) {
-        frame.candidates.push(FrameCandidate::plain(UNDO_LABEL));
-        self.completions.push((0, text.clone()));
-        self.cleared = Some(text);
+        self.after_contact.is_some()
     }
 
     /// 九宫格拼音列里点了一个写法。
