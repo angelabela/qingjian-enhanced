@@ -161,7 +161,16 @@ class QingjianInputMethodService :
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         cloud.start()
+        clipboardWatcher.allowCapture = { !composer.privateInput }
         clipboardWatcher.onChanged = { panel?.refreshClipboard() }
+        clipboardWatcher.onNewText = { text ->
+            if (!composer.privateInput && text.isNotBlank()) {
+                val preview = text.replace('\n', ' ').replace('\r', ' ').take(24)
+                panel?.bar?.showNotice("📋 $preview") {
+                    currentInputConnection?.commitText(text, 1)
+                }
+            }
+        }
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
