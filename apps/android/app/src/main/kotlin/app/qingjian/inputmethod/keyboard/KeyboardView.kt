@@ -328,13 +328,14 @@ class KeyboardView(
                     }
                 }
                 if (pointer == flickPointer) {
-                    val flicked = flickSlot?.takeIf { flickArmed }
+                    val undoFlick = undoFlickArmed
+                    val flicked = flickSlot?.takeIf { flickArmed || undoFlickArmed }
                     endFlick()
                     if (flicked != null) {
                         if (pointer == trail.pointer) trail.clear()
                         if (flicked.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
                         pressed.remove(pointer)
-                        flick(flicked.key)
+                        if (flicked.key == Key.Backspace && undoFlick) listener.onUndoClear() else flick(flicked.key)
                         invalidate()
                         return true
                     }
@@ -485,7 +486,6 @@ class KeyboardView(
     }
 
     private fun flick(key: Key) = when {
-        key == Key.Backspace && undoFlickArmed -> listener.onUndoClear()
         key == Key.Backspace -> listener.onClearAll()
         (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
         else -> key.flick?.let(listener::onKeyChoice)
