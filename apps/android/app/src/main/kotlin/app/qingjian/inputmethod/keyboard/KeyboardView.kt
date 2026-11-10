@@ -86,9 +86,10 @@ class KeyboardView(
     private val repeatBackspace = object : Runnable {
         override fun run() {
             // 已经连删起来了：这一笔不再当上划清空，连删时手指往上偏一点不会把整段删掉
-            if (flickSlot?.key == Key.Backspace) {
+            if (flickSlot?.key == Key.Backspace && !backspaceGestureMoved) {
                 flickBroken = true
                 flickArmed = false
+                undoFlickArmed = false
             }
             listener.onKey(Key.Backspace)
             timer.postDelayed(this, REPEAT_INTERVAL_MS)
@@ -134,6 +135,7 @@ class KeyboardView(
     private var flickY = 0f
     private var flickArmed = false
     private var undoFlickArmed = false
+    private var backspaceGestureMoved = false
     private var flickBroken = false
 
     /** Z/X/C/V 键向下滑动手势；未达到阈值时仍按原有点按/滑行逻辑处理。 */
@@ -274,6 +276,7 @@ class KeyboardView(
                     flickY = event.getY(index)
                     flickArmed = false
                     undoFlickArmed = false
+                    backspaceGestureMoved = false
                     flickBroken = false
                 }
                 tapFeedback()
@@ -455,6 +458,13 @@ class KeyboardView(
         val side = abs(x - flickX)
         // 按下附近的抖动不算方向
         if (hypot(x - flickX, up) < metrics.density * TRACK_SLOP_DP) return
+        // 删除键只要出现明确的纵向滑动，就立即停止长按连删计时；否则计时器可能先把手势判失效。
+        if (flickSlot?.key == Key.Backspace && abs(up) >= metrics.density * TRACK_SLOP_DP &&
+            side < abs(up) * FLICK_SLOPE
+        ) {
+            backspaceGestureMoved = true
+            timer.removeCallbacks(repeatBackspace)
+        }
         if (flickSlot?.key == Key.Backspace && up < 0f && side < -up * FLICK_SLOPE) {
             undoFlickArmed = -up > metrics.density * FLICK_DP
             flickArmed = false
@@ -482,6 +492,7 @@ class KeyboardView(
         flickSlot = null
         flickArmed = false
         undoFlickArmed = false
+        backspaceGestureMoved = false
         flickBroken = false
     }
 
