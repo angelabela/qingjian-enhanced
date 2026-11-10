@@ -17,8 +17,11 @@ impl Session {
         let after_commit = self.after_commit.take();
         self.cleared = None;
         let mut frame = self.refresh(String::new());
-        // 中文文本上下文存在时，候选栏直接提供常用中文标点；点选后由 completions 映射为真实上屏文本。
-        if context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)) {
+        // 只在刚刚选词上屏后短暂提供标点；单纯移动光标/刷新上下文时绝不常驻显示。
+        let just_committed = after_commit.is_some();
+        if just_committed
+            && context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF))
+        {
             for punctuation in ["，", "。", "！", "？"] {
                 frame.candidates.push(FrameCandidate::plain(punctuation));
                 self.completions.push((0, punctuation.to_owned()));
