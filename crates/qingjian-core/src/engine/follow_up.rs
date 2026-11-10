@@ -16,12 +16,17 @@ impl Engine {
     /// 接在刚上屏的中文词后面的联想，最多 `limit` 个；上文断了（句首、标点、英文、回车上屏拼音之后）或还在组句时为空。
     /// 繁体输出开着时给繁体。
     pub fn follow_ups(&self, limit: usize) -> Vec<String> {
-        if limit == 0 || !self.composition.is_empty() {
-            return Vec::new();
-        }
         let Some(previous) = self.chain.previous() else {
             return Vec::new();
         };
+        self.follow_ups_after(previous, limit)
+    }
+
+    /// 根据光标前实际的词/短语提供后续联想，不依赖最近一次输入法选词记录。
+    pub fn follow_ups_after(&self, previous: &str, limit: usize) -> Vec<String> {
+        if limit == 0 || !self.composition.is_empty() || previous.is_empty() {
+            return Vec::new();
+        }
         let fits = |word: &str| {
             let chars = word.chars().count();
             (1..=MAX_FOLLOW_UP_CHARS).contains(&chars) && word.chars().all(crate::sentence::is_han)
@@ -37,7 +42,6 @@ impl Engine {
                 }
             }
         }
-        // 多取一些：过滤掉的（标点、英文、长片段）不占名额
         for word in self.language_model.successors(previous, limit * 4) {
             if words.len() >= limit {
                 break;
@@ -46,10 +50,7 @@ impl Engine {
                 words.push(word);
             }
         }
-        words
-            .into_iter()
-            .map(|word| self.traditional.convert(&word))
-            .collect()
+        words.into_iter().map(|word| self.traditional.convert(&word)).collect()
     }
 
     /// 点了联想词 `text`（[`Self::follow_ups`] 给的那份，繁体输出时是繁体）：记词频与转移、推进上文，返回交给应用的文字。
