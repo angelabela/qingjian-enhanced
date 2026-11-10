@@ -78,6 +78,7 @@ interface PanelActions {
     /** 放进系统剪贴板（拆词的「复制」）。 */
     fun copyToClipboard(text: String)
 
+
     fun toast(message: String)
 
     /** 剪贴板最多存多少条（设置里的）。 */

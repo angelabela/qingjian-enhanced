@@ -31,8 +31,11 @@ class KeyboardView(
     private val settings: Settings,
     private val listener: Listener,
 ) : View(context) {
+    enum class EditShortcut { SELECT_ALL, CUT, COPY, PASTE }
+
     interface Listener {
         fun onKey(key: Key)
+        fun onEditShortcut(action: EditShortcut)
 
         /** 长按气泡里选了一项（字母、数字或符号）。 */
         fun onKeyChoice(text: String)
@@ -61,8 +64,11 @@ class KeyboardView(
         /** 删除键按下（在它删字之前）：上划清空的撤销要记下这一刻光标前的文字。 */
         fun onBackspaceDown()
 
-        /** 在删除键上往上一划（开着「上划删除键清空」）：清掉光标前的全部文字，组句中只清拼音。 */
-        fun onClearBefore()
+        /** 在删除键上往上一划（开着「上划删除键清空」）：清空整个输入框，不受光标位置与选区影响。 */
+        fun onClearAll()
+
+        /** 删除键下滑：撤销最近一次上划清空。 */
+        fun onUndoClear()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -80,9 +86,10 @@ class KeyboardView(
     private val repeatBackspace = object : Runnable {
         override fun run() {
             // 已经连删起来了：这一笔不再当上划清空，连删时手指往上偏一点不会把整段删掉
-            if (flickSlot?.key == Key.Backspace) {
+            if (flickSlot?.key == Key.Backspace && !backspaceGestureMoved) {
                 flickBroken = true
                 flickArmed = false
+                undoFlickArmed = false
             }
             listener.onKey(Key.Backspace)
             timer.postDelayed(this, REPEAT_INTERVAL_MS)
@@ -127,7 +134,16 @@ class KeyboardView(
     private var flickX = 0f
     private var flickY = 0f
     private var flickArmed = false
+    private var undoFlickArmed = false
+    private var backspaceGestureMoved = false
     private var flickBroken = false
+
+    /** Z/X/C/V 键向下滑动手势；未达到阈值时仍按原有点按/滑行逻辑处理。 */
+    private var editPointer = -1
+    private var editAction: EditShortcut? = null
+    private var editStartX = 0f
+    private var editStartY = 0f
+    private var editTriggered = false
 
     /** 这一套键位能不能滑行（全键盘拼音与英文键盘，服务按当前键盘设）；还要设置里开着「滑行输入」。 */
     var swipeLayout = false
@@ -245,6 +261,13 @@ class KeyboardView(
                 if (swipeOn && slot.key is Key.Letter && pressed.isEmpty()) {
                     trail.begin(pointer, event.getX(index), event.getY(index), slot.bounds.width())
                 }
+                editShortcutOf(slot.key)?.let { action ->
+                    editPointer = pointer
+                    editAction = action
+                    editStartX = event.getX(index)
+                    editStartY = event.getY(index)
+                    editTriggered = false
+                }
                 pressed[pointer] = slot
                 if (flickPointer < 0 && flickable(slot.key)) {
                     flickPointer = pointer
@@ -252,6 +275,8 @@ class KeyboardView(
                     flickX = event.getX(index)
                     flickY = event.getY(index)
                     flickArmed = false
+                    undoFlickArmed = false
+                    backspaceGestureMoved = false
                     flickBroken = false
                 }
                 tapFeedback()
@@ -281,6 +306,7 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                trackEditShortcut(event)
                 trackFlick(event)
                 trackSwipe(event)
                 trackChoices(event)
@@ -288,14 +314,31 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointer == editPointer) {
+                    val action = editAction.takeIf { editTriggered }
+                    endEditShortcut()
+                    if (action != null) {
+                        if (pointer == flickPointer) endFlick()
+                        if (pointer == trail.pointer) trail.clear()
+                        pressed.remove(pointer)
+                        if (longPressPointer == pointer) {
+                            timer.removeCallbacks(longPress)
+                            longPressPointer = -1
+                        }
+                        listener.onEditShortcut(action)
+                        invalidate()
+                        return true
+                    }
+                }
                 if (pointer == flickPointer) {
-                    val flicked = flickSlot?.takeIf { flickArmed }
+                    val undoFlick = undoFlickArmed
+                    val flicked = flickSlot?.takeIf { flickArmed || undoFlickArmed }
                     endFlick()
                     if (flicked != null) {
                         if (pointer == trail.pointer) trail.clear()
                         if (flicked.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
                         pressed.remove(pointer)
-                        flick(flicked.key)
+                        if (flicked.key == Key.Backspace && undoFlick) listener.onUndoClear() else flick(flicked.key)
                         invalidate()
                         return true
                     }
@@ -341,6 +384,40 @@ class KeyboardView(
         return true
     }
 
+    /** 只有从 Z/X/C/V 键开始并明显向下滑动才触发编辑操作；水平偏移过大则交还原手势。 */
+    private fun trackEditShortcut(event: MotionEvent) {
+        if (editPointer < 0 || editTriggered || editAction == null) return
+        val at = event.findPointerIndex(editPointer)
+        if (at < 0) return
+        val dx = event.getX(at) - editStartX
+        val dy = event.getY(at) - editStartY
+        if (dy > metrics.density * EDIT_SWIPE_DP && abs(dx) < dy * EDIT_SWIPE_MAX_SLOPE) {
+            editTriggered = true
+            trail.clear()
+            pressed.remove(editPointer)
+            if (longPressPointer == editPointer) {
+                timer.removeCallbacks(longPress)
+                longPressPointer = -1
+            }
+            if (flickPointer == editPointer) endFlick()
+            invalidate()
+        }
+    }
+
+    private fun editShortcutOf(key: Key): EditShortcut? = when ((key as? Key.Letter)?.char?.lowercaseChar()) {
+        'z' -> EditShortcut.SELECT_ALL
+        'x' -> EditShortcut.CUT
+        'c' -> EditShortcut.COPY
+        'v' -> EditShortcut.PASTE
+        else -> null
+    }
+
+    private fun endEditShortcut() {
+        editPointer = -1
+        editAction = null
+        editTriggered = false
+    }
+
     /** 记着的那根手指挪动：点都记上（含两帧之间的历史点），刚挪够远就转成滑行，撤掉点按的按下态、气泡与长按。 */
     private fun trackSwipe(event: MotionEvent) {
         if (trail.pointer < 0 || choicePopup.showing) return
@@ -381,9 +458,23 @@ class KeyboardView(
         val side = abs(x - flickX)
         // 按下附近的抖动不算方向
         if (hypot(x - flickX, up) < metrics.density * TRACK_SLOP_DP) return
+        // 删除键只要出现明确的纵向滑动，就立即停止长按连删计时；否则计时器可能先把手势判失效。
+        if (flickSlot?.key == Key.Backspace && abs(up) >= metrics.density * TRACK_SLOP_DP &&
+            side < abs(up) * FLICK_SLOPE
+        ) {
+            backspaceGestureMoved = true
+            timer.removeCallbacks(repeatBackspace)
+        }
+        if (flickSlot?.key == Key.Backspace && up < 0f && side < -up * FLICK_SLOPE) {
+            undoFlickArmed = -up > metrics.density * FLICK_DP
+            flickArmed = false
+            if (undoFlickArmed) timer.removeCallbacks(repeatBackspace)
+            return
+        }
         if (up <= 0f || side > up * FLICK_SLOPE) {
             flickBroken = true
             flickArmed = false
+            undoFlickArmed = false
             return
         }
         if (longPressPointer == flickPointer) {
@@ -391,6 +482,7 @@ class KeyboardView(
             longPressPointer = -1
         }
         flickArmed = up > metrics.density * FLICK_DP
+        undoFlickArmed = false
         // 删除键往上划够了：不再连删，抬手清空
         if (flickArmed && flickSlot?.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
     }
@@ -399,11 +491,13 @@ class KeyboardView(
         flickPointer = -1
         flickSlot = null
         flickArmed = false
+        undoFlickArmed = false
+        backspaceGestureMoved = false
         flickBroken = false
     }
 
     private fun flick(key: Key) = when {
-        key == Key.Backspace -> listener.onClearBefore()
+        key == Key.Backspace -> listener.onClearAll()
         (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
         else -> key.flick?.let(listener::onKeyChoice)
     }
@@ -505,6 +599,7 @@ class KeyboardView(
         pressed.clear()
         trail.clear()
         endFlick()
+        endEditShortcut()
         timer.removeCallbacks(repeatBackspace)
         timer.removeCallbacks(longPress)
         timer.removeCallbacks(spaceHold)
@@ -544,6 +639,8 @@ class KeyboardView(
 
         /** 往上划多远算上滑：点按时手指一般挪不到 10dp，再长短距离一划就够不着。 */
         const val FLICK_DP = 18f
+        const val EDIT_SWIPE_DP = 26f
+        const val EDIT_SWIPE_MAX_SLOPE = 1.35f
 
         /**
          * 上滑的扇形：横向挪的不超过往上的这么多倍，约偏离竖直 50°（tan 50° ≈ 1.2），比横竖一样多（45°）再宽一点，

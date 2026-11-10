@@ -125,7 +125,7 @@ class VoicePanel(
         )
         canvas.drawRect(0f, 0f, w, h, glow)
 
-        drawWave(canvas, h * 0.17f)
+        drawWave(canvas, h * 0.15f)
         drawPad(canvas, Target.CANCEL, "撤回输入")
         drawPad(canvas, Target.ACTION, actionLabel)
         ink.text(canvas, hint(), 13f, palette.gloss, w / 2, arcTop + thickness / 2 + h * 0.09f)

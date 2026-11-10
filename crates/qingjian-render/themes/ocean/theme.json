@@ -1,0 +1,11 @@
+{
+  "extends": "qingjian", "schema": 1,
+  "meta": { "id": "ocean", "name": "深海蓝", "author": "青简", "license": "GPL-3.0-or-later" },
+  "variables": {
+    "text":{"light":"#102d46","dark":"#e7f5ff"}, "gloss":{"light":"#315d7b","dark":"#a6c8df"},
+    "faint":{"light":"#6d91a9","dark":"#7196ad"}, "fresh":{"light":"#087fbd","dark":"#66c8ff"},
+    "cloud":{"light":"#008c9e","dark":"#54dce8"}, "surface":{"light":"#f1f9ff","dark":"#142b3b"},
+    "accent":{"light":"#79c7ec80","dark":"#245b78"}, "key":{"light":"#14557a12","dark":"#ffffff16"},
+    "dim":{"light":"#14557a30","dark":"#ffffff30"}
+  }
+}

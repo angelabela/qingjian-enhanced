@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -16,6 +18,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
+import app.qingjian.inputmethod.cloud.CloudConfig
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
 import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
 import app.qingjian.inputmethod.clipboard.ClipboardWatcher
@@ -158,7 +161,16 @@ class QingjianInputMethodService :
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         cloud.start()
+        clipboardWatcher.allowCapture = { !composer.privateInput }
         clipboardWatcher.onChanged = { panel?.refreshClipboard() }
+        clipboardWatcher.onNewText = { text ->
+            if (!composer.privateInput && text.isNotBlank()) {
+                val preview = text.replace('\n', ' ').replace('\r', ' ').take(24)
+                panel?.bar?.showNotice("📋 $preview") {
+                    currentInputConnection?.commitText(text, 1)
+                }
+            }
+        }
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
@@ -319,9 +331,15 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         if (editor != null) return
-        val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
-        if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
-        if (candidatesEnd == -1 && newSelStart == newSelEnd) composer.refreshCompletions()
+        // 只有光标离开输入法当前组句范围时才结束组句；组句过程中光标位置随每次按键更新，
+        // 不能把这种正常更新误判成用户移动光标，否则候选栏会一闪而过。
+        val movedOutsideComposition = candidatesEnd != -1 &&
+            (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)
+        if (movedOutsideComposition) composer.onCursorMovedAway()
+        // 仅在编辑器没有活动组句区时刷新上屏后的上下文联想。
+        if (candidatesEnd == -1 && newSelStart == newSelEnd &&
+            (newSelStart != oldSelStart || newSelEnd != oldSelEnd)
+        ) composer.refreshCompletions()
     }
 
     // 编辑条开着时打的字进编辑条
@@ -401,6 +419,19 @@ class QingjianInputMethodService :
     }
 
     override fun onKey(key: Key) = composer.onKey(key)
+
+    /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
+    override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        val actionId = when (action) {
+            KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
+            KeyboardView.EditShortcut.CUT -> android.R.id.cut
+            KeyboardView.EditShortcut.COPY -> android.R.id.copy
+            KeyboardView.EditShortcut.PASTE -> android.R.id.paste
+        }
+        if (currentInputConnection?.performContextMenuAction(actionId) != true) {
+            toast("当前输入框暂不支持此操作")
+        }
+    }
 
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
@@ -720,7 +751,9 @@ class QingjianInputMethodService :
 
     override fun onBackspaceDown() = composer.onBackspaceDown()
 
-    override fun onClearBefore() = composer.clearBefore()
+    override fun onClearAll() = composer.clearAll()
+
+    override fun onUndoClear() = composer.undoClear()
 
     // 回车键写的字（发送、搜索…）照搬到面板右边的键上；多行框没有动作，写「完成」
     override fun openVoicePanel(actions: VoicePanel.Actions): VoicePanel? =

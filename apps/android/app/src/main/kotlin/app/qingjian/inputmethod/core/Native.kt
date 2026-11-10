@@ -88,7 +88,7 @@ internal object Native {
     external fun space(handle: Long): String?
 
     /** 不在组句时按光标前的文字给补全（邮箱后缀），放在帧的候选里。 */
-    external fun complete(handle: Long, beforeCursor: String): String?
+    external fun complete(handle: Long, beforeCursor: String, afterCursor: String): String?
 
     external fun reset(handle: Long)
 

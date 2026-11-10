@@ -183,3 +183,25 @@ fn the_degree_sign_follows_its_single_character() {
     assert_eq!(items[du + 1].text, "°");
     assert_eq!(items[du + 1].kind, CandidateKind::Symbol);
 }
+
+#[test]
+fn greeting_phrase_suggests_wave_emoji() {
+    let dictionary = Dictionary::parse("你好啊\tni hao a\t100\n").unwrap();
+    let mut engine = Engine::new(dictionary).with_emoji(EmojiTable::default());
+    engine.set_input("nihaoa");
+    let items = engine.query().unwrap().candidates.items;
+    let greeting = items.iter().position(|candidate| candidate.text == "你好啊").unwrap();
+    assert_eq!(items[greeting + 1].text, "👋");
+    assert_eq!(items[greeting + 1].kind, CandidateKind::Emoji);
+}
+
+#[test]
+fn mom_word_suggests_a_heart_symbol() {
+    let dictionary = Dictionary::parse("妈\\tma\\t100\\n").unwrap();
+    let mut engine = Engine::new(dictionary).with_emoji(EmojiTable::default());
+    engine.set_input("ma");
+    let items = engine.query().unwrap().candidates.items;
+    let mom = items.iter().position(|candidate| candidate.text == "妈").unwrap();
+    assert_eq!(items[mom + 1].text, "♡");
+    assert_eq!(items[mom + 1].kind, CandidateKind::Symbol);
+}

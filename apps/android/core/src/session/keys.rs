@@ -3,31 +3,42 @@
 use super::Session;
 use crate::frame::{Frame, FrameCandidate};
 
-/// 清空之后候选条上那一项的字。
-const UNDO_LABEL: &str = "撤销";
-
 impl Session {
     /// 不在组句时按光标前的文字给补全（「用户名@」之后的邮箱后缀、刚打完的算式的结果），放进帧的候选；组句中不动。
-    pub fn complete(&mut self, before_cursor: &str) -> Frame {
+    pub fn complete(&mut self, before_cursor: &str, after_cursor: &str) -> Frame {
         if !self.engine.composition().is_empty()
             || self.kana.as_ref().is_some_and(|kana| !kana.is_empty())
         {
             return self.refresh(String::new());
         }
-        // 刚上屏的名字还在光标前：接着给它的电话、邮箱；刚上屏的词还在光标前：接着给联想词；
-        // 刚清空、光标前还是空的：留着「撤销」（`refresh` 会清掉，先拿出来）
+        // 用光标两侧拼成当前编辑上下文：光标在刚上屏的词中间时，也保留这个词的联想。
+        let context = format!("{before_cursor}{after_cursor}");
         let after_contact = self.after_contact.take();
         let after_commit = self.after_commit.take();
-        let cleared = self.cleared.take();
+        self.cleared = None;
         let mut frame = self.refresh(String::new());
-        if let Some(text) = cleared.filter(|_| before_cursor.is_empty()) {
-            self.offer_undo(text, &mut frame);
+        // 只在刚刚选词上屏后短暂提供标点；单纯移动光标/刷新上下文时绝不常驻显示。
+        let just_committed = after_commit.is_some();
+        if just_committed
+            && context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF))
+        {
+            for punctuation in ["，", "。", "！", "？"] {
+                frame.candidates.push(FrameCandidate::plain(punctuation));
+                self.completions.push((0, punctuation.to_owned()));
+            }
         }
-        if let Some(name) = after_contact.filter(|name| before_cursor.ends_with(name.as_str())) {
+        if let Some(name) = after_contact.filter(|name| context.contains(name.as_str())) {
             self.offer_contact(&name, &mut frame);
         }
-        if let Some(text) = after_commit.filter(|text| before_cursor.ends_with(text.as_str())) {
+        if let Some(text) = after_commit.filter(|text| context.contains(text.as_str())) {
             self.offer_follow_ups(&text, &mut frame);
+        } else if let Some(previous) = qingjian_core::sentence::text_pieces(before_cursor, self.engine.language_model()).last() {
+            self.follow_up_at = Some(self.completions.len());
+            let words = self.engine.follow_ups_after(previous, 8);
+            for word in words {
+                frame.candidates.push(FrameCandidate::plain(&word));
+                self.completions.push((0, word));
+            }
         }
         let mut labels = Vec::new();
         for completion in qingjian_core::email_completions(before_cursor) {
@@ -185,25 +196,15 @@ impl Session {
         }
     }
 
-    /// 删除键上划清掉了光标前的 `text`（壳已经删了）：候选条放一个「撤销」，点了原样放回；光标前又有字就收起。
-    /// 组句中的上划只清拼音，壳调 [`Self::clear`]，不经这里。
-    pub fn cleared(&mut self, text: &str) -> Frame {
-        let mut frame = self.refresh(String::new());
-        if !text.is_empty() {
-            self.offer_undo(text.to_owned(), &mut frame);
-        }
-        frame
+    /// 清空后只刷新候选状态；撤销由 Android 删除键下滑手势处理，不显示在候选栏。
+    pub fn cleared(&mut self, _text: &str) -> Frame {
+        self.cleared = None;
+        self.refresh(String::new())
     }
 
-    /// 候选条上放着上屏名字后的电话邮箱、或清空后的「撤销」：删除键、重输键先只收起它们，不动输入框里的字。
+    /// 候选条上放着上屏名字后的电话邮箱：删除键、重输键先只收起它们，不动输入框里的字。
     pub fn has_offer(&self) -> bool {
-        self.after_contact.is_some() || self.cleared.is_some()
-    }
-
-    fn offer_undo(&mut self, text: String, frame: &mut Frame) {
-        frame.candidates.push(FrameCandidate::plain(UNDO_LABEL));
-        self.completions.push((0, text.clone()));
-        self.cleared = Some(text);
+        self.after_contact.is_some()
     }
 
     /// 九宫格拼音列里点了一个写法。

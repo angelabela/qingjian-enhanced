@@ -1,0 +1,11 @@
+{
+  "extends": "qingjian", "schema": 1,
+  "meta": { "id": "lavender", "name": "薰衣草紫", "author": "青简", "license": "GPL-3.0-or-later" },
+  "variables": {
+    "text":{"light":"#302342","dark":"#f5edff"}, "gloss":{"light":"#66527e","dark":"#c9b5e3"},
+    "faint":{"light":"#9581aa","dark":"#8e7aa7"}, "fresh":{"light":"#8c4bc1","dark":"#d4a0ff"},
+    "cloud":{"light":"#536acb","dark":"#a5b4ff"}, "surface":{"light":"#faf6ff","dark":"#251d32"},
+    "accent":{"light":"#c7a1e880","dark":"#5c3b78"}, "key":{"light":"#68438d12","dark":"#ffffff16"},
+    "dim":{"light":"#68438d30","dark":"#ffffff30"}
+  }
+}

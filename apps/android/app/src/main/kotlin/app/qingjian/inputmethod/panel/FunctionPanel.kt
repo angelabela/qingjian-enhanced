@@ -26,7 +26,6 @@ class FunctionPanel(
     private class Feature(
         val icon: Icon?,
         val label: String,
-        val glyph: String? = null,
         val on: Boolean = false,
         val run: PanelActions.() -> Unit,
     )
@@ -37,11 +36,11 @@ class FunctionPanel(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
         Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
-        Feature(null, "繁体", glyph = "繁", on = settings.traditional) {
+        Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
             setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
         },
         // 两套键位排法之间切，见 Settings.Arrangement
-        Feature(null, "左手布局", glyph = "左", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
+        Feature(Icon.LEFT_LAYOUT, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
             val next = if (settings.arrangement == Settings.Arrangement.LEFT_THUMB) Settings.Arrangement.STANDARD else Settings.Arrangement.LEFT_THUMB
             setChoice(Settings.KEY_ARRANGEMENT, next.name)
         },
@@ -50,7 +49,7 @@ class FunctionPanel(
         Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
         Feature(Icon.SETTINGS, "设置") { openSettings() },
     ) + listOfNotNull(
-        actions.gameKeyboard?.let { on -> Feature(null, "游戏键盘", glyph = "游", on = on) { toggleGameKeyboard() } },
+        actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on) { toggleGameKeyboard() } },
     )
 
     private val toggles
@@ -90,7 +89,6 @@ class FunctionPanel(
             val cy = top + cellHeight() * (i / columns + 0.5f)
             val color = if (feature.on) palette.brand else palette.text
             feature.icon?.let { ink.icon(canvas, it, cx, cy - ink.dp(12f), 30f, color) }
-            feature.glyph?.let { ink.text(canvas, it, 24f, color, cx, cy - ink.dp(12f), bold = true) }
             if (feature.on) drawBadge(canvas, cx + ink.dp(18f), cy - ink.dp(26f))
             val label = if (feature.on) palette.brand else palette.gloss
             ink.text(canvas, feature.label, 13f, label, cx, cy + ink.dp(20f), maxWidth = cellWidth() - ink.dp(4f))
