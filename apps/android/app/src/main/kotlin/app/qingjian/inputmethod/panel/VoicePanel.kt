@@ -189,7 +189,7 @@ class VoicePanel(
         val audio = levels.takeLast(10).average().toFloat().coerceIn(0f, 1f)
         val breathing = sin(phase * if (recognizing) 1.25f else 2.15f)
         val response = if (holding) audio * 0.18f else 0f
-        val scale = 1f + breathing * if (holding) 0.055f else 0.025f + response
+        val scale = 1f + breathing * (if (holding) 0.055f else 0.025f) + response
         val radius = base * scale
 
         glow.shader = RadialGradient(
