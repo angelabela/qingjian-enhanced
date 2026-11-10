@@ -430,9 +430,11 @@ class Composer(private val engine: Engine, private val host: Host) {
      */
     fun refreshCompletions() {
         if (composing || !engine.ready) return
-        val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
-        if (!completing && '@' !in before && before.lastOrNull()?.let(engine::mayEndCalculation) != true) return
-        val frame = engine.complete(before)
+        val connection = host.connection ?: return
+        val before = connection.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
+        if (!completing && before.isEmpty() && after.isEmpty()) return
+        val frame = engine.complete(before, after)
         completing = frame.candidates.isNotEmpty()
         host.showComposition("", frame.candidates)
     }
@@ -440,14 +442,27 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键按下时记录状态；清空动作本身统一处理整个输入框。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
-        beforeBackspace = null
+        beforeBackspace = if (composing) null else {
+            val connection = host.connection
+            if (connection == null) null else {
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                val selected = connection.getSelectedText(0)?.toString().orEmpty()
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                before + selected + after
+            }
+        }
     }
 
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
         backspaceComposing = false
+        val restore = beforeBackspace
         beforeBackspace = null
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+        val clearedText = restore?.takeIf { it.isNotEmpty() } ?: (before + selected + after)
         connection.beginBatchEdit()
         try {
             if (connection.performContextMenuAction(android.R.id.selectAll)) {
@@ -467,7 +482,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
-        apply(engine.clear())
+        apply(if (clearedText.isNotEmpty()) engine.cleared(clearedText) else engine.clear())
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
