@@ -1,0 +1,11 @@
+{
+  "extends": "qingjian", "schema": 1,
+  "meta": { "id": "sunset", "name": "落日橙", "author": "青简", "license": "GPL-3.0-or-later" },
+  "variables": {
+    "text": {"light":"#35251f","dark":"#fff1e8"}, "gloss":{"light":"#805b4c","dark":"#d7a895"},
+    "faint":{"light":"#a78372","dark":"#987768"}, "fresh":{"light":"#d65b25","dark":"#ffad73"},
+    "cloud":{"light":"#b94d43","dark":"#ff8c7e"}, "surface":{"light":"#fff8f2","dark":"#2b211f"},
+    "accent":{"light":"#f2b28b80","dark":"#854a38"}, "key":{"light":"#9b5a3512","dark":"#ffffff16"},
+    "dim":{"light":"#9b5a3530","dark":"#ffffff30"}
+  }
+}
