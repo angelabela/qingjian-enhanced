@@ -331,9 +331,15 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         if (editor != null) return
-        val moved = newSelStart != oldSelStart || newSelEnd != oldSelEnd
-        if (moved && candidatesEnd != -1) composer.onCursorMovedAway()
-        if (moved && newSelStart == newSelEnd) composer.refreshCompletions()
+        // 只有光标离开输入法当前组句范围时才结束组句；组句过程中光标位置随每次按键更新，
+        // 不能把这种正常更新误判成用户移动光标，否则候选栏会一闪而过。
+        val movedOutsideComposition = candidatesEnd != -1 &&
+            (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)
+        if (movedOutsideComposition) composer.onCursorMovedAway()
+        // 仅在编辑器没有活动组句区时刷新上屏后的上下文联想。
+        if (candidatesEnd == -1 && newSelStart == newSelEnd &&
+            (newSelStart != oldSelStart || newSelEnd != oldSelEnd)
+        ) composer.refreshCompletions()
     }
 
     // 编辑条开着时打的字进编辑条
