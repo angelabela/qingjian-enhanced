@@ -44,7 +44,7 @@ mod tests {
     }
 
     /// 单字本身就是这个符号的读法时才收（度 → °，#900）；其余单字（上、左、角）一打就跟符号，太吵。
-    const SINGLE_CHARACTER_WORDS: [&str; 1] = ["度"];
+    const SINGLE_CHARACTER_WORDS: [&str; 2] = ["度", "妈"];
 
     #[test]
     fn single_character_symbol_words_are_allowlisted() {
