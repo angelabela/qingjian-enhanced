@@ -43,7 +43,7 @@ impl Session {
             .candidates
             .extend(labels.iter().map(|label| FrameCandidate::plain(label)));
         // 中文文本上下文存在时，候选栏直接提供常用中文标点；点选后由 completions 映射为真实上屏文本。
-        if !context.trim().is_empty() {
+        if context.chars().any(|c| matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF)) {
             for punctuation in ["，", "。", "！", "？"] {
                 frame.candidates.push(FrameCandidate::plain(punctuation));
                 self.completions.push((0, punctuation.to_owned()));
