@@ -18,6 +18,8 @@ import kotlin.concurrent.thread
  * 同一次复制只记一次（按剪贴板内容的时间戳认）：键盘每次弹出都会读一遍，用户删掉的那条若还是系统剪贴板当前内容，不能又收回来。
  */
 class ClipboardWatcher(private val context: Context) {
+    var allowCapture: () -> Boolean = { true }
+    var onNewText: ((String) -> Unit)? = null
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val listener = ClipboardManager.OnPrimaryClipChangedListener { capture() }
@@ -32,6 +34,7 @@ class ClipboardWatcher(private val context: Context) {
 
     /** 读一次当前剪贴板记下来；键盘弹出时也调（监听在输入法没起来时收不到）。 */
     fun capture() {
+        if (!allowCapture()) return
         val settings = Settings.load(context)
         if (!settings.recordClipboard) return
         val clip = runCatching { manager?.primaryClip }.getOrNull() ?: return
@@ -59,6 +62,7 @@ class ClipboardWatcher(private val context: Context) {
         if (text != ClipboardSync.lastReceived) {
             ClipboardStore.add(context, text, settings.clipboardLimit)
             ClipboardSync.changed()
+            onNewText?.invoke(text)
         }
         onChanged?.invoke()
     }
