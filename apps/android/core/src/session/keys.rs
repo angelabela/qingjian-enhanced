@@ -29,6 +29,12 @@ impl Session {
         }
         if let Some(text) = after_commit.filter(|text| context.contains(text.as_str())) {
             self.offer_follow_ups(&text, &mut frame);
+        } else if let Some(previous) = qingjian_core::sentence::text_pieces(before_cursor, self.engine.language_model()).last() {
+            let words = self.engine.follow_ups_after(previous, 8);
+            for word in words {
+                frame.candidates.push(FrameCandidate::plain(&word));
+                self.completions.push((0, word));
+            }
         }
         let mut labels = Vec::new();
         for completion in qingjian_core::email_completions(before_cursor) {
