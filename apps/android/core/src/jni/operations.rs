@@ -164,11 +164,15 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_complete<'local
     _this: JObject<'local>,
     handle: jlong,
     before_cursor: JString<'local>,
+    after_cursor: JString<'local>,
 ) -> jstring {
     let Ok(before_cursor) = env.get_string(&before_cursor).map(String::from) else {
         return std::ptr::null_mut();
     };
-    frame(env, handle, |session| session.complete(&before_cursor))
+    let Ok(after_cursor) = env.get_string(&after_cursor).map(String::from) else {
+        return std::ptr::null_mut();
+    };
+    frame(env, handle, |session| session.complete(&before_cursor, &after_cursor))
 }
 
 #[unsafe(no_mangle)]
