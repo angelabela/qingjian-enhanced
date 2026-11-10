@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_LAYOUT, GAMEPAD }
 
     private val path = Path()
     private val oval = RectF()
@@ -49,6 +49,9 @@ object PanelIcons {
             Icon.PHRASES -> phrases()
             Icon.TUNE -> tune()
             Icon.MINUS -> polyline(5f, 12f, 19f, 12f)
+            Icon.TRADITIONAL -> traditional()
+            Icon.LEFT_LAYOUT -> leftLayout()
+            Icon.GAMEPAD -> gamepad()
         }
         val scale = size / 24f
         canvas.save()
@@ -246,6 +249,33 @@ object PanelIcons {
         circle(9f, 6.5f, 2f)
         circle(15.5f, 12f, 2f)
         circle(7.5f, 17.5f, 2f)
+    }
+
+    private fun traditional() {
+        oval.set(4f, 4f, 20f, 20f)
+        path.addRoundRect(oval, 2f, 2f, Path.Direction.CW)
+        polyline(8f, 8f, 16f, 8f)
+        polyline(8f, 11.5f, 16f, 11.5f)
+        polyline(8f, 15f, 13f, 15f)
+        polyline(14f, 14f, 17f, 17f, 19f, 14f)
+    }
+
+    private fun leftLayout() {
+        polyline(10f, 5f, 5f, 10f, 10f, 15f)
+        polyline(5.5f, 10f, 13f, 10f)
+        oval.set(11f, 5f, 21f, 19f)
+        path.addRoundRect(oval, 2f, 2f, Path.Direction.CW)
+        polyline(14f, 9f, 18f, 9f)
+        polyline(14f, 13f, 18f, 13f)
+    }
+
+    private fun gamepad() {
+        oval.set(2.5f, 7f, 21.5f, 19f)
+        path.addRoundRect(oval, 5f, 5f, Path.Direction.CW)
+        polyline(7f, 10f, 7f, 16f)
+        polyline(4f, 13f, 10f, 13f)
+        circle(16f, 11f, 1.1f)
+        circle(18.5f, 14.5f, 1.1f)
     }
 
     private fun info() {
