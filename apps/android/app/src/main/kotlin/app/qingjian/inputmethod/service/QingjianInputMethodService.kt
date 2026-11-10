@@ -331,9 +331,9 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         if (editor != null) return
-        val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
-        if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
-        if (candidatesEnd == -1 && newSelStart == newSelEnd) composer.refreshCompletions()
+        val moved = newSelStart != oldSelStart || newSelEnd != oldSelEnd
+        if (moved && candidatesEnd != -1) composer.onCursorMovedAway()
+        if (moved && newSelStart == newSelEnd) composer.refreshCompletions()
     }
 
     // 编辑条开着时打的字进编辑条
