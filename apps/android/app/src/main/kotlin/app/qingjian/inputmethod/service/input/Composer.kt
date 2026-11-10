@@ -192,7 +192,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
-        // 候选条上放着电话邮箱或「撤销」时，删除、重输先只收起它们，不动输入框里的字
+        if (key != Key.Backspace) lastClearedText = null
+        // 候选条上放着电话邮箱时，删除、重输先只收起它们，不动输入框里的字
         if ((key == Key.Backspace || key == Key.Clear) && !composing && completing && engine.hasOffer()) {
             apply(engine.clear())
             return
