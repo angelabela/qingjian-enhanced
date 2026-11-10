@@ -7,7 +7,7 @@ import app.qingjian.inputmethod.R
  * 只管候选条与展开的候选，键面上的字不跟着变。
  */
 enum class TextSize(val key: String, val scale: Float, val label: Int) {
-    SMALL("small", 0.88f, R.string.text_size_small),
+    SMALL("small", 0.72f, R.string.text_size_small),
     STANDARD("standard", 1f, R.string.text_size_standard),
     LARGE("large", 1.15f, R.string.text_size_large),
     LARGER("larger", 1.3f, R.string.text_size_larger);
