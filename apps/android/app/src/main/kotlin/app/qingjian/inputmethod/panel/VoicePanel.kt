@@ -2,7 +2,6 @@ package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.SystemClock
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RadialGradient
@@ -17,7 +16,6 @@ import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
-import kotlin.math.sin
 
 /**
  * 说话时盖住候选条与键盘的面板：底板上一团主题色的光，上方一条细波形，中间一段弧，
@@ -128,7 +126,6 @@ class VoicePanel(
         canvas.drawRect(0f, 0f, w, h, glow)
 
         drawWave(canvas, h * 0.15f)
-        drawVoiceOrb(canvas, h)
         drawPad(canvas, Target.CANCEL, "撤回输入")
         drawPad(canvas, Target.ACTION, actionLabel)
         ink.text(canvas, hint(), 13f, palette.gloss, w / 2, arcTop + thickness / 2 + h * 0.09f)
@@ -175,51 +172,6 @@ class VoicePanel(
         canvas.rotate(middle, tx, ty)
         ink.text(canvas, label, 16f, if (active) palette.onBrand else palette.text, tx, ty, bold = active)
         canvas.restore()
-    }
-
-    /**
-     * 语音球：柔和的径向光晕、渐变核心和呼吸外环；录音时随输入音量轻微起伏，
-     * 识别等待时慢速呼吸。只在语音面板显示期间逐帧刷新。
-     */
-    private fun drawVoiceOrb(canvas: Canvas, panelHeight: Float) {
-        val cx = width / 2f
-        val cy = panelHeight * 0.34f
-        val base = minOf(width * 0.155f, panelHeight * 0.105f).coerceAtLeast(ink.dp(28f))
-        val phase = SystemClock.uptimeMillis() / 1000f
-        val audio = levels.takeLast(10).average().toFloat().coerceIn(0f, 1f)
-        val breathing = sin(phase * if (recognizing) 1.25f else 2.15f)
-        val response = if (holding) audio * 0.18f else 0f
-        val scale = 1f + breathing * (if (holding) 0.055f else 0.025f) + response
-        val radius = base * scale
-
-        glow.shader = RadialGradient(
-            cx, cy, radius * 2.25f,
-            intArrayOf(withAlpha(palette.brand, 0x70), withAlpha(palette.brand, 0x20), withAlpha(palette.brand, 0)),
-            floatArrayOf(0f, 0.58f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, radius * 2.25f, glow)
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.4f)
-        paint.color = withAlpha(palette.brand, if (holding) 0xA0 else 0x55)
-        canvas.drawCircle(cx, cy, radius * (1.32f + breathing * 0.035f), paint)
-        paint.style = Paint.Style.FILL
-
-        paint.shader = RadialGradient(
-            cx - radius * 0.28f, cy - radius * 0.34f, radius * 1.55f,
-            intArrayOf(palette.surface, palette.brand, withAlpha(palette.brand, 0xB0)),
-            floatArrayOf(0f, 0.48f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, radius, paint)
-        paint.shader = null
-
-        // 球面上的柔光高光，避免看起来像单色圆按钮。
-        paint.color = withAlpha(0xFFFFFFFF.toInt(), 0x45)
-        canvas.drawCircle(cx - radius * 0.30f, cy - radius * 0.34f, radius * 0.19f, paint)
-
-        if (holding || recognizing) postInvalidateOnAnimation()
     }
 
     /** 一排细竖条，高度按最近的音量；等结果时压成一排点。 */
