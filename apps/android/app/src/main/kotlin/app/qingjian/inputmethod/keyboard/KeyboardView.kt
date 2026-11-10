@@ -66,6 +66,9 @@ class KeyboardView(
 
         /** 在删除键上往上一划（开着「上划删除键清空」）：清空整个输入框，不受光标位置与选区影响。 */
         fun onClearAll()
+
+        /** 删除键下滑：撤销最近一次上划清空。 */
+        fun onUndoClear()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -130,6 +133,7 @@ class KeyboardView(
     private var flickX = 0f
     private var flickY = 0f
     private var flickArmed = false
+    private var undoFlickArmed = false
     private var flickBroken = false
 
     /** Z/X/C/V 键向下滑动手势；未达到阈值时仍按原有点按/滑行逻辑处理。 */
@@ -269,6 +273,7 @@ class KeyboardView(
                     flickX = event.getX(index)
                     flickY = event.getY(index)
                     flickArmed = false
+                    undoFlickArmed = false
                     flickBroken = false
                 }
                 tapFeedback()
@@ -449,9 +454,16 @@ class KeyboardView(
         val side = abs(x - flickX)
         // 按下附近的抖动不算方向
         if (hypot(x - flickX, up) < metrics.density * TRACK_SLOP_DP) return
+        if (flickSlot?.key == Key.Backspace && up < 0f && side < -up * FLICK_SLOPE) {
+            undoFlickArmed = -up > metrics.density * FLICK_DP
+            flickArmed = false
+            if (undoFlickArmed) timer.removeCallbacks(repeatBackspace)
+            return
+        }
         if (up <= 0f || side > up * FLICK_SLOPE) {
             flickBroken = true
             flickArmed = false
+            undoFlickArmed = false
             return
         }
         if (longPressPointer == flickPointer) {
@@ -459,6 +471,7 @@ class KeyboardView(
             longPressPointer = -1
         }
         flickArmed = up > metrics.density * FLICK_DP
+        undoFlickArmed = false
         // 删除键往上划够了：不再连删，抬手清空
         if (flickArmed && flickSlot?.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
     }
@@ -467,10 +480,12 @@ class KeyboardView(
         flickPointer = -1
         flickSlot = null
         flickArmed = false
+        undoFlickArmed = false
         flickBroken = false
     }
 
     private fun flick(key: Key) = when {
+        key == Key.Backspace && undoFlickArmed -> listener.onUndoClear()
         key == Key.Backspace -> listener.onClearAll()
         (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
         else -> key.flick?.let(listener::onKeyChoice)
