@@ -70,6 +70,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键按下时光标前的文字，上划清空的撤销用；组句中为 null。 */
     private var beforeBackspace: String? = null
 
+    /** 上次删除键上划清空的文本，只能通过删除键下滑撤销。 */
+    private var lastClearedText: String? = null
+
     /** 这个输入框不过引擎，见 [wantsDirectInput]。 */
     var directInput = false
 
@@ -482,7 +485,18 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
-        apply(if (clearedText.isNotEmpty()) engine.cleared(clearedText) else engine.clear())
+        lastClearedText = clearedText.takeIf { it.isNotEmpty() }
+        apply(engine.clear())
+    }
+
+    /** 删除键下滑：恢复最近一次由删除键上划清空的整段文字。 */
+    fun undoClear() {
+        val text = lastClearedText ?: return
+        val connection = host.connection ?: return
+        connection.commitText(text, 1)
+        lastClearedText = null
+        completing = false
+        host.showComposition("", emptyList())
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
