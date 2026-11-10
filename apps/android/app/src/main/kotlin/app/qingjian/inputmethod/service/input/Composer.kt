@@ -429,7 +429,7 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 有就放在候选条上，选中走 [select]。只显示、不写输入框，所以不会再触发光标变化。
      */
     fun refreshCompletions() {
-        if (composing || !engine.ready) return
+        if (composing || !engine.ready || privateInput || directInput || plainPunctuation) return
         val connection = host.connection ?: return
         val before = connection.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
         val after = connection.getTextAfterCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
