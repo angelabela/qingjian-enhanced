@@ -8,25 +8,25 @@ const UNDO_LABEL: &str = "撤销";
 
 impl Session {
     /// 不在组句时按光标前的文字给补全（「用户名@」之后的邮箱后缀、刚打完的算式的结果），放进帧的候选；组句中不动。
-    pub fn complete(&mut self, before_cursor: &str) -> Frame {
+    pub fn complete(&mut self, before_cursor: &str, after_cursor: &str) -> Frame {
         if !self.engine.composition().is_empty()
             || self.kana.as_ref().is_some_and(|kana| !kana.is_empty())
         {
             return self.refresh(String::new());
         }
-        // 刚上屏的名字还在光标前：接着给它的电话、邮箱；刚上屏的词还在光标前：接着给联想词；
-        // 刚清空、光标前还是空的：留着「撤销」（`refresh` 会清掉，先拿出来）
+        // 用光标两侧拼成当前编辑上下文：光标在刚上屏的词中间时，也保留这个词的联想。
+        let context = format!("{before_cursor}{after_cursor}");
         let after_contact = self.after_contact.take();
         let after_commit = self.after_commit.take();
         let cleared = self.cleared.take();
         let mut frame = self.refresh(String::new());
-        if let Some(text) = cleared.filter(|_| before_cursor.is_empty()) {
+        if let Some(text) = cleared.filter(|_| context.is_empty()) {
             self.offer_undo(text, &mut frame);
         }
-        if let Some(name) = after_contact.filter(|name| before_cursor.ends_with(name.as_str())) {
+        if let Some(name) = after_contact.filter(|name| context.contains(name.as_str())) {
             self.offer_contact(&name, &mut frame);
         }
-        if let Some(text) = after_commit.filter(|text| before_cursor.ends_with(text.as_str())) {
+        if let Some(text) = after_commit.filter(|text| context.contains(text.as_str())) {
             self.offer_follow_ups(&text, &mut frame);
         }
         let mut labels = Vec::new();
@@ -42,6 +42,13 @@ impl Session {
         frame
             .candidates
             .extend(labels.iter().map(|label| FrameCandidate::plain(label)));
+        // 中文文本上下文存在时，候选栏直接提供常用中文标点；点选后由 completions 映射为真实上屏文本。
+        if !context.trim().is_empty() {
+            for punctuation in ["，", "。", "！", "？"] {
+                frame.candidates.push(FrameCandidate::plain(punctuation));
+                self.completions.push((0, punctuation.to_owned()));
+            }
+        }
         frame
     }
 
