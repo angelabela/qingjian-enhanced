@@ -18,6 +18,7 @@ qingjian-core.workspace = true
 qingjian-dictionary.workspace = true
 qingjian-learning.workspace = true
 qingjian-lm.workspace = true
+qingjian-neural.workspace = true
 # 安卓没有可链的系统 TLS，走 rustls；工作区那份默认开着 native-tls，这里直接引路径才关得掉
 qingjian-predict = { path = "../../../crates/qingjian-predict", default-features = false, features = ["rustls"] }
 qingjian-render.workspace = true
