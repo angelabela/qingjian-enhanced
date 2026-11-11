@@ -10,6 +10,7 @@ use qingjian_core::{EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
 use qingjian_lm::BigramModel;
+use qingjian_neural::{CharScorer, P2cScorer};
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
@@ -57,6 +58,24 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
                 engine = engine.with_language_model(Box::new(model));
             }
             Err(error) => tracing::warn!(%error, "语言模型加载失败，使用词频整句"),
+        }
+    }
+    // 含章·通变：本地 P2C 模型按拼音生成整句候选；模型缺失或损坏时保留词图 + bigram 回退。
+    let neural_model = data_dir.join("hanzhang-tongbian-small.qjm");
+    if neural_model.is_file() {
+        let started = Instant::now();
+        match CharScorer::load(&neural_model) {
+            Ok(scorer) => match P2cScorer::new(scorer) {
+                Some(scorer) => {
+                    tracing::info!(
+                        load_ms = started.elapsed().as_millis(),
+                        "本地整句生成模型已加载"
+                    );
+                    engine = engine.with_sentence_scorer(Box::new(scorer), None, None, None);
+                }
+                None => tracing::warn!("本地模型缺少 P2C 分隔符，保留词图 + bigram"),
+            },
+            Err(error) => tracing::warn!(%error, "本地整句模型加载失败，保留词图 + bigram"),
         }
     }
     load_phrases(&mut engine, user_dir);
