@@ -136,6 +136,9 @@ const URL_HOSTS: &[&str] = &[
 /// 中英文输入状态下都可用：根据光标前最后一个网址片段补全主机名。
 /// 例如 www.b → www.baidu.com、https://g → https://google.com、github.c → github.com。
 pub fn url_completions(before: &str) -> Vec<UrlCompletion> {
+    if before.chars().last().is_some_and(char::is_whitespace) {
+        return Vec::new();
+    }
     let token = before.split_whitespace().last().unwrap_or("");
     let (scheme, host) = if let Some(rest) = token.strip_prefix("https://") {
         ("https://", rest)
@@ -148,6 +151,7 @@ pub fn url_completions(before: &str) -> Vec<UrlCompletion> {
     let typed = host.strip_prefix("www.").unwrap_or(host);
     if typed.is_empty()
         && !www
+        && scheme.is_empty()
         || host.contains('/')
         || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
         || !(www || scheme != "" || host.contains('.'))
@@ -186,5 +190,7 @@ mod url_tests {
         assert!(url_completions("hello world").is_empty());
         assert!(url_completions("https://github.com/user").is_empty());
         assert!(url_completions("").is_empty());
+        assert!(url_completions("刚才说过 ").is_empty());
+        assert!(!url_completions("https://").is_empty());
     }
 }
