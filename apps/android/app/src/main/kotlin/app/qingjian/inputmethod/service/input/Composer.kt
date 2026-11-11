@@ -4,8 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
-import android.view.inputmethod.ExtractedText
-import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
@@ -69,12 +67,11 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键按下时在组句（见 [onBackspaceDown]）。 */
     private var backspaceComposing = false
 
-    /** 删除键按下前的完整编辑器快照；startOffset 用于正确恢复光标绝对位置。 */
+    /** 删除键按下前、光标周围的文本快照。不能依赖 getExtractedText：不少第三方输入框会返回 null。 */
     private data class BackspaceSnapshot(
-        val text: String,
-        val startOffset: Int,
-        val selectionStart: Int,
-        val selectionEnd: Int,
+        val before: String,
+        val selected: String,
+        val after: String,
     )
     private var backspaceSnapshot: BackspaceSnapshot? = null
 
@@ -447,44 +444,42 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showComposition("", visible)
     }
 
-    /** 删除键按下时读取编辑器快照（含绝对偏移和选区），在第一次退格前保存。 */
+    /** 删除键按下时保存光标前、选区和光标后的文字；兼容不支持 getExtractedText 的第三方输入框。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
         backspaceSnapshot = null
         val connection = host.connection ?: return
-        val request = ExtractedTextRequest().apply {
-            hintMaxChars = MAX_UNDO_CONTEXT * 4
-            hintMaxLines = 10000
-        }
-        val extracted = connection.getExtractedText(request, 0) ?: return
-        val text = extracted.text?.toString() ?: return
-        if (extracted.startOffset < 0 || extracted.selectionStart < 0 || extracted.selectionEnd < 0) return
-        backspaceSnapshot = BackspaceSnapshot(
-            text = text,
-            startOffset = extracted.startOffset,
-            selectionStart = extracted.selectionStart.coerceIn(0, text.length),
-            selectionEnd = extracted.selectionEnd.coerceIn(0, text.length),
-        )
+        val before = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        backspaceSnapshot = BackspaceSnapshot(before, selected, after)
     }
 
-    /** 删除键下滑：按编辑器返回的绝对文本偏移恢复整段文本和原选区，不依赖「全选」菜单。 */
+    /**
+     * 删除键下滑：不使用 ExtractedText 的绝对偏移，也不要求输入框支持全选。
+     * 只替换按下时光标周围的文本，避免 setSelection(startOffset, ...) 在不同编辑器中失效。
+     */
     fun undoBackspace() {
         val snapshot = backspaceSnapshot ?: return
         val connection = host.connection ?: return
         backspaceSnapshot = null
-        val start = snapshot.startOffset
-        val end = start + snapshot.text.length
+
+        val currentBefore = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        val currentAfter = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        val restored = snapshot.before + snapshot.selected + snapshot.after
+
         connection.beginBatchEdit()
         try {
-            if (!connection.setSelection(start, end)) return
-            connection.commitText(snapshot.text, 1)
-            connection.setSelection(
-                start + snapshot.selectionStart,
-                start + snapshot.selectionEnd,
-            )
+            // 删除当前光标两侧的上下文，再写回按下删除键前的内容。
+            connection.deleteSurroundingText(currentBefore.length, currentAfter.length)
+            connection.commitText(restored, 1)
+            val selectionStart = snapshot.before.length
+            val selectionEnd = selectionStart + snapshot.selected.length
+            connection.setSelection(selectionStart, selectionEnd)
         } finally {
             connection.endBatchEdit()
         }
+
         preedit = ""
         sentPreedits.clear()
         composingLost = false
