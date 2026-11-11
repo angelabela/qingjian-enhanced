@@ -11,6 +11,9 @@ class CloudConfig(val baseUrl: String, val model: String, private val apiKey: St
     /** 三样都有才算配好。 */
     val ready get() = baseUrl.isNotBlank() && model.isNotBlank() && !apiKey.isNullOrBlank()
 
+    /** 仅供应用内 HTTP 请求临时读取；不写入日志或持久化明文。 */
+    internal fun apiKey(): String? = apiKey
+
     /** 设置页显示用：只露末尾 4 位。 */
     val keyHint: String? get() = apiKey?.takeIf { it.length > 4 }?.let { "····${it.takeLast(4)}" }
 

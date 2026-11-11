@@ -108,6 +108,11 @@ class KeyPainter(
                 text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY())
             }
         }
+
+        // Z/X/C/V 的下滑编辑手势提示：图标固定在键面下缘，主字仍保持清晰。
+        if (key is Key.Letter && key.char.lowercaseChar() in EDIT_GESTURE_KEYS) {
+            KeyIcons.drawDownFlick(canvas, bounds.centerX(), bounds.bottom - 7f * density, 10f * density, ink.apply { color = palette.gloss })
+        }
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
@@ -174,6 +179,7 @@ class KeyPainter(
     private fun scaleOf(sp: Float) = if (sp > HINT_MAX_SP) textScale else 1f
 
     private companion object {
+        val EDIT_GESTURE_KEYS = setOf('z', 'x', 'c', 'v')
         const val PRESSED_BRAND_SHADE = 0x33000000
 
         const val HINT_MAX_SP = 11f

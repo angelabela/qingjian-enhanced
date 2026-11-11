@@ -20,6 +20,11 @@ import kotlin.math.abs
  * 不碰视图，也不管服务的生命周期。
  */
 class Composer(private val engine: Engine, private val host: Host) {
+    private data class ClearSnapshot(val text: String, val selectionStart: Int, val selectionEnd: Int)
+
+    /** 上滑清空前保存的完整输入框内容与选区；下滑恢复只消费这一份快照。 */
+    private var lastClearSnapshot: ClearSnapshot? = null
+
     private val handler = Handler(Looper.getMainLooper())
 
     interface Host {
@@ -189,6 +194,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        // 清空后若用户开始新的输入，旧快照失效；退格按下本身不能提前清掉快照。
+        if (key != Key.Backspace) lastClearSnapshot = null
         // 候选条上放着电话邮箱或「撤销」时，删除、重输先只收起它们，不动输入框里的字
         if ((key == Key.Backspace || key == Key.Clear) && !composing && completing && engine.hasOffer()) {
             apply(engine.clear())
@@ -437,31 +444,69 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showComposition("", frame.candidates)
     }
 
-    /**
-     * 删除键按下那一刻（删字之前）：组句中记下「这一下是在删拼音」，否则记下光标前的文字，
-     * 接着上划清空时撤销要连按下时删掉的那个字一起放回。
-     */
+    /** 删除键按下时记录状态；清空动作本身统一处理整个输入框。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
-        beforeBackspace = if (composing) null else host.connection?.getTextBeforeCursor(MAX_CLEAR, 0)?.toString()
+        beforeBackspace = null
+        val connection = host.connection ?: return
+        // 必须在 ACTION_DOWN 的第一次普通退格之前取快照，否则首字符已经被删掉。
+        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
+        val text = before + selected + after
+        if (text.isNotEmpty()) {
+            lastClearSnapshot = ClearSnapshot(text, before.length, before.length + selected.length)
+        }
     }
 
-    /**
-     * 删除键上划：按下时在组句就只清拼音（删到没拼音了也不去动输入框里的字）；否则删掉光标前的文字（最多 [MAX_CLEAR] 个），
-     * 候选条上放「撤销」，点了原样放回。按下时那一下已经删的字（按键事件可能还没到应用）也算在撤销里。
-     */
-    fun clearBefore() {
-        if (backspaceComposing || composing) {
-            backspaceComposing = false
-            if (composing) apply(engine.clear())
-            return
-        }
+    /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
+    fun restoreLastClear() {
+        val snapshot = lastClearSnapshot ?: return
         val connection = host.connection ?: return
-        val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-        val removed = beforeBackspace?.takeIf { it.startsWith(remaining) } ?: remaining
+        // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
+        apply(engine.clear())
+        connection.beginBatchEdit()
+        try {
+            if (!connection.performContextMenuAction(android.R.id.selectAll)) {
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.length ?: 0
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.length ?: 0
+                if (before > 0 || after > 0) connection.deleteSurroundingText(before, after)
+            }
+            connection.commitText(snapshot.text, 1)
+            val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
+            val end = snapshot.selectionEnd.coerceIn(start, snapshot.text.length)
+            connection.setSelection(start, end)
+        } finally {
+            connection.endBatchEdit()
+        }
+        lastClearSnapshot = null
+    }
+
+    /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
+    fun clearAll() {
+        val connection = host.connection ?: return
+        backspaceComposing = false
         beforeBackspace = null
-        if (remaining.isNotEmpty()) connection.deleteSurroundingText(remaining.length, 0)
-        if (removed.isNotEmpty()) apply(engine.cleared(removed))
+        connection.beginBatchEdit()
+        try {
+            if (connection.performContextMenuAction(android.R.id.selectAll)) {
+                connection.commitText("", 1)
+            } else {
+                if (!connection.getSelectedText(0).isNullOrEmpty()) connection.commitText("", 1)
+                repeat(100) {
+                    val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    if (before.isEmpty() && after.isEmpty()) return@repeat
+                    connection.deleteSurroundingText(before.length, after.length)
+                    val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    if (nextBefore == before && nextAfter == after) return@repeat
+                }
+            }
+        } finally {
+            connection.endBatchEdit()
+        }
+        apply(engine.clear())
     }
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
@@ -694,8 +739,11 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 补全看光标前多少个字：用户名加域名前缀够了。 */
         const val COMPLETION_CONTEXT = 80
 
-        /** 上划清空最多删光标前几个字（UTF-16 单位）：再长的文档一次删不完，再划一次。 */
+        /** 每轮清空最多删除的 UTF-16 单位；循环最多 100 轮。 */
         const val MAX_CLEAR = 5000
+
+        /** 撤销快照读取范围，与整框清空的最多删除量（100 轮）一致。 */
+        const val MAX_SNAPSHOT = MAX_CLEAR * 100
 
         /** 日语里当长音敲的键。 */
         val LONG_VOWEL = setOf("-", "ー")

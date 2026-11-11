@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -16,6 +18,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
+import app.qingjian.inputmethod.cloud.CloudConfig
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
 import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
 import app.qingjian.inputmethod.clipboard.ClipboardWatcher
@@ -402,6 +405,19 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) = composer.onKey(key)
 
+    /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
+    override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        val actionId = when (action) {
+            KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
+            KeyboardView.EditShortcut.CUT -> android.R.id.cut
+            KeyboardView.EditShortcut.COPY -> android.R.id.copy
+            KeyboardView.EditShortcut.PASTE -> android.R.id.paste
+        }
+        if (currentInputConnection?.performContextMenuAction(actionId) != true) {
+            toast("当前输入框暂不支持此操作")
+        }
+    }
+
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
     override fun onLanguageChoice(index: Int) = composer.chooseLanguage(Language.entries[index])
@@ -720,7 +736,9 @@ class QingjianInputMethodService :
 
     override fun onBackspaceDown() = composer.onBackspaceDown()
 
-    override fun onClearBefore() = composer.clearBefore()
+    override fun onClearAll() = composer.clearAll()
+
+    override fun onRestoreLastClear() = composer.restoreLastClear()
 
     // 回车键写的字（发送、搜索…）照搬到面板右边的键上；多行框没有动作，写「完成」
     override fun openVoicePanel(actions: VoicePanel.Actions): VoicePanel? =
