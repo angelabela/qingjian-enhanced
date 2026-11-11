@@ -100,7 +100,7 @@
     "strip_top": {
       "type": "frame", "when": "preedit|trailing", "padding": [2, 12, 1, 12], "gap": 16,
       "children": [
-        { "type": "preedit", "when": "preedit", "font": "annotation",
+        { "type": "preedit", "when": "preedit", "align_self": "center", "font": "annotation",
           "typed": "@gloss", "rest": "@faint", "struck": "@faint",
           "caret": { "width": 1.5, "color": "@text" } },
         { "type": "text", "bind": "trailing.text", "when": "trailing", "font": "annotation", "color": "@gloss" }
