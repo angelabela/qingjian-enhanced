@@ -456,8 +456,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /**
-     * 删除键下滑：不使用 ExtractedText 的绝对偏移，也不要求输入框支持全选。
-     * 只替换按下时光标周围的文本，避免 setSelection(startOffset, ...) 在不同编辑器中失效。
+     * 删除键下滑：只补回这次退格真正删掉的后缀，不重写输入框周围的整段文字。
+     * 旧实现把光标前后最多 128 个字符全删再写回，且把局部长度当成绝对 selection，
+     * 在微信等编辑器中会失败或破坏光标位置。
      */
     fun undoBackspace() {
         val snapshot = backspaceSnapshot ?: return
@@ -466,16 +467,17 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         val currentBefore = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
         val currentAfter = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
-        val restored = snapshot.before + snapshot.selected + snapshot.after
+
+        // 普通退格及长按连删只会缩短光标前的文本；必须确认光标后的文本未变化，
+        // 并且当前文本确实是按下时文本的前缀，避免在光标移动后误恢复到别处。
+        if (currentAfter != snapshot.after || !snapshot.before.startsWith(currentBefore)) return
+        val deleted = snapshot.before.substring(currentBefore.length)
+        val restore = snapshot.selected + deleted
+        if (restore.isEmpty()) return
 
         connection.beginBatchEdit()
         try {
-            // 删除当前光标两侧的上下文，再写回按下删除键前的内容。
-            connection.deleteSurroundingText(currentBefore.length, currentAfter.length)
-            connection.commitText(restored, 1)
-            val selectionStart = snapshot.before.length
-            val selectionEnd = selectionStart + snapshot.selected.length
-            connection.setSelection(selectionStart, selectionEnd)
+            connection.commitText(restore, 1)
         } finally {
             connection.endBatchEdit()
         }
@@ -657,7 +659,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         // 撤销 offer 不再占用候选栏；普通补全仍照常显示。
         completing = frame.preedit.isEmpty() && candidates.isNotEmpty()
         host.showSideItems(pinyinChoices)
-        host.showComposition(frame.preedit, candidates)
+        host.showComposition("", candidates)
         if (frame.notice.isNotEmpty()) host.showNotice(frame.notice)
         surrounding?.let { (before, after) -> engine.setSurrounding(before, after) }
         handler.removeCallbacks(pollPrediction)
@@ -670,7 +672,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         val frame = engine.pollPrediction()
         if (frame != null && frame.preedit == preedit) {
             candidates = frame.candidates
-            host.showComposition(frame.preedit, frame.candidates)
+            host.showComposition("", frame.candidates)
         }
         if (engine.predicting) handler.postDelayed(pollPrediction, PREDICTION_POLL_MS)
     }
