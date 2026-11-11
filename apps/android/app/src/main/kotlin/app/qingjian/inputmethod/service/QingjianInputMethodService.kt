@@ -53,6 +53,7 @@ import app.qingjian.inputmethod.service.input.wantsPrivacy
 import app.qingjian.inputmethod.settings.BottomAction
 import app.qingjian.inputmethod.settings.GameKeyboard
 import app.qingjian.inputmethod.settings.Settings
+import app.qingjian.inputmethod.settings.page.AppearanceActivity
 import app.qingjian.inputmethod.settings.ToolbarTool
 import app.qingjian.inputmethod.settings.home.MainActivity
 import app.qingjian.inputmethod.settings.page.CloudSettingsActivity
@@ -539,6 +540,11 @@ class QingjianInputMethodService :
             return true
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    override fun openAppearance() {
+        closePanel()
+        startActivity(Intent(this, AppearanceActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override fun openSettings() {

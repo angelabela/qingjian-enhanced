@@ -29,6 +29,9 @@ interface PanelActions {
 
     fun openSettings()
 
+    /** 从功能宫格直接打开皮肤主题页。 */
+    fun openAppearance()
+
     fun switchInputMethod()
 
     /** 选了拼音键盘：回到中文并换成这个布局。 */

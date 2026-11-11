@@ -48,6 +48,7 @@ class FunctionPanel(
         Feature(Icon.RESIZE, "键盘高度") { startResize() },
         Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
         Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
+        Feature(Icon.PALETTE, "皮肤") { openAppearance() },
         Feature(Icon.SETTINGS, "设置") { openSettings() },
     ) + listOfNotNull(
         actions.gameKeyboard?.let { on -> Feature(null, "游戏键盘", glyph = "游", on = on) { toggleGameKeyboard() } },
@@ -70,7 +71,7 @@ class FunctionPanel(
     private val card = RectF()
     private val knob = RectF()
 
-    private val columns = 5
+    private val columns = 4
 
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, Icon.SETTINGS)
@@ -81,7 +82,7 @@ class FunctionPanel(
 
     private fun cellWidth() = card.width() / columns
 
-    private fun cellHeight() = minOf(ink.dp(86f), card.height() / 2)
+    private fun cellHeight() = minOf(ink.dp(76f), card.height() / 3)
 
     private fun drawFeatures(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
