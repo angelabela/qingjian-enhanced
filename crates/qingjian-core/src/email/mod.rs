@@ -115,3 +115,45 @@ mod tests {
         assert!(domains("").is_empty());
     }
 }
+
+
+/// 常见网址主机名补全。仅在光标前最后一个词看起来像网址时触发。
+/// 支持 www.、http(s):// 以及已输入到域名中途（例如 github.c）的情况。
+const URL_HOSTS: &[&str] = &[
+    "www.baidu.com", "www.google.com", "www.bing.com", "www.github.com",
+    "www.youtube.com", "www.wikipedia.org", "www.qq.com", "www.163.com",
+    "www.taobao.com", "www.jd.com", "www.bilibili.com", "www.zhihu.com",
+    "www.douyin.com", "www.xiaohongshu.com", "www.microsoft.com",
+    "www.apple.com", "www.amazon.com", "www.cloudflare.com",
+];
+
+pub fn url_completions(before: &str) -> Vec<EmailCompletion> {
+    let token = before.split_whitespace().last().unwrap_or("");
+    let (scheme, host) = if let Some(rest) = token.strip_prefix("https://") {
+        ("https://", rest)
+    } else if let Some(rest) = token.strip_prefix("http://") {
+        ("http://", rest)
+    } else {
+        ("", token)
+    };
+    if host.is_empty()
+        || host.contains('/')
+        || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        || !(host.starts_with("www.") || host.contains('.'))
+    {
+        return Vec::new();
+    }
+    let typed = host.to_ascii_lowercase();
+    URL_HOSTS.iter()
+        .filter(|candidate| candidate.len() > typed.len() && candidate.starts_with(&typed))
+        .map(|&candidate| EmailCompletion {
+            domain: candidate,
+            insert: format!("{}{}", &candidate[typed.len()..], ""),
+        })
+        .map(|mut completion| {
+            // Scheme is already typed by the user; only append the missing host suffix.
+            let _ = scheme;
+            completion
+        })
+        .collect()
+}
