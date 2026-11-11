@@ -34,6 +34,10 @@ impl Session {
             labels.push(completion.domain.to_owned());
             self.completions.push((0, completion.insert));
         }
+        for (label, insert) in url_completions(before_cursor) {
+            labels.push(label);
+            self.completions.push((0, insert));
+        }
         for completion in qingjian_core::calculation_completions(before_cursor) {
             labels.push(completion.label);
             self.completions
@@ -211,4 +215,43 @@ impl Session {
         self.engine.pin_nine_key(alternative);
         self.refresh(String::new())
     }
+}
+
+
+/// 常见网址补全：光标前以独立的「www.」开头时，按已输入的域名前缀给候选。
+/// 只追加尚未输入的部分，选中后不会重复写入「www.」或用户已敲的字母。
+const COMMON_WEB_DOMAINS: &[&str] = &[
+    "google.com",
+    "github.com",
+    "gmail.com",
+    "youtube.com",
+    "baidu.com",
+    "bilibili.com",
+    "taobao.com",
+    "jd.com",
+    "zhihu.com",
+    "weibo.com",
+    "wikipedia.org",
+    "openai.com",
+    "chatgpt.com",
+    "stackoverflow.com",
+    "reddit.com",
+];
+
+fn url_completions(before: &str) -> Vec<(String, String)> {
+    let Some((prefix, typed)) = before.rsplit_once("www.") else {
+        return Vec::new();
+    };
+    if prefix.chars().last().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Vec::new();
+    }
+    if !typed.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')) {
+        return Vec::new();
+    }
+    let typed = typed.to_ascii_lowercase();
+    COMMON_WEB_DOMAINS
+        .iter()
+        .filter(|domain| domain.len() > typed.len() && domain.starts_with(&typed))
+        .map(|&domain| (format!("www.{domain}"), domain[typed.len()..].to_owned()))
+        .collect()
 }
