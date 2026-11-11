@@ -64,8 +64,11 @@ class KeyboardView(
         /** 删除键按下（在它删字之前）：上划清空的撤销要记下这一刻光标前的文字。 */
         fun onBackspaceDown()
 
-        /** 在删除键上往上一划（开着「上划删除键清空」）：清空整个输入框，不受光标位置与选区影响。 */
+        /** 在删除键上往上一划：清空整个输入框。 */
         fun onClearAll()
+
+        /** 删除键下滑：撤销本次退格/连续删除。 */
+        fun onUndoBackspace()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -138,6 +141,12 @@ class KeyboardView(
     private var editStartX = 0f
     private var editStartY = 0f
     private var editTriggered = false
+
+    /** 删除键向下滑动撤销：按下时记录指针和起点，超过阈值只触发一次。 */
+    private var backspaceUndoPointer = -1
+    private var backspaceUndoStartX = 0f
+    private var backspaceUndoStartY = 0f
+    private var backspaceUndoTriggered = false
 
     /** 这一套键位能不能滑行（全键盘拼音与英文键盘，服务按当前键盘设）；还要设置里开着「滑行输入」。 */
     var swipeLayout = false
@@ -274,7 +283,11 @@ class KeyboardView(
                 tapFeedback()
                 when {
                     slot.key == Key.Backspace -> {
-                        if (settings.flickClear) listener.onBackspaceDown()
+                        listener.onBackspaceDown()
+                        backspaceUndoPointer = pointer
+                        backspaceUndoStartX = event.getX(index)
+                        backspaceUndoStartY = event.getY(index)
+                        backspaceUndoTriggered = false
                         listener.onKey(Key.Backspace)
                         timer.postDelayed(repeatBackspace, REPEAT_DELAY_MS)
                     }
@@ -300,12 +313,20 @@ class KeyboardView(
             MotionEvent.ACTION_MOVE -> {
                 trackEditShortcut(event)
                 trackFlick(event)
+                trackBackspaceUndo(event)
                 trackSwipe(event)
                 trackChoices(event)
                 trackCursor(event)
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointer == backspaceUndoPointer && backspaceUndoTriggered) {
+                    endBackspaceUndo()
+                    pressed.remove(pointer)
+                    invalidate()
+                    return true
+                }
+                if (pointer == backspaceUndoPointer) endBackspaceUndo()
                 if (pointer == editPointer) {
                     val action = editAction.takeIf { editTriggered }
                     endEditShortcut()
@@ -373,6 +394,34 @@ class KeyboardView(
         }
         invalidate()
         return true
+    }
+
+    /** 删除键下滑撤销；先执行的单次退格和长按连删都会回到本次按下前的文本。 */
+    private fun trackBackspaceUndo(event: MotionEvent) {
+        if (backspaceUndoPointer < 0 || backspaceUndoTriggered) return
+        val at = event.findPointerIndex(backspaceUndoPointer)
+        if (at < 0) return
+        val dx = event.getX(at) - backspaceUndoStartX
+        val dy = event.getY(at) - backspaceUndoStartY
+        if (dy > metrics.density * BACKSPACE_UNDO_DP && abs(dx) < dy * BACKSPACE_UNDO_MAX_SLOPE) {
+            backspaceUndoTriggered = true
+            timer.removeCallbacks(repeatBackspace)
+            if (flickPointer == backspaceUndoPointer) endFlick()
+            if (longPressPointer == backspaceUndoPointer) {
+                timer.removeCallbacks(longPress)
+                longPressPointer = -1
+            }
+            pressed.remove(backspaceUndoPointer)
+            trail.clear()
+            listener.onUndoBackspace()
+            Haptics.hold(context)
+            invalidate()
+        }
+    }
+
+    private fun endBackspaceUndo() {
+        backspaceUndoPointer = -1
+        backspaceUndoTriggered = false
     }
 
     /** 只有从 Z/X/C/V 键开始并明显向下滑动才触发编辑操作；水平偏移过大则交还原手势。 */
@@ -574,6 +623,7 @@ class KeyboardView(
         trail.clear()
         endFlick()
         endEditShortcut()
+        endBackspaceUndo()
         timer.removeCallbacks(repeatBackspace)
         timer.removeCallbacks(longPress)
         timer.removeCallbacks(spaceHold)
@@ -614,6 +664,8 @@ class KeyboardView(
         /** 往上划多远算上滑：点按时手指一般挪不到 10dp，再长短距离一划就够不着。 */
         const val FLICK_DP = 18f
         const val EDIT_SWIPE_DP = 26f
+        const val BACKSPACE_UNDO_DP = 26f
+        const val BACKSPACE_UNDO_MAX_SLOPE = 1.35f
         const val EDIT_SWIPE_MAX_SLOPE = 1.35f
 
         /**

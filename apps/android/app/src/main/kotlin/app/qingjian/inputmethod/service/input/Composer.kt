@@ -67,8 +67,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键按下时在组句（见 [onBackspaceDown]）。 */
     private var backspaceComposing = false
 
-    /** 删除键按下时光标前的文字，上划清空的撤销用；组句中为 null。 */
-    private var beforeBackspace: String? = null
+    /** 删除键按下前的输入框快照；仅保存在内存，供下滑撤销当前退格/连续删除。 */
+    private var backspaceSnapshot: Pair<String, Int>? = null
 
     /** 这个输入框不过引擎，见 [wantsDirectInput]。 */
     var directInput = false
@@ -437,17 +437,53 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showComposition("", frame.candidates)
     }
 
-    /** 删除键按下时记录状态；清空动作本身统一处理整个输入框。 */
+    /** 删除键按下时记录整个输入框与光标位置，供本次手势下滑撤销。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
-        beforeBackspace = null
+        val connection = host.connection ?: return
+        val before = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        val after = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
+        backspaceSnapshot = (before + after) to before.length
+    }
+
+    /** 删除键下滑：恢复本次按下前的文本与光标位置；组句状态同步重置，避免引擎继续显示旧拼音。 */
+    fun undoBackspace() {
+        val snapshot = backspaceSnapshot ?: return
+        val connection = host.connection ?: return
+        backspaceSnapshot = null
+        connection.beginBatchEdit()
+        try {
+            if (connection.performContextMenuAction(android.R.id.selectAll)) {
+                connection.commitText("", 1)
+            } else {
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.length ?: 0
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.length ?: 0
+                connection.deleteSurroundingText(before, after)
+            }
+            connection.commitText(snapshot.first, 1)
+            val caret = snapshot.second.coerceIn(0, snapshot.first.length)
+            connection.setSelection(caret, caret)
+        } finally {
+            connection.endBatchEdit()
+        }
+        preedit = ""
+        sentPreedits.clear()
+        composingLost = false
+        pinyinChoices = emptyList()
+        expression = false
+        candidates = emptyList()
+        completing = false
+        backspaceComposing = false
+        engine.reset()
+        host.showSideItems(emptyList())
+        host.showComposition("", emptyList())
     }
 
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
         backspaceComposing = false
-        beforeBackspace = null
+        backspaceSnapshot = null
         connection.beginBatchEdit()
         try {
             if (connection.performContextMenuAction(android.R.id.selectAll)) {
@@ -702,6 +738,9 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         /** 上划清空最多删光标前几个字（UTF-16 单位）：再长的文档一次删不完，再划一次。 */
         const val MAX_CLEAR = 5000
+
+        /** 下滑撤销时读取的光标前后文本上限（UTF-16 单位）。 */
+        const val MAX_UNDO_CONTEXT = 10000
 
         /** 日语里当长音敲的键。 */
         val LONG_VOWEL = setOf("-", "ー")
