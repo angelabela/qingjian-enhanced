@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD }
 
     private val path = Path()
     private val oval = RectF()
@@ -49,6 +49,9 @@ object PanelIcons {
             Icon.PHRASES -> phrases()
             Icon.TUNE -> tune()
             Icon.MINUS -> polyline(5f, 12f, 19f, 12f)
+            Icon.TRADITIONAL -> traditional()
+            Icon.LEFT_HAND -> leftHand()
+            Icon.GAMEPAD -> gamepad()
         }
         val scale = size / 24f
         canvas.save()
@@ -246,6 +249,41 @@ object PanelIcons {
         circle(9f, 6.5f, 2f)
         circle(15.5f, 12f, 2f)
         circle(7.5f, 17.5f, 2f)
+    }
+
+    /** 繁体/文字转换：两张文字页与双向转换箭头，不用汉字充当图标。 */
+    private fun traditional() {
+        polyline(5f, 4f, 5f, 20f, 19f, 20f, 19f, 4f, 5f, 4f)
+        polyline(8f, 8f, 16f, 8f)
+        polyline(8f, 11.5f, 14f, 11.5f)
+        polyline(8f, 15f, 13f, 15f)
+        polyline(15f, 10f, 18f, 13f, 15f, 16f)
+    }
+
+    /** 左手布局：向左的方向箭头与手掌轮廓。 */
+    private fun leftHand() {
+        polyline(14f, 5f, 7f, 12f, 14f, 19f)
+        polyline(7f, 12f, 20f, 12f)
+        polyline(4f, 9f, 4f, 15f, 7f, 18f, 10f, 18f)
+    }
+
+    /** 游戏键盘：手柄轮廓、方向键与双按键。 */
+    private fun gamepad() {
+        path.moveTo(7f, 8f)
+        path.lineTo(17f, 8f)
+        path.quadTo(20f, 8f, 20.5f, 12f)
+        path.lineTo(21f, 17f)
+        path.quadTo(21f, 20f, 18f, 18.5f)
+        path.lineTo(15.5f, 15.5f)
+        path.lineTo(8.5f, 15.5f)
+        path.lineTo(6f, 18.5f)
+        path.quadTo(3f, 20f, 3f, 17f)
+        path.lineTo(3.5f, 12f)
+        path.quadTo(4f, 8f, 7f, 8f)
+        polyline(7f, 10.5f, 7f, 14.5f)
+        polyline(5f, 12.5f, 9f, 12.5f)
+        circle(15.5f, 11.5f, 1f)
+        circle(18f, 13.5f, 1f)
     }
 
     private fun info() {
