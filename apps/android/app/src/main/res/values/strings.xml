@@ -293,7 +293,7 @@
     <string name="settings_backup_section">设置备份与恢复</string>
     <string name="settings_backup_title">备份设置</string>
     <string name="settings_restore_title">恢复设置</string>
-    <string name="settings_backup_note">备份键盘布局、按键手势、外观、词库开关、语音和云端设置。API 密钥以 Android Keystore 加密密文保存，只有原设备保留原密钥时才能恢复，请妥善保管备份文件。</string>
+    <string name="settings_backup_note">备份键盘布局、按键手势、外观、词库开关、语音和云端设置，并包含常用短语。API 密钥以 Android Keystore 加密密文保存，只有原设备保留原密钥时才能恢复，请妥善保管备份文件。</string>
     <string name="settings_backup_done">已备份 %1$d 组设置</string>
     <string name="settings_restore_done">已恢复 %1$d 组设置，建议重新打开输入法确认生效</string>
     <string name="logs_section">日志</string>
