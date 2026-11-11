@@ -217,7 +217,6 @@ impl Session {
     }
 }
 
-
 /// 常见网址补全：光标前以独立的「www.」开头时，按已输入的域名前缀给候选。
 /// 只追加尚未输入的部分，选中后不会重复写入「www.」或用户已敲的字母。
 const COMMON_WEB_DOMAINS: &[&str] = &[
@@ -249,7 +248,10 @@ fn url_completions(before: &str) -> Vec<(String, String)> {
     {
         return Vec::new();
     }
-    if !typed.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')) {
+    if !typed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+    {
         return Vec::new();
     }
     let typed = typed.to_ascii_lowercase();
