@@ -49,6 +49,9 @@ object PanelIcons {
             Icon.PHRASES -> phrases()
             Icon.TUNE -> tune()
             Icon.MINUS -> polyline(5f, 12f, 19f, 12f)
+            Icon.TRADITIONAL -> traditional()
+            Icon.LEFT_HAND -> leftHand()
+            Icon.GAMEPAD -> gamepad()
         }
         val scale = size / 24f
         canvas.save()
@@ -246,6 +249,59 @@ object PanelIcons {
         circle(9f, 6.5f, 2f)
         circle(15.5f, 12f, 2f)
         circle(7.5f, 17.5f, 2f)
+    }
+
+    /** 繁体转换：两张文字卡片与双向转换箭头，不使用单个汉字冒充图标。 */
+    private fun traditional() {
+        oval.set(3.5f, 5f, 15.5f, 20f)
+        path.addRoundRect(oval, 2f, 2f, Path.Direction.CW)
+        polyline(6.5f, 9f, 12.5f, 9f)
+        polyline(6.5f, 12f, 11f, 12f)
+        polyline(17f, 7f, 20.5f, 10.5f, 17f, 14f)
+        polyline(20.5f, 10.5f, 14.5f, 10.5f)
+        polyline(7f, 16f, 11f, 16f)
+    }
+
+    /** 左手布局：手掌与拇指轮廓。 */
+    private fun leftHand() {
+        path.moveTo(8f, 20f)
+        path.lineTo(5.5f, 15f)
+        path.quadTo(4.5f, 13f, 6.5f, 12f)
+        path.lineTo(9f, 14f)
+        path.lineTo(8f, 6f)
+        path.quadTo(8f, 3.5f, 10f, 3.5f)
+        path.quadTo(12f, 3.5f, 12f, 6f)
+        path.lineTo(12.5f, 12f)
+        path.lineTo(13.5f, 5.5f)
+        path.quadTo(14f, 3.5f, 16f, 4f)
+        path.quadTo(18f, 4.5f, 17.5f, 7f)
+        path.lineTo(17f, 13f)
+        path.lineTo(18.5f, 9f)
+        path.quadTo(19.5f, 7.5f, 21f, 8.5f)
+        path.quadTo(22f, 9.5f, 21f, 12f)
+        path.lineTo(19f, 18f)
+        path.quadTo(18f, 21f, 15f, 21f)
+        path.close()
+    }
+
+    /** 游戏键盘：手柄外框、方向键与两个功能键。 */
+    private fun gamepad() {
+        path.moveTo(7f, 8f)
+        path.lineTo(17f, 8f)
+        path.quadTo(20f, 8f, 21f, 12f)
+        path.lineTo(22f, 17f)
+        path.quadTo(22f, 20f, 19f, 20f)
+        path.lineTo(15.5f, 16.5f)
+        path.lineTo(8.5f, 16.5f)
+        path.lineTo(5f, 20f)
+        path.quadTo(2f, 20f, 2f, 17f)
+        path.lineTo(3f, 12f)
+        path.quadTo(4f, 8f, 7f, 8f)
+        path.close()
+        polyline(7f, 10.5f, 7f, 15f)
+        polyline(4.8f, 12.8f, 9.2f, 12.8f)
+        circle(16.5f, 11.5f, 1f)
+        circle(19f, 14.5f, 1f)
     }
 
     private fun info() {
