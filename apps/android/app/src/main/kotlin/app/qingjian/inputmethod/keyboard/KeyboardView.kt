@@ -64,8 +64,11 @@ class KeyboardView(
         /** 删除键按下（在它删字之前）：上划清空的撤销要记下这一刻光标前的文字。 */
         fun onBackspaceDown()
 
-        /** 在删除键上往上一划（开着「上划删除键清空」）：清空整个输入框，不受光标位置与选区影响。 */
+        /** 在删除键上往上一划：清空整个输入框。 */
         fun onClearAll()
+
+        /** 在删除键上下划：恢复上一次整框清空前的内容。 */
+        fun onRestoreLastClear()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -83,10 +86,6 @@ class KeyboardView(
     private val repeatBackspace = object : Runnable {
         override fun run() {
             // 已经连删起来了：这一笔不再当上划清空，连删时手指往上偏一点不会把整段删掉
-            if (flickSlot?.key == Key.Backspace) {
-                flickBroken = true
-                flickArmed = false
-            }
             listener.onKey(Key.Backspace)
             timer.postDelayed(this, REPEAT_INTERVAL_MS)
         }
@@ -131,6 +130,8 @@ class KeyboardView(
     private var flickY = 0f
     private var flickArmed = false
     private var flickBroken = false
+    /** 删除键滑动方向：1 上滑清空，-1 下滑恢复，0 尚未锁定。 */
+    private var flickDirection = 0
 
     /** Z/X/C/V 键向下滑动手势；未达到阈值时仍按原有点按/滑行逻辑处理。 */
     private var editPointer = -1
@@ -270,6 +271,7 @@ class KeyboardView(
                     flickY = event.getY(index)
                     flickArmed = false
                     flickBroken = false
+                    flickDirection = 0
                 }
                 tapFeedback()
                 when {
@@ -445,11 +447,28 @@ class KeyboardView(
 
     private fun followFlick(x: Float, y: Float) {
         if (flickBroken) return
-        val up = flickY - y
+        val vertical = flickY - y // 正数为上滑，负数为下滑
         val side = abs(x - flickX)
+        val distance = hypot(x - flickX, vertical)
         // 按下附近的抖动不算方向
-        if (hypot(x - flickX, up) < metrics.density * TRACK_SLOP_DP) return
-        if (up <= 0f || side > up * FLICK_SLOPE) {
+        if (distance < metrics.density * TRACK_SLOP_DP) return
+
+        val isBackspace = flickSlot?.key == Key.Backspace
+        if (flickDirection == 0) {
+            if (side > abs(vertical) * FLICK_SLOPE || vertical == 0f || (vertical < 0f && !isBackspace)) {
+                flickBroken = true
+                flickArmed = false
+                return
+            }
+            flickDirection = if (vertical > 0f) 1 else -1
+        } else if ((vertical > 0f && flickDirection < 0) || (vertical < 0f && flickDirection > 0)) {
+            // 方向一旦确定就不允许中途反向，避免误触发。
+            flickBroken = true
+            flickArmed = false
+            return
+        }
+
+        if (side > abs(vertical) * FLICK_SLOPE) {
             flickBroken = true
             flickArmed = false
             return
@@ -458,9 +477,9 @@ class KeyboardView(
             timer.removeCallbacks(longPress)
             longPressPointer = -1
         }
-        flickArmed = up > metrics.density * FLICK_DP
-        // 删除键往上划够了：不再连删，抬手清空
-        if (flickArmed && flickSlot?.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
+        flickArmed = abs(vertical) > metrics.density * FLICK_DP
+        // 删除键达到任一方向的阈值后停止连删，抬手执行清空或恢复。
+        if (flickArmed && isBackspace) timer.removeCallbacks(repeatBackspace)
     }
 
     private fun endFlick() {
@@ -468,9 +487,11 @@ class KeyboardView(
         flickSlot = null
         flickArmed = false
         flickBroken = false
+        flickDirection = 0
     }
 
     private fun flick(key: Key) = when {
+        key == Key.Backspace && flickDirection < 0 -> listener.onRestoreLastClear()
         key == Key.Backspace -> listener.onClearAll()
         (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
         else -> key.flick?.let(listener::onKeyChoice)
