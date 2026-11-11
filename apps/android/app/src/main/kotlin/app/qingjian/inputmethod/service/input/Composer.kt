@@ -438,7 +438,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun refreshCompletions() {
         if (composing || !engine.ready) return
         val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
-        if (!completing && '@' !in before && before.lastOrNull()?.let(engine::mayEndCalculation) != true) return
+        if (!completing && '@' !in before && !before.contains("www.", ignoreCase = true) && before.lastOrNull()?.let(engine::mayEndCalculation) != true) return
         val frame = engine.complete(before)
         completing = frame.candidates.isNotEmpty()
         host.showComposition("", frame.candidates)
