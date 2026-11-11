@@ -2,7 +2,7 @@
 
 use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, Theme};
 
-use super::{StripHit, StripMeta, has_emoji, preedit, rows};
+use super::{StripHit, StripMeta, has_emoji, rows};
 use crate::appearance;
 use crate::error::AndroidError;
 use crate::frame::Frame;
@@ -69,7 +69,8 @@ impl StripPainter {
             .map(|(i, _)| i)
             .collect();
         self.content = RenderFrame {
-            preedit: (!frame.preedit.is_empty()).then(|| preedit(frame)),
+            // Android 候选栏只显示候选词，不重复显示正在输入框中的拼音/英文字母。
+            preedit: None,
             rows: rows(&frame.candidates, self.text_scale, |text, size| {
                 self.renderer.measure_points(text, size)
             }),
