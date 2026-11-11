@@ -5,6 +5,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.ExtractedTextRequest
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
 import app.qingjian.inputmethod.core.frame.Candidate
@@ -20,6 +21,11 @@ import kotlin.math.abs
  * 不碰视图，也不管服务的生命周期。
  */
 class Composer(private val engine: Engine, private val host: Host) {
+    private data class ClearSnapshot(val text: String, val selectionStart: Int, val selectionEnd: Int)
+
+    /** 上滑清空前保存的完整输入框内容与选区；下滑恢复只消费这一份快照。 */
+    private var lastClearSnapshot: ClearSnapshot? = null
+
     private val handler = Handler(Looper.getMainLooper())
 
     interface Host {
@@ -189,6 +195,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        // 清空后若用户开始新的输入，旧快照失效；退格按下本身不能提前清掉快照。
+        if (key != Key.Backspace) lastClearSnapshot = null
         // 候选条上放着电话邮箱或「撤销」时，删除、重输先只收起它们，不动输入框里的字
         if ((key == Key.Backspace || key == Key.Clear) && !composing && completing && engine.hasOffer()) {
             apply(engine.clear())
@@ -441,6 +449,38 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun onBackspaceDown() {
         backspaceComposing = composing
         beforeBackspace = null
+        val connection = host.connection ?: return
+        // 必须在 ACTION_DOWN 的第一次普通退格之前取快照，否则首字符已经被删掉。
+        val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString() ?: return
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString() ?: return
+        val text = before + selected + after
+        if (text.isNotEmpty()) {
+            lastClearSnapshot = ClearSnapshot(text, before.length, before.length + selected.length)
+        }
+    }
+
+    /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
+    fun restoreLastClear() {
+        val snapshot = lastClearSnapshot ?: return
+        val connection = host.connection ?: return
+        // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
+        apply(engine.clear())
+        connection.beginBatchEdit()
+        try {
+            if (!connection.performContextMenuAction(android.R.id.selectAll)) {
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.length ?: 0
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.length ?: 0
+                if (before > 0 || after > 0) connection.deleteSurroundingText(before, after)
+            }
+            connection.commitText(snapshot.text, 1)
+            val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
+            val end = snapshot.selectionEnd.coerceIn(start, snapshot.text.length)
+            connection.setSelection(start, end)
+        } finally {
+            connection.endBatchEdit()
+        }
+        lastClearSnapshot = null
     }
 
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
