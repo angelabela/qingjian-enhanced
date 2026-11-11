@@ -450,9 +450,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         beforeBackspace = null
         val connection = host.connection ?: return
         // 必须在 ACTION_DOWN 的第一次普通退格之前取快照，否则首字符已经被删掉。
-        val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString() ?: return
+        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
         val selected = connection.getSelectedText(0)?.toString().orEmpty()
-        val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString() ?: return
+        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
         val text = before + selected + after
         if (text.isNotEmpty()) {
             lastClearSnapshot = ClearSnapshot(text, before.length, before.length + selected.length)
@@ -739,8 +739,11 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 补全看光标前多少个字：用户名加域名前缀够了。 */
         const val COMPLETION_CONTEXT = 80
 
-        /** 上划清空最多删光标前几个字（UTF-16 单位）：再长的文档一次删不完，再划一次。 */
+        /** 每轮清空最多删除的 UTF-16 单位；循环最多 100 轮。 */
         const val MAX_CLEAR = 5000
+
+        /** 撤销快照读取范围，与整框清空的最多删除量（100 轮）一致。 */
+        const val MAX_SNAPSHOT = MAX_CLEAR * 100
 
         /** 日语里当长音敲的键。 */
         val LONG_VOWEL = setOf("-", "ー")
