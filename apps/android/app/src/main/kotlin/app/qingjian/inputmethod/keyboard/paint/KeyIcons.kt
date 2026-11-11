@@ -58,6 +58,30 @@ object KeyIcons {
         p.lineTo(12f, 14.5f)
     }
 
+    /** Z/X/C/V 下滑手势的向下箭头提示。 */
+    fun drawDownFlick(canvas: Canvas, cx: Float, cy: Float, size: Float, paint: Paint) {
+        path.rewind()
+        path.moveTo(12f, 3.5f)
+        path.lineTo(12f, 19f)
+        path.moveTo(6.5f, 13.5f)
+        path.lineTo(12f, 19f)
+        path.lineTo(17.5f, 13.5f)
+        val scale = size / 24f
+        canvas.save()
+        canvas.translate(cx - size / 2f, cy - size / 2f)
+        canvas.scale(scale, scale)
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.2f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        canvas.drawPath(path, paint)
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+        canvas.restore()
+    }
+
     private fun enter(p: Path) {
         p.moveTo(19f, 6f)
         p.lineTo(19f, 14f)
