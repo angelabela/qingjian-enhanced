@@ -60,7 +60,7 @@ class CandidateBarView(
     }
 
     private val density = resources.displayMetrics.density
-    val barHeight = 54f * density * maxOf(1f, textScale)
+    val barHeight = 65f * density * maxOf(1f, textScale)
     private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss)
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(

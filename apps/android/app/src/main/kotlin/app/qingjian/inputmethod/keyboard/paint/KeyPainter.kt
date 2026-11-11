@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.keyboard.paint
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import app.qingjian.inputmethod.keyboard.ShiftState
 import app.qingjian.inputmethod.keyboard.SideColumn
@@ -21,6 +22,12 @@ class KeyPainter(
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val bubble = RectF()
+    private val gesturePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val gesturePath = Path()
 
     var shift = ShiftState.OFF
     var chinese = true
@@ -108,6 +115,61 @@ class KeyPainter(
                 text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY())
             }
         }
+        if (key is Key.Letter) {
+            when (key.char.lowercaseChar()) {
+                'z', 'x', 'c', 'v' -> drawEditGestureHint(canvas, key.char.lowercaseChar(), bounds)
+            }
+        }
+    }
+
+    /** ZXCV 键右下角显示对应编辑操作的小图标和下滑箭头。 */
+    private fun drawEditGestureHint(canvas: Canvas, shortcut: Char, bounds: RectF) {
+        val d = density
+        val cx = bounds.right - 8.5f * d
+        val cy = bounds.bottom - 10f * d
+        gesturePaint.color = palette.gloss
+        gesturePaint.strokeWidth = 1.15f * d
+        gesturePaint.style = Paint.Style.STROKE
+        gesturePath.rewind()
+        when (shortcut) {
+            'z' -> {
+                // 全选：四角框选符号
+                gesturePath.moveTo(cx - 3.4f*d, cy - 2.4f*d); gesturePath.lineTo(cx - 1.7f*d, cy - 2.4f*d)
+                gesturePath.moveTo(cx - 3.4f*d, cy - 2.4f*d); gesturePath.lineTo(cx - 3.4f*d, cy - 0.7f*d)
+                gesturePath.moveTo(cx + 3.4f*d, cy - 2.4f*d); gesturePath.lineTo(cx + 1.7f*d, cy - 2.4f*d)
+                gesturePath.moveTo(cx + 3.4f*d, cy - 2.4f*d); gesturePath.lineTo(cx + 3.4f*d, cy - 0.7f*d)
+                gesturePath.moveTo(cx - 3.4f*d, cy + 0.8f*d); gesturePath.lineTo(cx - 3.4f*d, cy + 2.4f*d)
+                gesturePath.moveTo(cx - 3.4f*d, cy + 2.4f*d); gesturePath.lineTo(cx - 1.7f*d, cy + 2.4f*d)
+                gesturePath.moveTo(cx + 3.4f*d, cy + 0.8f*d); gesturePath.lineTo(cx + 3.4f*d, cy + 2.4f*d)
+                gesturePath.moveTo(cx + 3.4f*d, cy + 2.4f*d); gesturePath.lineTo(cx + 1.7f*d, cy + 2.4f*d)
+            }
+            'x' -> {
+                // 剪切：剪刀
+                canvas.drawCircle(cx - 2.3f*d, cy - 2.2f*d, 1.3f*d, gesturePaint)
+                canvas.drawCircle(cx + 2.3f*d, cy - 2.2f*d, 1.3f*d, gesturePaint)
+                gesturePath.moveTo(cx - 1.5f*d, cy - 1.2f*d); gesturePath.lineTo(cx + 3.1f*d, cy + 2.7f*d)
+                gesturePath.moveTo(cx + 1.5f*d, cy - 1.2f*d); gesturePath.lineTo(cx - 3.1f*d, cy + 2.7f*d)
+            }
+            'c' -> {
+                // 复制：两张重叠纸张
+                canvas.drawRect(cx - 2.2f*d, cy - 3.0f*d, cx + 3.2f*d, cy + 2.0f*d, gesturePaint)
+                canvas.drawRect(cx - 3.3f*d, cy - 1.8f*d, cx + 2.1f*d, cy + 3.1f*d, gesturePaint)
+            }
+            'v' -> {
+                // 粘贴：剪贴板
+                canvas.drawRoundRect(cx - 3.0f*d, cy - 2.8f*d, cx + 3.0f*d, cy + 3.0f*d, 0.8f*d, 0.8f*d, gesturePaint)
+                canvas.drawRoundRect(cx - 1.4f*d, cy - 3.8f*d, cx + 1.4f*d, cy - 1.8f*d, 0.7f*d, 0.7f*d, gesturePaint)
+            }
+        }
+        canvas.drawPath(gesturePath, gesturePaint)
+        // 向下箭头表示从该键向下滑动
+        gesturePath.rewind()
+        gesturePath.moveTo(cx, bounds.bottom - 5.0f*d)
+        gesturePath.lineTo(cx, bounds.bottom - 1.8f*d)
+        gesturePath.moveTo(cx - 1.8f*d, bounds.bottom - 3.5f*d)
+        gesturePath.lineTo(cx, bounds.bottom - 1.8f*d)
+        gesturePath.lineTo(cx + 1.8f*d, bounds.bottom - 3.5f*d)
+        canvas.drawPath(gesturePath, gesturePaint)
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */

@@ -320,6 +320,8 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                // 有些触屏只给出 DOWN/UP 两帧；抬手坐标也必须参与下滑识别。
+                if (pointer == backspaceUndoPointer) trackBackspaceUndo(event)
                 if (pointer == backspaceUndoPointer && backspaceUndoTriggered) {
                     endBackspaceUndo()
                     pressed.remove(pointer)
@@ -664,8 +666,8 @@ class KeyboardView(
         /** 往上划多远算上滑：点按时手指一般挪不到 10dp，再长短距离一划就够不着。 */
         const val FLICK_DP = 18f
         const val EDIT_SWIPE_DP = 26f
-        const val BACKSPACE_UNDO_DP = 26f
-        const val BACKSPACE_UNDO_MAX_SLOPE = 1.35f
+        const val BACKSPACE_UNDO_DP = 14f
+        const val BACKSPACE_UNDO_MAX_SLOPE = 1.8f
         const val EDIT_SWIPE_MAX_SLOPE = 1.35f
 
         /**

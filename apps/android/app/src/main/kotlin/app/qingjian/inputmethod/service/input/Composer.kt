@@ -4,6 +4,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
@@ -67,8 +69,14 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键按下时在组句（见 [onBackspaceDown]）。 */
     private var backspaceComposing = false
 
-    /** 删除键按下前的输入框快照；仅保存在内存，供下滑撤销当前退格/连续删除。 */
-    private var backspaceSnapshot: Pair<String, Int>? = null
+    /** 删除键按下前的完整编辑器快照；startOffset 用于正确恢复光标绝对位置。 */
+    private data class BackspaceSnapshot(
+        val text: String,
+        val startOffset: Int,
+        val selectionStart: Int,
+        val selectionEnd: Int,
+    )
+    private var backspaceSnapshot: BackspaceSnapshot? = null
 
     /** 这个输入框不过引擎，见 [wantsDirectInput]。 */
     var directInput = false
@@ -433,36 +441,47 @@ class Composer(private val engine: Engine, private val host: Host) {
         val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
         if (!completing && '@' !in before && before.lastOrNull()?.let(engine::mayEndCalculation) != true) return
         val frame = engine.complete(before)
-        completing = frame.candidates.isNotEmpty()
-        host.showComposition("", frame.candidates)
+        // Core 的撤销 offer 不再作为候选展示；撤销统一由删除键下滑完成。
+        val visible = if (engine.hasOffer()) emptyList() else frame.candidates
+        completing = visible.isNotEmpty()
+        host.showComposition("", visible)
     }
 
-    /** 删除键按下时记录整个输入框与光标位置，供本次手势下滑撤销。 */
+    /** 删除键按下时读取编辑器快照（含绝对偏移和选区），在第一次退格前保存。 */
     fun onBackspaceDown() {
         backspaceComposing = composing
+        backspaceSnapshot = null
         val connection = host.connection ?: return
-        val before = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
-        val after = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
-        backspaceSnapshot = (before + after) to before.length
+        val request = ExtractedTextRequest().apply {
+            hintMaxChars = MAX_UNDO_CONTEXT * 4
+            hintMaxLines = 10000
+        }
+        val extracted = connection.getExtractedText(request, 0) ?: return
+        val text = extracted.text?.toString() ?: return
+        if (extracted.startOffset < 0 || extracted.selectionStart < 0 || extracted.selectionEnd < 0) return
+        backspaceSnapshot = BackspaceSnapshot(
+            text = text,
+            startOffset = extracted.startOffset,
+            selectionStart = extracted.selectionStart.coerceIn(0, text.length),
+            selectionEnd = extracted.selectionEnd.coerceIn(0, text.length),
+        )
     }
 
-    /** 删除键下滑：恢复本次按下前的文本与光标位置；组句状态同步重置，避免引擎继续显示旧拼音。 */
+    /** 删除键下滑：按编辑器返回的绝对文本偏移恢复整段文本和原选区，不依赖「全选」菜单。 */
     fun undoBackspace() {
         val snapshot = backspaceSnapshot ?: return
         val connection = host.connection ?: return
         backspaceSnapshot = null
+        val start = snapshot.startOffset
+        val end = start + snapshot.text.length
         connection.beginBatchEdit()
         try {
-            if (connection.performContextMenuAction(android.R.id.selectAll)) {
-                connection.commitText("", 1)
-            } else {
-                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.length ?: 0
-                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.length ?: 0
-                connection.deleteSurroundingText(before, after)
-            }
-            connection.commitText(snapshot.first, 1)
-            val caret = snapshot.second.coerceIn(0, snapshot.first.length)
-            connection.setSelection(caret, caret)
+            if (!connection.setSelection(start, end)) return
+            connection.commitText(snapshot.text, 1)
+            connection.setSelection(
+                start + snapshot.selectionStart,
+                start + snapshot.selectionEnd,
+            )
         } finally {
             connection.endBatchEdit()
         }
@@ -639,11 +658,11 @@ class Composer(private val engine: Engine, private val host: Host) {
         pinyinChoices = frame.pinyinChoices
         expression = frame.expression
         singleChars = frame.singleChars
-        candidates = frame.candidates
-        // 不在组句却带着候选：上屏通讯录名字后接着给的电话、邮箱，光标再动时要问 Core 还留不留
-        completing = frame.preedit.isEmpty() && frame.candidates.isNotEmpty()
+        candidates = if (engine.hasOffer()) emptyList() else frame.candidates
+        // 撤销 offer 不再占用候选栏；普通补全仍照常显示。
+        completing = frame.preedit.isEmpty() && candidates.isNotEmpty()
         host.showSideItems(pinyinChoices)
-        host.showComposition(frame.preedit, frame.candidates)
+        host.showComposition(frame.preedit, candidates)
         if (frame.notice.isNotEmpty()) host.showNotice(frame.notice)
         surrounding?.let { (before, after) -> engine.setSurrounding(before, after) }
         handler.removeCallbacks(pollPrediction)
