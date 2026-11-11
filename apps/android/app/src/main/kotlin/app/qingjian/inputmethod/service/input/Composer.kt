@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
@@ -74,6 +75,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         val after: String,
     )
     private var backspaceSnapshot: BackspaceSnapshot? = null
+
+    /** 上滑清空前的完整文本快照；与普通退格撤销分开保存。 */
+    private var clearAllSnapshot: BackspaceSnapshot? = null
 
     /** 这个输入框不过引擎，见 [wantsDirectInput]。 */
     var directInput = false
@@ -448,6 +452,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun onBackspaceDown() {
         backspaceComposing = composing
         backspaceSnapshot = null
+        clearAllSnapshot = null
         val connection = host.connection ?: return
         val before = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
         val selected = connection.getSelectedText(0)?.toString().orEmpty()
@@ -461,10 +466,32 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 在微信等编辑器中会失败或破坏光标位置。
      */
     fun undoBackspace() {
-        val snapshot = backspaceSnapshot ?: return
         val connection = host.connection ?: return
-        backspaceSnapshot = null
 
+        // 上滑清空是独立操作：必须恢复整段文字，不能走普通退格的“补回后缀”逻辑。
+        val cleared = clearAllSnapshot
+        if (cleared != null) {
+            clearAllSnapshot = null
+            backspaceSnapshot = null
+            // 只有输入框仍为空时才恢复，避免覆盖用户在清空后新输入的内容。
+            if (!connection.getTextBeforeCursor(1, 0).isNullOrEmpty() ||
+                !connection.getTextAfterCursor(1, 0).isNullOrEmpty() ||
+                !connection.getSelectedText(0).isNullOrEmpty()
+            ) return
+            connection.beginBatchEdit()
+            try {
+                connection.commitText(cleared.before, 1)
+                // 光标回到原位置（选区则回到选区起点）；不把整段文字错误地追加到末尾。
+                connection.commitText(cleared.selected + cleared.after, 0)
+            } finally {
+                connection.endBatchEdit()
+            }
+            resetAfterUndo()
+            return
+        }
+
+        val snapshot = backspaceSnapshot ?: return
+        backspaceSnapshot = null
         val currentBefore = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
         val currentAfter = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return
 
@@ -481,7 +508,11 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
+        resetAfterUndo()
+    }
 
+    /** 撤销删除后统一清理输入法内部组句状态。 */
+    private fun resetAfterUndo() {
         preedit = ""
         sentPreedits.clear()
         composingLost = false
@@ -495,9 +526,33 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showComposition("", emptyList())
     }
 
+    /** 尽量从 ExtractedText 取得整段输入框文本；不支持时退回光标前/后快照。 */
+    private fun captureEditorSnapshot(connection: InputConnection): BackspaceSnapshot? {
+        val extracted = runCatching {
+            connection.getExtractedText(ExtractedTextRequest(), 0)
+        }.getOrNull()
+        val text = extracted?.text?.toString()
+        if (text != null && extracted.startOffset == 0) {
+            val start = extracted.selectionStart.coerceIn(0, text.length)
+            val end = extracted.selectionEnd.coerceIn(start, text.length)
+            return BackspaceSnapshot(
+                text.substring(0, start),
+                text.substring(start, end),
+                text.substring(end),
+            )
+        }
+        val before = connection.getTextBeforeCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return null
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_UNDO_CONTEXT, 0)?.toString() ?: return null
+        return BackspaceSnapshot(before, selected, after)
+    }
+
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
+        // onBackspaceDown 在首次退格之前调用；优先使用那一刻的快照，
+        // 即使上滑识别前长按退格已触发过连续删除，也能恢复上滑前的整段原文。
+        clearAllSnapshot = backspaceSnapshot ?: captureEditorSnapshot(connection)
         backspaceComposing = false
         backspaceSnapshot = null
         connection.beginBatchEdit()
