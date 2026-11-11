@@ -14,8 +14,8 @@ fn sample(name: &str) -> std::path::PathBuf {
 
 fn session() -> Session {
     let engine = Engine::new(Dictionary::from_path(sample("dict.tsv")).unwrap());
-    let user_dir = std::env::temp_dir()
-        .join(format!("qingjian-completions-{}", std::process::id()));
+    let user_dir =
+        std::env::temp_dir().join(format!("qingjian-completions-{}", std::process::id()));
     Session::new(engine, sample("wubi86.tsv"), sample(""), user_dir)
 }
 
@@ -37,7 +37,10 @@ fn website_completion_filters_and_appends_only_the_missing_suffix() {
         .iter()
         .map(|candidate| candidate.text.as_str())
         .collect();
-    assert_eq!(choices, ["www.google.com", "www.github.com", "www.gmail.com"]);
+    assert_eq!(
+        choices,
+        ["www.google.com", "www.github.com", "www.gmail.com"]
+    );
     let selected = session.select(0);
     assert_eq!(selected.commit, "oogle.com");
 }
@@ -46,5 +49,10 @@ fn website_completion_filters_and_appends_only_the_missing_suffix() {
 fn website_completion_requires_a_standalone_prefix_and_no_path() {
     let mut session = session();
     assert!(session.complete("notwww.g").candidates.is_empty());
-    assert!(session.complete("www.google.com/path").candidates.is_empty());
+    assert!(
+        session
+            .complete("www.google.com/path")
+            .candidates
+            .is_empty()
+    );
 }
