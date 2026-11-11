@@ -14,7 +14,8 @@ fn sample(name: &str) -> std::path::PathBuf {
 
 fn session() -> Session {
     let engine = Engine::new(Dictionary::from_path(sample("dict.tsv")).unwrap());
-    let user_dir = std::env::temp_dir().join(format!("qingjian-completions-{}", std::process::id()));
+    let user_dir = std::env::temp_dir()
+        .join(format!("qingjian-completions-{}", std::process::id()));
     Session::new(engine, sample("wubi86.tsv"), sample(""), user_dir)
 }
 
@@ -31,7 +32,11 @@ fn email_completion_is_available_in_android_session() {
 fn website_completion_filters_and_appends_only_the_missing_suffix() {
     let mut session = session();
     let frame = session.complete("www.g");
-    let choices: Vec<&str> = frame.candidates.iter().map(|candidate| candidate.text.as_str()).collect();
+    let choices: Vec<&str> = frame
+        .candidates
+        .iter()
+        .map(|candidate| candidate.text.as_str())
+        .collect();
     assert_eq!(choices, ["www.google.com", "www.github.com", "www.gmail.com"]);
     let selected = session.select(0);
     assert_eq!(selected.commit, "oogle.com");
