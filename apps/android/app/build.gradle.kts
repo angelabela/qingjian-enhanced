@@ -107,6 +107,10 @@ val stageData by tasks.registering(Sync::class) {
         }
         // 随包领域词库（与 PC 同一份），词库页里勾选
         from(generated.resolve("dicts")) { into("dicts") }
+        // 本地含章·通变 P2C 模型：Android 也使用与桌面端相同的拼音到整句生成能力。
+        from(repoRoot.resolve("data/models/hanzhang-tongbian")) {
+            include("hanzhang-tongbian-small.qjm")
+        }
     } else {
         from(repoRoot.resolve("assets/sample")) { include("dict.tsv", "glossary-en.tsv", "english.tsv") }
     }
