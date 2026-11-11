@@ -313,7 +313,12 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         fun flushAll() = live.forEach(Engine::reset)
 
         /** 设置备份恢复常用短语后，让进程内的输入法引擎重新读取文件。 */
-        fun reloadPhrasesAll(context: Context) = live.forEach { it.reloadPhrases(userDir(context).path) }
+        fun reloadPhrasesAll(context: Context) {
+            val path = userDir(context).path
+            val reload = { live.forEach { it.reloadPhrases(path) } }
+            if (Looper.myLooper() == Looper.getMainLooper()) reload()
+            else Handler(Looper.getMainLooper()).post(reload)
+        }
 
         /**
          * 清空学习数据，返回删掉的文件数（-1 是出错）。引擎内存里的学习数据下次落盘会把删掉的写回去，
