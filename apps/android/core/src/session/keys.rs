@@ -242,7 +242,11 @@ fn url_completions(before: &str) -> Vec<(String, String)> {
     let Some((prefix, typed)) = before.rsplit_once("www.") else {
         return Vec::new();
     };
-    if prefix.chars().last().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if prefix
+        .chars()
+        .last()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return Vec::new();
     }
     if !typed.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')) {
