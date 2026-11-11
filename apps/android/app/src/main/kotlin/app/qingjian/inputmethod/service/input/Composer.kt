@@ -5,7 +5,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.InputConnection
-import android.view.inputmethod.ExtractedTextRequest
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
 import app.qingjian.inputmethod.core.frame.Candidate
