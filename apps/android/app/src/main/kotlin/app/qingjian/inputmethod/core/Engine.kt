@@ -317,7 +317,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
             val path = userDir(context).path
             val reload = { live.forEach { it.reloadPhrases(path) } }
             if (Looper.myLooper() == Looper.getMainLooper()) reload()
-            else Handler(Looper.getMainLooper()).post(reload)
+            else Handler(Looper.getMainLooper()).post { reload() }
         }
 
         /**
