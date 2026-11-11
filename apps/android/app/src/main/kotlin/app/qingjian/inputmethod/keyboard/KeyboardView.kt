@@ -85,7 +85,7 @@ class KeyboardView(
     private val timer = Handler(Looper.getMainLooper())
     private val repeatBackspace = object : Runnable {
         override fun run() {
-            // 已经连删起来了：这一笔不再当上划清空，连删时手指往上偏一点不会把整段删掉
+            // 长按期间继续普通连删；真正达到上下滑动阈值时 followFlick 会停掉连删并锁定手势。
             listener.onKey(Key.Backspace)
             timer.postDelayed(this, REPEAT_INTERVAL_MS)
         }
