@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -65,7 +64,7 @@ class AiExpressionPanel(
         }, LayoutParams(LayoutParams.MATCH_PARENT, headerHeight.toInt().coerceAtLeast(dp(48))))
         addView(ScrollView(context).apply {
             isFillViewport = true
-            addView(content, ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         addView(TextView(context).apply {
             text = "换一批表达  ↻"
