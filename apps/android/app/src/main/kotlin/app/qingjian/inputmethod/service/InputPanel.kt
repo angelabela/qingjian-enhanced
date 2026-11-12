@@ -72,8 +72,12 @@ class InputPanel(
             cornerRadius = 10 * context.resources.displayMetrics.density
         }
         visibility = View.GONE
-        setOnClickListener {
-            previewClip?.let { clip ->
+    }
+
+    init {
+        clipboardPreview.setOnClickListener {
+            val clip: ClipItem? = previewClip
+            if (clip != null) {
                 if (clip.image != null) actions.commitImage(clip.image) else actions.commitText(clip.text)
                 previewClip = null
                 clipboardPreview.text = ""
