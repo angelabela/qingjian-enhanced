@@ -88,13 +88,14 @@ class AiExpressionPanel(
             return
         }
         val request = ++requestNumber
-        status.text = "正在生成 5 种风格的表达，请稍候…"
+        status.visibility = View.VISIBLE
+        status.text = "正在生成…"
         clearGeneratedViews()
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
             clearGeneratedViews()
             result.onSuccess { groups ->
-                status.text = "点击任意一句即可直接上屏"
+                status.visibility = View.GONE
                 groups.forEach { group ->
                     content.addView(TextView(context).apply {
                         text = group.title
