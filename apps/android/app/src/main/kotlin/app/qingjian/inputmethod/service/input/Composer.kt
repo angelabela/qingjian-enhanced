@@ -209,8 +209,12 @@ class Composer(private val engine: Engine, private val host: Host) {
                     consumeShift()
                 }
 
-                composing || (engine.ready && composesLetters && !host.shift.on) ->
-                    apply(engine.push(key.char.code))
+                composing || (engine.ready && composesLetters &&
+                    (!host.shift.on || (chinese && !shuangpin && !wubi && !zhuyin))) -> {
+                    // 中文全拼下 Shift 只改变键面大小写，送进拼音引擎的字母始终保持小写。
+                    apply(engine.push(key.char.lowercaseChar().code))
+                    consumeShift()
+                }
 
                 else -> {
                     commit(if (host.shift.on) key.label.uppercase() else key.label)
@@ -263,7 +267,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             Key.Clear -> if (composing) apply(engine.clear())
 
             // 拼音、日语组句里的大写字母另有含义，组句中只有英文能换大小写
-            Key.Shift -> if (!composing || english) toggleShift()
+            Key.Shift -> if (!composing || english || (chinese && !shuangpin && !wubi && !zhuyin)) toggleShift()
 
             Key.Backspace -> if (composing) apply(engine.backspace()) else deleteBackward()
 
