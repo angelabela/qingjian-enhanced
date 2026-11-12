@@ -111,7 +111,7 @@ class KeyPainter(
                     is Key.Space -> 13f
                     else -> 15f
                 }
-                text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY() + if (key is Key.Space) 4f * density else 0f)
+                text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
             }
         }
 
@@ -161,7 +161,8 @@ class KeyPainter(
     /** 空格键上的剪贴板下滑提示：小剪贴板加向下箭头，不遮挡「青简」键名。 */
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
         val cx = bounds.centerX()
-        val top = bounds.top + 3f * density
+        // 图标放在空格文字下方，贴近键面底边，不占用键名上方空间。
+        val top = bounds.bottom - 16f * density
         val w = 8f * density
         val h = 9f * density
         gestureHint.color = palette.gloss
