@@ -111,7 +111,7 @@ fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
     assert_eq!(rendered[0].text, "\\u{3000}");
     assert_eq!(rendered[1].text, "本地候选");
 }
- 
+
 #[test]
 fn pinned_syllables_are_their_own_underlined_segment() {
     let frame = Frame {
