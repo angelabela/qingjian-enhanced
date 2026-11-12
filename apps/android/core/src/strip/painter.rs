@@ -99,7 +99,9 @@ impl StripPainter {
         dark: bool,
     ) -> Result<StripMeta, AndroidError> {
         self.content.highlighted = highlighted.and_then(|original| {
-            self.candidate_indices.iter().position(|&index| index == original)
+            self.candidate_indices
+                .iter()
+                .position(|&index| index == original)
         });
         let theme = if dark { &self.dark } else { &self.light };
         let rendered = self
