@@ -197,7 +197,6 @@ fn segment_chunk(chunk: &str, allow_partial: bool) -> Vec<Segmentation> {
     result
 }
 
-
 /// 把连续输入按每个拼音音节的首字母另切一遍，作为全拼切分之外的简拼备选。
 /// 零声母音节用 a / e / o 表示；声母按最短优先，保留 zh 与 z+h 等歧义读法。
 pub fn segment_abbreviations(input: &str) -> Vec<Segmentation> {
@@ -269,7 +268,10 @@ mod tests {
             .iter()
             .map(ToString::to_string)
             .collect();
-        assert!(joined.contains(&"z… h… h… r… m… g… h… g…".to_owned()), "{joined:?}");
+        assert!(
+            joined.contains(&"z… h… h… r… m… g… h… g…".to_owned()),
+            "{joined:?}"
+        );
     }
 
     #[test]
