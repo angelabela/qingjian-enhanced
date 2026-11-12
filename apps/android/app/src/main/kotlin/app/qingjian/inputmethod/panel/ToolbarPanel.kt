@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.RectF
+import android.view.MotionEvent
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
@@ -33,6 +34,9 @@ class ToolbarPanel(
 
     /** 正在编辑的工具栏，点 ✓ 才存。 */
     private var placed = saved
+
+    private var draggingTool: ToolbarTool? = null
+    private var draggingIndex = -1
 
     private val sectionTitle get() = ink.dp(34f)
     private val cellHeight get() = ink.dp(68f)
@@ -95,6 +99,55 @@ class ToolbarPanel(
     override fun onBack() {
         actions.closePanel()
         if (placed != saved) actions.setChoice(Settings.KEY_TOOLBAR, ToolbarTool.format(placed))
+    }
+
+    override fun onHold(x: Float, y: Float, rawX: Float) {
+        if (!card.contains(x, y)) return
+        val inContent = y - card.top + scroll.offset
+        // 仅拖动上方已放置的项目；下方全部工具仍通过点按添加或移除。
+        if (inContent < sectionTitle || inContent >= allTop || placed.isEmpty()) return
+        val column = ((x - card.left) / cellWidth()).toInt().coerceIn(0, columns - 1)
+        val row = ((inContent - sectionTitle) / cellHeight).toInt()
+        val index = row * columns + column
+        draggingTool = placed.getOrNull(index) ?: return
+        draggingIndex = index
+        invalidate()
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        val handled = super.onTouchEvent(event)
+        if (draggingTool != null) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (placed.isNotEmpty()) {
+                        val inContent = (event.y - card.top + scroll.offset)
+                            .coerceIn(sectionTitle, (allTop - 1f).coerceAtLeast(sectionTitle))
+                        val column = ((event.x.coerceIn(card.left, card.right - 1f) - card.left) / cellWidth())
+                            .toInt().coerceIn(0, columns - 1)
+                        val row = ((inContent - sectionTitle) / cellHeight).toInt()
+                        val target = (row * columns + column).coerceIn(0, placed.lastIndex)
+                        val from = placed.indexOf(draggingTool)
+                        if (from >= 0 && target != from) {
+                            val reordered = placed.toMutableList()
+                            val moving = reordered.removeAt(from)
+                            reordered.add(target.coerceIn(0, reordered.size), moving)
+                            placed = reordered
+                            draggingIndex = target
+                        }
+                    }
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // 松手后保持当前顺序，点击表头完成键时写入设置。
+                    draggingTool = null
+                    draggingIndex = -1
+                    invalidate()
+                }
+            }
+            return true
+        }
+        return handled
     }
 
     override fun onTap(x: Float, y: Float) {
