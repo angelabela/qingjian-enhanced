@@ -89,10 +89,10 @@ class AiExpressionPanel(
         }
         val request = ++requestNumber
         status.text = "正在生成 5 种风格的表达，请稍候…"
-        content.removeViews(1, (content.childCount - 1).coerceAtLeast(0))
+        clearGeneratedViews()
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
-            content.removeViews(3, (content.childCount - 3).coerceAtLeast(0))
+            clearGeneratedViews()
             result.onSuccess { groups ->
                 status.text = "点击任意一句即可直接上屏"
                 groups.forEach { group ->
@@ -123,6 +123,13 @@ class AiExpressionPanel(
             }.onFailure {
                 status.text = it.message ?: "生成失败，请检查网络和云端配置"
             }
+        }
+    }
+
+    /** 第 0 个子项始终是状态栏；安全清理其余动态生成的结果项。 */
+    private fun clearGeneratedViews() {
+        while (content.childCount > 1) {
+            content.removeViewAt(content.childCount - 1)
         }
     }
 

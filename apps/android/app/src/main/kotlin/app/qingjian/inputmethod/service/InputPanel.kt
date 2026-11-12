@@ -17,7 +17,6 @@ import app.qingjian.inputmethod.candidates.CloudSuggestionsView
 import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
-import app.qingjian.inputmethod.core.store.ClipItem
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
@@ -60,32 +59,6 @@ class InputPanel(
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     val keyboard = KeyboardView(context, palette, settings, keyboardListener)
 
-    private var previewClip: ClipItem? = null
-    private val clipboardPreview = TextView(context).apply {
-        textSize = 13f
-        setTextColor(palette.text)
-        gravity = Gravity.CENTER_VERTICAL
-        maxLines = 1
-        setPadding((12 * context.resources.displayMetrics.density).toInt(), (7 * context.resources.displayMetrics.density).toInt(), (12 * context.resources.displayMetrics.density).toInt(), (7 * context.resources.displayMetrics.density).toInt())
-        background = GradientDrawable().apply {
-            setColor(palette.surface)
-            cornerRadius = 10 * context.resources.displayMetrics.density
-        }
-        visibility = View.GONE
-    }
-
-    init {
-        clipboardPreview.setOnClickListener {
-            val clip: ClipItem? = previewClip
-            if (clip != null) {
-                if (clip.image != null) actions.commitImage(clip.image) else actions.commitText(clip.text)
-                previewClip = null
-                clipboardPreview.text = ""
-                clipboardPreview.visibility = View.GONE
-            }
-        }
-    }
-
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
         private set
@@ -100,7 +73,6 @@ class InputPanel(
         clipToPadding = false
         addView(cloudSuggestions)
         addView(bar)
-        addView(clipboardPreview)
         addView(keyboard)
     }
 
@@ -185,23 +157,6 @@ class InputPanel(
     fun showEditor(editor: View?) {
         root.getChildAt(0)?.takeIf { it is FloatingEditor }?.let(root::removeView)
         editor?.let { root.addView(it, 0) }
-    }
-
-    /** 清除临时的一键粘贴提示；剪贴板管理面板的历史记录不受影响。 */
-    fun hideClipboardPreview() {
-        previewClip = null
-        clipboardPreview.text = ""
-        clipboardPreview.visibility = View.GONE
-    }
-
-    /** 显示系统当前剪贴板的临时预览；粘贴后立即隐藏，不要求先写入历史记录。 */
-    fun showClipboardPreview(clip: ClipItem) {
-        previewClip = clip
-        clipboardPreview.text = when {
-            clip.image != null -> "📋 图片剪贴板 · 点击直接粘贴"
-            else -> "📋 ${clip.text.replace("\n", " ").replace("\r", " ").take(100)}"
-        }
-        clipboardPreview.visibility = View.VISIBLE
     }
 
     /** 刷新剪贴板管理面板；临时预览由 ClipboardWatcher 单独更新。 */

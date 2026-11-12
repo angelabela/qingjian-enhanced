@@ -164,7 +164,6 @@ class QingjianInputMethodService :
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         cloud.start()
-        clipboardWatcher.onChanged = { clip -> if (isInputViewShown) panel?.showClipboardPreview(clip) }
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
@@ -284,7 +283,7 @@ class QingjianInputMethodService :
         cloud.sync()
         // 上次读通讯录时系统给了空结果（「仅在使用中允许」时后台读不到），键盘弹出时再读
         contacts.retryIfEmpty()
-        // 键盘弹出时读取系统当前剪贴板，显示最新一条临时提示；粘贴后会立即隐藏。
+        // 键盘弹出时按设置补录剪贴板历史，不显示临时提示。
         clipboardWatcher.capture()
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
         ClipboardSync.apply(this)
@@ -316,7 +315,6 @@ class QingjianInputMethodService :
         voice.cancel()
         closeEditor()
         panel?.close()
-        panel?.hideClipboardPreview()
         composer.abandon()
     }
 
@@ -425,8 +423,6 @@ class QingjianInputMethodService :
         }
         if (currentInputConnection?.performContextMenuAction(actionId) != true) {
             toast("当前输入框暂不支持此操作")
-        } else if (action == KeyboardView.EditShortcut.PASTE) {
-            panel?.hideClipboardPreview()
         }
     }
 

@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import app.qingjian.inputmethod.core.store.ClipboardStore
-import app.qingjian.inputmethod.core.store.ClipItem
 import app.qingjian.inputmethod.settings.Settings
 import kotlin.concurrent.thread
 
@@ -34,12 +33,13 @@ class ClipboardWatcher(private val context: Context) {
     /** 读取系统当前剪贴板：预览独立于历史记录开关，键盘弹出时也能显示最新文字。 */
     fun capture() {
         val settings = Settings.load(context)
+        if (!settings.recordClipboard) return
         val clip = runCatching { manager?.primaryClip }.getOrNull() ?: return
         if (clip.itemCount == 0 || sensitive(clip.description)) return
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
-        val firstRecord = settings.recordClipboard && firstSeen(clip.description.timestamp)
+        val firstRecord = firstSeen(clip.description.timestamp)
         if (uri != null && mime?.startsWith("image/") == true) {
             if (!firstRecord) return
             thread(name = "qingjian-clipboard-image") {
@@ -49,23 +49,17 @@ class ClipboardWatcher(private val context: Context) {
                         buffer.takeIf { it.size <= MAX_IMAGE_BYTES }
                     }
                 }.getOrNull() ?: return@thread
-                val saved = ClipboardStore.addImage(context, bytes, ClipboardImageProvider.extensionOf(mime), settings.clipboardLimit)
-                ClipboardSync.changed()
-                main.post { saved.firstOrNull()?.let { onChanged?.invoke(it) } }
+                ClipboardStore.addImage(context, bytes, ClipboardImageProvider.extensionOf(mime), settings.clipboardLimit)
+                main.post { ClipboardSync.changed() }
             }
             return
         }
         val text = item.text?.toString() ?: return
-        // 历史记录按设置保存；临时预览不依赖历史记录，也不依赖是否刚刚记录过。
         if (firstRecord && text != ClipboardSync.lastReceived) {
             ClipboardStore.add(context, text, settings.clipboardLimit)
             ClipboardSync.changed()
         }
-        onChanged?.invoke(ClipItem(text, null))
     }
-
-    /** 最新剪贴板内容变化时回调；文字预览不依赖历史记录开关。 */
-    var onChanged: ((ClipItem) -> Unit)? = null
 
     /** 时间戳记在磁盘上：输入法进程会被杀，重起后系统剪贴板里还是那一份。 */
     private fun firstSeen(timestamp: Long): Boolean {
