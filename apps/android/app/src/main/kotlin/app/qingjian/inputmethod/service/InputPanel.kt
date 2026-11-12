@@ -189,7 +189,7 @@ class InputPanel(
         clipboardPreview.text = when {
             clip == null -> ""
             clip.image != null -> "📋 图片剪贴板 · 点击直接粘贴"
-            else -> "📋 ${clip.text.replace("\\n", " ").replace("\\r", " ").take(100)}"
+            else -> "📋 ${clip.text.replace("\n", " ").replace("\r", " ").take(100)}"
         }
         if (openPanel == PanelKind.CLIPBOARD) open(PanelKind.CLIPBOARD)
     }
