@@ -70,7 +70,6 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        drawCard(canvas, viewWidth)
         // 与 Windows 托盘同一张品牌标
         val logoSize = (30 * density).toInt()
         val logoCentre = (logoSlot / 2).toInt()
