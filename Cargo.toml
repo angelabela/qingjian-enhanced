@@ -5,7 +5,6 @@ members = [
     "crates/qingjian-dictionary",
     "crates/qingjian-translate",
     "crates/qingjian-learning",
-    "crates/qingjian-platform",
     "crates/qingjian-predict",
     "crates/qingjian-voice",
     "crates/qingjian-lm",
@@ -14,11 +13,9 @@ members = [
     "crates/qingjian-render",
     "crates/bamboo-slip",
     "crates/bamboo-slip-i18n",
-    "crates/qingjian-update",
-    "crates/qingjian-clipboard",
     "crates/qingjian-clipboard-sync",
     "crates/qingjian-code",
-    "apps/linux/server", "apps/linux/ibus", "apps/android/core", "apps/cli", "apps/settings", "apps/clipboard", "apps/macos", "apps/windows/server", "apps/windows/tsf", "apps/windows/settings", "tools/dict-convert", "tools/gloss-gen", "tools/release-sign",
+    "apps/android/core",
 ]
 
 [workspace.package]
