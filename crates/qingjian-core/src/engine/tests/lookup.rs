@@ -124,11 +124,11 @@ fn prefix_words_appear_after_full_matches() {
 #[test]
 fn abbreviations_match_words_with_two_three_and_many_syllables() {
     let dictionary = concat!(
-        "我爱你\\two ai ni\\t1000\\n",
-        "已回访\\tyi hui fang\\t900\\n",
-        "中国人民\\tzhong guo ren min\\t800\\n",
-        "中华人民共和国\\tzhong hua ren min gong he guo\\t700\\n",
-        "开发\\tkai fa\\t600\\n",
+        "我爱你\two ai ni\t1000\n",
+        "已回访\tyi hui fang\t900\n",
+        "中国人民\tzhong guo ren min\t800\n",
+        "中华人民共和国\tzhong hua ren min gong he guo\t700\n",
+        "开发\tkai fa\t600\n",
     );
     for (input, expected) in [
         ("kf", "开发"),
@@ -141,7 +141,6 @@ fn abbreviations_match_words_with_two_three_and_many_syllables() {
         assert!(all.iter().any(|text| text == expected), "{input}: {all:?}");
     }
 }
-
 fn texts_in(dictionary: &str, input: &str) -> Vec<String> {
     let mut engine = Engine::new(Dictionary::parse(dictionary).unwrap());
     engine.set_input(input);

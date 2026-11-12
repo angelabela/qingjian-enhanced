@@ -217,7 +217,7 @@ pub fn segment_abbreviations(input: &str) -> Vec<Segmentation> {
         }
 
         let mut lengths: Vec<usize> = initial_lengths(rest).collect();
-        if matches!(rest.as_bytes().first(), Some(b'a' | b'e' | b'o')) {
+        if matches!(rest.as_bytes()[0], b'a' | b'e' | b'o') {
             lengths.push(1);
         }
         lengths.sort_unstable();
