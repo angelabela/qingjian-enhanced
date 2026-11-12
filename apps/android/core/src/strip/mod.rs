@@ -25,9 +25,11 @@ fn rows(
     mut measure: impl FnMut(&str, f32) -> f32,
 ) -> Vec<Row> {
     let (room, size) = (MAX_GLOSS_WIDTH * text_scale, GLOSS_SIZE * text_scale);
+    // 云端联想由 Android 壳单独显示在候选栏上方，不混入本地候选条。
     candidates
         .iter()
         .enumerate()
+        .filter(|(_, candidate)| !candidate.cloud)
         .map(|(i, candidate)| {
             // emoji 由壳在词的位置上画，这里只占位：系统字体画得出彩色 emoji 时两份会叠成重影（#902）
             let text = if has_emoji(&candidate.text) {
