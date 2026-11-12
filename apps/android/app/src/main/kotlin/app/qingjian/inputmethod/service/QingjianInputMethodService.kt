@@ -285,6 +285,7 @@ class QingjianInputMethodService :
         // 上次读通讯录时系统给了空结果（「仅在使用中允许」时后台读不到），键盘弹出时再读
         contacts.retryIfEmpty()
         clipboardWatcher.capture()
+        panel?.refreshClipboard()
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
         ClipboardSync.apply(this)
         ClipboardSync.changed()
