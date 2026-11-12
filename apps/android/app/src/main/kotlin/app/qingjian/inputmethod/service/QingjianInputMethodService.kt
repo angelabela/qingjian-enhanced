@@ -587,7 +587,7 @@ class QingjianInputMethodService :
      */
     private fun rememberPhraseShortcuts(text: String) {
         if (!::composer.isInitialized || composer.privateInput || composer.directInput || !composer.chinese || text.isBlank()) return
-        val pieces = engine.textPieces(text).filter { piece -> piece.any(::isHanCodePoint) }
+        val pieces = engine.textPieces(text).filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
         if (pieces.size < 2) return
         val maxCode = PhraseRules.maxCode.takeIf { it > 0 } ?: 32
         val known = ClipboardStore.phrases(this).phrases
