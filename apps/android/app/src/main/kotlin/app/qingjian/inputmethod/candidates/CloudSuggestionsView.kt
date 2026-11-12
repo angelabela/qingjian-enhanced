@@ -1,7 +1,6 @@
 package app.qingjian.inputmethod.candidates
 
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -9,8 +8,8 @@ import android.widget.TextView
 import app.qingjian.inputmethod.theme.Palette
 
 /**
- * 云端联想独立行：只在有云端结果时显示，点击后用原始候选下标交回输入引擎。
- * 普通本地候选仍由 Rust 候选条绘制，不会被云端结果挤占位置。
+ * 云端联想独立行：无胶囊、无色块。云图标与联想文字分开布局，
+ * 点击整条结果上屏；普通候选栏继续由 Rust 单独绘制。
  */
 class CloudSuggestionsView(
     context: Context,
@@ -25,9 +24,11 @@ class CloudSuggestionsView(
 
     init {
         isHorizontalScrollBarEnabled = false
+        overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
-        setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
-        setBackgroundColor(palette.board)
+        setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
+        // 透明背景：不盖住或改变普通候选栏的主题底色。
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
     }
@@ -38,31 +39,58 @@ class CloudSuggestionsView(
             visibility = GONE
             return
         }
-        candidates.forEach { (index, text) ->
-            val shape = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 16 * density
-                setColor(palette.surface)
-                setStroke((1 * density).toInt().coerceAtLeast(1), palette.faint)
+        candidates.forEachIndexed { position, (index, suggestion) ->
+            val result = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { onSelect(index) }
+                // 只在不同联想结果之间留空，不绘制边框或背景。
+                setPadding(
+                    if (position == 0) 0 else (14 * density).toInt(),
+                    0,
+                    (10 * density).toInt(),
+                    0,
+                )
             }
-            val chip = TextView(context).apply {
-                this.text = text
-                textSize = 14f
+            val cloudIcon = TextView(context).apply {
+                text = "☁"
+                textSize = 17f
                 setTextColor(palette.cloud)
                 gravity = Gravity.CENTER
-                setPadding((12 * density).toInt(), 0, (12 * density).toInt(), 0)
-                background = shape
-                minHeight = (30 * density).toInt()
+                includeFontPadding = false
+            }
+            val label = TextView(context).apply {
+                text = suggestion
+                textSize = 14f
+                setTextColor(palette.text)
+                gravity = Gravity.CENTER_VERTICAL
+                includeFontPadding = false
                 isSingleLine = true
-                setOnClickListener { onSelect(index) }
+                setPadding((5 * density).toInt(), 0, 0, 0)
             }
-            val params = LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT,
-            ).apply {
-                marginEnd = (6 * density).toInt()
-            }
-            items.addView(chip, params)
+            result.addView(
+                cloudIcon,
+                LinearLayout.LayoutParams(
+                    (22 * density).toInt(),
+                    LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            result.addView(
+                label,
+                LinearLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT,
+                    LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            items.addView(
+                result,
+                LinearLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT,
+                    LayoutParams.MATCH_PARENT,
+                ),
+            )
         }
         visibility = VISIBLE
         scrollTo(0, 0)
