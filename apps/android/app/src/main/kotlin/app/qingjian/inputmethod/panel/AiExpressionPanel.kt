@@ -18,7 +18,8 @@ class AiExpressionPanel(
     headerHeight: Float,
     private val source: String,
     private val onGenerate: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
-    private val onCommit: (String) -> Unit,
+    private val onReplace: (String) -> Boolean,
+    private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
 ) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
@@ -33,6 +34,7 @@ class AiExpressionPanel(
         setPadding(0, dp(18), 0, dp(18))
     }
     private var requestNumber = 0
+    private var undoAction: TextView? = null
 
     init {
         orientation = VERTICAL
@@ -92,6 +94,7 @@ class AiExpressionPanel(
         status.visibility = View.VISIBLE
         status.text = "正在生成…"
         clearGeneratedViews()
+        undoAction = null
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
             clearGeneratedViews()
@@ -114,8 +117,12 @@ class AiExpressionPanel(
                             background = rounded(palette.surface, 11)
                             isClickable = true
                             setOnClickListener {
-                                onCommit(item)
-                                onClose()
+                                if (onReplace(item)) {
+                                    showUndoAction()
+                                    android.widget.Toast.makeText(context, "已替换输入框内容", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "替换失败：当前输入框不支持替换全文", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                             bottomMargin = dp(6)
@@ -128,11 +135,34 @@ class AiExpressionPanel(
         }
     }
 
+    private fun showUndoAction() {
+        if (undoAction != null) return
+        undoAction = TextView(context).apply {
+            text = "↶ 撤销本次替换"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(palette.brand)
+            background = rounded(palette.surface, 11)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            isClickable = true
+            setOnClickListener {
+                if (onUndo()) {
+                    android.widget.Toast.makeText(context, "已恢复替换前的内容", android.widget.Toast.LENGTH_SHORT).show()
+                    content.removeView(this)
+                    undoAction = null
+                } else {
+                    android.widget.Toast.makeText(context, "当前没有可撤销的替换", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        content.addView(undoAction, 1, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(7)
+        })
+    }
+
     /** 第 0 个子项始终是状态栏；安全清理其余动态生成的结果项。 */
     private fun clearGeneratedViews() {
-        while (content.childCount > 1) {
-            content.removeViewAt(content.childCount - 1)
-        }
+        while (content.childCount > 1) content.removeViewAt(1)
     }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
