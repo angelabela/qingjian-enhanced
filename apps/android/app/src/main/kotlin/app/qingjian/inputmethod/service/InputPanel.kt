@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
+import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.BottomActionsView
@@ -43,6 +44,7 @@ class InputPanel(
     private val actions: PanelActions,
     onBottomAction: (BottomAction) -> Unit,
     onCloudSelect: (Int) -> Unit,
+    onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
@@ -112,6 +114,9 @@ class InputPanel(
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.AI_EXPRESSION -> AiExpressionPanel(
+                context, palette, header, text, onGenerateAiExpression, actions::commitText, actions::closePanel,
+            )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
             // 语音面板带着回调，由 [openVoice] 盖上
