@@ -2,7 +2,7 @@
 
 use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, Theme};
 
-use super::{StripHit, StripMeta, has_emoji, preedit, rows};
+use super::{StripHit, StripMeta, has_emoji, preedit, rows, visible_indices};
 use crate::appearance;
 use crate::error::AndroidError;
 use crate::frame::Frame;
@@ -23,7 +23,10 @@ pub struct StripPainter {
     /// 最新一帧要画的内容。
     content: RenderFrame,
 
-    /// `content` 里有 emoji 的候选下标。
+    /// 渲染器的连续行下标 -> 原始候选下标（云候选被独立显示）。
+    candidate_indices: Vec<usize>,
+
+    /// 原始候选中有 emoji 的下标。
     emoji: Vec<usize>,
 
     /// 上次画的位图，等壳来拷。
@@ -41,6 +44,7 @@ impl StripPainter {
             dark: Theme::dark().with_animations(false),
             text_scale: 1.0,
             content: RenderFrame::default(),
+            candidate_indices: Vec::new(),
             emoji: Vec::new(),
             last: None,
         })
@@ -61,6 +65,7 @@ impl StripPainter {
 
     /// 记下一帧要显示的拼音、提示与候选。
     pub fn show(&mut self, frame: &Frame) {
+        self.candidate_indices = visible_indices(&frame.candidates);
         self.emoji = frame
             .candidates
             .iter()
@@ -93,7 +98,9 @@ impl StripPainter {
         scale: f32,
         dark: bool,
     ) -> Result<StripMeta, AndroidError> {
-        self.content.highlighted = highlighted.filter(|&i| i < self.content.rows.len());
+        self.content.highlighted = highlighted.and_then(|original| {
+            self.candidate_indices.iter().position(|&index| index == original)
+        });
         let theme = if dark { &self.dark } else { &self.light };
         let rendered = self
             .renderer
@@ -109,6 +116,13 @@ impl StripPainter {
                 .hits
                 .iter()
                 .filter_map(|region| StripHit::new(region, offset))
+                .map(|mut hit| {
+                    // renderer 回报过滤后连续的显示下标；壳的选择、emoji 与长按仍使用原始候选下标。
+                    if let Some(&original) = self.candidate_indices.get(hit.candidate) {
+                        hit.candidate = original;
+                    }
+                    hit
+                })
                 .collect(),
             preedit_edges: rendered.preedit.as_ref().map_or_else(Vec::new, |hit| {
                 hit.edges.iter().map(|x| x + offset.0 as f32).collect()
