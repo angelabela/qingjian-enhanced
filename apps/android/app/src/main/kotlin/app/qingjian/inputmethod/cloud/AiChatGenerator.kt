@@ -21,9 +21,9 @@ class AiChatGenerator(private val context: Context) {
         }
         execute(callback) { config, key ->
             val system = """
-你是中文聊天回复助手。根据用户提供的聊天上下文，给出恰好 3 条自然、可直接发送的中文回复。
-三条分别偏向：简洁自然、温暖友好、轻松幽默。忠于上下文，不编造事实、承诺或关系，不确定时保持中性。
-只输出严格 JSON：{"replies":["回复1","回复2","回复3"]}。不要 Markdown、序号或解释。
+你是中文聊天回复助手。根据用户提供的聊天上下文，给出恰好 5 条自然、可直接发送的中文回复。
+五条分别偏向：简洁自然、温柔体贴、轻松幽默、俏皮可爱、成熟得体。忠于上下文，不编造事实、承诺或关系，不确定时保持中性。
+只输出严格 JSON：{"replies":["回复1","回复2","回复3","回复4","回复5"]}。不要 Markdown、序号或解释。
 """.trimIndent()
             val user = JSONObject().put("context", contextText.takeLast(4000)).toString()
             val content = request(config.baseUrl, config.model, key, listOf(
@@ -37,10 +37,10 @@ class AiChatGenerator(private val context: Context) {
                 for (i in 0 until array.length()) {
                     val value = array.optString(i).trim()
                     if (value.length in 1..300) add(value)
-                    if (size == 3) break
+                    if (size == 5) break
                 }
             }
-            if (replies.size != 3) throw IllegalStateException("模型没有返回完整的 3 条回复，请重试")
+            if (replies.size != 5) throw IllegalStateException("模型没有返回完整的 5 条回复，请重试")
             replies
         }
     }
