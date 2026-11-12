@@ -499,7 +499,14 @@ class QingjianInputMethodService :
             val after = currentInputConnection?.getTextAfterCursor(1500, 0)?.toString().orEmpty()
             (before + after).takeLast(4000)
         } else ""
+        if (editor is app.qingjian.inputmethod.panel.AiChatPanel) editor = null
         panel?.open(kind, source)
+        if (kind == PanelKind.AI_CHAT) {
+            editor = panel?.aiChatEditor
+            showKeyboard()
+        } else {
+            showKeyboard()
+        }
     }
 
     override fun closePanel() {
@@ -509,7 +516,9 @@ class QingjianInputMethodService :
             return
         }
         val candidates = panel?.openPanel == PanelKind.CANDIDATES
+        if (editor is app.qingjian.inputmethod.panel.AiChatPanel) editor = null
         panel?.close()
+        showKeyboard()
         // 单字是展开面板里的筛选：收起就回到全部候选
         if (candidates && composer.singleChars) composer.toggleSingleChars()
     }
