@@ -108,7 +108,7 @@ fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
     let rendered = rows(&candidates, 1.0, chars);
     assert_eq!(rendered.len(), 2);
     // 第二条显示行对应原候选下标 2；renderer 内部只能使用连续的显示下标 0、1。
-    assert_eq!(rendered[0].text, "\\u{3000}");
+    assert_eq!(rendered[0].text, "\u{3000}");
     assert_eq!(rendered[1].text, "本地候选");
 }
 
