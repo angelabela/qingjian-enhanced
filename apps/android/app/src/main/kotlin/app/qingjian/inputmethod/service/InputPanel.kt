@@ -14,12 +14,14 @@ import android.graphics.drawable.GradientDrawable
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
+import app.qingjian.inputmethod.cloud.AiChatGenerator
 import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
+import app.qingjian.inputmethod.panel.AiChatPanel
 import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
@@ -49,6 +51,7 @@ class InputPanel(
     onBottomAction: (BottomAction) -> Unit,
     onCloudSelect: (Int) -> Unit,
     private val onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
+    private val aiChatGenerator: AiChatGenerator,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
@@ -118,6 +121,9 @@ class InputPanel(
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.AI_CHAT -> AiChatPanel(
+                context, palette, header, text, aiChatGenerator, actions::commitText, actions::closePanel,
+            )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
                 context, palette, header, text, onGenerateAiExpression, actions::commitText, actions::closePanel,
             )
