@@ -5,4 +5,4 @@ package app.qingjian.inputmethod.panel
  * 候选条右端的 ⌄ 进候选展开；剪贴板图标进剪贴板（与常用语同一个面板，[PHRASES] 是停在常用语页），剪贴板里点「拆词」进 [PIECES]；
  * 功能面板里点「定制工具栏」进 [TOOLBAR]；说话时盖上 [VOICE]（[VoicePanel]，由语音输入开关，不经 [PanelActions.openPanel]）。
  */
-enum class PanelKind { FUNCTIONS, TOOLBAR, KEYBOARDS, SYMBOLS, EMOJI, CANDIDATES, CLIPBOARD, PHRASES, PIECES, VOICE }
+enum class PanelKind { FUNCTIONS, TOOLBAR, KEYBOARDS, SYMBOLS, EMOJI, CANDIDATES, CLIPBOARD, PHRASES, PIECES, VOICE, AI_EXPRESSION }
