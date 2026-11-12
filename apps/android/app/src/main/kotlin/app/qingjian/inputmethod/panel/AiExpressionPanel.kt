@@ -77,26 +77,9 @@ class AiExpressionPanel(
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             setMargins(dp(14), dp(8), dp(14), dp(12))
         })
-        addViewSource()
-        generate()
-    }
-
-    private fun addViewSource() {
-        content.addView(TextView(context).apply {
-            text = "当前内容"
-            textSize = 12f
-            setTextColor(palette.gloss)
-            setPadding(0, dp(4), 0, dp(5))
-        })
-        content.addView(TextView(context).apply {
-            text = source.ifBlank { "还没有可供理解的文字，请先输入内容" }
-            textSize = 15f
-            setTextColor(palette.text)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = rounded(palette.surface, 10)
-        }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         content.addView(status)
         status.text = "正在理解上下文并生成多种表达…"
+        generate()
     }
 
     private fun generate() {
@@ -106,7 +89,7 @@ class AiExpressionPanel(
         }
         val request = ++requestNumber
         status.text = "正在生成 5 种风格的表达，请稍候…"
-        content.removeViews(3, (content.childCount - 3).coerceAtLeast(0))
+        content.removeViews(1, (content.childCount - 1).coerceAtLeast(0))
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
             content.removeViews(3, (content.childCount - 3).coerceAtLeast(0))
