@@ -608,7 +608,7 @@ class QingjianInputMethodService :
             ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
             changed = true
         }
-        if (changed) engine.reloadPhrases(ClipboardStore.userDir(this).path)
+        if (changed) engine.reloadPhrases(ClipboardStore.userDir(this))
     }
 
     private fun isHanCodePoint(codePoint: Int): Boolean =
