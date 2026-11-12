@@ -53,9 +53,12 @@ class ClipboardPanel(
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var page: PhrasePage = ClipboardStore.phrases(context)
 
+    // 自动记忆短语只供输入引擎召回，不作为用户管理的常用语展示。
+    private val visiblePhraseGroups get() = page.groups.filterNot { it == AUTO_MEMORY_GROUP }
+
     private val groups = Tabs(ink, scrollable(true) { x, y -> showingPhrases && y > groupTop() }, Tabs.Style.PILL).apply {
-        labels = page.groups
-        selected = page.groups.indexOf(lastGroup).coerceAtLeast(0)
+        labels = visiblePhraseGroups
+        selected = visiblePhraseGroups.indexOf(lastGroup).coerceAtLeast(0)
     }
 
     private val list = RectF()
@@ -92,8 +95,8 @@ class ClipboardPanel(
     private var bottoms = FloatArray(0)
 
     private fun shownPhrases(): List<PhraseItem> {
-        val group = page.groups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup
-        return page.phrases.filter { it.group == group }
+        val group = visiblePhraseGroups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup
+        return page.phrases.filter { it.group == group && it.group != AUTO_MEMORY_GROUP }
     }
 
     private val count get() = if (showingPhrases) shownPhrases().size else clips.size
@@ -103,7 +106,7 @@ class ClipboardPanel(
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, if (showingPhrases) Icon.PLUS else Icon.TRASH)
         val summary = if (showingPhrases) {
-            "共 ${page.phrases.size} 条常用语，打输入码可直接出"
+            "共 ${page.phrases.count { it.group != AUTO_MEMORY_GROUP }} 条常用语，打输入码可直接出"
         } else if (clearArmed) {
             "再点一次右上角清空全部剪贴板"
         } else {
@@ -332,7 +335,7 @@ class ClipboardPanel(
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->
                 groups.selected = index
-                lastGroup = page.groups[index]
+                lastGroup = visiblePhraseGroups[index]
                 collapse()
             }
             list.contains(x, y) -> tapList(x, y - list.top + listScroll.offset)
@@ -354,7 +357,7 @@ class ClipboardPanel(
 
     private fun onRightIcon() {
         if (showingPhrases) {
-            actions.editPhrase(null, page.groups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup)
+            actions.editPhrase(null, visiblePhraseGroups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup)
         } else if (clips.isNotEmpty()) {
             if (clearArmed) {
                 clips = ClipboardStore.clear(context, actions.clipboardLimit)
@@ -413,8 +416,8 @@ class ClipboardPanel(
 
     private fun reloadPhrases(page: PhrasePage) {
         this.page = page
-        groups.labels = page.groups
-        groups.selected = page.groups.indexOf(lastGroup).coerceAtLeast(0)
+        groups.labels = visiblePhraseGroups
+        groups.selected = visiblePhraseGroups.indexOf(lastGroup).coerceAtLeast(0)
         actions.phrasesChanged()
         collapse()
     }
@@ -422,6 +425,7 @@ class ClipboardPanel(
     companion object {
         private const val CLIPS = 0
         private const val PHRASES = 1
+        private const val AUTO_MEMORY_GROUP = "自动记忆"
         private const val SUMMARY_DP = 28f
         private const val GROUP_BAR_DP = 48f
         private const val CARD_MARGIN_DP = 10f
