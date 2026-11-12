@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -105,13 +106,15 @@ class AiExpressionPanel(
             return
         }
         val request = ++requestNumber
+        status.visibility = View.VISIBLE
         status.text = "正在生成 5 种风格的表达，请稍候…"
         content.removeViews(3, (content.childCount - 3).coerceAtLeast(0))
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
             content.removeViews(3, (content.childCount - 3).coerceAtLeast(0))
             result.onSuccess { groups ->
-                status.text = "点击任意一句即可直接上屏"
+                // 生成结果出现后隐藏状态行，把空间留给表达内容。
+                status.visibility = View.GONE
                 groups.forEach { group ->
                     content.addView(TextView(context).apply {
                         text = group.title

@@ -197,6 +197,48 @@ fn segment_chunk(chunk: &str, allow_partial: bool) -> Vec<Segmentation> {
     result
 }
 
+
+/// 把连续输入按每个拼音音节的首字母另切一遍，作为全拼切分之外的简拼备选。
+/// 零声母音节用 a / e / o 表示；声母按最短优先，保留 zh 与 z+h 等歧义读法。
+pub fn segment_abbreviations(input: &str) -> Vec<Segmentation> {
+    if input.len() < 2 || !input.bytes().all(|byte| byte.is_ascii_lowercase()) {
+        return Vec::new();
+    }
+
+    fn visit(rest: &str, current: &mut Vec<Syllable>, out: &mut Vec<Segmentation>) {
+        if out.len() >= MAX_SEGMENTATIONS {
+            return;
+        }
+        if rest.is_empty() {
+            out.push(Segmentation {
+                syllables: current.clone(),
+            });
+            return;
+        }
+
+        let mut lengths: Vec<usize> = initial_lengths(rest).collect();
+        if matches!(rest.as_bytes().first(), Some(b'a' | b'e' | b'o')) {
+            lengths.push(1);
+        }
+        lengths.sort_unstable();
+        lengths.dedup();
+
+        for len in lengths {
+            current.push(Syllable::partial(&rest[..len]));
+            visit(&rest[len..], current, out);
+            current.pop();
+            if out.len() >= MAX_SEGMENTATIONS {
+                break;
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    visit(input, &mut Vec::new(), &mut out);
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,6 +249,27 @@ mod tests {
             .iter()
             .map(ToString::to_string)
             .collect()
+    }
+
+    #[test]
+    fn abbreviation_segmentation_preserves_short_initials_and_zero_initials() {
+        let joined: Vec<String> = segment_abbreviations("wan")
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(joined.contains(&"w… a… n…".to_owned()), "{joined:?}");
+
+        let joined: Vec<String> = segment_abbreviations("yhf")
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(joined.contains(&"y… h… f…".to_owned()), "{joined:?}");
+
+        let joined: Vec<String> = segment_abbreviations("zhhrmghg")
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(joined.contains(&"z… h… h… r… m… g… h… g…".to_owned()), "{joined:?}");
     }
 
     #[test]

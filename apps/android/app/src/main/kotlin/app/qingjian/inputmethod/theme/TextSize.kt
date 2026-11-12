@@ -8,9 +8,9 @@ import app.qingjian.inputmethod.R
  */
 enum class TextSize(val key: String, val scale: Float, val label: Int) {
     SMALL("small", 0.70f, R.string.text_size_small),
-    STANDARD("standard", 1f, R.string.text_size_standard),
-    LARGE("large", 1.15f, R.string.text_size_large),
-    LARGER("larger", 1.3f, R.string.text_size_larger);
+    STANDARD("standard", 0.88f, R.string.text_size_standard),
+    LARGE("large", 0.96f, R.string.text_size_large),
+    LARGER("larger", 1.04f, R.string.text_size_larger);
 
     companion object {
         fun of(key: String?) = entries.firstOrNull { it.key == key } ?: STANDARD

@@ -91,7 +91,7 @@ impl Engine {
             }),
         };
         // 连第一个字母都切不动（`impor`）：拼音这边没戏，但英文词 / 补全、快捷候选还可以有
-        let (segmentations, tail, sources) = match parsed {
+        let (mut segmentations, tail, mut sources) = match parsed {
             Ok(parsed) => parsed,
             Err(error) => {
                 let mut items = Vec::new();
@@ -125,6 +125,18 @@ impl Engine {
                 });
             }
         };
+        // 普通切分优先保留全拼读法；另加首字母切分，避免 wan 这类本身也是合法音节的缩写被吞掉。
+        if decoded.is_none() {
+            for abbreviation in parser::segment_abbreviations(keys) {
+                if !segmentations
+                    .iter()
+                    .any(|existing| existing.syllables == abbreviation.syllables)
+                {
+                    segmentations.push(abbreviation);
+                    sources.push(0);
+                }
+            }
+        }
         // 拼音「不像话」时试拼写纠错；纠正生效则按纠正后的切分查词，原串只用来记学习与显示。
         // 混输时按最完整的那条切分判断，别被双拼读法留下的半截音节带偏（`women` 双拼读成
         // wo'me'n…，会让英文词 women 排到 我们 前面）
