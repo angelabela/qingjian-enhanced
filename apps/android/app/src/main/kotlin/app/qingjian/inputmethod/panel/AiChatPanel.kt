@@ -26,7 +26,8 @@ class AiChatPanel(
     headerHeight: Float,
     private val initialContext: String,
     private val generator: AiChatGenerator,
-    private val onCommit: (String) -> Unit,
+    private val onReplace: (String) -> Boolean,
+    private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
 ) : LinearLayout(context), FloatingEditor {
     private val density = resources.displayMetrics.density
@@ -67,7 +68,6 @@ class AiChatPanel(
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         isFocusable = true
         isFocusableInTouchMode = true
-        setShowSoftInputOnFocus(false)
         textSize = 14f
         setTextColor(palette.text)
         setHintTextColor(palette.gloss)
@@ -214,9 +214,9 @@ class AiChatPanel(
         transcript.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         prompt.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         sendButton.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
-        status.text = if (mode == Mode.REPLIES) "点击生成后获取 5 条不同风格的可直接上屏回复" else "AI 助手支持在当前面板内连续多轮交流"
+        status.text = if (mode == Mode.REPLIES) "每种风格生成 3 条，共 15 条；点击即可替换输入框内容" else "AI 助手支持在当前面板内连续多轮交流"
         if (mode == Mode.REPLIES && resultArea.childCount == 0) {
-            resultArea.addView(actionText("生成 5 条不同风格回复", true) { generateReplies() },
+            resultArea.addView(actionText("生成 15 条回复（每种风格 3 条）", true) { generateReplies() },
                 LayoutParams(LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
         }
     }
@@ -241,23 +241,23 @@ class AiChatPanel(
             busy = false
             resultArea.removeAllViews()
             result.onSuccess { replies ->
-                status.text = "选择一条即可插入当前输入框，不会自动发送"
+                status.text = "点击回复将替换输入框原内容；可随时撤销恢复"
                 replies.forEachIndexed { index, reply ->
                     val styles = listOf("简洁自然", "温柔体贴", "轻松幽默", "俏皮可爱", "成熟得体")
                     val card = TextView(context).apply {
-                        text = "${styles.getOrElse(index) { "自然表达" }}\n$reply"
+                        text = "${styles.getOrElse(index / 3) { "自然表达" }} · ${index % 3 + 1}\n$reply"
                         textSize = 15f
                         setTextColor(palette.text)
                         setPadding(dp(13), dp(12), dp(13), dp(12))
                         background = rounded(palette.surface, 12)
                         isClickable = true
-                        setOnClickListener { onCommit(reply); onClose() }
+                        setOnClickListener { if (onReplace(reply)) { status.text = "已替换输入框内容，可点击下方撤销恢复原文"; showUndoAction() } else { status.text = "替换失败：当前输入框不支持读取或替换全文" } }
                     }
                     resultArea.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                         bottomMargin = dp(7)
                     })
                 }
-                resultArea.addView(actionText("重新生成 5 条回复", false) { generateReplies() },
+                resultArea.addView(actionText("重新生成 15 条回复", false) { generateReplies() },
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
             }.onFailure {
                 status.text = it.message ?: "生成失败，请检查网络和云端配置"
@@ -265,6 +265,20 @@ class AiChatPanel(
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
             }
         }
+    }
+
+    private fun showUndoAction() {
+        val existing = resultArea.findViewWithTag<View>("ai-reply-undo")
+        if (existing != null) return
+        val undo = actionText("↶ 撤销本次替换，恢复原内容", false) {
+            if (onUndo()) {
+                status.text = "已恢复替换前的输入内容"
+                resultArea.findViewWithTag<View>("ai-reply-undo")?.let(resultArea::removeView)
+            } else {
+                status.text = "撤销失败：没有可恢复的内容"
+            }
+        }.apply { tag = "ai-reply-undo" }
+        resultArea.addView(undo, 0, LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
     }
 
     private fun sendAssistantMessage() {
