@@ -18,6 +18,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
+import app.qingjian.inputmethod.cloud.AiChatGenerator
 import app.qingjian.inputmethod.cloud.CloudConfig
 import app.qingjian.inputmethod.cloud.AiExpressionGenerator
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
@@ -77,6 +78,7 @@ class QingjianInputMethodService :
 
     private lateinit var cloud: CloudServices
     private lateinit var aiExpression: AiExpressionGenerator
+    private lateinit var aiChat: AiChatGenerator
 
     /** 当前输入框的回车键文字，见 [enterLabel]。 */
     private var enterLabel: String? = null
@@ -155,6 +157,7 @@ class QingjianInputMethodService :
         contacts = ContactsSync(this, engine)
         cloud = CloudServices(this, engine)
         aiExpression = AiExpressionGenerator(this)
+        aiChat = AiChatGenerator(this)
         composer = Composer(engine, this)
         quickTranslate = QuickTranslate(engine) { currentInputConnection }
         voice = VoiceInput(this, engine, this)
@@ -214,6 +217,7 @@ class QingjianInputMethodService :
             onBottomAction = ::onBottomAction,
             onCloudSelect = { composer.select(it) },
             onGenerateAiExpression = { source, callback -> aiExpression.generate(source, callback) },
+            aiChatGenerator = aiChat,
             floating = target != null,
         )
         this.panel = panel
@@ -472,6 +476,7 @@ class QingjianInputMethodService :
         ToolbarTool.CLIPBOARD -> clipboard()
         ToolbarTool.TRANSLATE -> toggleTranslate()
         ToolbarTool.AI_EXPRESSION -> openPanel(PanelKind.AI_EXPRESSION)
+        ToolbarTool.AI_CHAT -> openPanel(PanelKind.AI_CHAT)
         ToolbarTool.RESIZE -> startResize()
         ToolbarTool.PHRASES -> openPanel(PanelKind.PHRASES)
         ToolbarTool.SWITCH_INPUT_METHOD -> switchInputMethod()
@@ -481,8 +486,18 @@ class QingjianInputMethodService :
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
 
     override fun openPanel(kind: PanelKind) {
-        val source = if (kind == PanelKind.AI_EXPRESSION) {
-            currentInputConnection?.getTextBeforeCursor(500, 0)?.toString().orEmpty()
+        val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT
+        val info = currentInputEditorInfo
+        val variation = info?.inputType?.and(android.text.InputType.TYPE_MASK_VARIATION) ?: 0
+        val passwordField = variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        // 不从密码、私密或直接输入框读取上下文；AI 面板仍允许用户自行粘贴内容。
+        val source = if (needsContext && !composer.privateInput && !composer.directInput && !passwordField) {
+            val before = currentInputConnection?.getTextBeforeCursor(2500, 0)?.toString().orEmpty()
+            val after = currentInputConnection?.getTextAfterCursor(1500, 0)?.toString().orEmpty()
+            (before + after).takeLast(4000)
         } else ""
         panel?.open(kind, source)
     }
