@@ -13,6 +13,12 @@ interface PanelActions {
     /** 面板里点了一个符号或表情：组句中先顶首选再上屏。 */
     fun commitText(text: String)
 
+    /** AI 回复整段替换当前输入框内容，并保留一次撤销快照。 */
+    fun replaceInputText(text: String): Boolean
+
+    /** 撤销最近一次 AI 回复替换。 */
+    fun undoInputReplacement(): Boolean
+
     fun deleteBackward()
 
     /** 候选展开里点了第 [index] 个候选。 */
