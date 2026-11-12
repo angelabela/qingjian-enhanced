@@ -30,7 +30,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     var candidates: List<Candidate> = emptyList()
         private set
 
-    val isEmpty: Boolean get() = preedit.isEmpty() && candidates.isEmpty()
+    val isEmpty: Boolean get() = preedit.isEmpty() && candidates.none { !it.cloud }
 
     /** 主题底色；还没画过为透明。 */
     val background: Int get() = image?.background ?: 0
