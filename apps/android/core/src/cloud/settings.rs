@@ -56,5 +56,5 @@ const PREDICT_INTERVAL_MS: u64 = 1_000;
 /// 停键多久才发联想：手机打字比电脑慢、停顿多，比 PC 的 300 ms 长。
 const DEBOUNCE_MS: u64 = 500;
 
-/// Android 云端词最多显示 4 个，增加联想覆盖面；模型最多请求 6 条，去重后仍可填满。
-const SLOTS: usize = 4;
+/// Android 云端词最多显示 5 个，增加联想覆盖面；模型最多请求 6 条，去重后仍可填满。
+const SLOTS: usize = 5;
