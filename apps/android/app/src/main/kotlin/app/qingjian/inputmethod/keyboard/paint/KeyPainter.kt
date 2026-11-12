@@ -140,8 +140,8 @@ class KeyPainter(
     }
 
     private fun label(key: Key) = when (key) {
-        // 中文键盘一律画大写；英文跟着 Shift
-        is Key.Letter -> if (shift.on || chinese) key.label.uppercase() else key.label
+        // 字母键始终跟随 Shift 显示大小写；中文拼音状态默认小写。
+        is Key.Letter -> if (shift.on) key.label.uppercase() else key.label.lowercase()
         Key.Language -> languageLabel
         is Key.Enter -> enterLabel.orEmpty()
         else -> key.label
