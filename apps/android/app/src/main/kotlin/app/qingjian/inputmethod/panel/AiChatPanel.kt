@@ -67,6 +67,7 @@ class AiChatPanel(
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         isFocusable = true
         isFocusableInTouchMode = true
+        setShowSoftInputOnFocus(false)
         textSize = 14f
         setTextColor(palette.text)
         setHintTextColor(palette.gloss)
@@ -242,8 +243,9 @@ class AiChatPanel(
             result.onSuccess { replies ->
                 status.text = "选择一条即可插入当前输入框，不会自动发送"
                 replies.forEachIndexed { index, reply ->
+                    val styles = listOf("简洁自然", "温柔体贴", "轻松幽默", "俏皮可爱", "成熟得体")
                     val card = TextView(context).apply {
-                        text = reply
+                        text = "${styles.getOrElse(index) { "自然表达" }}\n$reply"
                         textSize = 15f
                         setTextColor(palette.text)
                         setPadding(dp(13), dp(12), dp(13), dp(12))
