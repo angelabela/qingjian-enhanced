@@ -53,6 +53,9 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         /** 一句话提示（删候选的结果）。 */
         fun showNotice(text: String)
+
+        /** 用户确认上屏的内容：供 Android 壳保存个人短语缩写。 */
+        fun onPhraseCommitted(text: String)
     }
 
     /** 上一帧的 preedit，非空即在组句。 */
@@ -635,7 +638,10 @@ class Composer(private val engine: Engine, private val host: Host) {
         connection.beginBatchEdit()
         dropStalePreedit(connection)
         if (frame.replace > 0) connection.deleteSurroundingText(frame.replace, 0)
-        if (frame.commit.isNotEmpty()) connection.commitText(frame.commit, 1)
+        if (frame.commit.isNotEmpty()) {
+            connection.commitText(frame.commit, 1)
+            host.onPhraseCommitted(frame.commit)
+        }
         if (frame.preedit.isNotEmpty()) {
             connection.setComposingText(frame.preedit, 1)
         } else if (frame.commit.isEmpty()) {
@@ -735,7 +741,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         const val SEPARATOR_DIGIT = '1'
 
         /** 两次点 Shift 间隔在这以内算双击（锁定大写）。 */
-        const val DOUBLE_TAP_MS = 350L
+        const val DOUBLE_TAP_MS = 600L
 
         /** 云联想给的光标前后文：Engine 会按观察窗口再裁（前 64、后 32）。 */
         const val SURROUNDING_BEFORE = 64
