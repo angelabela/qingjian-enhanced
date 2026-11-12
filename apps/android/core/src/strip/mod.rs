@@ -20,7 +20,9 @@ const GLOSS_SIZE: f32 = 11.5;
 
 /// 每个候选只带第一条译文（词性 + 释义），长的截断；更多的译文在长按气泡里。`text_scale` 是设置里的字号档，宽度与字号一起放大。
 fn visible_indices(candidates: &[FrameCandidate]) -> Vec<usize> {
-    candidates.iter().enumerate()
+    candidates
+        .iter()
+        .enumerate()
         .filter(|(_, candidate)| !candidate.cloud)
         .map(|(index, _)| index)
         .collect()
