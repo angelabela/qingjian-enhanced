@@ -19,25 +19,32 @@ const MAX_GLOSS_WIDTH: f32 = 120.0;
 const GLOSS_SIZE: f32 = 11.5;
 
 /// 每个候选只带第一条译文（词性 + 释义），长的截断；更多的译文在长按气泡里。`text_scale` 是设置里的字号档，宽度与字号一起放大。
+fn visible_indices(candidates: &[FrameCandidate]) -> Vec<usize> {
+    candidates.iter().enumerate()
+        .filter(|(_, candidate)| !candidate.cloud)
+        .map(|(index, _)| index)
+        .collect()
+}
+
 fn rows(
     candidates: &[FrameCandidate],
     text_scale: f32,
     mut measure: impl FnMut(&str, f32) -> f32,
 ) -> Vec<Row> {
     let (room, size) = (MAX_GLOSS_WIDTH * text_scale, GLOSS_SIZE * text_scale);
-    // 云端联想由 Android 壳单独显示在候选栏上方，不混入本地候选条。
-    candidates
-        .iter()
+    // 渲染器只接收本地候选，行内下标必须连续；原始候选下标由 painter 单独映射回去。
+    visible_indices(candidates)
+        .into_iter()
         .enumerate()
-        .filter(|(_, candidate)| !candidate.cloud)
-        .map(|(i, candidate)| {
+        .map(|(display_index, original_index)| {
+            let candidate = &candidates[original_index];
             // emoji 由壳在词的位置上画，这里只占位：系统字体画得出彩色 emoji 时两份会叠成重影（#902）
             let text = if has_emoji(&candidate.text) {
                 emoji_placeholder(&candidate.text)
             } else {
                 candidate.text.clone()
             };
-            let mut row = Row::plain(i, text);
+            let mut row = Row::plain(display_index, text);
             row.index.clear();
             row.cloud = candidate.cloud;
             if let Some(sense) = candidate.senses.first() {
