@@ -6,20 +6,13 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
-import android.view.KeyEvent
-import android.text.Editable
-import android.text.InputType
-import android.view.inputmethod.BaseInputConnection
-import android.view.inputmethod.InputConnection
-import app.qingjian.inputmethod.panel.editor.FloatingEditor
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import app.qingjian.inputmethod.cloud.AiChatGenerator
 import app.qingjian.inputmethod.theme.Palette
 
-/** 独立 AI 对话面板：智能回复与多轮助手共用用户明确提供的上下文。 */
+/** 轻量 AI 对话回复面板：布局与 AI 情境表达一致，直接展示分组回复，不占用输入框。 */
 class AiChatPanel(
     context: Context,
     private val palette: Palette,
@@ -29,338 +22,157 @@ class AiChatPanel(
     private val onReplace: (String) -> Boolean,
     private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
-) : LinearLayout(context), FloatingEditor {
+) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
-    private val conversation = mutableListOf<Pair<String, String>>()
-    private var busy = false
-    private var activeInput: EditText? = null
-
-    /** Route the existing IME keyboard into whichever field the user selected. */
-    override val connection: InputConnection = object : BaseInputConnection(this, true) {
-        override fun getEditable(): Editable = activeInput?.text
-            ?: android.text.SpannableStringBuilder()
-
-        // 与常用语编辑器一样，明确把拼音组合、上屏、删除和光标操作路由到当前 EditText。
-        override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean =
-            super.commitText(text, newCursorPosition).also { activeInput?.invalidate() }
-
-        override fun setComposingText(text: CharSequence, newCursorPosition: Int): Boolean =
-            super.setComposingText(text, newCursorPosition).also { activeInput?.invalidate() }
-
-        override fun finishComposingText(): Boolean =
-            super.finishComposingText().also { activeInput?.invalidate() }
-
-        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean =
-            super.deleteSurroundingText(beforeLength, afterLength).also { activeInput?.invalidate() }
-
-        override fun setSelection(start: Int, end: Int): Boolean =
-            super.setSelection(start, end).also { activeInput?.invalidate() }
-    }
-
-    override val enterLabel: String get() = if (mode == Mode.ASSISTANT) "发送" else "完成"
-
-    override fun onKey(keyCode: Int) {
-        val field = activeInput ?: return
-        val editable = field.text
-        val start = field.selectionStart.coerceAtLeast(0)
-        val end = field.selectionEnd.coerceAtLeast(0)
-        when (keyCode) {
-            KeyEvent.KEYCODE_DEL -> {
-                if (start != end) editable.delete(minOf(start, end), maxOf(start, end))
-                else if (start > 0) editable.delete(Character.offsetByCodePoints(editable, start, -1), start)
-            }
-            KeyEvent.KEYCODE_ENTER -> {
-                if (field === prompt) sendAssistantMessage()
-                else editable.insert(start, "\n")
-            }
-        }
-    }
-    private var mode = Mode.REPLIES
-    private enum class Mode { REPLIES, ASSISTANT }
-
-    private val contextInput = EditText(context).apply {
-        setText(initialContext)
-        hint = "粘贴聊天记录或输入对话上下文（可编辑）"
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        isFocusable = true
-        isFocusableInTouchMode = true
-        textSize = 14f
-        setTextColor(palette.text)
-        setHintTextColor(palette.gloss)
-        gravity = Gravity.TOP
-        minLines = 3
-        maxLines = 6
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        background = rounded(palette.surface, 12)
-    }
-    private val resultArea = LinearLayout(context).apply {
+    private val content = LinearLayout(context).apply {
         orientation = VERTICAL
-        setPadding(0, dp(8), 0, dp(8))
+        setPadding(dp(14), dp(8), dp(14), dp(12))
     }
     private val status = TextView(context).apply {
-        textSize = 12f
+        textSize = 13f
         setTextColor(palette.gloss)
         gravity = Gravity.CENTER
-        setPadding(dp(4), dp(8), dp(4), dp(8))
+        setPadding(dp(4), dp(18), dp(4), dp(18))
     }
-    private val transcript = LinearLayout(context).apply {
-        orientation = VERTICAL
-    }
-    private lateinit var sendButton: TextView
-    private val prompt = EditText(context).apply {
-        hint = "输入你想问 AI 的内容"
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        isFocusable = true
-        isFocusableInTouchMode = true
-        textSize = 14f
-        setTextColor(palette.text)
-        setHintTextColor(palette.gloss)
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        background = rounded(palette.surface, 12)
-        minLines = 1
-        maxLines = 3
-    }
+    private var requestNumber = 0
+    private var undoAction: TextView? = null
 
     init {
         orientation = VERTICAL
         setBackgroundColor(palette.board)
-        activeInput = contextInput
-        contextInput.setOnClickListener { focusInput(contextInput) }
-        prompt.setOnClickListener { focusInput(prompt) }
-        contextInput.setOnFocusChangeListener { _, focused -> if (focused) activeInput = contextInput }
-        prompt.setOnFocusChangeListener { _, focused -> if (focused) activeInput = prompt }
-        addView(header(headerHeight))
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
-            setPadding(dp(12), dp(8), dp(12), dp(4))
-            addView(actionText("智能回复", true) { switchMode(Mode.REPLIES) }, LayoutParams(0, dp(38), 1f))
-            addView(actionText("AI 助手", false) { switchMode(Mode.ASSISTANT) }, LayoutParams(0, dp(38), 1f))
-        })
-        val body = LinearLayout(context).apply {
-            orientation = VERTICAL
-            setPadding(dp(14), dp(4), dp(14), dp(8))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(12), 0)
+            background = rounded(palette.surface, 14)
             addView(TextView(context).apply {
-                text = "聊天上下文"
-                textSize = 13f
-                setTextColor(palette.gloss)
-                setPadding(0, dp(4), 0, dp(6))
-            })
-            addView(contextInput, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                text = "‹"
+                textSize = 32f
+                gravity = Gravity.CENTER
+                setTextColor(palette.text)
+                setOnClickListener { onClose() }
+            }, LayoutParams(dp(48), LayoutParams.MATCH_PARENT))
             addView(TextView(context).apply {
-                text = "仅在你点击生成或发送时，才会把上方内容发送到已配置的云端模型。请勿粘贴密码等敏感信息。"
+                text = "AI 对话"
+                textSize = 17f
+                setTextColor(palette.text)
+                gravity = Gravity.CENTER_VERTICAL
+                setTypeface(typeface, Typeface.BOLD)
+            }, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(TextView(context).apply {
+                text = "云端模型"
                 textSize = 11f
-                setTextColor(palette.gloss)
-                setPadding(dp(2), dp(5), dp(2), dp(5))
+                setTextColor(palette.cloud)
+                gravity = Gravity.CENTER
             })
-            addView(status)
-            addView(resultArea)
-            addView(transcript)
-        }
-        val scroll = ScrollView(context).apply {
-            isFillViewport = false
-            addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        }
-        addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
-        addView(LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(6), dp(12), dp(8))
-            addView(prompt, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-            sendButton = actionText("发送", true) { sendAssistantMessage() }
-            addView(sendButton, LayoutParams(dp(66), dp(44)))
-        })
-        renderMode()
-    }
+        }, LayoutParams(LayoutParams.MATCH_PARENT, headerHeight.toInt().coerceAtLeast(dp(48))))
 
-    private fun header(height: Float) = LinearLayout(context).apply {
-        orientation = HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(8), 0, dp(12), 0)
-        background = rounded(palette.surface, 14)
+        addView(ScrollView(context).apply {
+            isFillViewport = true
+            addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+
         addView(TextView(context).apply {
-            text = "‹"
-            textSize = 32f
+            text = "换一批回复  ↻"
+            textSize = 15f
             gravity = Gravity.CENTER
-            setTextColor(palette.text)
-            setOnClickListener { onClose() }
-        }, LayoutParams(dp(48), LayoutParams.MATCH_PARENT))
-        addView(TextView(context).apply {
-            text = "AI 对话"
-            textSize = 17f
-            setTextColor(palette.text)
-            gravity = Gravity.CENTER_VERTICAL
-            setTypeface(typeface, Typeface.BOLD)
-        }, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
-        addView(TextView(context).apply {
-            text = "云端模型"
-            textSize = 11f
-            setTextColor(palette.cloud)
+            setTextColor(Color.WHITE)
+            background = rounded(palette.brand, 24)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setOnClickListener { generate() }
+        }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            setMargins(dp(14), dp(8), dp(14), dp(12))
         })
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, height.toInt().coerceAtLeast(dp(48)))
+
+        content.addView(status)
+        generate()
     }
 
-    private fun actionText(label: String, primary: Boolean, click: () -> Unit) = TextView(context).apply {
-        text = label
-        textSize = 14f
-        gravity = Gravity.CENTER
-        setTextColor(if (primary) Color.WHITE else palette.text)
-        background = rounded(if (primary) palette.brand else palette.surface, 12)
-        isClickable = true
-        setOnClickListener { click() }
-    }
-
-    private fun switchMode(next: Mode) {
-        if (busy) return
-        mode = next
-        renderMode()
-    }
-
-    private fun renderMode() {
-        val row = (getChildAt(1) as? LinearLayout) ?: return
-        (row.getChildAt(0) as? TextView)?.apply {
-            background = rounded(if (mode == Mode.REPLIES) palette.brand else palette.surface, 12)
-            setTextColor(if (mode == Mode.REPLIES) Color.WHITE else palette.text)
-        }
-        (row.getChildAt(1) as? TextView)?.apply {
-            background = rounded(if (mode == Mode.ASSISTANT) palette.brand else palette.surface, 12)
-            setTextColor(if (mode == Mode.ASSISTANT) Color.WHITE else palette.text)
-        }
-        contextInput.visibility = View.VISIBLE
-        resultArea.visibility = if (mode == Mode.REPLIES) View.VISIBLE else View.GONE
-        transcript.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
-        prompt.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
-        sendButton.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
-        status.text = if (mode == Mode.REPLIES) "每种风格生成 3 条，共 15 条；点击即可替换输入框内容" else "AI 助手支持在当前面板内连续多轮交流"
-        if (mode == Mode.REPLIES && resultArea.childCount == 0) {
-            resultArea.addView(actionText("生成 15 条回复（每种风格 3 条）", true) { generateReplies() },
-                LayoutParams(LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
-        }
-    }
-
-    private fun focusInput(field: EditText) {
-        activeInput = field
-        field.isFocusable = true
-        field.isFocusableInTouchMode = true
-        field.requestFocusFromTouch()
-        field.post {
-            field.requestFocus()
-            val end = field.text.length
-            field.setSelection(end)
-            field.invalidate()
-        }
-    }
-
-    private fun generateReplies() {
-        if (busy) return
-        val source = contextInput.text.toString().trim()
-        if (source.isBlank()) {
-            status.text = "请先粘贴或输入聊天上下文"
+    private fun generate() {
+        if (initialContext.isBlank()) {
+            status.visibility = View.VISIBLE
+            status.text = "请先在输入框输入一段文字，再打开 AI 对话。"
+            clearGeneratedViews()
             return
         }
-        busy = true
-        status.text = "正在生成回复…"
-        resultArea.removeAllViews()
-        generator.suggestReplies(source) { result ->
-            busy = false
-            resultArea.removeAllViews()
+        val request = ++requestNumber
+        status.visibility = View.VISIBLE
+        status.text = "正在理解上下文并生成回复…"
+        clearGeneratedViews()
+        undoAction = null
+        generator.suggestReplies(initialContext) { result ->
+            if (request != requestNumber) return@suggestReplies
+            clearGeneratedViews()
             result.onSuccess { replies ->
-                status.text = "点击回复将替换输入框原内容；可随时撤销恢复"
+                status.visibility = View.GONE
                 val styles = listOf("简洁自然", "温柔体贴", "轻松幽默", "俏皮可爱", "成熟得体")
                 replies.chunked(3).forEachIndexed { groupIndex, groupReplies ->
-                    resultArea.addView(TextView(context).apply {
+                    content.addView(TextView(context).apply {
                         text = styles.getOrElse(groupIndex) { "其他回复" }
                         textSize = 14f
-                        setTypeface(typeface, Typeface.BOLD)
                         setTextColor(palette.brand)
-                        setPadding(dp(4), dp(10), dp(4), dp(7))
-                    }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                        setTypeface(typeface, Typeface.BOLD)
+                        setPadding(dp(2), dp(14), 0, dp(7))
+                    })
                     groupReplies.forEach { reply ->
-                        val card = TextView(context).apply {
+                        content.addView(TextView(context).apply {
                             text = reply
-                            textSize = 15f
+                            textSize = 16f
                             setTextColor(palette.text)
                             setPadding(dp(13), dp(12), dp(13), dp(12))
-                            background = rounded(palette.surface, 12)
+                            background = rounded(palette.surface, 11)
                             isClickable = true
                             setOnClickListener {
                                 if (onReplace(reply)) {
-                                    status.text = "已替换输入框内容，可点击下方撤销恢复原文"
                                     showUndoAction()
+                                    android.widget.Toast.makeText(context, "已替换输入框内容", android.widget.Toast.LENGTH_SHORT).show()
                                 } else {
-                                    status.text = "替换失败：当前输入框不支持读取或替换全文"
+                                    android.widget.Toast.makeText(context, "替换失败：当前输入框不支持替换全文", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        }
-                        resultArea.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                            bottomMargin = dp(7)
+                        }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin = dp(6)
                         })
                     }
                 }
-                resultArea.addView(actionText("重新生成 15 条回复", false) { generateReplies() },
-                    LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
             }.onFailure {
+                status.visibility = View.VISIBLE
                 status.text = it.message ?: "生成失败，请检查网络和云端配置"
-                resultArea.addView(actionText("重试", false) { generateReplies() },
-                    LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
             }
         }
     }
 
     private fun showUndoAction() {
-        val existing = resultArea.findViewWithTag<View>("ai-reply-undo")
-        if (existing != null) return
-        val undo = actionText("↶ 撤销本次替换，恢复原内容", false) {
-            if (onUndo()) {
-                status.text = "已恢复替换前的输入内容"
-                resultArea.findViewWithTag<View>("ai-reply-undo")?.let(resultArea::removeView)
-            } else {
-                status.text = "撤销失败：没有可恢复的内容"
-            }
-        }.apply { tag = "ai-reply-undo" }
-        resultArea.addView(undo, 0, LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-    }
-
-    private fun sendAssistantMessage() {
-        if (busy) return
-        val text = prompt.text.toString().trim()
-        if (text.isBlank()) return
-        prompt.setText("")
-        if (conversation.isEmpty() && contextInput.text.isNotBlank()) {
-            conversation += "user" to "以下是用户提供的聊天上下文，请仅将其作为背景理解，不要直接复述：\\n${contextInput.text.toString().trim().takeLast(4000)}"
-        }
-        conversation += "user" to text
-        appendBubble("我", text, user = true)
-        busy = true
-        status.text = "AI 正在思考…"
-        generator.chat(conversation.toList()) { result ->
-            busy = false
-            result.onSuccess { answer ->
-                conversation += "assistant" to answer
-                while (conversation.size > 12) conversation.removeAt(0)
-                appendBubble("AI", answer, user = false)
-                status.text = "可以继续提问"
-            }.onFailure {
-                conversation.removeLastOrNull()
-                status.text = it.message ?: "请求失败，请重试"
+        if (undoAction != null) return
+        undoAction = TextView(context).apply {
+            text = "↶ 撤销本次替换"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(palette.brand)
+            background = rounded(palette.surface, 11)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            isClickable = true
+            setOnClickListener {
+                if (onUndo()) {
+                    android.widget.Toast.makeText(context, "已恢复替换前的内容", android.widget.Toast.LENGTH_SHORT).show()
+                    content.removeView(this)
+                    undoAction = null
+                }
             }
         }
-    }
-
-    private fun appendBubble(label: String, text: String, user: Boolean) {
-        transcript.addView(TextView(context).apply {
-            this.text = "$label\n$text"
-            textSize = 14f
-            setTextColor(palette.text)
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            background = rounded(if (user) palette.surface else palette.functionalKey, 12)
-        }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+        content.addView(undoAction, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = dp(7)
         })
     }
 
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+    /** 第 0 个子项始终是状态栏；安全清理其余动态生成的结果项。 */
+    private fun clearGeneratedViews() {
+        while (content.childCount > 1) content.removeViewAt(content.childCount - 1)
+    }
+
+    private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(radius).toFloat()
+        cornerRadius = dp(radiusDp).toFloat()
         setColor(color)
     }
 
