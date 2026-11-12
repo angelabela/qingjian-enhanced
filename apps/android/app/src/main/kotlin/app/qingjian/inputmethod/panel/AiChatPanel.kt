@@ -6,6 +6,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.KeyEvent
+import android.text.Editable
+import android.text.InputType
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.InputConnection
+import app.qingjian.inputmethod.panel.editor.FloatingEditor
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -22,16 +28,45 @@ class AiChatPanel(
     private val generator: AiChatGenerator,
     private val onCommit: (String) -> Unit,
     private val onClose: () -> Unit,
-) : LinearLayout(context) {
+) : LinearLayout(context), FloatingEditor {
     private val density = resources.displayMetrics.density
     private val conversation = mutableListOf<Pair<String, String>>()
     private var busy = false
+    private var activeInput: EditText? = null
+
+    /** Route the existing IME keyboard into whichever field the user selected. */
+    override val connection: InputConnection = object : BaseInputConnection(this, true) {
+        override fun getEditable(): Editable = activeInput?.text
+            ?: android.text.SpannableStringBuilder()
+    }
+
+    override val enterLabel: String get() = if (mode == Mode.ASSISTANT) "发送" else "完成"
+
+    override fun onKey(keyCode: Int) {
+        val field = activeInput ?: return
+        val editable = field.text
+        val start = field.selectionStart.coerceAtLeast(0)
+        val end = field.selectionEnd.coerceAtLeast(0)
+        when (keyCode) {
+            KeyEvent.KEYCODE_DEL -> {
+                if (start != end) editable.delete(minOf(start, end), maxOf(start, end))
+                else if (start > 0) editable.delete(Character.offsetByCodePoints(editable, start, -1), start)
+            }
+            KeyEvent.KEYCODE_ENTER -> {
+                if (field === prompt) sendAssistantMessage()
+                else editable.insert(start, "\n")
+            }
+        }
+    }
     private var mode = Mode.REPLIES
     private enum class Mode { REPLIES, ASSISTANT }
 
     private val contextInput = EditText(context).apply {
         setText(initialContext)
         hint = "粘贴聊天记录或输入对话上下文（可编辑）"
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        isFocusable = true
+        isFocusableInTouchMode = true
         textSize = 14f
         setTextColor(palette.text)
         setHintTextColor(palette.gloss)
@@ -57,6 +92,9 @@ class AiChatPanel(
     private lateinit var sendButton: TextView
     private val prompt = EditText(context).apply {
         hint = "输入你想问 AI 的内容"
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        isFocusable = true
+        isFocusableInTouchMode = true
         textSize = 14f
         setTextColor(palette.text)
         setHintTextColor(palette.gloss)
@@ -69,6 +107,11 @@ class AiChatPanel(
     init {
         orientation = VERTICAL
         setBackgroundColor(palette.board)
+        activeInput = contextInput
+        contextInput.setOnClickListener { focusInput(contextInput) }
+        prompt.setOnClickListener { focusInput(prompt) }
+        contextInput.setOnFocusChangeListener { _, focused -> if (focused) activeInput = contextInput }
+        prompt.setOnFocusChangeListener { _, focused -> if (focused) activeInput = prompt }
         addView(header(headerHeight))
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -170,11 +213,17 @@ class AiChatPanel(
         transcript.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         prompt.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         sendButton.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
-        status.text = if (mode == Mode.REPLIES) "点击生成后获取 3 条可直接上屏的回复" else "AI 助手支持在当前面板内连续多轮交流"
+        status.text = if (mode == Mode.REPLIES) "点击生成后获取 5 条不同风格的可直接上屏回复" else "AI 助手支持在当前面板内连续多轮交流"
         if (mode == Mode.REPLIES && resultArea.childCount == 0) {
-            resultArea.addView(actionText("生成 3 条智能回复", true) { generateReplies() },
+            resultArea.addView(actionText("生成 5 条不同风格回复", true) { generateReplies() },
                 LayoutParams(LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
         }
+    }
+
+    private fun focusInput(field: EditText) {
+        activeInput = field
+        field.requestFocus()
+        field.post { field.setSelection(field.text.length) }
     }
 
     private fun generateReplies() {
@@ -206,7 +255,7 @@ class AiChatPanel(
                         bottomMargin = dp(7)
                     })
                 }
-                resultArea.addView(actionText("重新生成", false) { generateReplies() },
+                resultArea.addView(actionText("重新生成 5 条回复", false) { generateReplies() },
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
             }.onFailure {
                 status.text = it.message ?: "生成失败，请检查网络和云端配置"
