@@ -52,11 +52,27 @@ pub const INITIALS: &[&str] = &[
 ];
 
 /// `rest` 开头能当声母的长度：`zh` 开头返回 `[1, 2]`（`z` 与 `zh` 都可能），`k` 返回 `[1]`，元音开头为空。
-pub fn initial_lengths(rest: &str) -> impl Iterator<Item = usize> + '_ {
-    INITIALS
+pub fn initial_lengths(rest: &str) -> impl Iterator<Item = usize> {
+    let mut lengths: Vec<usize> = INITIALS
         .iter()
         .filter(|initial| rest.starts_with(*initial))
         .map(|initial| initial.len())
+        .collect();
+
+    // 零声母音节也能用首字母简拼：我爱你 = w + a + n。
+    // a/e/o 本身也是合法音节，因此同时保留完整音节与不完整前缀两种切分。
+    if let Some(&first) = rest.as_bytes().first()
+        && matches!(first, b'a' | b'e' | b'o')
+        && SYLLABLES.iter().any(|syllable| {
+            syllable.as_bytes().first() == Some(&first) && syllable.len() > 1
+        })
+    {
+        lengths.push(1);
+    }
+
+    lengths.sort_unstable();
+    lengths.dedup();
+    lengths.into_iter()
 }
 
 #[cfg(test)]

@@ -50,6 +50,7 @@ impl Session {
             })
             .collect();
         tracing::info!(count = loaded.len(), "附加词库已挂上");
+        loaded.push(crate::assembly::builtin_android_dictionary());
         self.engine.set_extra_dictionaries(loaded);
         self.dictionaries = wanted;
     }

@@ -194,17 +194,18 @@ class InputPanel(
         clipboardPreview.visibility = View.GONE
     }
 
-    /** 仅在系统剪贴板发生新变化时显示一键粘贴预览；剪贴板管理面板仍保留完整历史与编辑功能。 */
-    fun refreshClipboard() {
-        val clips = ClipboardStore.list(context, settings.clipboardLimit)
-        previewClip = clips.firstOrNull()
-        val clip = previewClip
-        clipboardPreview.visibility = if (clip == null) View.GONE else View.VISIBLE
+    /** 显示系统当前剪贴板的临时预览；粘贴后立即隐藏，不要求先写入历史记录。 */
+    fun showClipboardPreview(clip: ClipItem) {
+        previewClip = clip
         clipboardPreview.text = when {
-            clip == null -> ""
             clip.image != null -> "📋 图片剪贴板 · 点击直接粘贴"
             else -> "📋 ${clip.text.replace("\n", " ").replace("\r", " ").take(100)}"
         }
+        clipboardPreview.visibility = View.VISIBLE
+    }
+
+    /** 刷新剪贴板管理面板；临时预览由 ClipboardWatcher 单独更新。 */
+    fun refreshClipboard() {
         if (openPanel == PanelKind.CLIPBOARD) open(PanelKind.CLIPBOARD)
     }
 

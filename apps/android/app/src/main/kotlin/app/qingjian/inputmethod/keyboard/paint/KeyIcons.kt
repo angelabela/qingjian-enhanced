@@ -58,14 +58,34 @@ object KeyIcons {
         p.lineTo(12f, 14.5f)
     }
 
-    /** Z/X/C/V 下滑编辑手势：用「手指触碰 + 下拉箭头」表达滑动动作。 */
-    fun drawDownFlick(canvas: Canvas, cx: Float, cy: Float, size: Float, paint: Paint) {
+    /** Z/X/C/V 分别画出全选、剪切、复制、粘贴图标，不再共用同一个下滑箭头。 */
+    fun drawEditShortcut(canvas: Canvas, cx: Float, cy: Float, size: Float, paint: Paint, key: Char) {
         path.rewind()
-        path.moveTo(12f, 7f)
-        path.lineTo(12f, 16f)
-        path.moveTo(7f, 11.5f)
-        path.lineTo(12f, 17f)
-        path.lineTo(17f, 11.5f)
+        when (key) {
+            'z' -> { // 全选：四角括号包围选区
+                path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
+                path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)
+                path.moveTo(20f, 15f); path.lineTo(20f, 20f); path.lineTo(15f, 20f)
+                path.moveTo(9f, 20f); path.lineTo(4f, 20f); path.lineTo(4f, 15f)
+                path.moveTo(8f, 12f); path.lineTo(12f, 8f); path.lineTo(16f, 12f)
+                path.lineTo(12f, 16f); path.close()
+            }
+            'x' -> { // 剪切：剪刀刀刃
+                path.moveTo(8f, 8f); path.lineTo(18f, 18f)
+                path.moveTo(8f, 16f); path.lineTo(18f, 6f)
+            }
+            'c' -> { // 复制：两张错位叠放的纸张
+                path.moveTo(8f, 7f); path.lineTo(18f, 7f); path.lineTo(18f, 20f); path.lineTo(8f, 20f); path.close()
+                path.moveTo(5f, 16f); path.lineTo(5f, 4f); path.lineTo(15f, 4f)
+            }
+            'v' -> { // 粘贴：剪贴板夹子与纸张横线
+                path.moveTo(8f, 6f); path.lineTo(5f, 6f); path.lineTo(5f, 21f); path.lineTo(19f, 21f); path.lineTo(19f, 6f); path.lineTo(16f, 6f)
+                path.moveTo(9f, 4f); path.lineTo(15f, 4f); path.lineTo(16f, 8f); path.lineTo(8f, 8f); path.close()
+                path.moveTo(8f, 12f); path.lineTo(16f, 12f)
+                path.moveTo(8f, 16f); path.lineTo(16f, 16f)
+            }
+            else -> return
+        }
         val scale = size / 24f
         canvas.save()
         canvas.translate(cx - size / 2f, cy - size / 2f)
@@ -75,11 +95,14 @@ object KeyIcons {
         val oldCap = paint.strokeCap
         val oldJoin = paint.strokeJoin
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3.0f
+        paint.strokeWidth = 2.2f
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
-        canvas.drawCircle(12f, 4f, 2.8f, paint)
         canvas.drawPath(path, paint)
+        if (key == 'x') {
+            canvas.drawCircle(5f, 7f, 2.3f, paint)
+            canvas.drawCircle(5f, 17f, 2.3f, paint)
+        }
         paint.style = oldStyle
         paint.strokeWidth = oldWidth
         paint.strokeCap = oldCap

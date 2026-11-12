@@ -15,6 +15,12 @@ use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
 
+/// Android 端补充的业务短语；独立于跨平台产品数据包，确保常见简拼可命中。
+pub(crate) fn builtin_android_dictionary() -> Dictionary {
+    Dictionary::parse("已回访\tyi hui fang\t3000\n")
+        .expect("内置 Android 词条格式固定")
+}
+
 pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError> {
     let started = Instant::now();
     let dictionary = Dictionary::from_path(packed_or_tsv(data_dir, "dict"))?;
@@ -31,6 +37,7 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
         .with_vocabulary_tracker(Box::new(VocabularyBook::open(
             user_dir.join("user-vocab.tsv"),
         )));
+    engine.set_extra_dictionaries(vec![builtin_android_dictionary()]);
     // 学习语言的释义表不在这里装：壳接着交设置（`Session::set_options`），按那里的学习语言装
     let english_glossary = data_dir.join("glossary-zh.qj");
     if english_glossary.is_file() {

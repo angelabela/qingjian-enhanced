@@ -210,6 +210,12 @@ mod tests {
     }
 
     #[test]
+    fn zero_initial_vowels_can_be_abbreviated() {
+        // 「我爱你」的简拼是 w+a+n；a 既是独立音节，也是 ai/an/ao 等音节的前缀。
+        assert!(joined("wan").contains(&"w… a… n…".to_owned()));
+    }
+
+    #[test]
     fn greedy_segmentation_comes_first() {
         assert_eq!(joined("kaifa")[0], "kai fa");
         assert_eq!(joined("zhongwen")[0], "zhong wen");

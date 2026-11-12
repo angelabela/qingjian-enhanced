@@ -4,6 +4,18 @@ use super::*;
 use crate::ranking::FIRST_SINGLE_CHAR_BY;
 
 #[test]
+fn zero_initial_syllables_match_abbreviated_words() {
+    let all = texts_in("我爱你\two ai ni\t6191\n", "wan");
+    assert_eq!(all[0], "我爱你");
+}
+
+#[test]
+fn three_initials_match_three_syllable_words() {
+    let all = texts_in("已回访\tyi hui fang\t3000\n", "yhf");
+    assert_eq!(all[0], "已回访");
+}
+
+#[test]
 fn exact_word_first_then_longer_then_prefix_expansions_then_prefix_words() {
     assert_eq!(texts("kaifa"), ["开发", "开放", "开饭", "开发者", "开"]);
 }
