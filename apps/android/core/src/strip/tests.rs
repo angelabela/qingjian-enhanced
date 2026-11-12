@@ -90,12 +90,13 @@ fn emoji_candidates_only_hold_their_place() {
 }
 
 #[test]
-fn cloud_candidates_carry_the_cloud_mark() {
+fn cloud_candidates_are_left_for_the_android_cloud_suggestion_row() {
     let mut cloud = candidate("空间改造方案", &[]);
     cloud.cloud = true;
     let rows = rows(&[candidate("空间", &[]), cloud], 1.0, chars);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].text, "空间");
     assert!(!rows[0].cloud);
-    assert!(rows[1].cloud);
 }
 
 #[test]
