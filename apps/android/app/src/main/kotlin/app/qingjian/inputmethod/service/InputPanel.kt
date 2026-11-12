@@ -8,6 +8,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.graphics.drawable.GradientDrawable
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
@@ -59,12 +60,26 @@ class InputPanel(
     private var panelView: View? = null
 
     // 顶排按键的气泡要画到候选条上，一路都不裁子视图
+    // 候选区与云联想合并成一个圆角卡片；本地候选在上，云联想在下。
+    private val candidateHeader = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        clipChildren = true
+        clipToPadding = true
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 18f * context.resources.displayMetrics.density
+            setColor(palette.surface)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
+        addView(bar)
+        addView(cloudSuggestions)
+    }
+
     private val main = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         clipChildren = false
         clipToPadding = false
-        addView(cloudSuggestions)
-        addView(bar)
+        addView(candidateHeader)
         addView(keyboard)
     }
 
