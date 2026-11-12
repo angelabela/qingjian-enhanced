@@ -1,21 +1,25 @@
 package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.RectF
 import android.view.MotionEvent
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.settings.ToolbarTool
 import app.qingjian.inputmethod.theme.Palette
+import kotlin.math.abs
 
 /**
- * 定制工具栏（#777，功能面板「常用功能」里进），在键盘区原地编辑：上面一排是工具栏上的、按顺序，右上角「−」点了移除；
- * 下面是全部工具，放了的高亮，点没放的加到末尾、点放了的移除。左上角 ✓ 完成才写进设置并回到键盘，
- * 系统返回键放弃这次改动；右上角「恢复默认」先换成 [ToolbarTool.DEFAULT]，同样要点 ✓ 才算。
+ * 定制工具栏：上面一排是工具栏上的项目，长按可排序；下面是全部工具，点按添加或移除。
+ * 拖动时使用抬升、柔和光晕、轻微倾斜和目标槽位提示；松手后带弹性归位。
  */
 @SuppressLint("ViewConstructor")
 class ToolbarPanel(
@@ -31,25 +35,28 @@ class ToolbarPanel(
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private val columns = 5
-
-    /** 正在编辑的工具栏，点 ✓ 才存。 */
     private var placed = saved
 
     private var draggingTool: ToolbarTool? = null
     private var draggingIndex = -1
+    private var dragTargetIndex = -1
     private var draggingX = 0f
     private var draggingY = 0f
+    private var dragTilt = 0f
+    private var liftProgress = 0f
+    private var dragAnimator: ValueAnimator? = null
+
+    private val dragFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dragStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ink.dp(1.5f)
+    }
 
     private val sectionTitle get() = ink.dp(34f)
     private val cellHeight get() = ink.dp(68f)
-
     private fun rows(count: Int) = maxOf(1, (count + columns - 1) / columns)
-
-    /** 下面「全部工具」那一节在内容里的起点（相对卡片顶，未滚动）。 */
     private val allTop get() = sectionTitle + rows(placed.size) * cellHeight
-
     private val contentHeight get() = allTop + sectionTitle + rows(ToolbarTool.entries.size) * cellHeight + ink.dp(8f)
-
     private fun cellWidth() = card.width() / columns
 
     private enum class Badge { REMOVE, ADD, PLACED }
@@ -72,15 +79,7 @@ class ToolbarPanel(
         ToolbarTool.entries.forEachIndexed { i, tool ->
             drawCell(canvas, tool, i, top + allTop + sectionTitle, if (tool in placed) Badge.PLACED else Badge.ADD)
         }
-        // 手指下方跟随一个浮起的图标，让拖动目标始终清晰可见。
-        draggingTool?.let { tool ->
-            val ghost = RectF(
-                draggingX - ink.dp(25f), draggingY - ink.dp(25f),
-                draggingX + ink.dp(25f), draggingY + ink.dp(25f),
-            )
-            ink.round(canvas, ghost, 13f, palette.brand)
-            ink.icon(canvas, tool.icon, draggingX, draggingY, 27f, palette.onBrand)
-        }
+        draggingTool?.let { drawFloatingTool(canvas, it) }
         canvas.restore()
     }
 
@@ -88,35 +87,99 @@ class ToolbarPanel(
         ink.textStart(canvas, title, 12f, palette.gloss, card.left + ink.dp(16f), top + sectionTitle / 2 + ink.dp(4f), card.right - ink.dp(16f))
     }
 
-    private fun drawCell(canvas: Canvas, tool: ToolbarTool, index: Int, top: Float, badge: Badge) {
+    private fun cellCenter(index: Int, top: Float): Pair<Float, Float> {
         val cx = card.left + cellWidth() * (index % columns + 0.5f)
         val cy = top + cellHeight * (index / columns + 0.5f)
+        return cx to cy
+    }
+
+    private fun drawCell(canvas: Canvas, tool: ToolbarTool, index: Int, top: Float, badge: Badge) {
+        val (cx, cy) = cellCenter(index, top)
         val highlighted = badge == Badge.PLACED
-        val lifted = draggingTool == tool && badge == Badge.REMOVE
-        if (lifted) {
-            val tile = RectF(cx - cellWidth() * 0.43f, cy - cellHeight * 0.43f, cx + cellWidth() * 0.43f, cy + cellHeight * 0.43f)
-            ink.round(canvas, tile, 12f, palette.functionalKey)
-            canvas.save()
-            canvas.scale(1.10f, 1.10f, cx, cy)
+        val isDragged = draggingTool == tool && badge == Badge.REMOVE
+        val isTarget = badge == Badge.REMOVE && draggingTool != null && dragTargetIndex == index
+
+        if (isDragged) {
+            val placeholder = RectF(cx - cellWidth() * 0.40f, cy - cellHeight * 0.39f, cx + cellWidth() * 0.40f, cy + cellHeight * 0.39f)
+            dragFill.color = withAlpha(palette.brand, 28)
+            canvas.drawRoundRect(placeholder, ink.dp(13f), ink.dp(13f), dragFill)
+            dragStroke.color = withAlpha(palette.brand, 150)
+            dragStroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(ink.dp(4f), ink.dp(3f)), 0f)
+            canvas.drawRoundRect(placeholder, ink.dp(13f), ink.dp(13f), dragStroke)
+            dragStroke.pathEffect = null
+            return
         }
-        ink.icon(canvas, tool.icon, cx, cy - ink.dp(10f), 26f, if (highlighted || lifted) palette.brand else palette.text)
-        ink.text(canvas, tool.label, 12f, if (highlighted || lifted) palette.brand else palette.gloss, cx, cy + ink.dp(18f), maxWidth = cellWidth() - ink.dp(4f))
-        if (lifted) canvas.restore()
-        if (!lifted) {
-            val bx = cx + ink.dp(17f)
-            val by = cy - ink.dp(24f)
-            ink.fill.color = if (highlighted) palette.brand else palette.functionalKey
-            canvas.drawCircle(bx, by, ink.dp(7.5f), ink.fill)
-            val mark = when (badge) {
-                Badge.REMOVE -> Icon.MINUS
-                Badge.ADD -> Icon.PLUS
-                Badge.PLACED -> Icon.CHECK
+
+        if (isTarget) {
+            val target = RectF(cx - cellWidth() * 0.43f, cy - cellHeight * 0.43f, cx + cellWidth() * 0.43f, cy + cellHeight * 0.43f)
+            dragFill.color = withAlpha(palette.brand, 36)
+            canvas.drawRoundRect(target, ink.dp(13f), ink.dp(13f), dragFill)
+            dragStroke.color = withAlpha(palette.brand, 190)
+            canvas.drawRoundRect(target, ink.dp(13f), ink.dp(13f), dragStroke)
+        }
+
+        ink.icon(canvas, tool.icon, cx, cy - ink.dp(10f), 26f, if (highlighted) palette.brand else palette.text)
+        ink.text(canvas, tool.label, 12f, if (highlighted) palette.brand else palette.gloss, cx, cy + ink.dp(18f), maxWidth = cellWidth() - ink.dp(4f))
+        val bx = cx + ink.dp(17f)
+        val by = cy - ink.dp(24f)
+        ink.fill.color = if (highlighted) palette.brand else palette.functionalKey
+        canvas.drawCircle(bx, by, ink.dp(7.5f), ink.fill)
+        val mark = when (badge) {
+            Badge.REMOVE -> Icon.MINUS
+            Badge.ADD -> Icon.PLUS
+            Badge.PLACED -> Icon.CHECK
+        }
+        ink.icon(canvas, mark, bx, by, 13f, if (highlighted) palette.onBrand else palette.text)
+    }
+
+    private fun drawFloatingTool(canvas: Canvas, tool: ToolbarTool) {
+        val scale = 1f + 0.16f * liftProgress
+        val size = ink.dp(56f) * scale
+        val rect = RectF(draggingX - size / 2, draggingY - size / 2, draggingX + size / 2, draggingY + size / 2)
+        val save = canvas.save()
+        canvas.rotate(dragTilt * liftProgress, draggingX, draggingY)
+
+        // 多层柔影比单一放大更有悬浮深度。
+        for (layer in 4 downTo 1) {
+            val shadow = RectF(rect).apply {
+                offset(0f, ink.dp(layer * 1.6f))
+                inset(-ink.dp(layer * 1.2f), -ink.dp(layer * 1.2f))
             }
-            ink.icon(canvas, mark, bx, by, 13f, if (highlighted) palette.onBrand else palette.text)
+            dragFill.color = withAlpha(Color.BLACK, (10 + layer * 5) * liftProgress.toInt().coerceAtLeast(1))
+            canvas.drawRoundRect(shadow, ink.dp(17f), ink.dp(17f), dragFill)
+        }
+
+        val halo = RectF(rect).apply { inset(-ink.dp(5f + liftProgress * 3f), -ink.dp(5f + liftProgress * 3f)) }
+        dragStroke.color = withAlpha(palette.brand, (75 + 90 * liftProgress).toInt())
+        dragStroke.strokeWidth = ink.dp(1.2f + liftProgress)
+        canvas.drawRoundRect(halo, ink.dp(20f), ink.dp(20f), dragStroke)
+
+        dragFill.color = palette.brand
+        canvas.drawRoundRect(rect, ink.dp(16f), ink.dp(16f), dragFill)
+        ink.icon(canvas, tool.icon, draggingX, draggingY - ink.dp(3f), 29f, palette.onBrand)
+        ink.text(canvas, tool.label, 10f, palette.onBrand, draggingX, draggingY + ink.dp(17f), maxWidth = size - ink.dp(8f))
+        canvas.restoreToCount(save)
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        (color and 0x00FFFFFF) or ((alpha.coerceIn(0, 255)) shl 24)
+
+    private fun animateLift(from: Float, to: Float, duration: Long, overshoot: Boolean = false, end: (() -> Unit)? = null) {
+        dragAnimator?.cancel()
+        dragAnimator = ValueAnimator.ofFloat(from, to).apply {
+            this.duration = duration
+            interpolator = if (overshoot) OvershootInterpolator(1.15f) else DecelerateInterpolator()
+            addUpdateListener {
+                liftProgress = it.animatedValue as Float
+                invalidate()
+            }
+            if (end != null) addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) = end()
+            })
+            start()
         }
     }
 
-    /** 左上角是 ✓：存下并回到键盘。 */
     override fun onBack() {
         actions.closePanel()
         if (placed != saved) actions.setChoice(Settings.KEY_TOOLBAR, ToolbarTool.format(placed))
@@ -125,15 +188,18 @@ class ToolbarPanel(
     override fun onHold(x: Float, y: Float, rawX: Float) {
         if (!card.contains(x, y)) return
         val inContent = y - card.top + scroll.offset
-        // 仅拖动上方已放置的项目；下方全部工具仍通过点按添加或移除。
         if (inContent < sectionTitle || inContent >= allTop || placed.isEmpty()) return
         val column = ((x - card.left) / cellWidth()).toInt().coerceIn(0, columns - 1)
         val row = ((inContent - sectionTitle) / cellHeight).toInt()
         val index = row * columns + column
         draggingTool = placed.getOrNull(index) ?: return
         draggingIndex = index
+        dragTargetIndex = index
         draggingX = x
         draggingY = y
+        dragTilt = 0f
+        liftProgress = 0f
+        animateLift(0f, 1f, 240, overshoot = true)
         invalidate()
     }
 
@@ -143,8 +209,10 @@ class ToolbarPanel(
         if (draggingTool != null) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - draggingX
                     draggingX = event.x
                     draggingY = event.y
+                    dragTilt = (dx / ink.dp(2f)).coerceIn(-8f, 8f)
                     if (placed.isNotEmpty()) {
                         val inContent = (event.y - card.top + scroll.offset)
                             .coerceIn(sectionTitle, (allTop - 1f).coerceAtLeast(sectionTitle))
@@ -153,6 +221,7 @@ class ToolbarPanel(
                         val row = ((inContent - sectionTitle) / cellHeight).toInt()
                         val target = (row * columns + column).coerceIn(0, placed.lastIndex)
                         val from = placed.indexOf(draggingTool)
+                        dragTargetIndex = target
                         if (from >= 0 && target != from) {
                             val reordered = placed.toMutableList()
                             val moving = reordered.removeAt(from)
@@ -161,12 +230,43 @@ class ToolbarPanel(
                             draggingIndex = target
                         }
                     }
-                    invalidate()
+                    postInvalidateOnAnimation()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // 松手后保持当前顺序，点击表头完成键时写入设置。
-                    draggingTool = null
-                    draggingIndex = -1
+                    val tool = draggingTool
+                    val target = placed.indexOf(tool)
+                    if (target >= 0) {
+                        val top = card.top - scroll.offset + sectionTitle
+                        val (targetX, targetY) = cellCenter(target, top)
+                        val startX = draggingX
+                        val startY = draggingY
+                        ValueAnimator.ofFloat(0f, 1f).apply {
+                            duration = 190
+                            interpolator = DecelerateInterpolator()
+                            addUpdateListener {
+                                val t = it.animatedValue as Float
+                                draggingX = startX + (targetX - startX) * t
+                                draggingY = startY + (targetY - startY) * t
+                                dragTilt *= (1f - t)
+                                invalidate()
+                            }
+                            addListener(object : android.animation.AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: android.animation.Animator) {
+                                    draggingTool = null
+                                    draggingIndex = -1
+                                    dragTargetIndex = -1
+                                    liftProgress = 0f
+                                    invalidate()
+                                }
+                            })
+                            start()
+                        }
+                        animateLift(liftProgress, 0f, 190)
+                    } else {
+                        draggingTool = null
+                        draggingIndex = -1
+                        dragTargetIndex = -1
+                    }
                     invalidate()
                 }
             }
