@@ -502,14 +502,9 @@ class QingjianInputMethodService :
             val after = currentInputConnection?.getTextAfterCursor(1500, 0)?.toString().orEmpty()
             (before + after).takeLast(4000)
         } else ""
-        if (editor is app.qingjian.inputmethod.panel.AiChatPanel) editor = null
+        // AI 对话面板只展示回复，不接管输入连接；键盘继续输入到宿主应用。
         panel?.open(kind, source)
-        if (kind == PanelKind.AI_CHAT) {
-            editor = panel?.aiChatEditor
-            showKeyboard()
-        } else {
-            showKeyboard()
-        }
+        showKeyboard()
     }
 
     override fun closePanel() {
@@ -519,7 +514,6 @@ class QingjianInputMethodService :
             return
         }
         val candidates = panel?.openPanel == PanelKind.CANDIDATES
-        if (editor is app.qingjian.inputmethod.panel.AiChatPanel) editor = null
         panel?.close()
         showKeyboard()
         // 单字是展开面板里的筛选：收起就回到全部候选
@@ -527,14 +521,8 @@ class QingjianInputMethodService :
     }
 
     override fun commitText(text: String) {
-        // 选择 AI 回复时必须上屏到宿主应用，而不是写回 AI 面板自己的上下文编辑框。
-        val chatEditor = editor as? app.qingjian.inputmethod.panel.AiChatPanel
-        if (chatEditor != null) editor = null
-        try {
-            composer.commitPanelText(text)
-        } finally {
-            if (chatEditor != null && panel?.openPanel == PanelKind.AI_CHAT) editor = chatEditor
-        }
+        // AI 回复直接提交到宿主输入框。
+        composer.commitPanelText(text)
     }
 
     override fun replaceInputText(text: String): Boolean {
