@@ -129,7 +129,7 @@ class InputPanel(
             )
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
             PanelKind.AI_CHAT -> AiChatPanel(
-                context, palette, header, text, aiChatGenerator, actions::commitText, actions::closePanel,
+                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
                 context, palette, header, text, onGenerateAiExpression, actions::commitText, actions::closePanel,
