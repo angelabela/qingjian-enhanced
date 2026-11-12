@@ -3,7 +3,7 @@ name: android-debug
 
 on:
   push:
-    branches: [feature/smart-input-android-0.7]
+    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons]
   workflow_dispatch:
 
 permissions:
