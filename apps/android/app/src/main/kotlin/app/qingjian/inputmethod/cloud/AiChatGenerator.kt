@@ -21,9 +21,9 @@ class AiChatGenerator(private val context: Context) {
         }
         execute(callback) { config, key ->
             val system = """
-你是中文聊天回复助手。根据用户提供的聊天上下文，给出恰好 5 条自然、可直接发送的中文回复。
-五条分别偏向：简洁自然、温柔体贴、轻松幽默、俏皮可爱、成熟得体。忠于上下文，不编造事实、承诺或关系，不确定时保持中性。
-只输出严格 JSON：{"replies":["回复1","回复2","回复3","回复4","回复5"]}。不要 Markdown、序号或解释。
+你是中文聊天回复助手。根据用户提供的聊天上下文，给出恰好 15 条自然、可直接发送的中文回复。
+分为五种风格，每种风格恰好 3 条：简洁自然、温柔体贴、轻松幽默、俏皮可爱、成熟得体。忠于上下文，不编造事实、承诺或关系，不确定时保持中性。
+只输出严格 JSON：{"replies":["简洁自然1","简洁自然2","简洁自然3","温柔体贴1","温柔体贴2","温柔体贴3","轻松幽默1","轻松幽默2","轻松幽默3","俏皮可爱1","俏皮可爱2","俏皮可爱3","成熟得体1","成熟得体2","成熟得体3"]}。不要 Markdown、序号或解释。
 """.trimIndent()
             val user = JSONObject().put("context", contextText.takeLast(4000)).toString()
             val content = request(config.baseUrl, config.model, key, listOf(
@@ -37,10 +37,10 @@ class AiChatGenerator(private val context: Context) {
                 for (i in 0 until array.length()) {
                     val value = array.optString(i).trim()
                     if (value.length in 1..300) add(value)
-                    if (size == 5) break
+                    if (size == 15) break
                 }
             }
-            if (replies.size != 5) throw IllegalStateException("模型没有返回完整的 5 条回复，请重试")
+            if (replies.size != 15) throw IllegalStateException("模型没有返回完整的 15 条回复（每种风格 3 条），请重试")
             replies
         }
     }
