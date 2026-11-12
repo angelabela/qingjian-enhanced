@@ -21,6 +21,12 @@ class KeyPainter(
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val bubble = RectF()
+    private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * density
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
 
     var shift = ShiftState.OFF
     var chinese = true
@@ -105,9 +111,11 @@ class KeyPainter(
                     is Key.Space -> 13f
                     else -> 15f
                 }
-                text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY())
+                text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY() + if (key is Key.Space) 4f * density else 0f)
             }
         }
+
+        if (key is Key.Space) drawClipboardSwipeHint(canvas, bounds)
 
         // Z/X/C/V 的下滑编辑手势提示：图标固定在键面下缘，主字仍保持清晰。
         if (key is Key.Letter && key.char.lowercaseChar() in EDIT_GESTURE_KEYS) {
@@ -148,6 +156,22 @@ class KeyPainter(
         Key.Language -> languageLabel
         is Key.Enter -> enterLabel.orEmpty()
         else -> key.label
+    }
+
+    /** 空格键上的剪贴板下滑提示：小剪贴板加向下箭头，不遮挡「青简」键名。 */
+    private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
+        val cx = bounds.centerX()
+        val top = bounds.top + 3f * density
+        val w = 8f * density
+        val h = 9f * density
+        gestureHint.color = palette.gloss
+        canvas.drawRoundRect(cx - w / 2, top, cx + w / 2, top + h, 1.5f * density, 1.5f * density, gestureHint)
+        canvas.drawLine(cx - 2f * density, top + 2.5f * density, cx + 2f * density, top + 2.5f * density, gestureHint)
+        val arrowTop = top + h + 1f * density
+        val arrowBottom = arrowTop + 4f * density
+        canvas.drawLine(cx, arrowTop, cx, arrowBottom, gestureHint)
+        canvas.drawLine(cx - 2.5f * density, arrowBottom - 2f * density, cx, arrowBottom, gestureHint)
+        canvas.drawLine(cx + 2.5f * density, arrowBottom - 2f * density, cx, arrowBottom, gestureHint)
     }
 
     /** 带一像素底影的圆角面。 */
