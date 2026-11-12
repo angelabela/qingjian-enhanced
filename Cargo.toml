@@ -33,17 +33,14 @@ qingjian-core = { path = "crates/qingjian-core" }
 qingjian-dictionary = { path = "crates/qingjian-dictionary" }
 qingjian-translate = { path = "crates/qingjian-translate" }
 qingjian-learning = { path = "crates/qingjian-learning" }
-qingjian-platform = { path = "crates/qingjian-platform" }
 qingjian-predict = { path = "crates/qingjian-predict" }
 qingjian-voice = { path = "crates/qingjian-voice" }
 qingjian-lm = { path = "crates/qingjian-lm" }
 qingjian-format = { path = "crates/qingjian-format" }
 qingjian-neural = { path = "crates/qingjian-neural" }
 qingjian-render = { path = "crates/qingjian-render" }
-qingjian-update = { path = "crates/qingjian-update" }
 # 自绘 UI 引擎：候选窗、状态条、设置程序都画在它上面
 bamboo-slip = { path = "crates/bamboo-slip" }
-qingjian-clipboard = { path = "crates/qingjian-clipboard" }
 qingjian-clipboard-sync = { path = "crates/qingjian-clipboard-sync" }
 qingjian-code = { path = "crates/qingjian-code" }
 bamboo-slip-i18n = { path = "crates/bamboo-slip-i18n" }
