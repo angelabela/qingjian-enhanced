@@ -35,7 +35,6 @@ class FunctionPanel(
     private val features = listOf(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
-        Feature(Icon.CLOUD, "AI表达") { openPanel(PanelKind.AI_EXPRESSION) },
         Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
         Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
             setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
