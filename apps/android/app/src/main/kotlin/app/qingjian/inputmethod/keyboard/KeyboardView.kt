@@ -383,7 +383,7 @@ class KeyboardView(
                     movedCursor -> Unit
                     spaceTap && slot?.key is Key.Space -> {
                         tapFeedback()
-                        listener.onKey(Key.Space)
+                        slot?.key?.let(listener::onKey)
                     }
                     slot != null -> listener.onKey(slot.key)
                 }
