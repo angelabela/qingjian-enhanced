@@ -65,7 +65,7 @@ impl StripPainter {
             .candidates
             .iter()
             .enumerate()
-            .filter(|(_, candidate)| has_emoji(&candidate.text))
+            .filter(|(_, candidate)| !candidate.cloud && has_emoji(&candidate.text))
             .map(|(i, _)| i)
             .collect();
         self.content = RenderFrame {
