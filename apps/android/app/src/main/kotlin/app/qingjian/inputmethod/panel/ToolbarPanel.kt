@@ -37,6 +37,8 @@ class ToolbarPanel(
 
     private var draggingTool: ToolbarTool? = null
     private var draggingIndex = -1
+    private var draggingX = 0f
+    private var draggingY = 0f
 
     private val sectionTitle get() = ink.dp(34f)
     private val cellHeight get() = ink.dp(68f)
@@ -70,6 +72,15 @@ class ToolbarPanel(
         ToolbarTool.entries.forEachIndexed { i, tool ->
             drawCell(canvas, tool, i, top + allTop + sectionTitle, if (tool in placed) Badge.PLACED else Badge.ADD)
         }
+        // 手指下方跟随一个浮起的图标，让拖动目标始终清晰可见。
+        draggingTool?.let { tool ->
+            val ghost = RectF(
+                draggingX - ink.dp(25f), draggingY - ink.dp(25f),
+                draggingX + ink.dp(25f), draggingY + ink.dp(25f),
+            )
+            ink.round(canvas, ghost, 13f, palette.brand)
+            ink.icon(canvas, tool.icon, draggingX, draggingY, 27f, palette.onBrand)
+        }
         canvas.restore()
     }
 
@@ -81,18 +92,28 @@ class ToolbarPanel(
         val cx = card.left + cellWidth() * (index % columns + 0.5f)
         val cy = top + cellHeight * (index / columns + 0.5f)
         val highlighted = badge == Badge.PLACED
-        ink.icon(canvas, tool.icon, cx, cy - ink.dp(10f), 26f, if (highlighted) palette.brand else palette.text)
-        ink.text(canvas, tool.label, 12f, if (highlighted) palette.brand else palette.gloss, cx, cy + ink.dp(18f), maxWidth = cellWidth() - ink.dp(4f))
-        val bx = cx + ink.dp(17f)
-        val by = cy - ink.dp(24f)
-        ink.fill.color = if (highlighted) palette.brand else palette.functionalKey
-        canvas.drawCircle(bx, by, ink.dp(7.5f), ink.fill)
-        val mark = when (badge) {
-            Badge.REMOVE -> Icon.MINUS
-            Badge.ADD -> Icon.PLUS
-            Badge.PLACED -> Icon.CHECK
+        val lifted = draggingTool == tool && badge == Badge.REMOVE
+        if (lifted) {
+            val tile = RectF(cx - cellWidth() * 0.43f, cy - cellHeight * 0.43f, cx + cellWidth() * 0.43f, cy + cellHeight * 0.43f)
+            ink.round(canvas, tile, 12f, palette.functionalKey)
+            canvas.save()
+            canvas.scale(1.10f, 1.10f, cx, cy)
         }
-        ink.icon(canvas, mark, bx, by, 13f, if (highlighted) palette.onBrand else palette.text)
+        ink.icon(canvas, tool.icon, cx, cy - ink.dp(10f), 26f, if (highlighted || lifted) palette.brand else palette.text)
+        ink.text(canvas, tool.label, 12f, if (highlighted || lifted) palette.brand else palette.gloss, cx, cy + ink.dp(18f), maxWidth = cellWidth() - ink.dp(4f))
+        if (lifted) canvas.restore()
+        if (!lifted) {
+            val bx = cx + ink.dp(17f)
+            val by = cy - ink.dp(24f)
+            ink.fill.color = if (highlighted) palette.brand else palette.functionalKey
+            canvas.drawCircle(bx, by, ink.dp(7.5f), ink.fill)
+            val mark = when (badge) {
+                Badge.REMOVE -> Icon.MINUS
+                Badge.ADD -> Icon.PLUS
+                Badge.PLACED -> Icon.CHECK
+            }
+            ink.icon(canvas, mark, bx, by, 13f, if (highlighted) palette.onBrand else palette.text)
+        }
     }
 
     /** 左上角是 ✓：存下并回到键盘。 */
@@ -111,6 +132,8 @@ class ToolbarPanel(
         val index = row * columns + column
         draggingTool = placed.getOrNull(index) ?: return
         draggingIndex = index
+        draggingX = x
+        draggingY = y
         invalidate()
     }
 
@@ -120,6 +143,8 @@ class ToolbarPanel(
         if (draggingTool != null) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
+                    draggingX = event.x
+                    draggingY = event.y
                     if (placed.isNotEmpty()) {
                         val inContent = (event.y - card.top + scroll.offset)
                             .coerceIn(sectionTitle, (allTop - 1f).coerceAtLeast(sectionTitle))
