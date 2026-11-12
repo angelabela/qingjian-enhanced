@@ -67,10 +67,7 @@ class InputPanel(
         private set
 
     private var panelView: View? = null
-    private var chatOverlay: ChatOverlay? = null
-    private var chatPlaceholder: View? = null
     private var chatPanel: AiChatPanel? = null
-    private var barOriginalParams: ViewGroup.LayoutParams? = null
 
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
@@ -149,25 +146,17 @@ class InputPanel(
     }
 
     private fun cover(kind: PanelKind, panel: View) {
+        // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
+        // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
-            // 将候选栏暂时移到 AI 面板与键盘之间：中文拼音输入时仍可正常选词。
-            barOriginalParams = bar.layoutParams
-            main.removeView(bar)
-            chatPlaceholder = View(context)
-            main.addView(chatPlaceholder, 1, barOriginalParams)
             chatPanel = panel
-            chatOverlay = ChatOverlay(context, panel, bar, bar.barHeight.toInt().coerceAtLeast(1))
-            stack.addView(
-                chatOverlay,
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
-            )
-            panelView = chatOverlay
-            main.visibility = View.VISIBLE
-        } else {
-            stack.addView(panel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            main.visibility = View.INVISIBLE
-            panelView = panel
         }
+        stack.addView(
+            panel,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        main.visibility = View.INVISIBLE
+        panelView = panel
         openPanel = kind
         overlay?.bringToFront()
     }
@@ -202,13 +191,7 @@ class InputPanel(
     fun close() {
         panelView?.let(stack::removeView)
         panelView = null
-        chatOverlay?.removeView(bar)
-        chatOverlay = null
         chatPanel = null
-        chatPlaceholder?.let(main::removeView)
-        chatPlaceholder = null
-        barOriginalParams?.let { params -> main.addView(bar, 1, params) }
-        barOriginalParams = null
         openPanel = null
         main.visibility = View.VISIBLE
     }
