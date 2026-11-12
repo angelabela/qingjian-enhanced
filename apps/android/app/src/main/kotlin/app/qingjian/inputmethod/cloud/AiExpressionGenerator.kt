@@ -100,7 +100,7 @@ class AiExpressionGenerator(private val context: android.content.Context) {
                 if (items.isNotEmpty()) result += AiExpressionGroup(title, items)
             }
             if (result.isEmpty()) throw IllegalStateException("模型返回内容格式不正确，请再试一次")
-            result
+            return result
         } finally {
             connection.disconnect()
         }
