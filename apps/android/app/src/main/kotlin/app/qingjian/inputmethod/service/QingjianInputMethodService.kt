@@ -25,6 +25,7 @@ import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
 import app.qingjian.inputmethod.clipboard.ClipboardWatcher
 import app.qingjian.inputmethod.clipboard.sync.NeonEdgeView
 import org.json.JSONObject
+import android.icu.text.Transliterator
 import app.qingjian.inputmethod.contacts.ContactsSync
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
@@ -68,6 +69,7 @@ class QingjianInputMethodService :
     InputMethodService(), Composer.Host, CandidateBarView.Listener, KeyboardView.Listener, PanelActions, VoiceInput.Host,
     GameMode.Host {
     private lateinit var engine: Engine
+    private val phraseTransliterator by lazy { Transliterator.getInstance("Han-Latin; Latin-ASCII") }
     private lateinit var composer: Composer
     private var panel: InputPanel? = null
 
@@ -413,6 +415,11 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) = composer.onKey(key)
 
+    override fun onOpenClipboard() = clipboard()
+
+    /** 用户确认上屏后，把连续两词及以上的短语缩写写入本机常用语词库。 */
+    override fun onPhraseCommitted(text: String) = rememberPhraseShortcuts(text)
+
     /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
     override fun onEditShortcut(action: KeyboardView.EditShortcut) {
         val actionId = when (action) {
@@ -571,8 +578,52 @@ class QingjianInputMethodService :
         BottomAction.NONE -> Unit
     }
 
-    /** 工具栏、全面屏底栏的剪贴板：打开剪贴板面板。 */
+    /** 工具栏、全面屏底栏与空格键下滑的剪贴板入口。 */
     private fun clipboard() = openPanel(PanelKind.CLIPBOARD)
+
+    /**
+     * 将用户确认上屏的中文按 Core 分词，保存所有连续二词及以上片段的逐字拼音首字母。
+     * 使用常用语的本机存储，因此可随既有短语备份/恢复，并由 Core 作为个人候选召回。
+     */
+    private fun rememberPhraseShortcuts(text: String) {
+        if (!::composer.isInitialized || composer.privateInput || composer.directInput || !composer.chinese || text.isBlank()) return
+        val pieces = engine.textPieces(text).filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
+        if (pieces.size < 2) return
+        val maxCode = PhraseRules.maxCode.takeIf { it > 0 } ?: 32
+        val known = ClipboardStore.phrases(this).phrases
+            .mapTo(mutableSetOf()) { it.text to it.code }
+        var changed = false
+        // 保存连续 2～5 词组合；5 词以上另外保存完整短句，避免超长句产生大量重复条目。
+        val spans = mutableListOf<Pair<Int, Int>>()
+        for (start in pieces.indices) {
+            for (length in 2..minOf(5, pieces.size - start)) {
+                spans += start to (start + length)
+            }
+        }
+        if (pieces.size > 5) spans += 0 to pieces.size
+        for ((start, end) in spans) {
+            val phrase = pieces.subList(start, end).joinToString("")
+            val code = pinyinInitials(phrase)
+            if (code.length !in 2..maxCode || !known.add(phrase to code)) continue
+            ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
+            changed = true
+        }
+        if (changed) engine.reloadPhrases(ClipboardStore.userDir(this))
+    }
+
+    private fun isHanCodePoint(codePoint: Int): Boolean =
+        Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN
+
+    private fun pinyinInitials(text: String): String = buildString {
+        text.codePoints().toArray().forEach { codePoint ->
+            if (isHanCodePoint(codePoint)) {
+                val syllable = phraseTransliterator.transliterate(String(Character.toChars(codePoint)))
+                    .lowercase()
+                    .filter { it in 'a'..'z' }
+                syllable.firstOrNull()?.let { append(it) }
+            }
+        }
+    }
 
     override val clipboardLimit: Int get() = Settings.load(this).clipboardLimit
 

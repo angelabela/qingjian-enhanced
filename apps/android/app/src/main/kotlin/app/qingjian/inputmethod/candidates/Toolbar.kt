@@ -3,7 +3,6 @@ package app.qingjian.inputmethod.candidates
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.RectF
 import android.text.TextPaint
 import android.text.TextUtils
 import app.qingjian.inputmethod.R
@@ -28,8 +27,6 @@ class Toolbar(
     private val hideSlot = 62f * density
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint().apply { color = palette.faint }
-    private val card = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val cardRect = RectF()
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
 
     /** 中间那排滑过去的距离（像素）。 */
@@ -56,22 +53,9 @@ class Toolbar(
         return tools[((x - logoSlot + offset) / middleSlot(viewWidth)).toInt().coerceIn(0, tools.size - 1)]
     }
 
-    /** 浮在键盘上方的一块圆角卡片，底下一道与按键同样的底影，和键盘分出层次。 */
-    private fun drawCard(canvas: Canvas, viewWidth: Int) {
-        val radius = 14 * density
-        cardRect.set(6 * density, 6 * density, viewWidth - 6 * density, barHeight - 4 * density)
-        card.color = palette.keyShadow
-        cardRect.offset(0f, density)
-        canvas.drawRoundRect(cardRect, radius, radius, card)
-        cardRect.offset(0f, -density)
-        card.color = palette.surface
-        canvas.drawRoundRect(cardRect, radius, radius, card)
-    }
-
     /** 工具栏位置上临时放的一句提示（功能要先去设置里配好）：左边提示图标，中间一行字，右边 ›，整条可点。 */
     fun drawNotice(canvas: Canvas, viewWidth: Int, message: String) {
         val cy = barHeight / 2
-        drawCard(canvas, viewWidth)
         stroke.color = palette.brand
         PanelIcons.draw(canvas, Icon.INFO, 30 * density, cy, 22 * density, stroke)
         noticeText.color = palette.text
@@ -86,7 +70,6 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        drawCard(canvas, viewWidth)
         // 与 Windows 托盘同一张品牌标
         val logoSize = (30 * density).toInt()
         val logoCentre = (logoSlot / 2).toInt()
