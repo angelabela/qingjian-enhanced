@@ -54,6 +54,7 @@ class AiChatPanel(
     private val transcript = LinearLayout(context).apply {
         orientation = VERTICAL
     }
+    private lateinit var sendButton: TextView
     private val prompt = EditText(context).apply {
         hint = "输入你想问 AI 的内容"
         textSize = 14f
@@ -105,7 +106,8 @@ class AiChatPanel(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(6), dp(12), dp(8))
             addView(prompt, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-            addView(actionText("发送", true) { sendAssistantMessage() }, LayoutParams(dp(66), dp(44)))
+            sendButton = actionText("发送", true) { sendAssistantMessage() }
+            addView(sendButton, LayoutParams(dp(66), dp(44)))
         })
         renderMode()
     }
@@ -163,10 +165,11 @@ class AiChatPanel(
             background = rounded(if (mode == Mode.ASSISTANT) palette.brand else palette.surface, 12)
             setTextColor(if (mode == Mode.ASSISTANT) Color.WHITE else palette.text)
         }
-        contextInput.visibility = if (mode == Mode.REPLIES) View.VISIBLE else View.GONE
+        contextInput.visibility = View.VISIBLE
         resultArea.visibility = if (mode == Mode.REPLIES) View.VISIBLE else View.GONE
         transcript.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         prompt.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
+        sendButton.visibility = if (mode == Mode.ASSISTANT) View.VISIBLE else View.GONE
         status.text = if (mode == Mode.REPLIES) "点击生成后获取 3 条可直接上屏的回复" else "AI 助手支持在当前面板内连续多轮交流"
         if (mode == Mode.REPLIES && resultArea.childCount == 0) {
             resultArea.addView(actionText("生成 3 条智能回复", true) { generateReplies() },
@@ -218,6 +221,9 @@ class AiChatPanel(
         val text = prompt.text.toString().trim()
         if (text.isBlank()) return
         prompt.setText("")
+        if (conversation.isEmpty() && contextInput.text.isNotBlank()) {
+            conversation += "user" to "以下是用户提供的聊天上下文，请仅将其作为背景理解，不要直接复述：\\n${contextInput.text.toString().trim().takeLast(4000)}"
+        }
         conversation += "user" to text
         appendBubble("我", text, user = true)
         busy = true
