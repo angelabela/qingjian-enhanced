@@ -35,6 +35,9 @@ class KeyboardView(
 
     interface Listener {
         fun onKey(key: Key)
+
+        /** 空格键向下滑：打开剪贴板面板。 */
+        fun onOpenClipboard()
         fun onEditShortcut(action: EditShortcut)
 
         /** 长按气泡里选了一项（字母、数字或符号）。 */
@@ -117,6 +120,7 @@ class KeyboardView(
     private var spaceAnchorY = 0f
     private var cursorMode = false
     private var voiceMode = false
+    private var clipboardMode = false
     private val spaceHold = Runnable { onSpaceHold() }
 
     /**
@@ -287,6 +291,7 @@ class KeyboardView(
                         spaceAnchorY = event.getY(index)
                         cursorMode = false
                         voiceMode = false
+                        clipboardMode = false
                         timer.postDelayed(spaceHold, if (settings.voiceHoldSpace) VOICE_HOLD_MS else LONG_PRESS_MS)
                     }
 
@@ -351,11 +356,13 @@ class KeyboardView(
                 val choosing = pointer == longPressPointer && choicePopup.showing
                 val movedCursor = pointer == spacePointer && cursorMode
                 val spoke = pointer == spacePointer && voiceMode
+                val openClipboard = pointer == spacePointer && clipboardMode
                 if (pointer == spacePointer) {
                     timer.removeCallbacks(spaceHold)
                     spacePointer = -1
                     cursorMode = false
                     voiceMode = false
+                    clipboardMode = false
                 }
                 if (pointer == longPressPointer) {
                     timer.removeCallbacks(longPress)
@@ -366,6 +373,7 @@ class KeyboardView(
                         if (choiceKey == Key.Language) listener.onLanguageChoice(chosen) else listener.onKeyChoice(choiceItems[chosen])
                     }
                     slot?.key == Key.Backspace -> timer.removeCallbacks(repeatBackspace)
+                    openClipboard -> listener.onOpenClipboard()
                     spoke -> listener.onVoiceRelease(cancel = false)
                     movedCursor -> Unit
                     slot != null -> listener.onKey(slot.key)
@@ -550,7 +558,7 @@ class KeyboardView(
 
     /** 按住空格不动到点：开着「长按空格说话」先试语音，开不起来（还不能用、没权限）退回挪光标（挪光标也关着就当普通空格）。 */
     private fun onSpaceHold() {
-        if (spacePointer < 0 || cursorMode || voiceMode) return
+        if (spacePointer < 0 || cursorMode || voiceMode || clipboardMode) return
         if (settings.voiceHoldSpace && listener.onVoiceHold()) {
             voiceMode = true
             Haptics.hold(context)
@@ -578,11 +586,20 @@ class KeyboardView(
     /** 按着空格横着滑：横向滑开一段（比竖向多）就进挪光标，之后每 [CURSOR_STEP_DP] 挪一格。 */
     private fun trackCursor(event: MotionEvent) {
         if (voiceMode) return trackVoice(event)
+        if (clipboardMode) return
         val at = event.findPointerIndex(spacePointer)
         if (at < 0) return
         val dx = event.getX(at) - spaceAnchorX
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
+        // 空格键明显向下滑时打开剪贴板；优先于横向挪光标，且不依赖「空格移动光标」设置。
+        if (!cursorMode && dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
+            clipboardMode = true
+            timer.removeCallbacks(spaceHold)
+            Haptics.hold(context)
+            invalidate()
+            return
+        }
         if (!cursorMode && settings.spaceCursor && abs(dx) > step && abs(dx) > abs(dy)) enterCursorMode()
         if (!cursorMode) return
         val steps = (dx / step).toInt()
@@ -604,6 +621,7 @@ class KeyboardView(
         spacePointer = -1
         cursorMode = false
         voiceMode = false
+        clipboardMode = false
         longPressPointer = -1
         if (choicePopup.showing) choicePopup.finish()
     }
@@ -644,5 +662,7 @@ class KeyboardView(
          */
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
+        const val SPACE_CLIPBOARD_SWIPE_DP = 22f
+        const val SPACE_CLIPBOARD_SLOPE = 1.2f
     }
 }
