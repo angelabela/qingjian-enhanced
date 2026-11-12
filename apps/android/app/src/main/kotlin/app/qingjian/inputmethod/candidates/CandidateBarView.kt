@@ -159,7 +159,7 @@ class CandidateBarView(
     })
 
     init {
-        setBackgroundColor(palette.board)
+        setBackgroundColor(palette.surface)
     }
 
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
