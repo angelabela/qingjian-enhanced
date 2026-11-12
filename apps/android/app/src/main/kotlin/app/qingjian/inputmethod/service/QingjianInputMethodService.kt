@@ -523,7 +523,16 @@ class QingjianInputMethodService :
         if (candidates && composer.singleChars) composer.toggleSingleChars()
     }
 
-    override fun commitText(text: String) = composer.commitPanelText(text)
+    override fun commitText(text: String) {
+        // 选择 AI 回复时必须上屏到宿主应用，而不是写回 AI 面板自己的上下文编辑框。
+        val chatEditor = editor as? app.qingjian.inputmethod.panel.AiChatPanel
+        if (chatEditor != null) editor = null
+        try {
+            composer.commitPanelText(text)
+        } finally {
+            if (chatEditor != null && panel?.openPanel == PanelKind.AI_CHAT) editor = chatEditor
+        }
+    }
 
     override fun deleteBackward() = composer.onKey(Key.Backspace)
 
