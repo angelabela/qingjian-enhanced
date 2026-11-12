@@ -208,6 +208,7 @@ class QingjianInputMethodService :
             keyboardListener = this,
             actions = this,
             onBottomAction = ::onBottomAction,
+            onCloudSelect = { composer.select(it) },
             floating = target != null,
         )
         this.panel = panel
@@ -344,6 +345,9 @@ class QingjianInputMethodService :
         shownPreedit = preedit
         shownCandidates = candidates
         panel?.bar?.show(preedit, candidates)
+        panel?.showCloudSuggestions(candidates.mapIndexedNotNull { index, candidate ->
+            if (candidate.cloud) index to candidate.text else null
+        })
         if (panel?.openPanel == PanelKind.CANDIDATES) {
             if (candidates.isEmpty()) closePanel() else panel?.showCandidates(preedit, candidates, composer.singleChars)
         }
