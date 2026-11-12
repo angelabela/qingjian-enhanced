@@ -67,6 +67,10 @@ class InputPanel(
         private set
 
     private var panelView: View? = null
+    private var chatOverlay: ChatOverlay? = null
+    private var chatPlaceholder: View? = null
+    private var chatPanel: AiChatPanel? = null
+    private var barOriginalParams: ViewGroup.LayoutParams? = null
 
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
