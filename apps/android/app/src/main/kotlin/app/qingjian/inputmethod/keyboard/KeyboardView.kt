@@ -324,6 +324,10 @@ class KeyboardView(
                             timer.removeCallbacks(longPress)
                             longPressPointer = -1
                         }
+                        if (choicePopup.showing) choicePopup.finish()
+                        choiceKey = null
+                        choiceItems = emptyList()
+                        choiceTracking = false
                         listener.onEditShortcut(action)
                         invalidate()
                         return true
