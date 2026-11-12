@@ -277,7 +277,7 @@ class KeyboardView(
                     flickBroken = false
                     flickDirection = 0
                 }
-                tapFeedback()
+                if (slot.key !is Key.Space) tapFeedback()
                 when {
                     slot.key == Key.Backspace -> {
                         if (settings.flickClear) listener.onBackspaceDown()
@@ -357,6 +357,7 @@ class KeyboardView(
                 val movedCursor = pointer == spacePointer && cursorMode
                 val spoke = pointer == spacePointer && voiceMode
                 val openClipboard = pointer == spacePointer && clipboardMode
+                val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode
                 if (pointer == spacePointer) {
                     timer.removeCallbacks(spaceHold)
                     spacePointer = -1
@@ -376,6 +377,10 @@ class KeyboardView(
                     openClipboard -> listener.onOpenClipboard()
                     spoke -> listener.onVoiceRelease(cancel = false)
                     movedCursor -> Unit
+                    spaceTap && slot?.key is Key.Space -> {
+                        tapFeedback()
+                        listener.onKey(slot.key)
+                    }
                     slot != null -> listener.onKey(slot.key)
                 }
             }
@@ -401,6 +406,11 @@ class KeyboardView(
                 timer.removeCallbacks(longPress)
                 longPressPointer = -1
             }
+            // Z/X/C/V 下滑一旦接管手势，就收起可能已弹出的长按提示，避免悬浮气泡挡住删除手势。
+            if (choicePopup.showing) choicePopup.finish()
+            choiceKey = null
+            choiceItems = emptyList()
+            choiceTracking = false
             if (flickPointer == editPointer) endFlick()
             invalidate()
         }
@@ -596,7 +606,7 @@ class KeyboardView(
         if (!cursorMode && dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
             clipboardMode = true
             timer.removeCallbacks(spaceHold)
-            Haptics.hold(context)
+            Haptics.tap(context)
             invalidate()
             return
         }
