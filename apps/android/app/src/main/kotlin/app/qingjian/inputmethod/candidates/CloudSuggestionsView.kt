@@ -28,7 +28,7 @@ class CloudSuggestionsView(
         clipToPadding = false
         setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
         setBackgroundColor(palette.board)
-        addView(items, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
     }
 
