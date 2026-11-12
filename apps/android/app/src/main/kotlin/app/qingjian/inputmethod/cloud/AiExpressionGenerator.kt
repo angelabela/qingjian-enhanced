@@ -79,7 +79,10 @@ class AiExpressionGenerator(private val context: android.content.Context) {
                 ?.optJSONObject("message")?.optString("content")
                 ?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("模型没有返回表达内容")
-            val jsonText = content.substringAfter('{', "").let { if (it.isEmpty()) "" else "{$it" }
+            val cleanContent = content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val jsonText = cleanContent.substringAfter('{', "").substringBeforeLast('}', "").let {
+                if (it.isEmpty()) "" else "{$it}"
+            }
             val groups = JSONObject(jsonText).optJSONArray("groups") ?: JSONArray()
             val seen = mutableSetOf<String>()
             val result = mutableListOf<AiExpressionGroup>()
