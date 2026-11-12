@@ -69,7 +69,7 @@ class InputPanel(
     private var panelView: View? = null
 
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
-    val aiChatEditor: AiChatPanel? get() = panelView as? AiChatPanel
+    val aiChatEditor: AiChatPanel? get() = chatPanel
 
     // 云联想是独立的一行，不能并入普通候选栏，也不与候选栏共用卡片背景。
     // 普通候选栏自身保持原有绘制、滚动和点击区域，云联想单独位于其上方。
@@ -145,18 +145,25 @@ class InputPanel(
     }
 
     private fun cover(kind: PanelKind, panel: View) {
-        val chatPanel = kind == PanelKind.AI_CHAT
-        stack.addView(
-            panel,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                if (chatPanel) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.TOP,
-            ),
-        )
-        // AI 对话只覆盖候选区，保留下方原生青简键盘供编辑框输入。
-        main.visibility = if (chatPanel) View.VISIBLE else View.INVISIBLE
-        panelView = panel
+        if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
+            // 将候选栏暂时移到 AI 面板与键盘之间：中文拼音输入时仍可正常选词。
+            barOriginalParams = bar.layoutParams
+            main.removeView(bar)
+            chatPlaceholder = View(context)
+            main.addView(chatPlaceholder, 1, barOriginalParams)
+            chatPanel = panel
+            chatOverlay = ChatOverlay(context, panel, bar, bar.barHeight.toInt().coerceAtLeast(1))
+            stack.addView(
+                chatOverlay,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+            panelView = chatOverlay
+            main.visibility = View.VISIBLE
+        } else {
+            stack.addView(panel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            main.visibility = View.INVISIBLE
+            panelView = panel
+        }
         openPanel = kind
         overlay?.bringToFront()
     }
@@ -191,11 +198,31 @@ class InputPanel(
     fun close() {
         panelView?.let(stack::removeView)
         panelView = null
+        chatOverlay?.removeView(bar)
+        chatOverlay = null
+        chatPanel = null
+        chatPlaceholder?.let(main::removeView)
+        chatPlaceholder = null
+        barOriginalParams?.let { params -> main.addView(bar, 1, params) }
+        barOriginalParams = null
         openPanel = null
         main.visibility = View.VISIBLE
     }
 
     /** 先量键盘那一块，面板一律量成同样高；MATCH_PARENT 在输入法窗口里会撑满整屏。 */
+    private class ChatOverlay(
+        context: Context,
+        panel: View,
+        candidateBar: View,
+        candidateHeight: Int,
+    ) : LinearLayout(context) {
+        init {
+            orientation = VERTICAL
+            addView(panel, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(candidateBar, LayoutParams(LayoutParams.MATCH_PARENT, candidateHeight))
+        }
+    }
+
     private class Stack(context: Context, private val main: View) : FrameLayout(context) {
         private fun Int?.orZero() = this ?: 0
 
@@ -205,7 +232,7 @@ class InputPanel(
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
-                val childHeight = if (child is AiChatPanel) {
+                val childHeight = if (child is ChatOverlay) {
                     (main.measuredHeight - (main as? LinearLayout)?.getChildAt(2)?.measuredHeight.orZero()).coerceAtLeast(0)
                 } else main.measuredHeight
                 child.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY))
