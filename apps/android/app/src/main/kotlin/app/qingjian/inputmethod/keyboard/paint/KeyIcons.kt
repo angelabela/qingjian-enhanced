@@ -58,27 +58,32 @@ object KeyIcons {
         p.lineTo(12f, 14.5f)
     }
 
-    /** Z/X/C/V 下滑手势的向下箭头提示。 */
+    /** Z/X/C/V 下滑编辑手势：用「手指触碰 + 下拉箭头」表达滑动动作。 */
     fun drawDownFlick(canvas: Canvas, cx: Float, cy: Float, size: Float, paint: Paint) {
         path.rewind()
-        path.moveTo(12f, 3.5f)
-        path.lineTo(12f, 19f)
-        path.moveTo(6.5f, 13.5f)
-        path.lineTo(12f, 19f)
-        path.lineTo(17.5f, 13.5f)
+        path.moveTo(12f, 7f)
+        path.lineTo(12f, 16f)
+        path.moveTo(7f, 11.5f)
+        path.lineTo(12f, 17f)
+        path.lineTo(17f, 11.5f)
         val scale = size / 24f
         canvas.save()
         canvas.translate(cx - size / 2f, cy - size / 2f)
         canvas.scale(scale, scale)
         val oldStyle = paint.style
         val oldWidth = paint.strokeWidth
+        val oldCap = paint.strokeCap
+        val oldJoin = paint.strokeJoin
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.2f
+        paint.strokeWidth = 2.1f
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
+        canvas.drawCircle(12f, 4f, 2.2f, paint)
         canvas.drawPath(path, paint)
         paint.style = oldStyle
         paint.strokeWidth = oldWidth
+        paint.strokeCap = oldCap
+        paint.strokeJoin = oldJoin
         canvas.restore()
     }
 

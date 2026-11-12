@@ -203,6 +203,13 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         when (key) {
             is Key.Letter -> when {
+                // 中文拼音页开启大写（单次或锁定）时，字母键改为直接上屏大写字母，不再送入拼音缓冲区。
+                chinese && host.shift.on -> {
+                    if (composing) selectFirst()
+                    commit(key.char.uppercaseChar().toString())
+                    consumeShift()
+                }
+
                 // 英文的大小写跟着敲的走（`Compa` 出 Company），验证码这类大小写混着的串也在组句里敲
                 english && (composing || (engine.ready && composesLetters)) -> {
                     apply(engine.push((if (host.shift.on) key.char.uppercaseChar() else key.char).code))

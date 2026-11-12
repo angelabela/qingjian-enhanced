@@ -4,10 +4,12 @@ import android.content.Context
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
@@ -15,6 +17,8 @@ import app.qingjian.inputmethod.candidates.CloudSuggestionsView
 import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
+import app.qingjian.inputmethod.core.store.ClipItem
+import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
 import app.qingjian.inputmethod.panel.AiExpressionPanel
@@ -56,6 +60,25 @@ class InputPanel(
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     val keyboard = KeyboardView(context, palette, settings, keyboardListener)
 
+    private var previewClip: ClipItem? = null
+    private val clipboardPreview = TextView(context).apply {
+        textSize = 13f
+        setTextColor(palette.text)
+        gravity = Gravity.CENTER_VERTICAL
+        maxLines = 1
+        setPadding((12 * context.resources.displayMetrics.density).toInt(), (7 * context.resources.displayMetrics.density).toInt(), (12 * context.resources.displayMetrics.density).toInt(), (7 * context.resources.displayMetrics.density).toInt())
+        background = GradientDrawable().apply {
+            setColor(palette.surface)
+            cornerRadius = 10 * context.resources.displayMetrics.density
+        }
+        visibility = View.GONE
+        setOnClickListener {
+            previewClip?.let { clip ->
+                if (clip.image != null) actions.commitImage(clip.image) else actions.commitText(clip.text)
+            }
+        }
+    }
+
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
         private set
@@ -70,6 +93,7 @@ class InputPanel(
         clipToPadding = false
         addView(cloudSuggestions)
         addView(bar)
+        addView(clipboardPreview)
         addView(keyboard)
     }
 
@@ -156,8 +180,17 @@ class InputPanel(
         editor?.let { root.addView(it, 0) }
     }
 
-    /** 剪贴板面板开着时重读（系统剪贴板刚记进一条）。 */
+    /** 更新键盘上方的一键粘贴预览；剪贴板管理面板仍保留完整历史与编辑功能。 */
     fun refreshClipboard() {
+        val clips = ClipboardStore.list(context, settings.clipboardLimit)
+        previewClip = clips.firstOrNull()
+        val clip = previewClip
+        clipboardPreview.visibility = if (clip == null) View.GONE else View.VISIBLE
+        clipboardPreview.text = when {
+            clip == null -> ""
+            clip.image != null -> "📋 图片剪贴板 · 点击直接粘贴"
+            else -> "📋 ${clip.text.replace("\n", " ").replace("\r", " ").take(100)}"
+        }
         if (openPanel == PanelKind.CLIPBOARD) open(PanelKind.CLIPBOARD)
     }
 
