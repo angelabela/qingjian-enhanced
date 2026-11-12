@@ -2,6 +2,8 @@
 name: android-debug
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant]
   workflow_dispatch:
