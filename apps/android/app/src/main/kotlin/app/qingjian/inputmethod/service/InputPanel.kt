@@ -45,7 +45,7 @@ class InputPanel(
     private val actions: PanelActions,
     onBottomAction: (BottomAction) -> Unit,
     onCloudSelect: (Int) -> Unit,
-    onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
+    private val onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
