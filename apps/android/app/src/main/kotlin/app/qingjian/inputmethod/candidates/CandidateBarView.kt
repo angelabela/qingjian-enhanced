@@ -87,7 +87,7 @@ class CandidateBarView(
     private val expandFill = Paint()
     private val expandIcon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.text }
 
-    private val expandable: Boolean get() = strip.candidates.isNotEmpty()
+    private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
     /** 工具栏位置上的一句提示与点它要做的事；null 是没有提示。几秒后、出候选或点过就收起。 */
