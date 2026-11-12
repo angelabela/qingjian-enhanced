@@ -39,6 +39,22 @@ class AiChatPanel(
     override val connection: InputConnection = object : BaseInputConnection(this, true) {
         override fun getEditable(): Editable = activeInput?.text
             ?: android.text.SpannableStringBuilder()
+
+        // 与常用语编辑器一样，明确把拼音组合、上屏、删除和光标操作路由到当前 EditText。
+        override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean =
+            super.commitText(text, newCursorPosition).also { activeInput?.invalidate() }
+
+        override fun setComposingText(text: CharSequence, newCursorPosition: Int): Boolean =
+            super.setComposingText(text, newCursorPosition).also { activeInput?.invalidate() }
+
+        override fun finishComposingText(): Boolean =
+            super.finishComposingText().also { activeInput?.invalidate() }
+
+        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean =
+            super.deleteSurroundingText(beforeLength, afterLength).also { activeInput?.invalidate() }
+
+        override fun setSelection(start: Int, end: Int): Boolean =
+            super.setSelection(start, end).also { activeInput?.invalidate() }
     }
 
     override val enterLabel: String get() = if (mode == Mode.ASSISTANT) "发送" else "完成"
@@ -223,8 +239,15 @@ class AiChatPanel(
 
     private fun focusInput(field: EditText) {
         activeInput = field
-        field.requestFocus()
-        field.post { field.setSelection(field.text.length) }
+        field.isFocusable = true
+        field.isFocusableInTouchMode = true
+        field.requestFocusFromTouch()
+        field.post {
+            field.requestFocus()
+            val end = field.text.length
+            field.setSelection(end)
+            field.invalidate()
+        }
     }
 
     private fun generateReplies() {
@@ -242,20 +265,36 @@ class AiChatPanel(
             resultArea.removeAllViews()
             result.onSuccess { replies ->
                 status.text = "点击回复将替换输入框原内容；可随时撤销恢复"
-                replies.forEachIndexed { index, reply ->
-                    val styles = listOf("简洁自然", "温柔体贴", "轻松幽默", "俏皮可爱", "成熟得体")
-                    val card = TextView(context).apply {
-                        text = "${styles.getOrElse(index / 3) { "自然表达" }} · ${index % 3 + 1}\n$reply"
-                        textSize = 15f
-                        setTextColor(palette.text)
-                        setPadding(dp(13), dp(12), dp(13), dp(12))
-                        background = rounded(palette.surface, 12)
-                        isClickable = true
-                        setOnClickListener { if (onReplace(reply)) { status.text = "已替换输入框内容，可点击下方撤销恢复原文"; showUndoAction() } else { status.text = "替换失败：当前输入框不支持读取或替换全文" } }
+                val styles = listOf("简洁自然", "温柔体贴", "轻松幽默", "俏皮可爱", "成熟得体")
+                replies.chunked(3).forEachIndexed { groupIndex, groupReplies ->
+                    resultArea.addView(TextView(context).apply {
+                        text = styles.getOrElse(groupIndex) { "其他回复" }
+                        textSize = 14f
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(palette.brand)
+                        setPadding(dp(4), dp(10), dp(4), dp(7))
+                    }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                    groupReplies.forEach { reply ->
+                        val card = TextView(context).apply {
+                            text = reply
+                            textSize = 15f
+                            setTextColor(palette.text)
+                            setPadding(dp(13), dp(12), dp(13), dp(12))
+                            background = rounded(palette.surface, 12)
+                            isClickable = true
+                            setOnClickListener {
+                                if (onReplace(reply)) {
+                                    status.text = "已替换输入框内容，可点击下方撤销恢复原文"
+                                    showUndoAction()
+                                } else {
+                                    status.text = "替换失败：当前输入框不支持读取或替换全文"
+                                }
+                            }
+                        }
+                        resultArea.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin = dp(7)
+                        })
                     }
-                    resultArea.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                        bottomMargin = dp(7)
-                    })
                 }
                 resultArea.addView(actionText("重新生成 15 条回复", false) { generateReplies() },
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
