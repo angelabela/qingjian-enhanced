@@ -47,6 +47,9 @@ class VoicePanel(
     var holding = false
         set(value) { field = value; invalidate() }
 
+    var listening = false
+        set(value) { field = value; invalidate() }
+
     var recognizing = false
         set(value) { field = value; invalidate() }
 
@@ -92,7 +95,7 @@ class VoicePanel(
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = micCenterY()
-        val active = holding || recognizing
+        val active = holding || listening || recognizing
         val average = if (active) levels.average().toFloat() else 0.025f
         val pulse = if (active) average.coerceIn(0f, 1f) else 0.025f
         val radius = micRadius()
@@ -171,6 +174,7 @@ class VoicePanel(
         val hint = when {
             recognizing -> "正在识别语音…"
             holding -> "正在聆听 · 松开结束"
+            listening -> "正在聆听… 点击麦克风结束"
             else -> "点击麦克风结束语音输入"
         }
         ink.text(canvas, hint, 13f, palette.gloss, cx, cy + ink.dp(68f))
