@@ -546,11 +546,8 @@ class QingjianInputMethodService :
         return runCatching {
             ic.beginBatchEdit()
             try {
-                if (!ic.performContextMenuAction(android.R.id.selectAll)) {
-                    ic.setSelection(-1, -1)
-                }
+                if (!ic.performContextMenuAction(android.R.id.selectAll)) return false
                 ic.commitText(text, 1)
-                true
             } finally {
                 ic.endBatchEdit()
             }
@@ -563,7 +560,7 @@ class QingjianInputMethodService :
         return runCatching {
             ic.beginBatchEdit()
             try {
-                ic.performContextMenuAction(android.R.id.selectAll)
+                if (!ic.performContextMenuAction(android.R.id.selectAll)) return false
                 ic.commitText(saved.first, 1)
                 val position = saved.second.coerceIn(0, saved.first.length)
                 ic.setSelection(position, position)
