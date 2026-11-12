@@ -103,11 +103,7 @@ fn cloud_candidates_are_left_for_the_android_cloud_suggestion_row() {
 fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
     let mut cloud = candidate("云端词", &[]);
     cloud.cloud = true;
-    let candidates = vec![
-        candidate("😄", &[]),
-        cloud,
-        candidate("本地候选", &[]),
-    ];
+    let candidates = vec![candidate("😄", &[]), cloud, candidate("本地候选", &[])];
     assert_eq!(visible_indices(&candidates), vec![0, 2]);
     let rendered = rows(&candidates, 1.0, chars);
     assert_eq!(rendered.len(), 2);
