@@ -15,7 +15,6 @@ import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
 import kotlin.math.hypot
-import kotlin.math.sin
 
 /**
  * 透明语音输入界面：取消旧版光晕、弧形按钮和环形波纹，
@@ -173,7 +172,7 @@ class VoicePanel(
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = ink.dp(1.5f)
         paint.color = withAlpha(palette.brand, 0xB0)
-        canvas.drawCircle(w / 2f, buttonY, ink.dp(holding || recognizing && !holding.let { false } && false).toFloat(), paint)
+        canvas.drawCircle(w / 2f, buttonY, ink.dp(24f), paint)
         paint.style = Paint.Style.FILL
         if (!holding && !recognizing) ink.icon(canvas, Icon.MIC, w / 2f, buttonY, 22f, palette.brand)
         else {
