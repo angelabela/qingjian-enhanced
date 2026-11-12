@@ -164,7 +164,7 @@ class QingjianInputMethodService :
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         cloud.start()
-        clipboardWatcher.onChanged = { panel?.refreshClipboard() }
+        clipboardWatcher.onChanged = { if (isInputViewShown) panel?.refreshClipboard() }
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
