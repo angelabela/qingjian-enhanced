@@ -63,7 +63,7 @@ class CloudSuggestionsView(
             }
             val label = TextView(context).apply {
                 text = suggestion
-                textSize = 14f
+                textSize = 17f
                 setTextColor(palette.text)
                 gravity = Gravity.CENTER_VERTICAL
                 includeFontPadding = false
@@ -97,7 +97,7 @@ class CloudSuggestionsView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val height = (38 * density).toInt()
+        val height = (44 * density).toInt()
         super.onMeasure(
             widthMeasureSpec,
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
