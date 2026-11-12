@@ -40,7 +40,7 @@ impl Session {
         if wanted == self.dictionaries {
             return;
         }
-        let loaded: Vec<Dictionary> = wanted
+        let mut loaded: Vec<Dictionary> = wanted
             .iter()
             .filter_map(|(path, ..)| {
                 let mut dictionary = open(path)?;

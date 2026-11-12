@@ -63,9 +63,9 @@ pub fn initial_lengths(rest: &str) -> impl Iterator<Item = usize> {
     // a/e/o 本身也是合法音节，因此同时保留完整音节与不完整前缀两种切分。
     if let Some(&first) = rest.as_bytes().first()
         && matches!(first, b'a' | b'e' | b'o')
-        && SYLLABLES
-            .iter()
-            .any(|syllable| syllable.as_bytes().first() == Some(&first) && syllable.len() > 1)
+        && SYLLABLES.iter().any(|syllable| {
+            syllable.as_bytes().first() == Some(&first) && syllable.len() > 1
+        })
     {
         lengths.push(1);
     }
