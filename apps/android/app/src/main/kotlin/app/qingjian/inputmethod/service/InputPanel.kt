@@ -68,6 +68,7 @@ class InputPanel(
 
     private var panelView: View? = null
     private var chatPanel: AiChatPanel? = null
+    private var voiceView: VoicePanel? = null
 
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
@@ -129,7 +130,7 @@ class InputPanel(
                 context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
-                context, palette, header, text, onGenerateAiExpression, actions::commitText, actions::closePanel,
+                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
@@ -142,7 +143,14 @@ class InputPanel(
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
-        return VoicePanel(context, palette, actionLabel, actions).also { cover(PanelKind.VOICE, it) }
+        return VoicePanel(context, palette, actionLabel, actions).also { voice ->
+            voiceView = voice
+            stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            openPanel = PanelKind.VOICE
+            // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
+            overlay?.bringToFront()
+            voice.bringToFront()
+        }
     }
 
     private fun cover(kind: PanelKind, panel: View) {
@@ -190,7 +198,9 @@ class InputPanel(
     /** 回到键盘；没开面板时什么都不做。 */
     fun close() {
         panelView?.let(stack::removeView)
+        voiceView?.let(stack::removeView)
         panelView = null
+        voiceView = null
         chatPanel = null
         openPanel = null
         main.visibility = View.VISIBLE
