@@ -19,6 +19,7 @@ import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.cloud.CloudConfig
+import app.qingjian.inputmethod.cloud.AiExpressionGenerator
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
 import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
 import app.qingjian.inputmethod.clipboard.ClipboardWatcher
@@ -73,6 +74,7 @@ class QingjianInputMethodService :
     private val game = GameMode(this, this)
 
     private lateinit var cloud: CloudServices
+    private lateinit var aiExpression: AiExpressionGenerator
 
     /** 当前输入框的回车键文字，见 [enterLabel]。 */
     private var enterLabel: String? = null
@@ -150,6 +152,7 @@ class QingjianInputMethodService :
         }
         contacts = ContactsSync(this, engine)
         cloud = CloudServices(this, engine)
+        aiExpression = AiExpressionGenerator(this)
         composer = Composer(engine, this)
         quickTranslate = QuickTranslate(engine) { currentInputConnection }
         voice = VoiceInput(this, engine, this)
@@ -209,6 +212,7 @@ class QingjianInputMethodService :
             actions = this,
             onBottomAction = ::onBottomAction,
             onCloudSelect = { composer.select(it) },
+            onGenerateAiExpression = { source, callback -> aiExpression.generate(source, callback) },
             floating = target != null,
         )
         this.panel = panel
@@ -460,6 +464,7 @@ class QingjianInputMethodService :
         ToolbarTool.SYMBOLS -> openPanel(PanelKind.SYMBOLS)
         ToolbarTool.CLIPBOARD -> clipboard()
         ToolbarTool.TRANSLATE -> toggleTranslate()
+        ToolbarTool.AI_EXPRESSION -> openPanel(PanelKind.AI_EXPRESSION)
         ToolbarTool.RESIZE -> startResize()
         ToolbarTool.PHRASES -> openPanel(PanelKind.PHRASES)
         ToolbarTool.SWITCH_INPUT_METHOD -> switchInputMethod()
@@ -469,7 +474,10 @@ class QingjianInputMethodService :
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
 
     override fun openPanel(kind: PanelKind) {
-        panel?.open(kind)
+        val source = if (kind == PanelKind.AI_EXPRESSION) {
+            currentInputConnection?.getTextBeforeCursor(500, 0)?.toString().orEmpty()
+        } else ""
+        panel?.open(kind, source)
     }
 
     override fun closePanel() {
