@@ -75,10 +75,10 @@ object KeyIcons {
         val oldCap = paint.strokeCap
         val oldJoin = paint.strokeJoin
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.1f
+        paint.strokeWidth = 3.0f
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
-        canvas.drawCircle(12f, 4f, 2.2f, paint)
+        canvas.drawCircle(12f, 4f, 2.8f, paint)
         canvas.drawPath(path, paint)
         paint.style = oldStyle
         paint.strokeWidth = oldWidth
