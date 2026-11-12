@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.MotionEvent
 import android.view.View
 import app.qingjian.inputmethod.keyboard.Haptics
@@ -12,13 +14,13 @@ import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 
 /**
- * 键盘内的透明语音反馈层：键盘始终可见，只在中央显示麦克风、柔和光晕和随实时音量变化的环形声波。
+ * 键盘内的语音反馈层。语音启动时轻柔压低键盘的颜色与对比度，
+ * 中央以 GPU 径向渐变、体积光雾和实时音量声波突出麦克风。
  * 触摸只接管麦克风与底部两个操作区，其余区域交还键盘。
  */
 @SuppressLint("ViewConstructor")
@@ -53,14 +55,14 @@ class VoicePanel(
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        // 径向渐变由 GPU 绘制，避免软件模糊层造成持续录音时掉帧。
+        setLayerType(View.LAYER_TYPE_HARDWARE, null)
         isClickable = false
     }
 
     fun addLevel(level: Float) {
         System.arraycopy(levels, 1, levels, 0, BARS - 1)
         levels[BARS - 1] = level.coerceIn(0f, 1f)
-        phase = (phase + 0.17f) % (2f * PI.toFloat())
         invalidate()
     }
 
@@ -91,39 +93,78 @@ class VoicePanel(
         val cx = width / 2f
         val cy = micCenterY()
         val active = holding || recognizing
-        val average = if (active) levels.average().toFloat() else 0.04f
-        val pulse = if (active) average else 0.025f
+        val average = if (active) levels.average().toFloat() else 0.025f
+        val pulse = if (active) average.coerceIn(0f, 1f) else 0.025f
+        val radius = micRadius()
 
-        // 柔和的多层光晕，强弱随麦克风实时音量变化。
-        for (i in 4 downTo 1) {
-            paint.style = Paint.Style.FILL
-            paint.color = withAlpha(palette.brand, (7 + pulse * 24).toInt().coerceIn(7, 31))
-            canvas.drawCircle(cx, cy, micRadius() + ink.dp(i * 12f) + pulse * ink.dp(24f), paint)
-        }
+        // 先给整块键盘覆上一层低饱和中性雾面：按键仍清楚可辨，但视觉退到背景。
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = android.graphics.Color.argb(42, 128, 142, 158)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+        // 体积光：中心亮、边缘柔和衰减，避免廉价的实线圆环感。
+        val glowRadius = radius * (3.0f + pulse * 0.85f)
+        paint.shader = RadialGradient(
+            cx, cy, glowRadius,
+            intArrayOf(
+                withAlpha(palette.brand, (92 + pulse * 80).toInt().coerceIn(92, 172)),
+                withAlpha(palette.brand, (48 + pulse * 42).toInt().coerceIn(48, 90)),
+                withAlpha(palette.brand, 0)
+            ),
+            floatArrayOf(0f, 0.48f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, glowRadius, paint)
+        paint.shader = null
+
+        // 两层不同尺度的柔光核心，随真实输入音量呼吸。
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(palette.brand, (22 + pulse * 42).toInt().coerceIn(22, 64))
+        canvas.drawCircle(cx, cy, radius * (1.75f + pulse * 0.35f), paint)
+        paint.color = withAlpha(palette.brand, (13 + pulse * 24).toInt().coerceIn(13, 37))
+        canvas.drawCircle(cx, cy, radius * (2.45f + pulse * 0.5f), paint)
+
+        // 环形声波：每根光束按对应时间片的音量改变长度与亮度。
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         for (i in 0 until BARS) {
-            val angle = (2.0 * PI * i / BARS + phase * 0.08).toFloat()
-            val sample = if (active) levels[i] else 0.035f
-            val wave = ink.dp(5f) + sample * ink.dp(24f)
-            val inner = micRadius() + ink.dp(10f)
+            val angle = (2.0 * PI * i / BARS + phase).toFloat()
+            val sample = if (active) levels[i] else 0.025f
+            val wave = ink.dp(4f) + sample * ink.dp(31f)
+            val inner = radius + ink.dp(9f)
             val outer = inner + wave
-            paint.strokeWidth = ink.dp(2.2f)
-            paint.color = withAlpha(palette.brand, (95 + sample * 155).toInt().coerceIn(80, 250))
+            paint.strokeWidth = ink.dp(if (i % 3 == 0) 2.5f else 1.7f)
+            paint.color = withAlpha(palette.brand, (72 + sample * 175).toInt().coerceIn(72, 247))
             canvas.drawLine(
                 cx + cos(angle) * inner, cy + sin(angle) * inner,
                 cx + cos(angle) * outer, cy + sin(angle) * outer, paint
             )
         }
 
-        // 中央麦克风本体保持轻量透明，不绘制独立面板或大块底色。
+        // 稀疏微粒沿光晕外围缓慢漂移，营造悬浮空间感；不使用随机数，帧间稳定。
         paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.surface, 0xD8)
-        canvas.drawCircle(cx, cy, micRadius(), paint)
+        for (i in 0 until 18) {
+            val angle = (i * 2.39996f + phase * (if (i % 2 == 0) 0.32f else -0.22f))
+            val orbit = radius * (2.05f + 0.42f * sin(i * 1.71f + phase * 0.7f))
+            val particleSize = ink.dp(0.8f + (i % 3) * 0.45f)
+            paint.color = withAlpha(palette.brand, (48 + pulse * 120).toInt().coerceIn(48, 168))
+            canvas.drawCircle(
+                cx + cos(angle) * orbit,
+                cy + sin(angle) * orbit,
+                particleSize,
+                paint
+            )
+        }
+
+        // 中央麦克风本体保持清晰、明亮，与柔化后的键盘形成主次层级。
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(palette.surface, 0xEE)
+        canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.4f)
-        paint.color = withAlpha(palette.brand, 0xD0)
-        canvas.drawCircle(cx, cy, micRadius(), paint)
+        paint.strokeWidth = ink.dp(1.5f)
+        paint.color = withAlpha(palette.brand, 0xF0)
+        canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.FILL
         ink.icon(canvas, Icon.MIC, cx, cy, 29f, palette.brand)
 
@@ -141,6 +182,11 @@ class VoicePanel(
         ink.text(canvas, actionLabel, 13f,
             if (target == Target.ACTION) palette.brand else palette.gloss, width * 0.83f, actionY,
             bold = target == Target.ACTION)
+
+        if (active) {
+            phase = (phase + 0.012f + pulse * 0.018f) % (2f * PI.toFloat())
+            postInvalidateDelayed(32L)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
