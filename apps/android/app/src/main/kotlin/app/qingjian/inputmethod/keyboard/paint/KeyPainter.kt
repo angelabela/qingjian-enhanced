@@ -111,7 +111,7 @@ class KeyPainter(
 
         // Z/X/C/V 的下滑编辑手势提示：图标固定在键面下缘，主字仍保持清晰。
         if (key is Key.Letter && key.char.lowercaseChar() in EDIT_GESTURE_KEYS) {
-            KeyIcons.drawDownFlick(canvas, bounds.centerX(), bounds.bottom - 7f * density, 10f * density, ink.apply { color = palette.gloss })
+            KeyIcons.drawDownFlick(canvas, bounds.centerX(), bounds.bottom - 9f * density, 15f * density, ink.apply { color = palette.brand })
         }
     }
 
