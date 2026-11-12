@@ -113,6 +113,9 @@ class QingjianInputMethodService :
         }
     }
 
+    /** AI 整段替换前保存的原文与光标位置，仅保留最近一次，供撤销使用。 */
+    private var aiReplacementUndo: Pair<String, Int>? = null
+
     /** 浮在键盘上方接管打字的编辑条（常用语编辑框、快捷翻译）；null 是没开。 */
     private var editor: FloatingEditor? = null
 
@@ -532,6 +535,44 @@ class QingjianInputMethodService :
         } finally {
             if (chatEditor != null && panel?.openPanel == PanelKind.AI_CHAT) editor = chatEditor
         }
+    }
+
+    override fun replaceInputText(text: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(10000, 0)?.toString() ?: return false
+        val after = ic.getTextAfterCursor(10000, 0)?.toString() ?: return false
+        val cursor = before.length
+        aiReplacementUndo = (before + after) to cursor
+        return runCatching {
+            ic.beginBatchEdit()
+            try {
+                if (!ic.performContextMenuAction(android.R.id.selectAll)) {
+                    ic.setSelection(-1, -1)
+                }
+                ic.commitText(text, 1)
+                true
+            } finally {
+                ic.endBatchEdit()
+            }
+        }.getOrDefault(false)
+    }
+
+    override fun undoInputReplacement(): Boolean {
+        val saved = aiReplacementUndo ?: return false
+        val ic = currentInputConnection ?: return false
+        return runCatching {
+            ic.beginBatchEdit()
+            try {
+                ic.performContextMenuAction(android.R.id.selectAll)
+                ic.commitText(saved.first, 1)
+                val position = saved.second.coerceIn(0, saved.first.length)
+                ic.setSelection(position, position)
+                aiReplacementUndo = null
+                true
+            } finally {
+                ic.endBatchEdit()
+            }
+        }.getOrDefault(false)
     }
 
     override fun deleteBackward() = composer.onKey(Key.Backspace)
