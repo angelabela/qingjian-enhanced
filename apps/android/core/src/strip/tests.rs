@@ -100,6 +100,23 @@ fn cloud_candidates_are_left_for_the_android_cloud_suggestion_row() {
 }
 
 #[test]
+fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
+    let mut cloud = candidate("云端词", &[]);
+    cloud.cloud = true;
+    let candidates = vec![
+        candidate("😄", &[]),
+        cloud,
+        candidate("本地候选", &[]),
+    ];
+    assert_eq!(visible_indices(&candidates), vec![0, 2]);
+    let rendered = rows(&candidates, 1.0, chars);
+    assert_eq!(rendered.len(), 2);
+    // 第二条显示行对应原候选下标 2；renderer 内部只能使用连续的显示下标 0、1。
+    assert_eq!(rendered[0].text, "\\u{3000}");
+    assert_eq!(rendered[1].text, "本地候选");
+}
+ 
+#[test]
 fn pinned_syllables_are_their_own_underlined_segment() {
     let frame = Frame {
         commit: String::new(),
