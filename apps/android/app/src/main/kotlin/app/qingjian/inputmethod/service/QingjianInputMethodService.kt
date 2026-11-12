@@ -593,14 +593,20 @@ class QingjianInputMethodService :
         val known = ClipboardStore.phrases(this).phrases
             .mapTo(mutableSetOf()) { it.text to it.code }
         var changed = false
+        // 保存连续 2～5 词组合；5 词以上另外保存完整短句，避免超长句产生大量重复条目。
+        val spans = mutableListOf<Pair<Int, Int>>()
         for (start in pieces.indices) {
-            for (end in start + 2..pieces.size) {
-                val phrase = pieces.subList(start, end).joinToString("")
-                val code = pinyinInitials(phrase)
-                if (code.length !in 2..maxCode || !known.add(phrase to code)) continue
-                ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
-                changed = true
+            for (length in 2..minOf(5, pieces.size - start)) {
+                spans += start to (start + length)
             }
+        }
+        if (pieces.size > 5) spans += 0 to pieces.size
+        for ((start, end) in spans) {
+            val phrase = pieces.subList(start, end).joinToString("")
+            val code = pinyinInitials(phrase)
+            if (code.length !in 2..maxCode || !known.add(phrase to code)) continue
+            ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
+            changed = true
         }
         if (changed) engine.reloadPhrases(ClipboardStore.userDir(this).path)
     }
@@ -614,7 +620,7 @@ class QingjianInputMethodService :
                 val syllable = phraseTransliterator.transliterate(String(Character.toChars(codePoint)))
                     .lowercase()
                     .filter { it in 'a'..'z' }
-                syllable.firstOrNull()?.let(::append)
+                syllable.firstOrNull()?.let { append(it) }
             }
         }
     }
