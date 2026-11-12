@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
+import app.qingjian.inputmethod.candidates.CloudSuggestionsView
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.BottomActionsView
@@ -40,6 +41,7 @@ class InputPanel(
     keyboardListener: KeyboardView.Listener,
     private val actions: PanelActions,
     onBottomAction: (BottomAction) -> Unit,
+    onCloudSelect: (Int) -> Unit,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
@@ -47,6 +49,7 @@ class InputPanel(
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
 
     val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener)
+    private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     val keyboard = KeyboardView(context, palette, settings, keyboardListener)
 
     /** 开着的面板；null 是键盘。 */
@@ -60,6 +63,7 @@ class InputPanel(
         orientation = LinearLayout.VERTICAL
         clipChildren = false
         clipToPadding = false
+        addView(cloudSuggestions)
         addView(bar)
         addView(keyboard)
     }
@@ -89,6 +93,9 @@ class InputPanel(
             setPadding(0, 0, 0, inset)
         }
     }
+
+    /** 云联想独立显示在普通候选栏上方；传入原候选下标，点击后仍由引擎选择原候选。 */
+    fun showCloudSuggestions(candidates: List<Pair<Int, String>>) = cloudSuggestions.show(candidates)
 
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
     fun open(kind: PanelKind, text: String = "") {
