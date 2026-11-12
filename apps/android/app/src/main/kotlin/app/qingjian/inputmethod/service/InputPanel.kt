@@ -59,27 +59,14 @@ class InputPanel(
 
     private var panelView: View? = null
 
-    // 顶排按键的气泡要画到候选条上，一路都不裁子视图
-    // 候选区与云联想合并成一个圆角卡片；本地候选在上，云联想在下。
-    private val candidateHeader = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        clipChildren = true
-        clipToPadding = true
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 18f * context.resources.displayMetrics.density
-            setColor(palette.surface)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
-        addView(bar)
-        addView(cloudSuggestions)
-    }
-
+    // 云联想是独立的一行，不能并入普通候选栏，也不与候选栏共用卡片背景。
+    // 普通候选栏自身保持原有绘制、滚动和点击区域，云联想单独位于其上方。
     private val main = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         clipChildren = false
         clipToPadding = false
-        addView(candidateHeader)
+        addView(cloudSuggestions)
+        addView(bar)
         addView(keyboard)
     }
 
