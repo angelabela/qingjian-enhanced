@@ -75,6 +75,9 @@ class InputPanel(
         setOnClickListener {
             previewClip?.let { clip ->
                 if (clip.image != null) actions.commitImage(clip.image) else actions.commitText(clip.text)
+                previewClip = null
+                clipboardPreview.text = ""
+                clipboardPreview.visibility = View.GONE
             }
         }
     }
@@ -180,7 +183,14 @@ class InputPanel(
         editor?.let { root.addView(it, 0) }
     }
 
-    /** 更新键盘上方的一键粘贴预览；剪贴板管理面板仍保留完整历史与编辑功能。 */
+    /** 清除临时的一键粘贴提示；剪贴板管理面板的历史记录不受影响。 */
+    fun hideClipboardPreview() {
+        previewClip = null
+        clipboardPreview.text = ""
+        clipboardPreview.visibility = View.GONE
+    }
+
+    /** 仅在系统剪贴板发生新变化时显示一键粘贴预览；剪贴板管理面板仍保留完整历史与编辑功能。 */
     fun refreshClipboard() {
         val clips = ClipboardStore.list(context, settings.clipboardLimit)
         previewClip = clips.firstOrNull()
