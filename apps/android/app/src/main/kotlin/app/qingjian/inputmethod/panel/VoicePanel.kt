@@ -98,21 +98,25 @@ class VoicePanel(
         val active = holding || listening || recognizing
         val average = if (active) levels.average().toFloat() else 0.025f
         val pulse = if (active) average.coerceIn(0f, 1f) else 0.025f
+        val ambient = ((sin(phase * 1.35f) + 1f) * 0.5f)
+        val energy = maxOf(pulse, if (active) ambient * 0.34f else 0.025f)
         val radius = micRadius()
 
-        // 先给整块键盘覆上一层低饱和中性雾面：按键仍清楚可辨，但视觉退到背景。
+        // 明显降低键盘存在感：比旧版更高的不透明度，并叠加轻微冷灰雾面。
         paint.shader = null
         paint.style = Paint.Style.FILL
-        paint.color = android.graphics.Color.argb(42, 128, 142, 158)
+        paint.color = android.graphics.Color.argb(88, 104, 116, 132)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        paint.color = android.graphics.Color.argb(18, 12, 20, 32)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
 
         // 体积光：中心亮、边缘柔和衰减，避免廉价的实线圆环感。
-        val glowRadius = radius * (3.0f + pulse * 0.85f)
+        val glowRadius = radius * (3.15f + energy * 1.15f)
         paint.shader = RadialGradient(
             cx, cy, glowRadius,
             intArrayOf(
-                withAlpha(palette.brand, (92 + pulse * 80).toInt().coerceIn(92, 172)),
-                withAlpha(palette.brand, (48 + pulse * 42).toInt().coerceIn(48, 90)),
+                withAlpha(palette.brand, (104 + energy * 105).toInt().coerceIn(104, 209)),
+                withAlpha(palette.brand, (62 + energy * 54).toInt().coerceIn(62, 116)),
                 withAlpha(palette.brand, 0)
             ),
             floatArrayOf(0f, 0.48f, 1f),
@@ -123,22 +127,31 @@ class VoicePanel(
 
         // 两层不同尺度的柔光核心，随真实输入音量呼吸。
         paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.brand, (22 + pulse * 42).toInt().coerceIn(22, 64))
-        canvas.drawCircle(cx, cy, radius * (1.75f + pulse * 0.35f), paint)
-        paint.color = withAlpha(palette.brand, (13 + pulse * 24).toInt().coerceIn(13, 37))
-        canvas.drawCircle(cx, cy, radius * (2.45f + pulse * 0.5f), paint)
+        paint.color = withAlpha(palette.brand, (28 + energy * 58).toInt().coerceIn(28, 86))
+        canvas.drawCircle(cx, cy, radius * (1.8f + energy * 0.48f), paint)
+        paint.color = withAlpha(palette.brand, (20 + energy * 34).toInt().coerceIn(20, 54))
+        canvas.drawCircle(cx, cy, radius * (2.55f + energy * 0.62f), paint)
+
+        // 柔和扩散的双层呼吸波，不画成生硬的固定圆环。
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(1.2f)
+        paint.color = withAlpha(palette.brand, (24 + ambient * 36).toInt().coerceIn(24, 60))
+        canvas.drawCircle(cx, cy, radius * (1.55f + ambient * 0.42f), paint)
+        paint.strokeWidth = ink.dp(0.8f)
+        paint.color = withAlpha(palette.brand, (16 + ambient * 24).toInt().coerceIn(16, 40))
+        canvas.drawCircle(cx, cy, radius * (2.0f + ((ambient + 0.5f) % 1f) * 0.55f), paint)
 
         // 环形声波：每根光束按对应时间片的音量改变长度与亮度。
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         for (i in 0 until BARS) {
             val angle = (2.0 * PI * i / BARS + phase).toFloat()
-            val sample = if (active) levels[i] else 0.025f
-            val wave = ink.dp(4f) + sample * ink.dp(31f)
+            val sample = if (active) maxOf(levels[i], ambient * 0.12f) else 0.025f
+            val wave = ink.dp(5f) + sample * ink.dp(38f)
             val inner = radius + ink.dp(9f)
             val outer = inner + wave
             paint.strokeWidth = ink.dp(if (i % 3 == 0) 2.5f else 1.7f)
-            paint.color = withAlpha(palette.brand, (72 + sample * 175).toInt().coerceIn(72, 247))
+            paint.color = withAlpha(palette.brand, (86 + sample * 169).toInt().coerceIn(86, 255))
             canvas.drawLine(
                 cx + cos(angle) * inner, cy + sin(angle) * inner,
                 cx + cos(angle) * outer, cy + sin(angle) * outer, paint
@@ -151,7 +164,7 @@ class VoicePanel(
             val angle = (i * 2.39996f + phase * (if (i % 2 == 0) 0.32f else -0.22f))
             val orbit = radius * (2.05f + 0.42f * sin(i * 1.71f + phase * 0.7f))
             val particleSize = ink.dp(0.8f + (i % 3) * 0.45f)
-            paint.color = withAlpha(palette.brand, (48 + pulse * 120).toInt().coerceIn(48, 168))
+            paint.color = withAlpha(palette.brand, (58 + energy * 132).toInt().coerceIn(58, 190))
             canvas.drawCircle(
                 cx + cos(angle) * orbit,
                 cy + sin(angle) * orbit,
@@ -162,22 +175,25 @@ class VoicePanel(
 
         // 中央麦克风本体保持清晰、明亮，与柔化后的键盘形成主次层级。
         paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.surface, 0xEE)
-        canvas.drawCircle(cx, cy, radius, paint)
+        paint.color = withAlpha(palette.surface, 0xF4)
+        canvas.drawCircle(cx, cy, radius * (1.02f + ambient * 0.035f), paint)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.5f)
-        paint.color = withAlpha(palette.brand, 0xF0)
-        canvas.drawCircle(cx, cy, radius, paint)
-        paint.style = Paint.Style.FILL
-        ink.icon(canvas, Icon.MIC, cx, cy, 29f, palette.brand)
+        paint.strokeWidth = ink.dp(1.7f)
+        paint.color = withAlpha(palette.brand, 0xF4)
+        canvas.drawCircle(cx, cy, radius * (1.02f + ambient * 0.035f), paint)
 
-        val hint = when {
-            recognizing -> "正在识别语音…"
-            holding -> "正在聆听 · 松开结束"
-            listening -> "正在聆听… 点击麦克风结束"
-            else -> "点击麦克风结束语音输入"
-        }
-        ink.text(canvas, hint, 13f, palette.gloss, cx, cy + ink.dp(68f))
+        // 麦克风本体跟随声波做轻微缩放与渐隐渐现，保持图标清楚但有呼吸感。
+        val micAlpha = (184 + ambient * 71f).toInt().coerceIn(184, 255)
+        val micScale = 0.965f + ambient * 0.075f
+        val save = canvas.save()
+        canvas.scale(micScale, micScale, cx, cy)
+        val layer = canvas.saveLayerAlpha(
+            cx - ink.dp(25f), cy - ink.dp(28f),
+            cx + ink.dp(25f), cy + ink.dp(28f), micAlpha
+        )
+        ink.icon(canvas, Icon.MIC, cx, cy, 29f, palette.brand)
+        canvas.restoreToCount(layer)
+        canvas.restoreToCount(save)
 
         val actionY = height * 0.86f
         ink.text(canvas, "撤回", 13f,
@@ -188,8 +204,8 @@ class VoicePanel(
             bold = target == Target.ACTION)
 
         if (active) {
-            phase = (phase + 0.012f + pulse * 0.018f) % (2f * PI.toFloat())
-            postInvalidateDelayed(32L)
+            phase = (phase + 0.024f + pulse * 0.026f) % (2f * PI.toFloat())
+            postInvalidateDelayed(16L)
         }
     }
 
