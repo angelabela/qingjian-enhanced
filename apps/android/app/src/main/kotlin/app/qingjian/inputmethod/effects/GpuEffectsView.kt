@@ -44,12 +44,21 @@ class GpuEffectsView(context: Context) : View(context) {
         }
     }
 
+    private val effectSink: (Float, Float, Float) -> Unit = { x, y, strength ->
+        triggerScreen(x, y, strength)
+    }
+
     init {
         setLayerType(View.LAYER_TYPE_HARDWARE, null)
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        GpuEffectBus.sink = { x, y, strength -> triggerScreen(x, y, strength) }
+        GpuEffectBus.sink = effectSink
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        GpuEffectBus.sink = effectSink
     }
 
     fun triggerScreen(screenX: Float, screenY: Float, strength: Float) {
@@ -130,7 +139,7 @@ class GpuEffectsView(context: Context) : View(context) {
     override fun onDetachedFromWindow() {
         removeCallbacks(frame)
         pulses.clear()
-        if (GpuEffectBus.sink != null) GpuEffectBus.sink = null
+        if (GpuEffectBus.sink === effectSink) GpuEffectBus.sink = null
         super.onDetachedFromWindow()
     }
 
