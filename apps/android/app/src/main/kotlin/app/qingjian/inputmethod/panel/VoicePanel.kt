@@ -102,21 +102,15 @@ class VoicePanel(
         val energy = maxOf(pulse, if (active) ambient * 0.34f else 0.025f)
         val radius = micRadius()
 
-        // 明显降低键盘存在感：比旧版更高的不透明度，并叠加轻微冷灰雾面。
+        // 保留键盘原本的主题色与亮度，不再覆盖半透明灰雾。
         paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = android.graphics.Color.argb(88, 104, 116, 132)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-        paint.color = android.graphics.Color.argb(18, 12, 20, 32)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-
         // 体积光：中心亮、边缘柔和衰减，避免廉价的实线圆环感。
         val glowRadius = radius * (3.15f + energy * 1.15f)
         paint.shader = RadialGradient(
             cx, cy, glowRadius,
             intArrayOf(
-                withAlpha(palette.brand, (104 + energy * 105).toInt().coerceIn(104, 209)),
-                withAlpha(palette.brand, (62 + energy * 54).toInt().coerceIn(62, 116)),
+                withAlpha(palette.brand, (145 + energy * 110).toInt().coerceIn(145, 255)),
+                withAlpha(palette.brand, (105 + energy * 75).toInt().coerceIn(105, 180)),
                 withAlpha(palette.brand, 0)
             ),
             floatArrayOf(0f, 0.48f, 1f),
@@ -127,18 +121,18 @@ class VoicePanel(
 
         // 两层不同尺度的柔光核心，随真实输入音量呼吸。
         paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.brand, (28 + energy * 58).toInt().coerceIn(28, 86))
+        paint.color = withAlpha(palette.brand, (58 + energy * 92).toInt().coerceIn(58, 150))
         canvas.drawCircle(cx, cy, radius * (1.8f + energy * 0.48f), paint)
-        paint.color = withAlpha(palette.brand, (20 + energy * 34).toInt().coerceIn(20, 54))
+        paint.color = withAlpha(palette.brand, (42 + energy * 68).toInt().coerceIn(42, 110))
         canvas.drawCircle(cx, cy, radius * (2.55f + energy * 0.62f), paint)
 
         // 柔和扩散的双层呼吸波，不画成生硬的固定圆环。
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.2f)
-        paint.color = withAlpha(palette.brand, (24 + ambient * 36).toInt().coerceIn(24, 60))
+        paint.strokeWidth = ink.dp(1.8f)
+        paint.color = withAlpha(palette.brand, (70 + ambient * 70).toInt().coerceIn(70, 140))
         canvas.drawCircle(cx, cy, radius * (1.55f + ambient * 0.42f), paint)
-        paint.strokeWidth = ink.dp(0.8f)
-        paint.color = withAlpha(palette.brand, (16 + ambient * 24).toInt().coerceIn(16, 40))
+        paint.strokeWidth = ink.dp(1.2f)
+        paint.color = withAlpha(palette.brand, (48 + ambient * 48).toInt().coerceIn(48, 96))
         canvas.drawCircle(cx, cy, radius * (2.0f + ((ambient + 0.5f) % 1f) * 0.55f), paint)
 
         // 环形声波：每根光束按对应时间片的音量改变长度与亮度。
@@ -151,7 +145,7 @@ class VoicePanel(
             val inner = radius + ink.dp(9f)
             val outer = inner + wave
             paint.strokeWidth = ink.dp(if (i % 3 == 0) 2.5f else 1.7f)
-            paint.color = withAlpha(palette.brand, (86 + sample * 169).toInt().coerceIn(86, 255))
+            paint.color = withAlpha(palette.brand, (135 + sample * 120).toInt().coerceIn(135, 255))
             canvas.drawLine(
                 cx + cos(angle) * inner, cy + sin(angle) * inner,
                 cx + cos(angle) * outer, cy + sin(angle) * outer, paint
@@ -204,7 +198,7 @@ class VoicePanel(
             bold = target == Target.ACTION)
 
         if (active) {
-            phase = (phase + 0.024f + pulse * 0.026f) % (2f * PI.toFloat())
+            phase = (phase + 0.009f + pulse * 0.010f) % (2f * PI.toFloat())
             postInvalidateDelayed(16L)
         }
     }
