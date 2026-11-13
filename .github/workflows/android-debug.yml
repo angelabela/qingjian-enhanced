@@ -6,7 +6,7 @@ on:
     branches: [feature/spacebar-clipboard-phrase-memory-toolbar]
     types: [opened, synchronize, reopened]
   push:
-    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant]
+    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter]
   workflow_dispatch:
 
 permissions:
