@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.OverScroller
 import app.qingjian.inputmethod.R
+import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.PanelIcons
@@ -253,6 +254,9 @@ class CandidateBarView(
     }
 
     private fun tap(x: Float, y: Float) {
+        val screen = IntArray(2)
+        getLocationOnScreen(screen)
+        GpuEffectBus.pulse(screen[0] + x, screen[1] + y, 0.52f)
         if (expandable && x >= stripWidth) {
             listener.onExpand()
             return
