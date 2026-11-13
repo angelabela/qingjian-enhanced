@@ -69,6 +69,7 @@ class KeyPainter(
         when {
             label.isEmpty() ->
                 KeyIcons.draw(canvas, key, bounds.centerX(), bounds.centerY(), 24 * density, ink, shift)
+            if (key == Key.Backspace) drawBackspaceGestureHints(canvas, bounds)
 
             // 兼作大写的 `;`：上方小 Shift 图标（上滑出它），中间 `;`，下方韵母
             key is Key.Letter && key.flickShift -> {
@@ -124,6 +125,25 @@ class KeyPainter(
                 15f * density, ink.apply { color = palette.brand }, key.char.lowercaseChar(),
             )
         }
+    }
+
+    /** 删除键上滑清空、下滑撤销的方向提示，放在主图标两侧避免遮挡。 */
+    private fun drawBackspaceGestureHints(canvas: Canvas, bounds: RectF) {
+        val cy = bounds.centerY()
+        val offset = 17f * density
+        val half = 4f * density
+        gestureHint.color = palette.brand
+        gestureHint.strokeWidth = 1.8f * density
+        // 左侧向上箭头：上滑清空
+        val upX = bounds.centerX() - offset
+        canvas.drawLine(upX, cy + half, upX, cy - half, gestureHint)
+        canvas.drawLine(upX - half, cy - half + half, upX, cy - half, gestureHint)
+        canvas.drawLine(upX + half, cy - half + half, upX, cy - half, gestureHint)
+        // 右侧向下箭头：下滑撤销
+        val downX = bounds.centerX() + offset
+        canvas.drawLine(downX, cy - half, downX, cy + half, gestureHint)
+        canvas.drawLine(downX - half, cy + half - half, downX, cy + half, gestureHint)
+        canvas.drawLine(downX + half, cy + half - half, downX, cy + half, gestureHint)
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
