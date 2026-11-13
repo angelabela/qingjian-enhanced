@@ -255,6 +255,24 @@ class VoicePanel(
         paint.style = Paint.Style.FILL
         paint.alpha = 255
 
+        // 双层环形频谱：外圈向外扩张，内圈反向向球体收拢。
+        drawSpectrumRing(canvas, cx, cy, sphereR * 1.16f, 72, 1f, 0f, ringEnergy, phase)
+        drawSpectrumRing(canvas, cx, cy, sphereR * 0.98f, 64, -0.62f, PI.toFloat(), ringEnergy, -phase * 0.82f)
+
+        // 少量沿轨道缓慢漂移的辉光粒子，避免每帧随机创建对象。
+        for (i in 0 until 18) {
+            val angle = phase * (0.22f + (i % 4) * 0.07f) + i * (2f * PI.toFloat() / 18f)
+            val orbit = sphereR * (1.52f + (i % 3) * 0.16f)
+            val px = cx + cos(angle) * orbit
+            val py = cy + sin(angle) * orbit * 0.58f
+            paint.color = ringColors[i % ringColors.size]
+            paint.alpha = (55 + ringEnergy * 150f).toInt().coerceIn(55, 205)
+            paint.setShadowLayer(ink.dp(5f), 0f, 0f, paint.color)
+            canvas.drawCircle(px, py, ink.dp(1.1f + (i % 3) * 0.35f), paint)
+            paint.clearShadowLayer()
+        }
+        paint.alpha = 255
+
         // 能量球：左上亮青、右下深紫的三维径向渐变。
         paint.shader = sphereShader
         canvas.drawCircle(cx, cy, sphereR, paint)
@@ -308,6 +326,50 @@ class VoicePanel(
         if (active || dimProgress > 0.122f || kotlin.math.abs(sphereScale - 1f) > 0.002f) {
             postInvalidateOnAnimation()
         }
+    }
+
+    /** 以真实音量包络驱动的环形频谱，所有坐标按面板尺寸和密度缩放。 */
+    private fun drawSpectrumRing(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float,
+        bars: Int,
+        direction: Float,
+        offset: Float,
+        energy: Float,
+        rotation: Float,
+    ) {
+        val oldWidth = paint.strokeWidth
+        val oldCap = paint.strokeCap
+        val oldStyle = paint.style
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        for (i in 0 until bars) {
+            val source = (i * levels.size / bars).coerceIn(0, levels.lastIndex)
+            val envelope = levels[source]
+            val idleWave = 0.12f + 0.08f * (0.5f + 0.5f * sin(i * 0.31f + phase * 1.4f))
+            val value = if (holding || listening || recognizing) envelope else idleWave
+            val barLength = ink.dp(3f + value * (25f + energy * 31f))
+            val angle = offset + rotation + i * (2f * PI.toFloat() / bars)
+            val inner = radius + if (direction > 0f) 0f else -barLength
+            val outer = radius + if (direction > 0f) barLength else 0f
+            val x1 = cx + cos(angle) * inner
+            val y1 = cy + sin(angle) * inner
+            val x2 = cx + cos(angle) * outer
+            val y2 = cy + sin(angle) * outer
+            val color = ringColors[(i * ringColors.size / bars) % ringColors.size]
+            paint.color = color
+            paint.alpha = (105 + value * 145f).toInt().coerceIn(105, 250)
+            paint.strokeWidth = ink.dp(1.7f + value * 0.9f)
+            paint.setShadowLayer(ink.dp(5f + value * 5f), 0f, 0f, color)
+            canvas.drawLine(x1, y1, x2, y2, paint)
+            paint.clearShadowLayer()
+        }
+        paint.alpha = 255
+        paint.strokeWidth = oldWidth
+        paint.strokeCap = oldCap
+        paint.style = oldStyle
     }
 
     @SuppressLint("ClickableViewAccessibility")
