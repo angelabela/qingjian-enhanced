@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.panel
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
@@ -192,11 +193,35 @@ class VoicePanel(
         super.onDetachedFromWindow()
     }
 
-    private var transcript: String = ""
+    private var blurredBackdrop: Bitmap? = null
 
-    fun setTranscript(value: String) {
-        transcript = value
-        overlay.postInvalidateOnAnimation()
+    /** Capture the keyboard once, excluding this overlay, then downsample/upscale it
+     * to create a lightweight frosted-glass backdrop that also works below API 31. */
+    private fun captureBlurredBackdrop() {
+        val parentView = parent as? android.view.ViewGroup ?: return
+        val pw = parentView.width
+        val ph = parentView.height
+        if (pw <= 0 || ph <= 0) return
+        val scale = 1f / 12f
+        val bw = max(1, (pw * scale).toInt())
+        val bh = max(1, (ph * scale).toInt())
+        val bitmap = try { Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888) } catch (_: OutOfMemoryError) { return }
+        val oldVisibility = visibility
+        try {
+            visibility = INVISIBLE
+            val c = Canvas(bitmap)
+            c.scale(bw.toFloat() / pw, bh.toFloat() / ph)
+            parentView.draw(c)
+        } catch (error: Throwable) {
+            bitmap.recycle()
+            android.util.Log.w("QingjianVoice", "Could not capture keyboard backdrop", error)
+            return
+        } finally {
+            visibility = oldVisibility
+        }
+        blurredBackdrop?.recycle()
+        blurredBackdrop = bitmap
+        overlay.invalidate()
     }
 
     private inner class OverlayView(context: Context) : android.view.View(context) {
@@ -253,41 +278,6 @@ class VoicePanel(
             p.textAlign = Paint.Align.CENTER
             canvas.drawText(if (recognizing) "正在识别…" else if (amp < 0.035f) "未检测到声音" else "正在聆听…",
                 status.centerX() + 8f * d, status.centerY() + 6f * d, p)
-
-            // Live transcript card, with comfortable padding and subtle cyan/violet edge.
-            val card = RectF(w * 0.055f, h * 0.19f, w * 0.945f, h * 0.345f)
-            p.shader = android.graphics.LinearGradient(card.left, card.top, card.right, card.bottom,
-                intArrayOf(0xD92A4566.toInt(), 0xD92E285F.toInt()),
-                null, android.graphics.Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(card, 22f * d, 22f * d, p)
-            p.shader = null
-            p.style = Paint.Style.STROKE
-            p.strokeWidth = 1.2f * d
-            p.shader = android.graphics.LinearGradient(card.left, card.top, card.right, card.bottom,
-                intArrayOf(0xBB29DFFF.toInt(), 0xBB9A62FF.toInt()),
-                null, android.graphics.Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(card, 22f * d, 22f * d, p)
-            p.shader = null
-            p.style = Paint.Style.FILL
-            p.textAlign = Paint.Align.LEFT
-            p.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
-            p.textSize = 19f * d
-            p.color = 0xFFF6F7FF.toInt()
-            val display = transcript.ifBlank { if (recognizing) "正在整理识别结果…" else "请开始说话…" }
-            val maxWidth = card.width() - 34f * d
-            val lines = mutableListOf<String>()
-            var line = ""
-            for (ch in display) {
-                val next = line + ch
-                if (p.measureText(next) > maxWidth && line.isNotEmpty()) {
-                    lines.add(line)
-                    line = ch.toString()
-                } else line = next
-            }
-            if (line.isNotEmpty()) lines.add(line)
-            lines.take(3).forEachIndexed { index, value ->
-                canvas.drawText(value, card.left + 18f * d, card.top + 34f * d + index * 27f * d, p)
-            }
 
             // Concentric voice rings and central mic glow.
             val base = 82f * d
