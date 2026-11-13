@@ -56,7 +56,8 @@ class VoicePanel(
     private var currentVolume = 0f
     private var peakVolume = 0f
     private var touchTarget = Target.NONE
-    private var target = Target.NONE
+    var target = Target.NONE
+        private set
 
     var holding = false
         set(value) { field = value; invalidate() }
