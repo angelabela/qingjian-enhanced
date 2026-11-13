@@ -199,6 +199,26 @@ class VoicePanel(
             canvas.drawLine(cx - r * 0.38f, cy + r * 0.98f,
                 cx + r * 0.38f, cy + r * 0.98f, p)
 
+            if (glView.renderer.hasFailed()) {
+                val radius = 76f * d
+                p.shader = android.graphics.RadialGradient(
+                    cx - radius * 0.28f, cy - radius * 0.34f, radius * 1.35f,
+                    intArrayOf(0xFFF4FFFF.toInt(), 0xFF39D9FF.toInt(), 0xFF655BFF.toInt(), 0x00A020FF),
+                    floatArrayOf(0f, 0.28f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
+                )
+                p.style = Paint.Style.FILL
+                canvas.drawCircle(cx, cy, radius, p)
+                p.shader = null
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = 2.2f * d
+                p.color = 0xB8A9E9FF.toInt()
+                canvas.drawCircle(cx, cy, radius * 1.08f, p)
+                p.strokeWidth = 1f * d
+                p.color = 0x8865DFFF.toInt()
+                canvas.drawOval(cx - radius * 1.2f, cy - radius * 0.42f, cx + radius * 1.2f, cy + radius * 0.42f, p)
+                p.style = Paint.Style.FILL
+            }
+
             val actionY = height * 0.91f
             ink.text(canvas, "撤回", 13f,
                 if (target == Target.CANCEL) palette.brand else 0xFFD6E8F5.toInt(),
