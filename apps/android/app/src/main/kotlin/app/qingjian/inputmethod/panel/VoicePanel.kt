@@ -94,126 +94,178 @@ class VoicePanel(
 
     private var dimProgress = 0f
     private var ringEnergy = 0f
-    private var ringScale = 1f
+    private var sphereScale = 1f
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val active = holding || listening || recognizing
-        val targetDim = if (active) 0.20f else 0f
-        dimProgress += (targetDim - dimProgress) * 0.16f
-        val rawLevel = if (active) (levels.average().toFloat() * 1.8f).coerceIn(0f, 1f) else 0f
-        ringEnergy += (rawLevel - ringEnergy) * if (active) 0.22f else 0.10f
-        val breath = 0.5f + 0.5f * sin(phase * 0.48f)
+        val recentLevel = levels.indices.sumOf { index ->
+            val weight = (index + 1).toFloat() / BARS
+            levels[index] * weight
+        } / (BARS * 0.505f)
+        val inputLevel = if (active) recentLevel.coerceIn(0f, 1f) else 0f
+        ringEnergy += (inputLevel - ringEnergy) * if (active) 0.24f else 0.075f
+        val targetDim = if (active) 0.30f else 0.12f
+        dimProgress += (targetDim - dimProgress) * 0.10f
+
         val cx = width / 2f
         val cy = micCenterY()
-        val density = resources.displayMetrics.density
+        val minSide = minOf(width, height).toFloat()
+        val radius = minOf(ink.dp(82f), minSide * 0.205f)
+        val breath = 0.5f + 0.5f * sin(phase * 0.42f)
+        val pulse = 1f + breath * 0.025f + ringEnergy * 0.115f
+        sphereScale += ((1f + ringEnergy * 0.10f) - sphereScale) * 0.16f
+        val sphereR = radius * pulse * sphereScale
 
-        // 聆听时轻柔压暗键盘，停止后用同样平滑的曲线恢复。
-        if (dimProgress > 0.002f) {
-            paint.shader = null
-            paint.style = Paint.Style.FILL
-            paint.color = android.graphics.Color.BLACK
-            paint.alpha = (dimProgress * 255f).toInt().coerceIn(0, 255)
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-            paint.alpha = 255
-        }
-
-        val pulse = 1f + breath * 0.035f + ringEnergy * 0.12f
-        val baseRadius = ink.dp(61f) * pulse * ringScale
-        val amplitude = ink.dp(7f + ringEnergy * 15f)
-        val ring = android.graphics.Path()
-        val secondary = android.graphics.Path()
-        val inner = android.graphics.Path()
-        val segments = 220
-        for (i in 0..segments) {
-            val a = i.toFloat() / segments * (2f * PI.toFloat())
-            val wave = sin(a * 7f - phase * 0.78f) * 0.55f +
-                sin(a * 13f + phase * 0.42f) * 0.25f +
-                sin(a * 3f - phase * 0.28f) * 0.20f
-            val r = baseRadius + wave * amplitude
-            val x = cx + cos(a) * r
-            val y = cy + sin(a) * r
-            val r2 = baseRadius - ink.dp(8f) + wave * amplitude * 0.48f
-            val x2 = cx + cos(a + 0.12f) * r2
-            val y2 = cy + sin(a + 0.12f) * r2
-            val r3 = baseRadius + ink.dp(8f) + sin(a * 5f + phase * 0.35f) * amplitude * 0.34f
-            val x3 = cx + cos(a) * r3
-            val y3 = cy + sin(a) * r3
-            if (i == 0) {
-                ring.moveTo(x, y)
-                secondary.moveTo(x2, y2)
-                inner.moveTo(x3, y3)
-            } else {
-                ring.lineTo(x, y)
-                secondary.lineTo(x2, y2)
-                inner.lineTo(x3, y3)
-            }
-        }
-        ring.close()
-        secondary.close()
-        inner.close()
-
-        val colors = intArrayOf(
-            0xFF00E5FF.toInt(), 0xFF168BFF.toInt(), 0xFF455BFF.toInt(),
-            0xFF8B45FF.toInt(), 0xFFE044FF.toInt(), 0xFFFF4FB8.toInt(),
-            0xFF00E5FF.toInt()
+        // 深蓝至暗紫的宇宙底色，键盘轮廓仍隐约可见。
+        paint.shader = LinearGradient(
+            0f, 0f, width.toFloat(), height.toFloat(),
+            intArrayOf(0xD90A1534.toInt(), 0xD90D1233.toInt(), 0xDD21113F.toInt()),
+            null, Shader.TileMode.CLAMP
         )
-        val positions = floatArrayOf(0f, 0.17f, 0.34f, 0.52f, 0.70f, 0.86f, 1f)
-        paint.shader = android.graphics.SweepGradient(cx, cy, colors, positions)
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeJoin = Paint.Join.ROUND
-
-        // 外层宽柔光 + 中层彩色光带 + 内层高亮细线，制造有层次的霓虹光环。
-        paint.strokeWidth = ink.dp(18f)
-        paint.alpha = (22 + breath * 12f + ringEnergy * 25f).toInt()
-        canvas.drawPath(ring, paint)
-        paint.strokeWidth = ink.dp(9f)
-        paint.alpha = (42 + ringEnergy * 45f).toInt()
-        canvas.drawPath(inner, paint)
-        paint.strokeWidth = ink.dp(3.8f)
-        paint.alpha = 210
-        canvas.drawPath(ring, paint)
-        paint.strokeWidth = ink.dp(1.5f)
-        paint.alpha = 170
-        canvas.drawPath(secondary, paint)
-        paint.shader = null
+        paint.style = Paint.Style.FILL
         paint.alpha = 255
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        paint.shader = null
+
+        // 星点位置固定，亮度缓慢闪烁，避免随机跳动。
+        for (i in 0 until 34) {
+            val sx = ((i * 73 + 29) % 997) / 997f * width
+            val sy = ((i * 137 + 61) % 991) / 991f * height
+            val twinkle = 0.35f + 0.65f * (0.5f + 0.5f *
+                sin(phase * 0.32f + i * 1.71f))
+            paint.color = if (i % 4 == 0) 0xFF9ADFFF.toInt() else 0xFFB9B9FF.toInt()
+            paint.alpha = (35 + twinkle * 105f).toInt()
+            val starR = ink.dp(if (i % 7 == 0) 1.8f else 1.0f) * (1f + ringEnergy * 0.25f)
+            canvas.drawCircle(sx, sy, starR, paint)
+        }
+        paint.alpha = 255
+
+        // 柔和的背景能量雾。
+        paint.shader = RadialGradient(
+            cx, cy, sphereR * 2.5f,
+            intArrayOf(0x665C65FF, 0x332E4CCB, 0x00201850),
+            null, Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, sphereR * 2.5f, paint)
+        paint.shader = null
+
+        // 多层同心声波环，随音量改变半径、亮度和脉动幅度。
+        val ringColors = intArrayOf(
+            0xFF36E9FF.toInt(), 0xFF398EFF.toInt(), 0xFF735CFF.toInt(),
+            0xFFC05CFF.toInt(), 0xFF36E9FF.toInt()
+        )
+        for (i in 0..3) {
+            val rr = sphereR * (1.18f + i * 0.19f) +
+                sin(phase * 0.55f + i * 0.9f) * ink.dp(2.5f + ringEnergy * 5f)
+            paint.shader = android.graphics.SweepGradient(
+                cx, cy, ringColors, floatArrayOf(0f, 0.25f, 0.53f, 0.78f, 1f)
+            )
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = ink.dp(if (i == 0) 2.2f else 1.15f)
+            paint.alpha = (if (i == 0) 125 else 55) + (ringEnergy * 70f).toInt()
+            canvas.drawCircle(cx, cy, rr, paint)
+        }
+        paint.shader = null
+
+        // 倾斜的土星轨道：宽柔光、主光带和偏移拖尾共同形成空间纵深。
+        for (i in 0..2) {
+            val orbitW = sphereR * (2.95f + i * 0.36f)
+            val orbitH = sphereR * (0.72f + i * 0.11f)
+            val rotation = -24f + i * 17f + phase * (if (active) 2.8f else 1.2f) *
+                (if (i % 2 == 0) 1f else -0.72f)
+            val oval = RectF(cx - orbitW / 2f, cy - orbitH / 2f, cx + orbitW / 2f, cy + orbitH / 2f)
+            canvas.save()
+            canvas.rotate(rotation, cx, cy)
+            paint.shader = android.graphics.SweepGradient(
+                cx, cy,
+                intArrayOf(0x002FE8FF, 0xAA42CFFF.toInt(), 0xDD8B70FF.toInt(),
+                    0x8845CFFF.toInt(), 0x002FE8FF),
+                floatArrayOf(0f, 0.22f, 0.48f, 0.76f, 1f)
+            )
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = ink.dp(13f + ringEnergy * 3f)
+            paint.alpha = 24
+            canvas.drawOval(oval, paint)
+            paint.strokeWidth = ink.dp(2.1f)
+            paint.alpha = (72 + ringEnergy * 75f).toInt()
+            canvas.drawOval(oval, paint)
+            paint.strokeWidth = ink.dp(1f)
+            paint.alpha = 105
+            val tail = RectF(oval.left + orbitW * 0.08f, oval.top, oval.right, oval.bottom)
+            canvas.drawArc(tail, 198f, 112f, false, paint)
+            canvas.restore()
+        }
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+
+        // 能量球：左上亮青、右下深紫的三维径向渐变。
+        paint.shader = RadialGradient(
+            cx - sphereR * 0.34f, cy - sphereR * 0.40f, sphereR * 1.65f,
+            intArrayOf(
+                0xFFB9FFFF.toInt(), 0xFF39DFFF.toInt(), 0xFF258BEF.toInt(),
+                0xFF5549D9.toInt(), 0xFF29144F.toInt()
+            ),
+            floatArrayOf(0f, 0.24f, 0.52f, 0.79f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, sphereR, paint)
+        paint.shader = null
+
+        // 球体边缘内发光与顶部高光。
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(5f)
+        paint.shader = RadialGradient(
+            cx, cy, sphereR,
+            intArrayOf(0x00FFFFFF, 0x22BFFFFF, 0xAA9CEBFF.toInt()),
+            floatArrayOf(0.78f, 0.94f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, sphereR - ink.dp(2f), paint)
+        paint.shader = null
+        paint.strokeWidth = ink.dp(1.2f)
+        paint.color = 0xBFFFFFFF.toInt()
+        canvas.drawArc(
+            RectF(cx - sphereR * 0.86f, cy - sphereR * 0.86f,
+                cx + sphereR * 0.86f, cy + sphereR * 0.86f),
+            205f, 105f, false, paint
+        )
         paint.style = Paint.Style.FILL
 
-        // 麦克风中心不使用白色大圆盘，让光环和键盘自然融合。
-        val micColor = 0xFF72D9FF.toInt()
-        paint.color = micColor
+        // 纯白极简麦克风：话筒、U 型支架和底座，形状保持稳定不随音量变形。
+        paint.shader = null
+        paint.color = android.graphics.Color.WHITE
+        paint.alpha = 255
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(4f)
+        paint.strokeWidth = ink.dp(4.2f)
         paint.strokeCap = Paint.Cap.ROUND
-        val micTop = cy - ink.dp(15f)
-        val micBottom = cy + ink.dp(5f)
+        paint.strokeJoin = Paint.Join.ROUND
+        val micTop = cy - sphereR * 0.34f
+        val micBottom = cy + sphereR * 0.12f
         canvas.drawRoundRect(
-            cx - ink.dp(7f), micTop, cx + ink.dp(7f), micBottom,
-            ink.dp(7f), ink.dp(7f), paint
+            cx - sphereR * 0.105f, micTop, cx + sphereR * 0.105f, micBottom,
+            sphereR * 0.105f, sphereR * 0.105f, paint
         )
-        val micArc = RectF(cx - ink.dp(17f), cy - ink.dp(7f), cx + ink.dp(17f), cy + ink.dp(17f))
-        canvas.drawArc(micArc, 0f, 180f, false, paint)
-        canvas.drawLine(cx, cy + ink.dp(17f), cx, cy + ink.dp(25f), paint)
-        canvas.drawLine(cx - ink.dp(8f), cy + ink.dp(25f), cx + ink.dp(8f), cy + ink.dp(25f), paint)
+        val stand = RectF(cx - sphereR * 0.26f, cy - sphereR * 0.12f,
+            cx + sphereR * 0.26f, cy + sphereR * 0.30f)
+        canvas.drawArc(stand, 0f, 180f, false, paint)
+        canvas.drawLine(cx, cy + sphereR * 0.30f, cx, cy + sphereR * 0.43f, paint)
+        canvas.drawLine(cx - sphereR * 0.17f, cy + sphereR * 0.43f,
+            cx + sphereR * 0.17f, cy + sphereR * 0.43f, paint)
         paint.style = Paint.Style.FILL
         paint.color = android.graphics.Color.WHITE
         paint.alpha = 255
 
-        val actionY = height * 0.86f
+        val actionY = height * 0.91f
         ink.text(canvas, "撤回", 13f,
-            if (target == Target.CANCEL) palette.brand else palette.gloss, width * 0.17f, actionY,
+            if (target == Target.CANCEL) palette.brand else 0xFFD6D9FF.toInt(), width * 0.17f, actionY,
             bold = target == Target.CANCEL)
         ink.text(canvas, actionLabel, 13f,
-            if (target == Target.ACTION) palette.brand else palette.gloss, width * 0.83f, actionY,
+            if (target == Target.ACTION) palette.brand else 0xFFD6D9FF.toInt(), width * 0.83f, actionY,
             bold = target == Target.ACTION)
 
-        // 慢速连续呼吸；音量只增加光环的振幅和亮度，不让整个界面剧烈跳动。
-        phase = (phase + if (active) 0.035f else 0.020f) % (2f * PI.toFloat())
-        val targetScale = if (active) 1.035f else 1f
-        ringScale += (targetScale - ringScale) * 0.12f
-        if (active || dimProgress > 0.002f || kotlin.math.abs(ringScale - 1f) > 0.002f) {
+        phase = (phase + if (active) 0.026f else 0.012f) % (2f * PI.toFloat())
+        if (active || dimProgress > 0.122f || kotlin.math.abs(sphereScale - 1f) > 0.002f) {
             postInvalidateDelayed(16L)
         }
     }
