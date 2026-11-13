@@ -297,9 +297,9 @@ class VoicePanel(
                 p.style = Paint.Style.STROKE
                 p.strokeWidth = (1.1f + (4 - i) * 0.35f) * d
                 p.color = when (i) {
-                    3 -> 0x333F8CFF
-                    2 -> 0x664B8FFF
-                    else -> 0x886B6CFF
+                    3 -> 0x333F8CFF.toInt()
+                    2 -> 0x664B8FFF.toInt()
+                    else -> 0x886B6CFF.toInt()
                 }
                 canvas.drawCircle(cx, cy, radius, p)
             }
