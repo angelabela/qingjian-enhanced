@@ -14,12 +14,14 @@ import android.graphics.drawable.GradientDrawable
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
+import app.qingjian.inputmethod.cloud.AiChatGenerator
 import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
+import app.qingjian.inputmethod.panel.AiChatPanel
 import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
@@ -49,6 +51,7 @@ class InputPanel(
     onBottomAction: (BottomAction) -> Unit,
     onCloudSelect: (Int) -> Unit,
     private val onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
+    private val aiChatGenerator: AiChatGenerator,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
@@ -64,6 +67,11 @@ class InputPanel(
         private set
 
     private var panelView: View? = null
+    private var chatPanel: AiChatPanel? = null
+    private var voiceView: VoicePanel? = null
+
+    /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
+    val aiChatEditor: AiChatPanel? get() = chatPanel
 
     // 云联想是独立的一行，不能并入普通候选栏，也不与候选栏共用卡片背景。
     // 普通候选栏自身保持原有绘制、滚动和点击区域，云联想单独位于其上方。
@@ -118,8 +126,11 @@ class InputPanel(
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.AI_CHAT -> AiChatPanel(
+                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
+            )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
-                context, palette, header, text, onGenerateAiExpression, actions::commitText, actions::closePanel,
+                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
@@ -132,11 +143,26 @@ class InputPanel(
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
-        return VoicePanel(context, palette, actionLabel, actions).also { cover(PanelKind.VOICE, it) }
+        return VoicePanel(context, palette, actionLabel, actions).also { voice ->
+            voiceView = voice
+            stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            openPanel = PanelKind.VOICE
+            // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
+            overlay?.bringToFront()
+            voice.bringToFront()
+        }
     }
 
     private fun cover(kind: PanelKind, panel: View) {
-        stack.addView(panel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
+        // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
+        if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
+            chatPanel = panel
+        }
+        stack.addView(
+            panel,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
         main.visibility = View.INVISIBLE
         panelView = panel
         openPanel = kind
@@ -172,18 +198,41 @@ class InputPanel(
     /** 回到键盘；没开面板时什么都不做。 */
     fun close() {
         panelView?.let(stack::removeView)
+        voiceView?.let(stack::removeView)
         panelView = null
+        voiceView = null
+        chatPanel = null
         openPanel = null
         main.visibility = View.VISIBLE
     }
 
     /** 先量键盘那一块，面板一律量成同样高；MATCH_PARENT 在输入法窗口里会撑满整屏。 */
+    private class ChatOverlay(
+        context: Context,
+        panel: View,
+        candidateBar: View,
+        candidateHeight: Int,
+    ) : LinearLayout(context) {
+        init {
+            orientation = VERTICAL
+            addView(panel, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(candidateBar, LayoutParams(LayoutParams.MATCH_PARENT, candidateHeight))
+        }
+    }
+
     private class Stack(context: Context, private val main: View) : FrameLayout(context) {
+        private fun Int?.orZero() = this ?: 0
+
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             measureChild(main, widthMeasureSpec, heightMeasureSpec)
             val height = MeasureSpec.makeMeasureSpec(main.measuredHeight, MeasureSpec.EXACTLY)
             for (i in 0 until childCount) {
-                getChildAt(i).takeIf { it !== main }?.measure(widthMeasureSpec, height)
+                val child = getChildAt(i)
+                if (child === main) continue
+                val childHeight = if (child is ChatOverlay) {
+                    (main.measuredHeight - (main as? LinearLayout)?.getChildAt(2)?.measuredHeight.orZero()).coerceAtLeast(0)
+                } else main.measuredHeight
+                child.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY))
             }
             setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), main.measuredHeight)
         }

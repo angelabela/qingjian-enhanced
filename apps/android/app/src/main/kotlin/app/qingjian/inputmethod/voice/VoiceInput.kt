@@ -71,6 +71,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         host.prepareVoice()
         val panel = host.openVoicePanel(this) ?: return false
         panel.holding = holding
+        panel.listening = true
         this.panel = panel
         after = After.NOTHING
         recognizer = picked
@@ -100,6 +101,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
             hide -> After.HIDE
             else -> After.NOTHING
         }
+        panel?.listening = false
         panel?.recognizing = true
         recognizer.finish()
     }
