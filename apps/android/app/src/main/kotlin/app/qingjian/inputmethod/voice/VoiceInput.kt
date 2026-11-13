@@ -133,7 +133,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     fun cancel() = onCancel()
 
     override fun onPartial(text: String) {
-        if (active) host.composeVoice(text)
+        if (active) {
+            panel?.setTranscript(text)
+            host.composeVoice(text)
+        }
     }
 
     override fun onFinal(text: String) {
