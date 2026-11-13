@@ -4,7 +4,7 @@ name: android-debug
 on:
   # APK 只在代码推送时构建；PR 更新本身会产生 push 事件，避免 push + pull_request 双跑。
   push:
-    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter, fix/voice-animation-frame-pacing]
+    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter, fix/voice-animation-frame-pacing, feature/android-input-efficiency-phase1]
   workflow_dispatch:
 
 permissions:
