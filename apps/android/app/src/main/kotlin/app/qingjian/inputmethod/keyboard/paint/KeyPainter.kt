@@ -69,8 +69,6 @@ class KeyPainter(
         when {
             label.isEmpty() ->
                 KeyIcons.draw(canvas, key, bounds.centerX(), bounds.centerY(), 24 * density, ink, shift)
-            if (key == Key.Backspace) drawBackspaceGestureHints(canvas, bounds)
-
             // 兼作大写的 `;`：上方小 Shift 图标（上滑出它），中间 `;`，下方韵母
             key is Key.Letter && key.flickShift -> {
                 ink.color = palette.gloss
@@ -115,6 +113,9 @@ class KeyPainter(
                 text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
             }
         }
+
+        // 删除键方向提示独立绘制，避免破坏上方 when 分支结构。
+        if (key == Key.Backspace) drawBackspaceGestureHints(canvas, bounds)
 
         if (key is Key.Space) drawClipboardSwipeHint(canvas, bounds)
 
