@@ -134,7 +134,6 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     override fun onPartial(text: String) {
         if (active) {
-            panel?.setTranscript(text)
             host.composeVoice(text)
         }
     }
