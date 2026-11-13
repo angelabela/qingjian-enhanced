@@ -517,7 +517,7 @@ class VoicePanel(
                     fresnel = pow(1.0 - abs(fresnel), 2.0);
                     // Stronger luminous separation from the keyboard background.
                     // Keep the original four-color gradient, but lift saturation and edge glow.
-                    finalColor = min(finalColor * 1.42 + vec3(0.035, 0.055, 0.11), 1.0);
+                    finalColor = min(finalColor * 1.42 + vec3(0.035, 0.055, 0.11), vec3(1.0));
                     finalColor += fresnel * 0.52;
                     float alpha = mix(0.24, 0.96, fresnel);
                     gl_FragColor = vec4(finalColor, alpha);
