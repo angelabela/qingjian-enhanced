@@ -1,205 +1,141 @@
 package app.qingjian.inputmethod.effects
 
 import android.content.Context
-import android.graphics.PixelFormat
-import android.opengl.GLES20
-import android.opengl.GLSurfaceView
-import android.os.Handler
-import android.os.Looper
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
+import android.os.SystemClock
+import android.view.View
+import app.qingjian.inputmethod.R
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Shared GPU ripple layer for Android IME surfaces.
- * The layer is transparent, touch-through and renders only while an effect is alive.
+ * Hardware-accelerated Canvas effect layer for the IME.
+ * A normal View is intentionally used instead of SurfaceView/GLSurfaceView:
+ * it composes reliably with keyboard and panel children and never steals touch input.
  */
 object GpuEffectBus {
     @Volatile internal var sink: ((Float, Float, Float) -> Unit)? = null
 
-    fun pulse(screenX: Float, screenY: Float, strength: Float = 0.72f) {
+    fun pulse(screenX: Float, screenY: Float, strength: Float = 0.9f) {
         sink?.invoke(screenX, screenY, strength.coerceIn(0f, 1.5f))
     }
 }
 
-class GpuEffectsView(context: Context) : GLSurfaceView(context) {
-    private val ticker = Handler(Looper.getMainLooper())
-    private var activeUntil = 0L
+class GpuEffectsView(context: Context) : View(context) {
+    private data class Pulse(
+        val x: Float,
+        val y: Float,
+        val strength: Float,
+        val startedAt: Long,
+    )
+
+    private val pulses = ArrayList<Pulse>(4)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val density = resources.displayMetrics.density
     private val frame = object : Runnable {
         override fun run() {
-            if (System.currentTimeMillis() <= activeUntil) {
-                requestRender()
-                ticker.postDelayed(this, FRAME_MS)
-            } else {
-                requestRender()
-            }
+            val now = SystemClock.uptimeMillis()
+            pulses.removeAll { now - it.startedAt >= DURATION_MS }
+            invalidate()
+            if (pulses.isNotEmpty()) postOnAnimation(this)
         }
     }
 
-    private val effectRenderer = EffectRenderer()
-
     init {
-        setEGLContextClientVersion(2)
-        setEGLConfigChooser(8, 8, 8, 8, 16, 0)
-        holder.setFormat(PixelFormat.TRANSLUCENT)
-        setZOrderOnTop(true)
-        setRenderer(effectRenderer)
-        renderMode = RENDERMODE_WHEN_DIRTY
+        setLayerType(View.LAYER_TYPE_HARDWARE, null)
         isClickable = false
         isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         GpuEffectBus.sink = { x, y, strength -> triggerScreen(x, y, strength) }
     }
 
     fun triggerScreen(screenX: Float, screenY: Float, strength: Float) {
+        if (width <= 0 || height <= 0) {
+            post { triggerScreen(screenX, screenY, strength) }
+            return
+        }
         val location = IntArray(2)
         getLocationOnScreen(location)
-        val w = width.coerceAtLeast(1)
-        val h = height.coerceAtLeast(1)
-        val x = ((screenX - location[0]) / w).coerceIn(0f, 1f)
-        val y = (1f - (screenY - location[1]) / h).coerceIn(0f, 1f)
-        effectRenderer.update(x, y, strength)
-        activeUntil = System.currentTimeMillis() + EFFECT_DURATION_MS
-        ticker.removeCallbacks(frame)
-        ticker.post(frame)
+        val x = (screenX - location[0]).coerceIn(0f, width.toFloat())
+        val y = (screenY - location[1]).coerceIn(0f, height.toFloat())
+        if (pulses.size >= 4) pulses.removeAt(0)
+        pulses.add(Pulse(x, y, strength, SystemClock.uptimeMillis()))
+        removeCallbacks(frame)
+        postOnAnimation(frame)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (pulses.isEmpty()) return
+        val now = SystemClock.uptimeMillis()
+        val maxRadius = (width.coerceAtLeast(height) * 0.46f).coerceAtLeast(96f * density)
+
+        pulses.forEach { pulse ->
+            val elapsed = (now - pulse.startedAt).coerceAtLeast(0L).toFloat()
+            val t = (elapsed / DURATION_MS).coerceIn(0f, 1f)
+            val fade = (1f - t) * pulse.strength.coerceAtMost(1.25f)
+            val cx = pulse.x
+            val cy = pulse.y
+
+            // Bright cyan-violet-pink bloom makes the interaction readable on both light and dark themes.
+            paint.style = Paint.Style.FILL
+            paint.shader = RadialGradient(
+                cx, cy, maxRadius * (0.22f + 0.58f * t),
+                intArrayOf(0xBFFFFFFF.toInt(), 0xB83BEAFF.toInt(), 0x965B42FF.toInt(), 0x00E72BBD),
+                floatArrayOf(0f, 0.22f, 0.62f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            paint.alpha = (190f * fade).toInt().coerceIn(0, 210)
+            canvas.drawCircle(cx, cy, maxRadius * (0.22f + 0.58f * t), paint)
+            paint.shader = null
+
+            // Three expanding rings with staggered phases create a layered ripple, not a faint flat flash.
+            for (ring in 0..2) {
+                val phase = (t * 1.18f - ring * 0.19f).coerceIn(0f, 1f)
+                if (t * 1.18f < ring * 0.19f) continue
+                val radius = (22f + phase * maxRadius) * density.coerceAtLeast(1f)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = (3.2f - ring * 0.55f) * density
+                paint.shader = null
+                paint.color = when (ring) {
+                    0 -> 0xF23DEBFF.toInt()
+                    1 -> 0xE47755FF.toInt()
+                    else -> 0xDFFF55C9.toInt()
+                }
+                paint.alpha = (fade * (235f - ring * 24f)).toInt().coerceIn(0, 245)
+                canvas.drawCircle(cx, cy, radius, paint)
+            }
+
+            // Spark points orbit the contact point briefly for a more premium, energetic response.
+            paint.style = Paint.Style.FILL
+            paint.shader = null
+            for (i in 0 until 12) {
+                val angle = i * (2.0 * PI / 12.0) + t * 1.8
+                val distance = (18f + t * maxRadius * 0.68f) * density
+                val px = cx + cos(angle).toFloat() * distance
+                val py = cy + sin(angle).toFloat() * distance
+                paint.color = if (i % 3 == 0) 0xFFFFE6FF.toInt() else 0xFF63EFFF.toInt()
+                paint.alpha = (fade * 220f * (1f - t * 0.55f)).toInt().coerceIn(0, 220)
+                canvas.drawCircle(px, py, (1.4f + (i % 3) * 0.45f) * density, paint)
+            }
+        }
+        paint.shader = null
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
     }
 
     override fun onDetachedFromWindow() {
-        ticker.removeCallbacks(frame)
+        removeCallbacks(frame)
+        pulses.clear()
         if (GpuEffectBus.sink != null) GpuEffectBus.sink = null
         super.onDetachedFromWindow()
     }
 
-    private class EffectRenderer : GLSurfaceView.Renderer {
-        private var program = 0
-        private var position = 0
-        private var timeLocation = 0
-        private var centerLocation = 0
-        private var strengthLocation = 0
-        private var resolutionLocation = 0
-        @Volatile private var startNanos = System.nanoTime()
-        @Volatile private var viewportWidth = 1
-        @Volatile private var viewportHeight = 1
-        @Volatile private var centerX = 0.5f
-        @Volatile private var centerY = 0.5f
-        @Volatile private var strength = 0f
-        private val vertices: FloatBuffer = ByteBuffer.allocateDirect(8 * 4)
-            .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
-                put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
-                position(0)
-            }
-
-        fun update(x: Float, y: Float, amount: Float) {
-            centerX = x
-            centerY = y
-            strength = amount
-            startNanos = System.nanoTime()
-        }
-
-        override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-            GLES20.glClearColor(0f, 0f, 0f, 0f)
-            GLES20.glEnable(GLES20.GL_BLEND)
-            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE)
-            val vertex = """
-                attribute vec2 aPosition;
-                varying vec2 vUv;
-                void main() {
-                    vUv = aPosition * 0.5 + 0.5;
-                    gl_Position = vec4(aPosition, 0.0, 1.0);
-                }
-            """.trimIndent()
-            val fragment = """
-                precision mediump float;
-                varying vec2 vUv;
-                uniform float uTime;
-                uniform vec2 uCenter;
-                uniform vec2 uResolution;
-                uniform float uStrength;
-                float hash(vec2 p) {
-                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-                }
-                void main() {
-                    vec2 delta = (vUv - uCenter) * vec2(uResolution.x / max(uResolution.y, 1.0), 1.0);
-                    float r = length(delta);
-                    float life = exp(-uTime * 2.35);
-                    float wave1 = exp(-pow((r - uTime * 0.72) * 22.0, 2.0));
-                    float wave2 = exp(-pow((r - uTime * 0.48 - 0.035) * 29.0, 2.0));
-                    float core = exp(-r * 13.0) * exp(-uTime * 5.0);
-                    float rings = (wave1 * 0.72 + wave2 * 0.38) * life;
-                    float angle = atan(delta.y, delta.x);
-                    float shimmer = 0.82 + 0.18 * sin(angle * 7.0 - uTime * 5.0);
-                    vec3 cyan = vec3(0.10, 0.88, 1.0);
-                    vec3 violet = vec3(0.48, 0.24, 1.0);
-                    vec3 pink = vec3(1.0, 0.22, 0.72);
-                    float mixWave = 0.5 + 0.5 * sin(angle * 1.7 + uTime * 1.8);
-                    vec3 color = mix(cyan, violet, mixWave);
-                    color = mix(color, pink, clamp(rings * 0.55, 0.0, 0.7));
-                    vec2 cell = floor(vUv * uResolution / 18.0);
-                    float star = step(0.992, hash(cell)) * exp(-r * 2.8) * life;
-                    float alpha = (rings * 0.46 + core * 0.24 + star * 0.65) * shimmer * uStrength;
-                    gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.58));
-                }
-            """.trimIndent()
-            program = try {
-                link(compile(GLES20.GL_VERTEX_SHADER, vertex), compile(GLES20.GL_FRAGMENT_SHADER, fragment))
-            } catch (_: RuntimeException) {
-                0 // Shader failure disables decoration only; the IME input path remains usable.
-            }
-            position = GLES20.glGetAttribLocation(program, "aPosition")
-            timeLocation = GLES20.glGetUniformLocation(program, "uTime")
-            centerLocation = GLES20.glGetUniformLocation(program, "uCenter")
-            strengthLocation = GLES20.glGetUniformLocation(program, "uStrength")
-            resolutionLocation = GLES20.glGetUniformLocation(program, "uResolution")
-        }
-
-        override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-            viewportWidth = width.coerceAtLeast(1)
-            viewportHeight = height.coerceAtLeast(1)
-            GLES20.glViewport(0, 0, width, height)
-        }
-
-        override fun onDrawFrame(gl: GL10?) {
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-            if (program == 0) return
-            val elapsed = ((System.nanoTime() - startNanos) / 1_000_000_000.0).toFloat()
-            if (elapsed > 0.95f) return
-            GLES20.glUseProgram(program)
-            GLES20.glEnableVertexAttribArray(position)
-            vertices.position(0)
-            GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, vertices)
-            GLES20.glUniform1f(timeLocation, elapsed)
-            GLES20.glUniform2f(centerLocation, centerX, centerY)
-            GLES20.glUniform2f(resolutionLocation, viewportWidth.toFloat(), viewportHeight.toFloat())
-            GLES20.glUniform1f(strengthLocation, strength)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-            GLES20.glDisableVertexAttribArray(position)
-        }
-
-        private fun compile(type: Int, source: String): Int {
-            val shader = GLES20.glCreateShader(type)
-            GLES20.glShaderSource(shader, source)
-            GLES20.glCompileShader(shader)
-            val status = IntArray(1)
-            GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0)
-            check(status[0] == GLES20.GL_TRUE) { GLES20.glGetShaderInfoLog(shader) }
-            return shader
-        }
-
-        private fun link(vertex: Int, fragment: Int): Int {
-            val result = GLES20.glCreateProgram()
-            GLES20.glAttachShader(result, vertex)
-            GLES20.glAttachShader(result, fragment)
-            GLES20.glLinkProgram(result)
-            val status = IntArray(1)
-            GLES20.glGetProgramiv(result, GLES20.GL_LINK_STATUS, status, 0)
-            check(status[0] == GLES20.GL_TRUE) { GLES20.glGetProgramInfoLog(result) }
-            return result
-        }
-    }
-
     private companion object {
-        const val FRAME_MS = 16L
-        const val EFFECT_DURATION_MS = 950L
+        const val DURATION_MS = 1050L
     }
 }
