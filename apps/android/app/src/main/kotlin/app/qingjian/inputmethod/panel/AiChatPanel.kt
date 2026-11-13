@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import app.qingjian.inputmethod.cloud.AiChatGenerator
+import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.theme.Palette
 
 /** 轻量 AI 对话回复面板：布局与 AI 情境表达一致，直接展示分组回复，不占用输入框。 */
@@ -79,7 +80,7 @@ class AiChatPanel(
             setTextColor(Color.WHITE)
             background = rounded(palette.brand, 24)
             setPadding(dp(18), dp(12), dp(18), dp(12))
-            setOnClickListener { generate() }
+            setOnClickListener { pulse(this); generate() }
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             setMargins(dp(14), dp(8), dp(14), dp(12))
         })
@@ -123,6 +124,7 @@ class AiChatPanel(
                             background = rounded(palette.surface, 11)
                             isClickable = true
                             setOnClickListener {
+                                pulse(this)
                                 if (onReplace(reply)) {
                                     showUndoAction()
                                     android.widget.Toast.makeText(context, "已替换输入框内容", android.widget.Toast.LENGTH_SHORT).show()
@@ -153,6 +155,7 @@ class AiChatPanel(
             setPadding(dp(12), dp(10), dp(12), dp(10))
             isClickable = true
             setOnClickListener {
+                pulse(this)
                 if (onUndo()) {
                     android.widget.Toast.makeText(context, "已恢复替换前的内容", android.widget.Toast.LENGTH_SHORT).show()
                     content.removeView(this)
@@ -174,6 +177,12 @@ class AiChatPanel(
         shape = GradientDrawable.RECTANGLE
         cornerRadius = dp(radiusDp).toFloat()
         setColor(color)
+    }
+
+    private fun pulse(view: View) {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        GpuEffectBus.pulse(location[0] + view.width / 2f, location[1] + view.height / 2f, 0.68f)
     }
 
     private fun dp(value: Int) = (value * density).toInt()
