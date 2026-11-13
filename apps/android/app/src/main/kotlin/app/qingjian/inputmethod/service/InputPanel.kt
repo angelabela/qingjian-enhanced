@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.service
 import android.content.Context
 import android.os.Build
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
 import android.view.Gravity
 import android.view.WindowInsets
@@ -151,6 +152,7 @@ class InputPanel(
         return VoicePanel(context, palette, actionLabel, actions).also { voice ->
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            animatePanelIn(voice)
             openPanel = PanelKind.VOICE
             // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
             overlay?.bringToFront()
@@ -169,6 +171,7 @@ class InputPanel(
             panel,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        animatePanelIn(panel)
         main.visibility = View.INVISIBLE
         panelView = panel
         openPanel = kind
@@ -182,6 +185,13 @@ class InputPanel(
     }
 
     private var overlay: View? = null
+
+    private fun animatePanelIn(panel: View) {
+        panel.alpha = 0f
+        panel.translationY = 7f * context.resources.displayMetrics.density
+        panel.animate().alpha(1f).translationY(0f).setDuration(230L)
+            .setInterpolator(DecelerateInterpolator()).start()
+    }
 
     private fun pulsePanelEffect() {
         stack.post {
