@@ -515,8 +515,11 @@ class VoicePanel(
                         0.5 + 0.5 * sin(vPosition.z * 0.01 + uTime));
                     float fresnel = dot(normalize(vNormal), vec3(0.0, 0.0, 1.0));
                     fresnel = pow(1.0 - abs(fresnel), 2.0);
-                    float alpha = mix(0.08, 0.8, fresnel);
-                    finalColor += fresnel * 0.3;
+                    // Stronger luminous separation from the keyboard background.
+                    // Keep the original four-color gradient, but lift saturation and edge glow.
+                    finalColor = min(finalColor * 1.42 + vec3(0.035, 0.055, 0.11), 1.0);
+                    finalColor += fresnel * 0.52;
+                    float alpha = mix(0.24, 0.96, fresnel);
                     gl_FragColor = vec4(finalColor, alpha);
                 }
             """
