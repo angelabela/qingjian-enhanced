@@ -3,7 +3,6 @@ package app.qingjian.inputmethod.service
 import android.content.Context
 import android.os.Build
 import android.view.View
-import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
 import android.view.Gravity
 import android.view.WindowInsets
@@ -12,8 +11,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
-import app.qingjian.inputmethod.effects.GpuEffectBus
-import app.qingjian.inputmethod.effects.GpuEffectsView
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
@@ -87,13 +84,10 @@ class InputPanel(
         addView(keyboard)
     }
 
-    private val gpuEffects = GpuEffectsView(context)
-
     private val stack = Stack(context, main).apply {
         clipChildren = false
         clipToPadding = false
         addView(main)
-        addView(gpuEffects, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
@@ -122,7 +116,6 @@ class InputPanel(
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
     fun open(kind: PanelKind, text: String = "") {
         close()
-        pulsePanelEffect()
         val header = bar.barHeight
         val panel = when (kind) {
             PanelKind.FUNCTIONS -> FunctionPanel(context, palette, actions, header, settings)
@@ -150,21 +143,17 @@ class InputPanel(
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
-        pulsePanelEffect()
         return VoicePanel(context, palette, actionLabel, actions).also { voice ->
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            animatePanelIn(voice)
             openPanel = PanelKind.VOICE
             // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
             overlay?.bringToFront()
             voice.bringToFront()
-            gpuEffects.bringToFront()
         }
     }
 
     private fun cover(kind: PanelKind, panel: View) {
-        pulsePanelEffect()
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
@@ -174,12 +163,10 @@ class InputPanel(
             panel,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
-        animatePanelIn(panel)
         main.visibility = View.INVISIBLE
         panelView = panel
         openPanel = kind
         overlay?.bringToFront()
-        gpuEffects.bringToFront()
     }
 
     /** 一直盖在最上面的一层（同步的边缘光）。放进 [stack] 而不是在外面再包一层：输入法的视图外面多包一层，键盘就贴到屏幕顶上去了。 */
@@ -189,21 +176,6 @@ class InputPanel(
     }
 
     private var overlay: View? = null
-
-    private fun animatePanelIn(panel: View) {
-        panel.alpha = 0f
-        panel.translationY = 7f * context.resources.displayMetrics.density
-        panel.animate().alpha(1f).translationY(0f).setDuration(230L)
-            .setInterpolator(DecelerateInterpolator()).start()
-    }
-
-    private fun pulsePanelEffect() {
-        stack.post {
-            val location = IntArray(2)
-            stack.getLocationOnScreen(location)
-            GpuEffectBus.pulse(location[0] + stack.width * 0.5f, location[1] + stack.height * 0.5f, 0.72f)
-        }
-    }
 
     val view: View get() = root
 
