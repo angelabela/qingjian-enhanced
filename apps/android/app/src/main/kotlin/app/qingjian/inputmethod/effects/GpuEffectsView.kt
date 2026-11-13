@@ -139,7 +139,11 @@ class GpuEffectsView(context: Context) : GLSurfaceView(context) {
                     gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.58));
                 }
             """.trimIndent()
-            program = link(compile(GLES20.GL_VERTEX_SHADER, vertex), compile(GLES20.GL_FRAGMENT_SHADER, fragment))
+            program = try {
+                link(compile(GLES20.GL_VERTEX_SHADER, vertex), compile(GLES20.GL_FRAGMENT_SHADER, fragment))
+            } catch (_: RuntimeException) {
+                0 // Shader failure disables decoration only; the IME input path remains usable.
+            }
             position = GLES20.glGetAttribLocation(program, "aPosition")
             timeLocation = GLES20.glGetUniformLocation(program, "uTime")
             centerLocation = GLES20.glGetUniformLocation(program, "uCenter")
