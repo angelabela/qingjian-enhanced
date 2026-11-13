@@ -12,7 +12,6 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.MotionEvent
 import android.widget.FrameLayout
-import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
@@ -129,7 +128,6 @@ class VoicePanel(
         val action = targetAt(x, y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                GpuEffectBus.pulse(event.rawX, event.rawY, 0.88f)
                 touchTarget = when {
                     micHit -> Target.NONE
                     action != Target.NONE -> action
@@ -337,19 +335,24 @@ class VoicePanel(
             lastFrameNanos = now
             val time = (now - startNanos) / 1_000_000_000f
 
-            // Android recognizer emits calibrated 0..1 RMS levels every 20 ms.
-            // Match the web demo's 0..255 shader amplitude using a short 200 ms window.
             var sum = 0f
+            var peak = 0f
             synchronized(sampleLock) {
-                for (i in 0 until 10) {
-                    val index = (sampleCursor - 1 - i + LEVEL_SAMPLES) % LEVEL_SAMPLES
-                    sum += levels[index]
+                for (sample in levels) {
+                    sum += sample
+                    peak = max(peak, sample)
                 }
             }
-            val average = sum / 10f
-            val target = if (active) average * 255f else 0f
-            // Frame-rate-independent equivalent of the HTML's 0.1 easing factor.
-            currentAmplitude += (target - currentAmplitude) * (1f - exp(-6.3f * dt))
+            val average = sum / LEVEL_SAMPLES
+            // Input levels are calibrated to 0..1 dB intensity by EngineRecognizer.
+            // Keep a fast attack and a slower release so syllables visibly drive the
+            // sphere without making the surface jitter between 100 ms audio chunks.
+            val target = if (active) max(average * 3.2f, peak * 1.35f).coerceIn(0f, 1f) else 0f
+            val attack = 1f - exp(-13f * dt)
+            val release = 1f - exp(-3.2f * dt)
+            currentAmplitude += (target - currentAmplitude) * if (target > currentAmplitude) attack else release
+            peakAmplitude += (((if (active) peak else 0f) - peakAmplitude) *
+                (1f - exp(-5.5f * dt)))
 
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
             GLES20.glUseProgram(program)
@@ -357,9 +360,9 @@ class VoicePanel(
             GLES20.glUniform1f(uAudio, currentAmplitude)
 
             Matrix.setIdentityM(model, 0)
-            Matrix.rotateM(model, 0, (time * 5.72958f) % 360f, 0f, 1f, 0f)
-            Matrix.rotateM(model, 0, sin(time * 0.5f) * 11.4592f, 1f, 0f, 0f)
-            Matrix.rotateM(model, 0, cos(time * 0.3f) * 5.72958f, 0f, 0f, 1f)
+            Matrix.rotateM(model, 0, (time * 5.73f) % 360f, 0f, 1f, 0f)
+            Matrix.rotateM(model, 0, sin(time * 0.5f) * 11.46f, 1f, 0f, 0f)
+            Matrix.rotateM(model, 0, cos(time * 0.3f) * 5.73f, 0f, 0f, 1f)
             Matrix.multiplyMM(viewModel, 0, view, 0, model, 0)
             Matrix.multiplyMM(mvp, 0, projection, 0, viewModel, 0)
             GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
@@ -401,29 +404,22 @@ class VoicePanel(
                 }
             }
 
-            val indices = ShortArray((RINGS - 1) * SEGMENTS * 2 + RINGS * SEGMENTS * 4)
+            val indices = ShortArray((RINGS * SEGMENTS * 4 + SEGMENTS * 2) * 2)
             var k = 0
-            // Three.js wireframe renders both grid edges and each triangle's diagonal.
             for (lat in 1 until RINGS) {
                 for (lon in 0 until SEGMENTS) {
                     val a = lat * (SEGMENTS + 1) + lon
+                    val b = a + 1
                     indices[k++] = a.toShort()
-                    indices[k++] = (a + 1).toShort()
+                    indices[k++] = b.toShort()
                 }
             }
             for (lon in 0 until SEGMENTS) {
                 for (lat in 0 until RINGS) {
                     val a = lat * (SEGMENTS + 1) + lon
+                    val b = (lat + 1) * (SEGMENTS + 1) + lon
                     indices[k++] = a.toShort()
-                    indices[k++] = (a + SEGMENTS + 1).toShort()
-                }
-            }
-            for (lat in 0 until RINGS) {
-                for (lon in 0 until SEGMENTS) {
-                    val b = lat * (SEGMENTS + 1) + lon + 1
-                    val c = b + SEGMENTS
                     indices[k++] = b.toShort()
-                    indices[k++] = c.toShort()
                 }
             }
             val vertexBytes = ByteBuffer.allocateDirect(vertices.size * 4).order(ByteOrder.nativeOrder())
@@ -473,7 +469,6 @@ class VoicePanel(
             private const val SPHERE_RADIUS = 120f
             private const val STRIDE_BYTES = 6 * 4
 
-            // Direct GLSL ES port of the supplied Three.js r128 vertex shader.
             private val VERTEX_SHADER = """
                 uniform mat4 uMvpMatrix;
                 uniform mat4 uModelMatrix;
@@ -485,18 +480,22 @@ class VoicePanel(
                 varying vec3 vNormal;
                 void main() {
                     vec3 pos = aPosition;
-                    vNormal = normalize(mat3(uModelMatrix) * aNormal);
                     float noise = sin(pos.x * 0.02 + uTime * 2.0)
                                 * cos(pos.y * 0.02 + uTime * 1.5)
                                 * sin(pos.z * 0.02 + uTime * 2.5);
-                    float distortion = noise * (12.0 + uAudioAmplitude * 0.8);
-                    float volumeScale = 1.0 + (uAudioAmplitude * 0.0015);
-                    pos += aNormal * distortion;
-                    pos *= volumeScale;
+                    float pulse = 1.0 + uAudioAmplitude * 0.18
+                                + sin(uTime * 5.0) * uAudioAmplitude * 0.035;
+                    float distortion = noise * (7.0 + uAudioAmplitude * 42.0);
+                    float ripple = sin(length(pos.xy) * 0.045 - uTime * 3.0)
+                                 * uAudioAmplitude * 7.0;
+                    pos += aNormal * (distortion + ripple);
+                    pos *= pulse;
                     vPosition = pos;
+                    vNormal = normalize(mat3(uModelMatrix) * aNormal);
                     gl_Position = uMvpMatrix * vec4(pos, 1.0);
                 }
-            """            // Direct port of the supplied cyan/blue/red/warm-yellow Fresnel shader.
+            """
+
             private val FRAGMENT_SHADER = """
                 precision mediump float;
                 uniform float uTime;
@@ -505,22 +504,23 @@ class VoicePanel(
                 void main() {
                     float y = (vPosition.y + 150.0) / 300.0;
                     float x = (vPosition.x + 150.0) / 300.0;
-                    vec3 colorTop = vec3(0.0, 0.9, 1.0);
-                    vec3 colorLeft = vec3(0.0, 0.3, 0.8);
-                    vec3 colorRight = vec3(0.9, 0.1, 0.3);
-                    vec3 colorBottom = vec3(1.0, 0.9, 0.6);
+                    vec3 colorTop = vec3(0.05, 1.0, 1.0);
+                    vec3 colorLeft = vec3(0.02, 0.24, 1.0);
+                    vec3 colorRight = vec3(1.0, 0.025, 0.32);
+                    vec3 colorBottom = vec3(1.0, 0.72, 0.12);
                     vec3 mix1 = mix(colorLeft, colorRight, x);
                     vec3 mix2 = mix(colorTop, colorBottom, 1.0 - y);
                     vec3 finalColor = mix(mix1, mix2,
                         0.5 + 0.5 * sin(vPosition.z * 0.01 + uTime));
                     float fresnel = dot(normalize(vNormal), vec3(0.0, 0.0, 1.0));
                     fresnel = pow(1.0 - abs(fresnel), 2.0);
-                    // Stronger luminous separation from the keyboard background.
-                    // Keep the original four-color gradient, but lift saturation and edge glow.
-                    finalColor = min(finalColor * 1.42 + vec3(0.035, 0.055, 0.11), vec3(1.0));
-                    finalColor += fresnel * 0.52;
-                    float alpha = mix(0.24, 0.96, fresnel);
-                    gl_FragColor = vec4(finalColor, alpha);
+                    float audioGlow = 1.0 + uAudioAmplitude * 1.65;
+                    float alpha = mix(0.20, 0.96, fresnel) * (0.88 + uAudioAmplitude * 0.35);
+                    finalColor = min(finalColor * audioGlow + fresnel * vec3(0.12, 0.30, 0.52), vec3(1.0));
+                    // A sharper neon rim makes the fluid contour readable over the keyboard.
+                    float rim = pow(fresnel, 2.4);
+                    finalColor += rim * vec3(0.25, 0.65, 1.0) * (0.8 + uAudioAmplitude);
+                    gl_FragColor = vec4(finalColor, min(alpha, 1.0));
                 }
             """
         }
