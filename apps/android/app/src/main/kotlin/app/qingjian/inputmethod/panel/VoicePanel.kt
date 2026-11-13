@@ -517,7 +517,7 @@ class VoicePanel(
                     finalColor += fresnel * 0.3;
                     gl_FragColor = vec4(finalColor, alpha);
                 }
-            """"
+            """
         }
     }
 }
