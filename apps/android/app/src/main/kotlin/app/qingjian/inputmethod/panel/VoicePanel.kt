@@ -88,11 +88,10 @@ class VoicePanel(
         clipChildren = true
         clipToPadding = true
 
-        // Media-overlay keeps the GL surface transparent while allowing the
-        // microphone glyph and action labels to remain above it as normal Views.
-        glView.setZOrderMediaOverlay(true)
+        // Keep the GL surface in the normal SurfaceView layer. The translucent
+        // holder is sufficient; media-overlay ordering can crash on some devices.
+        glView.setZOrderOnTop(false)
         glView.setBackgroundColor(Color.TRANSPARENT)
-        glView.holder.setFormat(PixelFormat.TRANSLUCENT)
         addView(glView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
         overlay.isClickable = false
@@ -217,7 +216,6 @@ class VoicePanel(
             setEGLContextClientVersion(2)
             setEGLConfigChooser(8, 8, 8, 8, 16, 0)
             holder.setFormat(PixelFormat.TRANSLUCENT)
-            setZOrderMediaOverlay(true)
             setBackgroundColor(Color.TRANSPARENT)
             setRenderer(renderer)
             renderMode = RENDERMODE_CONTINUOUSLY
