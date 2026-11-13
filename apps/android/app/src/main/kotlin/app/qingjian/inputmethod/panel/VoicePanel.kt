@@ -186,10 +186,13 @@ class VoicePanel(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         glView.onResume()
+        post { captureBlurredBackdrop() }
     }
 
     override fun onDetachedFromWindow() {
         glView.onPause()
+        blurredBackdrop?.recycle()
+        blurredBackdrop = null
         super.onDetachedFromWindow()
     }
 
