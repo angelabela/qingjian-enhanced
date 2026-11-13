@@ -69,14 +69,29 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
             return false
         }
         host.prepareVoice()
-        val panel = host.openVoicePanel(this) ?: return false
+        val panel = try {
+            host.openVoicePanel(this)
+        } catch (error: Throwable) {
+            android.util.Log.e("QingjianVoice", "Failed to create voice panel", error)
+            host.toast("语音界面启动失败，请稍后重试")
+            return false
+        } ?: return false
         panel.holding = holding
         panel.listening = true
         this.panel = panel
         after = After.NOTHING
         recognizer = picked
-        picked.start(this)
-        return true
+        return try {
+            picked.start(this)
+            true
+        } catch (error: Throwable) {
+            android.util.Log.e("QingjianVoice", "Failed to start voice recognizer", error)
+            recognizer = null
+            this.panel = null
+            host.closeVoicePanel()
+            host.toast("语音识别启动失败，请检查识别服务和麦克风权限")
+            false
+        }
     }
 
     /** 按着空格说时手指挪到了屏幕上的这一点。 */
