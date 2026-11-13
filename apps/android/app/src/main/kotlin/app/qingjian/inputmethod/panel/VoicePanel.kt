@@ -102,69 +102,89 @@ class VoicePanel(
         val energy = maxOf(pulse, if (active) ambient * 0.34f else 0.025f)
         val radius = micRadius()
 
-        // 保留键盘原本的主题色与亮度，不再覆盖半透明灰雾。
-        paint.shader = null
-        // 体积光：中心亮、边缘柔和衰减，避免廉价的实线圆环感。
-        val glowRadius = radius * (3.15f + energy * 1.15f)
-        paint.shader = RadialGradient(
-            cx, cy, glowRadius,
+        // 横向霓虹声波：以参考图为目标，青蓝渐变过渡到紫罗兰与洋红。
+        // 多层宽线叠加模拟柔光，细线保留清晰的玻璃质感；振幅随实时音量变化。
+        val wavePaint = paint
+        wavePaint.shader = LinearGradient(
+            0f, 0f, width.toFloat(), 0f,
             intArrayOf(
-                withAlpha(palette.brand, (145 + energy * 110).toInt().coerceIn(145, 255)),
-                withAlpha(palette.brand, (105 + energy * 75).toInt().coerceIn(105, 180)),
-                withAlpha(palette.brand, 0)
+                0xFF00D9F5.toInt(), 0xFF078CFF.toInt(), 0xFF315BFF.toInt(),
+                0xFF7652FF.toInt(), 0xFFB83DFF.toInt(), 0xFFFF4BCF.toInt()
             ),
-            floatArrayOf(0f, 0.48f, 1f),
+            floatArrayOf(0f, 0.22f, 0.43f, 0.63f, 0.82f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, glowRadius, paint)
-        paint.shader = null
-
-        // 两层不同尺度的柔光核心，随真实输入音量呼吸。
-        paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.brand, (58 + energy * 92).toInt().coerceIn(58, 150))
-        canvas.drawCircle(cx, cy, radius * (1.8f + energy * 0.48f), paint)
-        paint.color = withAlpha(palette.brand, (42 + energy * 68).toInt().coerceIn(42, 110))
-        canvas.drawCircle(cx, cy, radius * (2.55f + energy * 0.62f), paint)
-
-        // 柔和扩散的双层呼吸波，不画成生硬的固定圆环。
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.8f)
-        paint.color = withAlpha(palette.brand, (70 + ambient * 70).toInt().coerceIn(70, 140))
-        canvas.drawCircle(cx, cy, radius * (1.55f + ambient * 0.42f), paint)
-        paint.strokeWidth = ink.dp(1.2f)
-        paint.color = withAlpha(palette.brand, (48 + ambient * 48).toInt().coerceIn(48, 96))
-        canvas.drawCircle(cx, cy, radius * (2.0f + ((ambient + 0.5f) % 1f) * 0.55f), paint)
-
-        // 环形声波：每根光束按对应时间片的音量改变长度与亮度。
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        for (i in 0 until BARS) {
-            val angle = (2.0 * PI * i / BARS + phase).toFloat()
-            val sample = if (active) maxOf(levels[i], ambient * 0.12f) else 0.025f
-            val wave = ink.dp(5f) + sample * ink.dp(38f)
-            val inner = radius + ink.dp(9f)
-            val outer = inner + wave
-            paint.strokeWidth = ink.dp(if (i % 3 == 0) 2.5f else 1.7f)
-            paint.color = withAlpha(palette.brand, (135 + sample * 120).toInt().coerceIn(135, 255))
-            canvas.drawLine(
-                cx + cos(angle) * inner, cy + sin(angle) * inner,
-                cx + cos(angle) * outer, cy + sin(angle) * outer, paint
-            )
+        wavePaint.style = Paint.Style.STROKE
+        wavePaint.strokeCap = Paint.Cap.ROUND
+        wavePaint.strokeJoin = Paint.Join.ROUND
+        val waveAmplitude = maxOf(height * 0.30f, ink.dp(34f)) * (0.72f + energy * 0.48f)
+        val wavePath = android.graphics.Path()
+        val secondaryPath = android.graphics.Path()
+        val tertiaryPath = android.graphics.Path()
+        val steps = 180
+        for (i in 0..steps) {
+            val t = i.toFloat() / steps
+            val x = t * width
+            val envelope = 0.18f + 0.82f * kotlin.math.abs(sin((t * 3.0f * PI + phase * 0.16f).toFloat()))
+            val base = sin((t * 6.0f * PI + phase * 0.72f).toFloat()) * envelope
+            val detail = sin((t * 12.0f * PI - phase * 0.48f).toFloat()) * envelope * 0.34f
+            val broad = sin((t * 4.0f * PI + phase * 0.42f).toFloat()) * envelope * 0.76f
+            val y1 = cy + (base + detail) * waveAmplitude
+            val y2 = cy + broad * waveAmplitude * 0.72f
+            val y3 = cy - (base * 0.52f + detail * 0.24f) * waveAmplitude
+            if (i == 0) {
+                wavePath.moveTo(x, y1)
+                secondaryPath.moveTo(x, y2)
+                tertiaryPath.moveTo(x, y3)
+            } else {
+                wavePath.lineTo(x, y1)
+                secondaryPath.lineTo(x, y2)
+                tertiaryPath.lineTo(x, y3)
+            }
         }
 
-        // 稀疏微粒沿光晕外围缓慢漂移，营造悬浮空间感；不使用随机数，帧间稳定。
-        paint.style = Paint.Style.FILL
-        for (i in 0 until 18) {
-            val angle = (i * 2.39996f + phase * (if (i % 2 == 0) 0.32f else -0.22f))
-            val orbit = radius * (2.05f + 0.42f * sin(i * 1.71f + phase * 0.7f))
-            val particleSize = ink.dp(0.8f + (i % 3) * 0.45f)
-            paint.color = withAlpha(palette.brand, (58 + energy * 132).toInt().coerceIn(58, 190))
-            canvas.drawCircle(
-                cx + cos(angle) * orbit,
-                cy + sin(angle) * orbit,
-                particleSize,
-                paint
+        // 宽幅低透明辉光层。
+        wavePaint.strokeWidth = ink.dp(24f)
+        wavePaint.colorFilter = null
+        wavePaint.alpha = 24
+        canvas.drawPath(secondaryPath, wavePaint)
+        wavePaint.strokeWidth = ink.dp(15f)
+        wavePaint.alpha = 42
+        canvas.drawPath(wavePath, wavePaint)
+        // 中层彩色光带。
+        wavePaint.strokeWidth = ink.dp(7f)
+        wavePaint.alpha = 105
+        canvas.drawPath(secondaryPath, wavePaint)
+        wavePaint.strokeWidth = ink.dp(5f)
+        wavePaint.alpha = 150
+        canvas.drawPath(wavePath, wavePaint)
+        // 高亮核心线与细节波形。
+        wavePaint.strokeWidth = ink.dp(2.2f)
+        wavePaint.alpha = 245
+        canvas.drawPath(wavePath, wavePaint)
+        wavePaint.strokeWidth = ink.dp(1.35f)
+        wavePaint.alpha = 190
+        canvas.drawPath(tertiaryPath, wavePaint)
+        // 中轴光线，形成参考图中贯穿全屏的亮线。
+        wavePaint.strokeWidth = ink.dp(1.1f)
+        wavePaint.alpha = 215
+        canvas.drawLine(0f, cy, width.toFloat(), cy, wavePaint)
+        wavePaint.alpha = 255
+        wavePaint.shader = null
+        wavePaint.colorFilter = null
+        wavePaint.style = Paint.Style.FILL
+
+        // 少量高亮粒子沿波形缓慢漂移，避免视觉过于静止。
+        for (i in 0 until 16) {
+            val t = (i / 15f)
+            val x = t * width
+            val y = cy + sin((t * 6.0f * PI + phase * 0.72f).toFloat()) *
+                waveAmplitude * (0.18f + 0.82f * kotlin.math.abs(sin((t * 3.0f * PI).toFloat())))
+            wavePaint.color = withAlpha(
+                if (t < 0.5f) 0xFF29CFFF.toInt() else 0xFFE45BFF.toInt(),
+                (80 + energy * 150).toInt().coerceIn(80, 230)
             )
+            canvas.drawCircle(x, y, ink.dp(if (i % 3 == 0) 1.6f else 0.9f), wavePaint)
         }
 
         // 中央麦克风本体保持清晰、明亮，与柔化后的键盘形成主次层级。
