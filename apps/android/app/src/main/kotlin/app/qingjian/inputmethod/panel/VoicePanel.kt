@@ -12,6 +12,7 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.MotionEvent
 import android.widget.FrameLayout
+import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
@@ -128,6 +129,7 @@ class VoicePanel(
         val action = targetAt(x, y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                GpuEffectBus.pulse(event.rawX, event.rawY, 0.88f)
                 touchTarget = when {
                     micHit -> Target.NONE
                     action != Target.NONE -> action
