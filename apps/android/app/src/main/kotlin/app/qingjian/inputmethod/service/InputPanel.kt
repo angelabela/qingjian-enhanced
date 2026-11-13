@@ -14,6 +14,7 @@ import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
+import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
@@ -106,6 +107,12 @@ class InputPanel(
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
             // 语音面板带着回调，由 [openVoice] 盖上
+            PanelKind.AI_EXPRESSION -> AiExpressionPanel(context, palette, object : AiExpressionPanel.Actions {
+                override fun generate(input: String, tone: String, contextText: String?, done: (List<String>?, String?) -> Unit) =
+                    actions.generateExpression(input, tone, contextText, done)
+                override fun insert(text: String) { actions.commitText(text); close() }
+                override fun close() = actions.closePanel()
+            }, actions.textBeforeCursor(40)).also { it.setContextProvider { actions.textBeforeCursor(120) } }
             PanelKind.VOICE -> return
         }
         cover(kind, panel)

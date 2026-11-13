@@ -3,10 +3,13 @@ package app.qingjian.inputmethod.panel
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import app.qingjian.inputmethod.keyboard.Haptics
@@ -14,72 +17,67 @@ import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
-import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.sin
 
 /**
- * 说话时盖住候选条与键盘的面板：底板上一团主题色的光，上方一条细波形，中间一段弧，
- * 左边「撤回输入」、右边是输入框的回车动作（发送、搜索…），下面一行提示、一个圆钮，最底一排 ⌄ 与回键盘。
- * 按着空格说时手指滑到哪块上松手就是哪个（[track]）；点按进来的各块都能点。听出来的字不在这里，直接进输入框。
- * 只管画与点，状态由 [app.qingjian.inputmethod.voice.VoiceInput] 推过来。
+ * Dreamy violet voice surface.
+ *
+ * Recognition and gesture handling remain owned by VoiceInput. This view is only a renderer:
+ * three slow holographic halos react to the rolling microphone level without changing the
+ * keyboard, recognition lifecycle, or the existing cancel/finish touch targets.
  */
 @SuppressLint("ViewConstructor")
 class VoicePanel(
     context: Context,
     private val palette: Palette,
-    /** 右边那块弧上的字：输入框的回车动作，没有动作时是「完成」。 */
     private val actionLabel: String,
     private val actions: Actions,
 ) : View(context) {
     interface Actions {
-        /** 撤回：这一段不要了。 */
         fun onCancel()
-
-        /** 说完了；[act] 是点了右边那块（上屏后执行回车动作），[hide] 是 ⌄（上屏后收起键盘）。 */
         fun onFinish(act: Boolean, hide: Boolean)
     }
 
-    /** 按着空格说时手指停在哪块上。 */
     enum class Target { NONE, CANCEL, ACTION }
 
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
+    private val path = Path()
     private val location = IntArray(2)
+    private val density = resources.displayMetrics.density
 
-    /** 按着空格说（松手结束）；否则是点按进来的。 */
     var holding = false
-        set(value) {
-            field = value
-            invalidate()
-        }
+        set(value) { field = value; invalidate() }
 
-    /** 说完了，等最终结果。 */
     var recognizing = false
-        set(value) {
-            field = value
-            invalidate()
-        }
+        set(value) { field = value; invalidate() }
 
     var target = Target.NONE
         private set
 
-    /** 最近的音量，新的在末尾；波形从右往左流。 */
     private val levels = FloatArray(BARS)
+    private var attached = false
+    private var smoothedLevel = 0f
 
     init {
+        // Keep the existing keyboard/theme surface intact; only the voice artwork is violet.
         setBackgroundColor(palette.board)
+        isFocusable = true
     }
 
-    /** 新到一截录音的音量（0 到 1）：波形往左挪一格。 */
     fun addLevel(level: Float) {
+        val normalized = level.coerceIn(0f, 1f)
         System.arraycopy(levels, 1, levels, 0, BARS - 1)
-        levels[BARS - 1] = level.coerceIn(0f, 1f)
+        levels[BARS - 1] = normalized
+        smoothedLevel += (normalized - smoothedLevel) * 0.42f
         invalidate()
     }
 
-    /** 按着空格的手指挪到了屏幕上 ([screenX], [screenY])：落在哪块弧上就亮哪块。 */
     fun track(screenX: Float, screenY: Float) {
         getLocationOnScreen(location)
         val next = targetAt(screenX - location[0], screenY - location[1])
@@ -89,7 +87,25 @@ class VoicePanel(
         invalidate()
     }
 
-    // 弧是一个大圆的顶上一段：圆心在面板下方，两块各占圆心角 [PAD_FROM, PAD_TO] 度（离正上方）
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        attached = true
+        postInvalidateOnAnimation()
+    }
+
+    override fun onDetachedFromWindow() {
+        attached = false
+        removeCallbacks(frameTick)
+        super.onDetachedFromWindow()
+    }
+
+    private val frameTick = Runnable {
+        if (attached) {
+            invalidate()
+            postInvalidateDelayed(FRAME_MS)
+        }
+    }
+
     private val radius get() = width * 1.0f
     private val arcTop get() = height * 0.5f
     private val centreY get() = arcTop + radius
@@ -97,9 +113,11 @@ class VoicePanel(
 
     private fun targetAt(x: Float, y: Float): Target {
         val distance = hypot(x - width / 2f, y - centreY)
-        if (distance < radius - thickness / 2 - ink.dp(24f) || distance > radius + thickness / 2 + ink.dp(40f)) return Target.NONE
-        // 离正上方的角度，左负右正
-        val angle = Math.toDegrees(atan2((x - width / 2f).toDouble(), (centreY - y).toDouble())).toFloat()
+        if (distance < radius - thickness / 2 - ink.dp(24f) ||
+            distance > radius + thickness / 2 + ink.dp(40f)) return Target.NONE
+        val angle = Math.toDegrees(kotlin.math.atan2(
+            (x - width / 2f).toDouble(), (centreY - y).toDouble()
+        )).toFloat()
         return when {
             angle <= -PAD_FROM + 2 && angle >= -PAD_TO - 20 -> Target.CANCEL
             angle >= PAD_FROM - 2 && angle <= PAD_TO + 20 -> Target.ACTION
@@ -109,88 +127,195 @@ class VoicePanel(
 
     private fun hint() = when {
         recognizing -> "正在识别…"
-        !holding -> "说完点下面的话筒"
+        !holding -> "轻触话筒开始说话"
         target == Target.CANCEL -> "松手撤回"
         target == Target.ACTION -> "松手$actionLabel"
-        else -> "松手结束"
+        else -> "正在聆听 · 松手结束"
     }
 
     override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
-        glow.shader = RadialGradient(
-            w / 2, h * 0.55f, w * 0.6f,
-            withAlpha(palette.brand, 0x38), withAlpha(palette.brand, 0),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(0f, 0f, w, h, glow)
+        if (w <= 0f || h <= 0f) return
+        val now = SystemClock.uptimeMillis()
+        val phase = now / 7200f * (Math.PI * 2.0).toFloat()
+        val audio = if (recognizing) 0f else smoothedLevel
+        drawAmbient(canvas, w, h, now)
+        drawGestureArcs(canvas)
+        drawHolographicMicrophone(canvas, w, h, phase, audio, now)
+        ink.text(canvas, hint(), 13f, palette.gloss, w / 2f, h * 0.70f, bold = true)
 
-        drawWave(canvas, h * 0.17f)
-        drawPad(canvas, Target.CANCEL, "撤回输入")
-        drawPad(canvas, Target.ACTION, actionLabel)
-        ink.text(canvas, hint(), 13f, palette.gloss, w / 2, arcTop + thickness / 2 + h * 0.09f)
-
-        // 圆钮：按着说时是手指的位置提示，点按进来时是「说完了」
-        val buttonY = h * 0.8f
-        val buttonRadius = ink.dp(if (holding) 18f else 24f)
+        val buttonY = h * 0.84f
+        val buttonRadius = ink.dp(if (holding) 22f else 27f)
+        paint.shader = null
         paint.style = Paint.Style.FILL
-        paint.color = palette.surface
-        canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
+        paint.color = withAlpha(palette.surface, 0xF0)
+        canvas.drawCircle(w / 2f, buttonY, buttonRadius + ink.dp(7f), paint)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.5f)
-        paint.color = withAlpha(palette.brand, 0x80)
-        canvas.drawCircle(w / 2, buttonY, buttonRadius, paint)
+        paint.strokeWidth = ink.dp(1.4f)
+        paint.color = withAlpha(VIOLET, 0xC0)
+        canvas.drawCircle(w / 2f, buttonY, buttonRadius + ink.dp(7f), paint)
         paint.style = Paint.Style.FILL
-        if (!holding) ink.icon(canvas, Icon.MIC, w / 2, buttonY, 22f, palette.brand)
+        if (!holding && !recognizing) {
+            ink.icon(canvas, Icon.MIC, w / 2f, buttonY, 24f, LAVENDER)
+        } else if (recognizing) {
+            drawRecognizingMark(canvas, w / 2f, buttonY)
+        } else {
+            paint.color = LAVENDER
+            canvas.drawRoundRect(
+                w / 2f - ink.dp(7f), buttonY - ink.dp(7f),
+                w / 2f + ink.dp(7f), buttonY + ink.dp(7f),
+                ink.dp(3f), ink.dp(3f), paint
+            )
+        }
 
         val rowY = h - ink.dp(22f)
-        ink.icon(canvas, Icon.HIDE, ink.dp(40f), rowY, 22f, palette.gloss)
-        ink.icon(canvas, Icon.KEYBOARD, w - ink.dp(40f), rowY, 24f, palette.gloss)
+        drawBottomAction(canvas, ink.dp(42f), rowY, "收起", Icon.HIDE)
+        drawBottomAction(canvas, w - ink.dp(42f), rowY, "键盘", Icon.KEYBOARD)
+        if (attached) postInvalidateDelayed(FRAME_MS)
     }
 
-    /** 弧上的一块：粗弧线当底，字沿弧摆正（转到这块中间的切线方向）。 */
-    private fun drawPad(canvas: Canvas, which: Target, label: String) {
-        val sign = if (which == Target.CANCEL) -1f else 1f
-        val active = target == which
+    private fun drawAmbient(canvas: Canvas, w: Float, h: Float, now: Long) {
+        glow.shader = RadialGradient(
+            w * 0.5f, h * 0.36f, w * 0.78f,
+            intArrayOf(withAlpha(VIOLET, 0x38), withAlpha(MAGENTA, 0x1C),
+                withAlpha(palette.board, 0)),
+            floatArrayOf(0f, 0.56f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, w, h, glow)
+        glow.shader = null
+
+        // Sparse, slow-drifting dust; fixed seeds avoid flicker between frames.
+        for (i in 0 until 22) {
+            val drift = (now / (5200f + i * 110f)) % 1f
+            val x = w * (0.08f + ((i * 43) % 84) / 100f) +
+                sin(drift * 6.283f + i) * ink.dp(3f)
+            val y = h * (0.10f + ((i * 29) % 48) / 100f) - drift * ink.dp(9f)
+            val twinkle = 0.35f + 0.65f * abs(sin(i * 1.37f + now / 1700f))
+            paint.color = withAlpha(if (i % 3 == 0) PINK else LAVENDER,
+                (105 * twinkle).toInt())
+            canvas.drawCircle(x, y, ink.dp(if (i % 4 == 0) 1.8f else 1.1f), paint)
+        }
+    }
+
+    private fun drawGestureArcs(canvas: Canvas) {
         val cx = width / 2f
         rect.set(cx - radius, centreY - radius, cx + radius, centreY + radius)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = thickness
+        paint.strokeWidth = ink.dp(7f)
         paint.strokeCap = Paint.Cap.ROUND
-        paint.color = if (active) palette.brand else withAlpha(palette.functionalKey, 0xA0)
-        // drawArc 的角度从 3 点钟顺时针量；正上方是 -90
-        val start = if (sign < 0) -90f - PAD_TO else -90f + PAD_FROM
-        canvas.drawArc(rect, start, PAD_TO - PAD_FROM, false, paint)
+        paint.color = if (target == Target.CANCEL) withAlpha(PINK, 0xD0)
+            else withAlpha(LAVENDER, 0x30)
+        canvas.drawArc(rect, -90f - PAD_TO, PAD_TO - PAD_FROM, false, paint)
+        paint.color = if (target == Target.ACTION) withAlpha(LAVENDER, 0xD0)
+            else withAlpha(LAVENDER, 0x30)
+        canvas.drawArc(rect, -90f + PAD_FROM, PAD_TO - PAD_FROM, false, paint)
         paint.style = Paint.Style.FILL
         paint.strokeCap = Paint.Cap.BUTT
-
-        val middle = sign * (PAD_FROM + PAD_TO) / 2
-        val radians = Math.toRadians(middle.toDouble())
-        val tx = cx + radius * Math.sin(radians).toFloat()
-        val ty = centreY - radius * Math.cos(radians).toFloat()
-        canvas.save()
-        canvas.rotate(middle, tx, ty)
-        ink.text(canvas, label, 16f, if (active) palette.onBrand else palette.text, tx, ty, bold = active)
-        canvas.restore()
     }
 
-    /** 一排细竖条，高度按最近的音量；等结果时压成一排点。 */
-    private fun drawWave(canvas: Canvas, cy: Float) {
-        val span = width * 0.42f
-        val left = (width - span) / 2
-        val step = span / BARS
-        val barWidth = ink.dp(3f)
-        val maxHalf = ink.dp(18f)
-        for (i in 0 until BARS) {
-            // 两头淡、中间浓
-            val edge = 1f - abs(i - (BARS - 1) / 2f) / BARS
-            val level = if (recognizing) 0f else levels[i]
-            val half = barWidth / 2 + (maxHalf - barWidth / 2) * level * edge
-            val x = left + step * (i + 0.5f)
-            paint.color = withAlpha(palette.brand, (140 + 115 * edge).toInt().coerceAtMost(255))
-            rect.set(x - barWidth / 2, cy - half, x + barWidth / 2, cy + half)
-            canvas.drawRoundRect(rect, barWidth / 2, barWidth / 2, paint)
+    private fun drawHolographicMicrophone(
+        canvas: Canvas, w: Float, h: Float, phase: Float, audio: Float, now: Long
+    ) {
+        val cx = w / 2f
+        val cy = h * 0.34f
+        val base = ink.dp(39f)
+        val breath = (sin(phase) + 1f) * 0.5f
+        val response = (audio * 0.9f).coerceIn(0f, 0.9f)
+        val pulse = breath * 0.16f + response
+        val rotation = now / 11500f * 360f
+
+        // Soft volumetric bloom behind the three independent halo layers.
+        glow.shader = RadialGradient(
+            cx, cy, base * 3.35f,
+            intArrayOf(withAlpha(PINK, 0x58), withAlpha(VIOLET, 0x32),
+                withAlpha(PURPLE, 0x12), withAlpha(palette.board, 0)),
+            floatArrayOf(0f, 0.38f, 0.72f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, base * 3.35f, glow)
+        glow.shader = null
+
+        // Three concentric rings move at different speeds and respond gently to the mic level.
+        for (i in 0 until 3) {
+            val ringPhase = phase * (if (i == 1) -0.72f else 0.52f + i * 0.13f) + i * 1.9f
+            val ringBreath = (sin(ringPhase) + 1f) * 0.5f
+            val ringRadius = base * (1.30f + i * 0.43f) + ink.dp(5f) * ringBreath +
+                ink.dp(11f) * response
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = ink.dp(if (i == 0) 2.4f else 1.6f)
+            paint.shader = LinearGradient(
+                cx - ringRadius, cy - ringRadius, cx + ringRadius, cy + ringRadius,
+                intArrayOf(withAlpha(LAVENDER, (150 + ringBreath * 70).toInt()),
+                    withAlpha(PINK, (115 + response * 110).toInt()),
+                    withAlpha(VIOLET, (145 + ringBreath * 70).toInt())),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, ringRadius, paint)
+            paint.shader = null
+            paint.style = Paint.Style.FILL
+
+            // A short luminous arc gives the ring a holographic, rotating highlight.
+            rect.set(cx - ringRadius, cy - ringRadius, cx + ringRadius, cy + ringRadius)
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = ink.dp(3.2f - i * 0.45f)
+            paint.color = withAlpha(if (i == 1) PINK else LAVENDER,
+                (105 + ringBreath * 95).toInt())
+            canvas.drawArc(rect, rotation * (if (i == 1) -1f else 1f) + i * 83f,
+                52f + response * 38f, false, paint)
+            paint.style = Paint.Style.FILL
+            paint.strokeCap = Paint.Cap.BUTT
         }
+
+        // A delicate dotted orbit, rather than the old horizontal equalizer bars.
+        for (i in 0 until 12) {
+            val angle = phase * 0.36f + i * (Math.PI * 2.0 / 12.0).toFloat()
+            val orbit = base * (2.12f + 0.10f * sin(phase + i))
+            val x = cx + cos(angle) * orbit
+            val y = cy + sin(angle) * orbit * 0.82f
+            val alpha = (105 + 120 * (0.5f + 0.5f * sin(angle + phase))).toInt()
+            paint.color = withAlpha(if (i % 3 == 0) PINK else LAVENDER, alpha)
+            canvas.drawCircle(x, y, ink.dp(if (i % 3 == 0) 2.3f else 1.4f), paint)
+        }
+
+        // Glass-like violet core with a bright lavender centre.
+        glow.shader = RadialGradient(
+            cx - base * 0.28f, cy - base * 0.38f, base * 1.75f,
+            intArrayOf(0xFFFFF0FF.toInt(), PINK, VIOLET, PURPLE),
+            floatArrayOf(0f, 0.34f, 0.72f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, base * (1f + pulse * 0.06f), glow)
+        glow.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(1.1f)
+        paint.color = withAlpha(0xFFFFFFFF.toInt(), 0xB0)
+        canvas.drawCircle(cx, cy, base * (1f + pulse * 0.06f), paint)
+        paint.style = Paint.Style.FILL
+        ink.icon(canvas, Icon.MIC, cx, cy, 30f, 0xFFFFFFFF.toInt())
+    }
+
+    private fun drawRecognizingMark(canvas: Canvas, cx: Float, cy: Float) {
+        paint.color = LAVENDER
+        for (i in 0 until 3) {
+            val x = cx + (i - 1) * ink.dp(7f)
+            val bar = ink.dp(8f + i * 2f)
+            rect.set(x - ink.dp(2f), cy - bar, x + ink.dp(2f), cy + bar)
+            canvas.drawRoundRect(rect, ink.dp(2f), ink.dp(2f), paint)
+        }
+    }
+
+    private fun drawBottomAction(canvas: Canvas, cx: Float, cy: Float, label: String, icon: Icon) {
+        val r = ink.dp(16f)
+        paint.color = withAlpha(palette.surface, 0xD8)
+        canvas.drawCircle(cx, cy - ink.dp(7f), r, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(1f)
+        paint.color = withAlpha(LAVENDER, 0x60)
+        canvas.drawCircle(cx, cy - ink.dp(7f), r, paint)
+        paint.style = Paint.Style.FILL
+        ink.icon(canvas, icon, cx, cy - ink.dp(7f), 17f, palette.gloss)
+        ink.text(canvas, label, 10f, palette.gloss, cx, cy + ink.dp(14f))
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -199,7 +324,7 @@ class VoicePanel(
         val x = event.x
         val y = event.y
         val rowY = height - ink.dp(22f)
-        val buttonY = height * 0.8f
+        val buttonY = height * 0.84f
         val near = ink.dp(32f)
         val tapped = when {
             targetAt(x, y) == Target.CANCEL -> { actions.onCancel(); true }
@@ -216,10 +341,14 @@ class VoicePanel(
     private fun withAlpha(color: Int, alpha: Int) = (color and 0xFFFFFF) or (alpha shl 24)
 
     private companion object {
-        const val BARS = 32
-
-        /** 两块弧离正上方的角度范围（度）。 */
+        const val BARS = 40
+        const val FRAME_MS = 32L
         const val PAD_FROM = 4f
         const val PAD_TO = 28f
+        const val VIOLET = 0xFF9B6CFF.toInt()
+        const val PURPLE = 0xFF5D28B8.toInt()
+        const val LAVENDER = 0xFFE4C7FF.toInt()
+        const val PINK = 0xFFFF8FE7.toInt()
+        const val MAGENTA = 0xFFD94CFF.toInt()
     }
 }
