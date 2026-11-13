@@ -399,9 +399,9 @@ class VoicePanel(
                 }
             }
 
-            val indices = ShortArray((RINGS - 1) * SEGMENTS * 2 + RINGS * SEGMENTS * 2)
+            val indices = ShortArray((RINGS - 1) * SEGMENTS * 2 + RINGS * SEGMENTS * 4)
             var k = 0
-            // Latitude and longitude edges as ShaderMaterial(wireframe=true).
+            // Three.js wireframe renders both grid edges and each triangle's diagonal.
             for (lat in 1 until RINGS) {
                 for (lon in 0 until SEGMENTS) {
                     val a = lat * (SEGMENTS + 1) + lon
@@ -414,6 +414,14 @@ class VoicePanel(
                     val a = lat * (SEGMENTS + 1) + lon
                     indices[k++] = a.toShort()
                     indices[k++] = (a + SEGMENTS + 1).toShort()
+                }
+            }
+            for (lat in 0 until RINGS) {
+                for (lon in 0 until SEGMENTS) {
+                    val b = lat * (SEGMENTS + 1) + lon + 1
+                    val c = b + SEGMENTS
+                    indices[k++] = b.toShort()
+                    indices[k++] = c.toShort()
                 }
             }
             val vertexBytes = ByteBuffer.allocateDirect(vertices.size * 4).order(ByteOrder.nativeOrder())
