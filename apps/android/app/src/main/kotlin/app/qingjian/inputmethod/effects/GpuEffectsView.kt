@@ -71,7 +71,7 @@ class GpuEffectsView(context: Context) : GLSurfaceView(context) {
         super.onDetachedFromWindow()
     }
 
-    private class EffectRenderer : Renderer {
+    private class EffectRenderer : GLSurfaceView.Renderer {
         private var program = 0
         private var position = 0
         private var timeLocation = 0
