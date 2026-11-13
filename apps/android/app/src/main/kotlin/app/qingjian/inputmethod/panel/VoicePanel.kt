@@ -94,122 +94,93 @@ class VoicePanel(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val cx = width / 2f
-        val cy = micCenterY()
         val active = holding || listening || recognizing
-        val average = if (active) levels.average().toFloat() else 0.025f
-        val pulse = if (active) average.coerceIn(0f, 1f) else 0.025f
-        val ambient = ((sin(phase * 1.35f) + 1f) * 0.5f)
-        val energy = maxOf(pulse, if (active) ambient * 0.34f else 0.025f)
-        val radius = micRadius()
+        val level = if (active) levels.average().toFloat().coerceIn(0f, 1f) else 0.12f
+        val cx = width / 2f
+        val cy = height * 0.53f
+        val energy = 0.78f + level * 0.28f
+        val amplitude = minOf(height * 0.14f, ink.dp(48f)) * energy
 
-        // 横向霓虹声波：以参考图为目标，青蓝渐变过渡到紫罗兰与洋红。
-        // 多层宽线叠加模拟柔光，细线保留清晰的玻璃质感；振幅随实时音量变化。
-        val wavePaint = paint
-        wavePaint.shader = LinearGradient(
+        // 参考图的核心视觉：低振幅、多层、连续的青蓝—紫—洋红霓虹光波。
+        val gradient = LinearGradient(
             0f, 0f, width.toFloat(), 0f,
             intArrayOf(
-                0xFF00D9F5.toInt(), 0xFF078CFF.toInt(), 0xFF315BFF.toInt(),
-                0xFF7652FF.toInt(), 0xFFB83DFF.toInt(), 0xFFFF4BCF.toInt()
+                0xFF00DDF5.toInt(), 0xFF079EFF.toInt(), 0xFF315DFF.toInt(),
+                0xFF7652FF.toInt(), 0xFFB744FF.toInt(), 0xFFFF55D5.toInt()
             ),
-            floatArrayOf(0f, 0.22f, 0.43f, 0.63f, 0.82f, 1f),
+            floatArrayOf(0f, 0.23f, 0.44f, 0.65f, 0.84f, 1f),
             Shader.TileMode.CLAMP
         )
+        val wavePaint = paint
+        wavePaint.shader = gradient
+        wavePaint.colorFilter = null
         wavePaint.style = Paint.Style.STROKE
         wavePaint.strokeCap = Paint.Cap.ROUND
         wavePaint.strokeJoin = Paint.Join.ROUND
-        val waveAmplitude = maxOf(height * 0.30f, ink.dp(34f)) * (0.72f + energy * 0.48f)
-        val wavePath = android.graphics.Path()
-        val secondaryPath = android.graphics.Path()
-        val tertiaryPath = android.graphics.Path()
-        val steps = 180
+
+        val main = android.graphics.Path()
+        val upper = android.graphics.Path()
+        val lower = android.graphics.Path()
+        val fine = android.graphics.Path()
+        val steps = 260
         for (i in 0..steps) {
             val t = i.toFloat() / steps
             val x = t * width
-            val envelope = 0.18f + 0.82f * kotlin.math.abs(sin((t * 3.0f * PI + phase * 0.16f).toFloat()))
-            val base = sin((t * 6.0f * PI + phase * 0.72f).toFloat()) * envelope
-            val detail = sin((t * 12.0f * PI - phase * 0.48f).toFloat()) * envelope * 0.34f
-            val broad = sin((t * 4.0f * PI + phase * 0.42f).toFloat()) * envelope * 0.76f
-            val y1 = cy + (base + detail) * waveAmplitude
-            val y2 = cy + broad * waveAmplitude * 0.72f
-            val y3 = cy - (base * 0.52f + detail * 0.24f) * waveAmplitude
+            val envelope = 0.22f + 0.78f *
+                kotlin.math.abs(sin((t * 2.0f * PI + phase * 0.10f).toFloat()))
+            val carrier = sin((t * 6.0f * PI + phase * 0.42f).toFloat())
+            val detail = sin((t * 12.0f * PI - phase * 0.27f).toFloat()) * 0.16f
+            val yMain = cy + (carrier * 0.82f + detail) * envelope * amplitude
+            val yUpper = cy + sin((t * 6.0f * PI + phase * 0.42f + 0.42f).toFloat()) *
+                envelope * amplitude * 0.58f
+            val yLower = cy + sin((t * 6.0f * PI + phase * 0.42f - 0.48f).toFloat()) *
+                envelope * amplitude * 0.34f
+            val yFine = cy + sin((t * 8.0f * PI - phase * 0.22f).toFloat()) *
+                envelope * amplitude * 0.20f
             if (i == 0) {
-                wavePath.moveTo(x, y1)
-                secondaryPath.moveTo(x, y2)
-                tertiaryPath.moveTo(x, y3)
+                main.moveTo(x, yMain)
+                upper.moveTo(x, yUpper)
+                lower.moveTo(x, yLower)
+                fine.moveTo(x, yFine)
             } else {
-                wavePath.lineTo(x, y1)
-                secondaryPath.lineTo(x, y2)
-                tertiaryPath.lineTo(x, y3)
+                main.lineTo(x, yMain)
+                upper.lineTo(x, yUpper)
+                lower.lineTo(x, yLower)
+                fine.lineTo(x, yFine)
             }
         }
 
-        // 宽幅低透明辉光层。
-        wavePaint.strokeWidth = ink.dp(24f)
-        wavePaint.colorFilter = null
-        wavePaint.alpha = 24
-        canvas.drawPath(secondaryPath, wavePaint)
-        wavePaint.strokeWidth = ink.dp(15f)
-        wavePaint.alpha = 42
-        canvas.drawPath(wavePath, wavePaint)
-        // 中层彩色光带。
-        wavePaint.strokeWidth = ink.dp(7f)
-        wavePaint.alpha = 105
-        canvas.drawPath(secondaryPath, wavePaint)
-        wavePaint.strokeWidth = ink.dp(5f)
-        wavePaint.alpha = 150
-        canvas.drawPath(wavePath, wavePaint)
-        // 高亮核心线与细节波形。
-        wavePaint.strokeWidth = ink.dp(2.2f)
-        wavePaint.alpha = 245
-        canvas.drawPath(wavePath, wavePaint)
-        wavePaint.strokeWidth = ink.dp(1.35f)
-        wavePaint.alpha = 190
-        canvas.drawPath(tertiaryPath, wavePaint)
-        // 中轴光线，形成参考图中贯穿全屏的亮线。
+        // 柔和外发光、半透明彩带和清晰的细亮核心线，避免上一版的粗重波峰。
+        wavePaint.strokeWidth = ink.dp(19f)
+        wavePaint.alpha = 18
+        canvas.drawPath(main, wavePaint)
+        wavePaint.strokeWidth = ink.dp(12f)
+        wavePaint.alpha = 28
+        canvas.drawPath(upper, wavePaint)
+        wavePaint.strokeWidth = ink.dp(6f)
+        wavePaint.alpha = 58
+        canvas.drawPath(main, wavePaint)
+        wavePaint.strokeWidth = ink.dp(3.2f)
+        wavePaint.alpha = 118
+        canvas.drawPath(upper, wavePaint)
+        canvas.drawPath(lower, wavePaint)
+        wavePaint.strokeWidth = ink.dp(2.0f)
+        wavePaint.alpha = 235
+        canvas.drawPath(main, wavePaint)
         wavePaint.strokeWidth = ink.dp(1.1f)
-        wavePaint.alpha = 215
+        wavePaint.alpha = 180
+        canvas.drawPath(fine, wavePaint)
+
+        // 中轴细光线贯穿全宽，亮度低于波形核心线。
+        wavePaint.strokeWidth = ink.dp(0.9f)
+        wavePaint.alpha = 105
         canvas.drawLine(0f, cy, width.toFloat(), cy, wavePaint)
-        wavePaint.alpha = 255
         wavePaint.shader = null
-        wavePaint.colorFilter = null
+        wavePaint.alpha = 255
         wavePaint.style = Paint.Style.FILL
+        wavePaint.colorFilter = null
 
-        // 少量高亮粒子沿波形缓慢漂移，避免视觉过于静止。
-        for (i in 0 until 16) {
-            val t = (i / 15f)
-            val x = t * width
-            val y = cy + sin((t * 6.0f * PI + phase * 0.72f).toFloat()) *
-                waveAmplitude * (0.18f + 0.82f * kotlin.math.abs(sin((t * 3.0f * PI).toFloat())))
-            wavePaint.color = withAlpha(
-                if (t < 0.5f) 0xFF29CFFF.toInt() else 0xFFE45BFF.toInt(),
-                (80 + energy * 150).toInt().coerceIn(80, 230)
-            )
-            canvas.drawCircle(x, y, ink.dp(if (i % 3 == 0) 1.6f else 0.9f), wavePaint)
-        }
-
-        // 中央麦克风本体保持清晰、明亮，与柔化后的键盘形成主次层级。
-        paint.style = Paint.Style.FILL
-        paint.color = withAlpha(palette.surface, 0xF4)
-        canvas.drawCircle(cx, cy, radius * (1.02f + ambient * 0.035f), paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.7f)
-        paint.color = withAlpha(palette.brand, 0xF4)
-        canvas.drawCircle(cx, cy, radius * (1.02f + ambient * 0.035f), paint)
-
-        // 麦克风本体跟随声波做轻微缩放与渐隐渐现，保持图标清楚但有呼吸感。
-        val micAlpha = (184 + ambient * 71f).toInt().coerceIn(184, 255)
-        val micScale = 0.965f + ambient * 0.075f
-        val save = canvas.save()
-        canvas.scale(micScale, micScale, cx, cy)
-        val layer = canvas.saveLayerAlpha(
-            cx - ink.dp(25f), cy - ink.dp(28f),
-            cx + ink.dp(25f), cy + ink.dp(28f), micAlpha
-        )
-        ink.icon(canvas, Icon.MIC, cx, cy, 29f, palette.brand)
-        canvas.restoreToCount(layer)
-        canvas.restoreToCount(save)
-
+        // 麦克风控制区保持原有触摸命中区域，但不再绘制白色圆盘遮挡光波。
         val actionY = height * 0.86f
         ink.text(canvas, "撤回", 13f,
             if (target == Target.CANCEL) palette.brand else palette.gloss, width * 0.17f, actionY,
@@ -219,7 +190,7 @@ class VoicePanel(
             bold = target == Target.ACTION)
 
         if (active) {
-            phase = (phase + 0.009f + pulse * 0.010f) % (2f * PI.toFloat())
+            phase = (phase + 0.006f + level * 0.004f) % (2f * PI.toFloat())
             postInvalidateDelayed(16L)
         }
     }
