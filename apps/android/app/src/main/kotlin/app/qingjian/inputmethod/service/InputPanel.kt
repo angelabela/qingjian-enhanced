@@ -87,11 +87,13 @@ class InputPanel(
         addView(keyboard)
     }
 
+    private val gpuEffects = GpuEffectsView(context)
+
     private val stack = Stack(context, main).apply {
         clipChildren = false
         clipToPadding = false
         addView(main)
-        addView(GpuEffectsView(context), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        addView(gpuEffects, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
@@ -157,6 +159,7 @@ class InputPanel(
             // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
             overlay?.bringToFront()
             voice.bringToFront()
+            gpuEffects.bringToFront()
         }
     }
 
@@ -176,6 +179,7 @@ class InputPanel(
         panelView = panel
         openPanel = kind
         overlay?.bringToFront()
+        gpuEffects.bringToFront()
     }
 
     /** 一直盖在最上面的一层（同步的边缘光）。放进 [stack] 而不是在外面再包一层：输入法的视图外面多包一层，键盘就贴到屏幕顶上去了。 */
