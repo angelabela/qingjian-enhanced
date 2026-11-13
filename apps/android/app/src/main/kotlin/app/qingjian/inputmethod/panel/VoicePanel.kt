@@ -92,95 +92,115 @@ class VoicePanel(
     private fun micCenterY() = height * 0.53f
     private fun micRadius() = ink.dp(42f)
 
+    private var dimProgress = 0f
+    private var ringEnergy = 0f
+    private var ringScale = 1f
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val active = holding || listening || recognizing
-        val level = if (active) levels.average().toFloat().coerceIn(0f, 1f) else 0.12f
+        val targetDim = if (active) 0.20f else 0f
+        dimProgress += (targetDim - dimProgress) * 0.16f
+        val rawLevel = if (active) (levels.average().toFloat() * 1.8f).coerceIn(0f, 1f) else 0f
+        ringEnergy += (rawLevel - ringEnergy) * if (active) 0.22f else 0.10f
+        val breath = 0.5f + 0.5f * sin(phase * 0.48f)
         val cx = width / 2f
-        val cy = height * 0.53f
-        val energy = 0.78f + level * 0.28f
-        val amplitude = minOf(height * 0.14f, ink.dp(48f)) * energy
+        val cy = micCenterY()
+        val density = resources.displayMetrics.density
 
-        // 参考图的核心视觉：低振幅、多层、连续的青蓝—紫—洋红霓虹光波。
-        val gradient = LinearGradient(
-            0f, 0f, width.toFloat(), 0f,
-            intArrayOf(
-                0xFF00DDF5.toInt(), 0xFF079EFF.toInt(), 0xFF315DFF.toInt(),
-                0xFF7652FF.toInt(), 0xFFB744FF.toInt(), 0xFFFF55D5.toInt()
-            ),
-            floatArrayOf(0f, 0.23f, 0.44f, 0.65f, 0.84f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        val wavePaint = paint
-        wavePaint.shader = gradient
-        wavePaint.colorFilter = null
-        wavePaint.style = Paint.Style.STROKE
-        wavePaint.strokeCap = Paint.Cap.ROUND
-        wavePaint.strokeJoin = Paint.Join.ROUND
-
-        val main = android.graphics.Path()
-        val upper = android.graphics.Path()
-        val lower = android.graphics.Path()
-        val fine = android.graphics.Path()
-        val steps = 260
-        for (i in 0..steps) {
-            val t = i.toFloat() / steps
-            val x = t * width
-            val envelope = 0.22f + 0.78f *
-                kotlin.math.abs(sin((t * 2.0f * PI + phase * 0.10f).toFloat()))
-            val carrier = sin((t * 6.0f * PI + phase * 0.42f).toFloat())
-            val detail = sin((t * 12.0f * PI - phase * 0.27f).toFloat()) * 0.16f
-            val yMain = cy + (carrier * 0.82f + detail) * envelope * amplitude
-            val yUpper = cy + sin((t * 6.0f * PI + phase * 0.42f + 0.42f).toFloat()) *
-                envelope * amplitude * 0.58f
-            val yLower = cy + sin((t * 6.0f * PI + phase * 0.42f - 0.48f).toFloat()) *
-                envelope * amplitude * 0.34f
-            val yFine = cy + sin((t * 8.0f * PI - phase * 0.22f).toFloat()) *
-                envelope * amplitude * 0.20f
-            if (i == 0) {
-                main.moveTo(x, yMain)
-                upper.moveTo(x, yUpper)
-                lower.moveTo(x, yLower)
-                fine.moveTo(x, yFine)
-            } else {
-                main.lineTo(x, yMain)
-                upper.lineTo(x, yUpper)
-                lower.lineTo(x, yLower)
-                fine.lineTo(x, yFine)
-            }
+        // 聆听时轻柔压暗键盘，停止后用同样平滑的曲线恢复。
+        if (dimProgress > 0.002f) {
+            paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.color = android.graphics.Color.BLACK
+            paint.alpha = (dimProgress * 255f).toInt().coerceIn(0, 255)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            paint.alpha = 255
         }
 
-        // 柔和外发光、半透明彩带和清晰的细亮核心线，避免上一版的粗重波峰。
-        wavePaint.strokeWidth = ink.dp(19f)
-        wavePaint.alpha = 18
-        canvas.drawPath(main, wavePaint)
-        wavePaint.strokeWidth = ink.dp(12f)
-        wavePaint.alpha = 28
-        canvas.drawPath(upper, wavePaint)
-        wavePaint.strokeWidth = ink.dp(6f)
-        wavePaint.alpha = 58
-        canvas.drawPath(main, wavePaint)
-        wavePaint.strokeWidth = ink.dp(3.2f)
-        wavePaint.alpha = 118
-        canvas.drawPath(upper, wavePaint)
-        canvas.drawPath(lower, wavePaint)
-        wavePaint.strokeWidth = ink.dp(2.0f)
-        wavePaint.alpha = 235
-        canvas.drawPath(main, wavePaint)
-        wavePaint.strokeWidth = ink.dp(1.1f)
-        wavePaint.alpha = 180
-        canvas.drawPath(fine, wavePaint)
+        val pulse = 1f + breath * 0.035f + ringEnergy * 0.12f
+        val baseRadius = ink.dp(61f) * pulse * ringScale
+        val amplitude = ink.dp(7f + ringEnergy * 15f)
+        val ring = android.graphics.Path()
+        val secondary = android.graphics.Path()
+        val inner = android.graphics.Path()
+        val segments = 220
+        for (i in 0..segments) {
+            val a = i.toFloat() / segments * (2f * PI.toFloat())
+            val wave = sin(a * 7f - phase * 0.78f) * 0.55f +
+                sin(a * 13f + phase * 0.42f) * 0.25f +
+                sin(a * 3f - phase * 0.28f) * 0.20f
+            val r = baseRadius + wave * amplitude
+            val x = cx + cos(a) * r
+            val y = cy + sin(a) * r
+            val r2 = baseRadius - ink.dp(8f) + wave * amplitude * 0.48f
+            val x2 = cx + cos(a + 0.12f) * r2
+            val y2 = cy + sin(a + 0.12f) * r2
+            val r3 = baseRadius + ink.dp(8f) + sin(a * 5f + phase * 0.35f) * amplitude * 0.34f
+            val x3 = cx + cos(a) * r3
+            val y3 = cy + sin(a) * r3
+            if (i == 0) {
+                ring.moveTo(x, y)
+                secondary.moveTo(x2, y2)
+                inner.moveTo(x3, y3)
+            } else {
+                ring.lineTo(x, y)
+                secondary.lineTo(x2, y2)
+                inner.lineTo(x3, y3)
+            }
+        }
+        ring.close()
+        secondary.close()
+        inner.close()
 
-        // 中轴细光线贯穿全宽，亮度低于波形核心线。
-        wavePaint.strokeWidth = ink.dp(0.9f)
-        wavePaint.alpha = 105
-        canvas.drawLine(0f, cy, width.toFloat(), cy, wavePaint)
-        wavePaint.shader = null
-        wavePaint.alpha = 255
-        wavePaint.style = Paint.Style.FILL
-        wavePaint.colorFilter = null
+        val colors = intArrayOf(
+            0xFF00E5FF.toInt(), 0xFF168BFF.toInt(), 0xFF455BFF.toInt(),
+            0xFF8B45FF.toInt(), 0xFFE044FF.toInt(), 0xFFFF4FB8.toInt(),
+            0xFF00E5FF.toInt()
+        )
+        val positions = floatArrayOf(0f, 0.17f, 0.34f, 0.52f, 0.70f, 0.86f, 1f)
+        paint.shader = android.graphics.SweepGradient(cx, cy, colors, positions)
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
 
-        // 麦克风控制区保持原有触摸命中区域，但不再绘制白色圆盘遮挡光波。
+        // 外层宽柔光 + 中层彩色光带 + 内层高亮细线，制造有层次的霓虹光环。
+        paint.strokeWidth = ink.dp(18f)
+        paint.alpha = (22 + breath * 12f + ringEnergy * 25f).toInt()
+        canvas.drawPath(ring, paint)
+        paint.strokeWidth = ink.dp(9f)
+        paint.alpha = (42 + ringEnergy * 45f).toInt()
+        canvas.drawPath(inner, paint)
+        paint.strokeWidth = ink.dp(3.8f)
+        paint.alpha = 210
+        canvas.drawPath(ring, paint)
+        paint.strokeWidth = ink.dp(1.5f)
+        paint.alpha = 170
+        canvas.drawPath(secondary, paint)
+        paint.shader = null
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
+
+        // 麦克风中心不使用白色大圆盘，让光环和键盘自然融合。
+        val micColor = 0xFF72D9FF.toInt()
+        paint.color = micColor
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(4f)
+        paint.strokeCap = Paint.Cap.ROUND
+        val micTop = cy - ink.dp(15f)
+        val micBottom = cy + ink.dp(5f)
+        canvas.drawRoundRect(
+            cx - ink.dp(7f), micTop, cx + ink.dp(7f), micBottom,
+            ink.dp(7f), ink.dp(7f), paint
+        )
+        val micArc = RectF(cx - ink.dp(17f), cy - ink.dp(7f), cx + ink.dp(17f), cy + ink.dp(17f))
+        canvas.drawArc(micArc, 0f, 180f, false, paint)
+        canvas.drawLine(cx, cy + ink.dp(17f), cx, cy + ink.dp(25f), paint)
+        canvas.drawLine(cx - ink.dp(8f), cy + ink.dp(25f), cx + ink.dp(8f), cy + ink.dp(25f), paint)
+        paint.style = Paint.Style.FILL
+        paint.color = android.graphics.Color.WHITE
+        paint.alpha = 255
+
         val actionY = height * 0.86f
         ink.text(canvas, "撤回", 13f,
             if (target == Target.CANCEL) palette.brand else palette.gloss, width * 0.17f, actionY,
@@ -189,8 +209,11 @@ class VoicePanel(
             if (target == Target.ACTION) palette.brand else palette.gloss, width * 0.83f, actionY,
             bold = target == Target.ACTION)
 
-        if (active) {
-            phase = (phase + 0.006f + level * 0.004f) % (2f * PI.toFloat())
+        // 慢速连续呼吸；音量只增加光环的振幅和亮度，不让整个界面剧烈跳动。
+        phase = (phase + if (active) 0.035f else 0.020f) % (2f * PI.toFloat())
+        val targetScale = if (active) 1.035f else 1f
+        ringScale += (targetScale - ringScale) * 0.12f
+        if (active || dimProgress > 0.002f || kotlin.math.abs(ringScale - 1f) > 0.002f) {
             postInvalidateDelayed(16L)
         }
     }
