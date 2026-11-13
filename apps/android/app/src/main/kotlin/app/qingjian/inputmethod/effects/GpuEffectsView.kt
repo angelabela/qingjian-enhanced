@@ -7,7 +7,6 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
-import app.qingjian.inputmethod.R
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -97,7 +96,7 @@ class GpuEffectsView(context: Context) : View(context) {
             for (ring in 0..2) {
                 val phase = (t * 1.18f - ring * 0.19f).coerceIn(0f, 1f)
                 if (t * 1.18f < ring * 0.19f) continue
-                val radius = (22f + phase * maxRadius) * density.coerceAtLeast(1f)
+                val radius = 22f * density + phase * maxRadius
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = (3.2f - ring * 0.55f) * density
                 paint.shader = null
@@ -115,7 +114,7 @@ class GpuEffectsView(context: Context) : View(context) {
             paint.shader = null
             for (i in 0 until 12) {
                 val angle = i * (2.0 * PI / 12.0) + t * 1.8
-                val distance = (18f + t * maxRadius * 0.68f) * density
+                val distance = 18f * density + t * maxRadius * 0.68f
                 val px = cx + cos(angle).toFloat() * distance
                 val py = cy + sin(angle).toFloat() * distance
                 paint.color = if (i % 3 == 0) 0xFFFFE6FF.toInt() else 0xFF63EFFF.toInt()
