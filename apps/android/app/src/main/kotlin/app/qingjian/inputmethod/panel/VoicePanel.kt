@@ -170,62 +170,193 @@ class VoicePanel(
         super.onDetachedFromWindow()
     }
 
+    private var transcript: String = ""
+
+    fun setTranscript(value: String) {
+        transcript = value
+        overlay.postInvalidateOnAnimation()
+    }
+
     private inner class OverlayView(context: Context) : android.view.View(context) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
         private val micRect = RectF()
+        private val density = resources.displayMetrics.density
+        private var frame = 0
+
+        private fun rounded(canvas: Canvas, rect: RectF, radius: Float, color: Int, stroke: Boolean = false, width: Float = 1f) {
+            p.shader = null
+            p.color = color
+            p.style = if (stroke) Paint.Style.STROKE else Paint.Style.FILL
+            p.strokeWidth = width
+            canvas.drawRoundRect(rect, radius, radius, p)
+        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             if (width <= 0 || height <= 0) return
-            val cx = width * 0.5f
-            val cy = height * 0.475f
-            val d = resources.displayMetrics.density
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val d = density
+            val cx = w * 0.5f
+            val cy = h * 0.49f
+            val amp = glView.renderer.amplitude().coerceIn(0f, 1f)
+            val t = (System.nanoTime() / 1_000_000_000.0).toFloat()
+            val pulse = 1f + 0.025f * sin(t * 1.65f)
 
-            // A restrained center microphone glyph keeps the voice affordance clear
-            // without covering the shader-driven fluid surface.
-            val r = 12f * d
+            // Dim, glass-like scrim: keyboard remains visible beneath the voice surface.
+            p.shader = android.graphics.LinearGradient(0f, 0f, w, h,
+                intArrayOf(0xD90A1024.toInt(), 0xC90B1028.toInt(), 0xD90D0D28.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            p.style = Paint.Style.FILL
+            canvas.drawRect(0f, 0f, w, h, p)
+            p.shader = null
+
+            // Top listening status capsule.
+            val status = RectF(w * 0.22f, h * 0.075f, w * 0.78f, h * 0.145f)
+            p.shader = android.graphics.LinearGradient(status.left, status.top, status.right, status.bottom,
+                intArrayOf(0xD92A466D.toInt(), 0xD92D2867.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(status, 28f * d, 28f * d, p)
             p.shader = null
             p.style = Paint.Style.STROKE
-            p.strokeWidth = 1.8f * d
-            p.strokeCap = Paint.Cap.ROUND
-            p.strokeJoin = Paint.Join.ROUND
-            p.color = 0xDDF4FCFF.toInt()
-            canvas.drawRoundRect(cx - r * 0.34f, cy - r * 0.78f,
-                cx + r * 0.34f, cy + r * 0.18f, r * 0.34f, r * 0.34f, p)
-            micRect.set(cx - r * 0.68f, cy - r * 0.28f,
-                cx + r * 0.68f, cy + r * 0.62f)
-            canvas.drawArc(micRect, 0f, 180f, false, p)
-            canvas.drawLine(cx, cy + r * 0.62f, cx, cy + r * 0.98f, p)
-            canvas.drawLine(cx - r * 0.38f, cy + r * 0.98f,
-                cx + r * 0.38f, cy + r * 0.98f, p)
+            p.strokeWidth = 1f * d
+            p.color = 0x774DABFF
+            canvas.drawRoundRect(status, 28f * d, 28f * d, p)
+            p.style = Paint.Style.FILL
+            p.color = 0xFF35DDFB.toInt()
+            canvas.drawCircle(status.left + 24f * d, status.centerY(), 4f * d, p)
+            p.textSize = 17f * d
+            p.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            p.color = 0xFFF1F5FF.toInt()
+            p.textAlign = Paint.Align.CENTER
+            canvas.drawText(if (recognizing) "正在识别…" else if (amp < 0.035f) "未检测到声音" else "正在聆听…",
+                status.centerX() + 8f * d, status.centerY() + 6f * d, p)
 
-            if (glView.renderer.hasFailed()) {
-                val radius = 76f * d
-                p.shader = android.graphics.RadialGradient(
-                    cx - radius * 0.28f, cy - radius * 0.34f, radius * 1.35f,
-                    intArrayOf(0xFFF4FFFF.toInt(), 0xFF39D9FF.toInt(), 0xFF655BFF.toInt(), 0x00A020FF),
-                    floatArrayOf(0f, 0.28f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
-                )
-                p.style = Paint.Style.FILL
-                canvas.drawCircle(cx, cy, radius, p)
-                p.shader = null
-                p.style = Paint.Style.STROKE
-                p.strokeWidth = 2.2f * d
-                p.color = 0xB8A9E9FF.toInt()
-                canvas.drawCircle(cx, cy, radius * 1.08f, p)
-                p.strokeWidth = 1f * d
-                p.color = 0x8865DFFF.toInt()
-                canvas.drawOval(cx - radius * 1.2f, cy - radius * 0.42f, cx + radius * 1.2f, cy + radius * 0.42f, p)
-                p.style = Paint.Style.FILL
+            // Live transcript card, with comfortable padding and subtle cyan/violet edge.
+            val card = RectF(w * 0.055f, h * 0.19f, w * 0.945f, h * 0.345f)
+            p.shader = android.graphics.LinearGradient(card.left, card.top, card.right, card.bottom,
+                intArrayOf(0xD92A4566.toInt(), 0xD92E285F.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(card, 22f * d, 22f * d, p)
+            p.shader = null
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 1.2f * d
+            p.shader = android.graphics.LinearGradient(card.left, card.top, card.right, card.bottom,
+                intArrayOf(0xBB29DFFF.toInt(), 0xBB9A62FF.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(card, 22f * d, 22f * d, p)
+            p.shader = null
+            p.style = Paint.Style.FILL
+            p.textAlign = Paint.Align.LEFT
+            p.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+            p.textSize = 19f * d
+            p.color = 0xFFF6F7FF.toInt()
+            val display = transcript.ifBlank { if (recognizing) "正在整理识别结果…" else "请开始说话…" }
+            val maxWidth = card.width() - 34f * d
+            val lines = mutableListOf<String>()
+            var line = ""
+            for (ch in display) {
+                val next = line + ch
+                if (p.measureText(next) > maxWidth && line.isNotEmpty()) {
+                    lines.add(line)
+                    line = ch.toString()
+                } else line = next
+            }
+            if (line.isNotEmpty()) lines.add(line)
+            lines.take(3).forEachIndexed { index, value ->
+                canvas.drawText(value, card.left + 18f * d, card.top + 34f * d + index * 27f * d, p)
             }
 
-            val actionY = height * 0.91f
-            ink.text(canvas, "撤回", 13f,
-                if (target == Target.CANCEL) palette.brand else 0xFFD6E8F5.toInt(),
-                width * 0.17f, actionY, bold = target == Target.CANCEL)
-            ink.text(canvas, actionLabel, 13f,
-                if (target == Target.ACTION) palette.brand else 0xFFD6E8F5.toInt(),
-                width * 0.83f, actionY, bold = target == Target.ACTION)
+            // Concentric voice rings and central mic glow.
+            val base = 82f * d
+            for (i in 3 downTo 1) {
+                val radius = base * (1.0f + i * 0.28f + amp * 0.13f) * pulse
+                p.shader = null
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = (1.1f + (4 - i) * 0.35f) * d
+                p.color = when (i) {
+                    3 -> 0x333F8CFF
+                    2 -> 0x664B8FFF
+                    else -> 0x886B6CFF
+                }
+                canvas.drawCircle(cx, cy, radius, p)
+            }
+            p.style = Paint.Style.FILL
+            p.shader = android.graphics.RadialGradient(cx - 12f * d, cy - 18f * d, base * 1.55f,
+                intArrayOf(0xDD22D8FF.toInt(), 0xCC315BFA.toInt(), 0xCC772DFF.toInt(), 0x003D28A8),
+                floatArrayOf(0f, 0.48f, 0.78f, 1f), android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawCircle(cx, cy, base * pulse, p)
+            p.shader = null
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 2.4f * d
+            p.shader = android.graphics.LinearGradient(cx - base, cy - base, cx + base, cy + base,
+                intArrayOf(0xFF31E8FF.toInt(), 0xFF647BFF.toInt(), 0xFFD16BFF.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawCircle(cx, cy, base * pulse, p)
+            p.shader = null
+
+            // Sound bars react to the measured microphone level; a quiet input settles to a low line.
+            val barCount = 43
+            val total = min(w * 0.88f, 390f * d)
+            val gap = 3.1f * d
+            val barWidth = (total - gap * (barCount - 1)) / barCount
+            for (i in 0 until barCount) {
+                val x = cx - total / 2f + i * (barWidth + gap)
+                val normalized = kotlin.math.abs(i - (barCount - 1) / 2f) / ((barCount - 1) / 2f)
+                val envelope = 1f - normalized * 0.72f
+                val wave = (0.18f + 0.82f * kotlin.math.abs(sin(i * 0.67f + t * 2.15f))) *
+                    (0.12f + amp * 0.95f) * envelope
+                val barHeight = (5f + wave * 65f) * d
+                p.shader = android.graphics.LinearGradient(x, cy - barHeight, x, cy + barHeight,
+                    intArrayOf(0xFF22DFFF.toInt(), 0xFF567CFF.toInt(), 0xFFC45CFF.toInt()),
+                    null, android.graphics.Shader.TileMode.CLAMP)
+                p.style = Paint.Style.FILL
+                canvas.drawRoundRect(x, cy - barHeight, x + barWidth, cy + barHeight,
+                    barWidth / 2f, barWidth / 2f, p)
+            }
+            p.shader = null
+
+            // Microphone glyph.
+            val r = 16f * d
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 2.8f * d
+            p.strokeCap = Paint.Cap.ROUND
+            p.strokeJoin = Paint.Join.ROUND
+            p.color = 0xFFF8FCFF.toInt()
+            canvas.drawRoundRect(cx - r * 0.34f, cy - r * 0.78f,
+                cx + r * 0.34f, cy + r * 0.18f, r * 0.34f, r * 0.34f, p)
+            micRect.set(cx - r * 0.68f, cy - r * 0.28f, cx + r * 0.68f, cy + r * 0.62f)
+            canvas.drawArc(micRect, 0f, 180f, false, p)
+            canvas.drawLine(cx, cy + r * 0.62f, cx, cy + r * 0.98f, p)
+            canvas.drawLine(cx - r * 0.38f, cy + r * 0.98f, cx + r * 0.38f, cy + r * 0.98f, p)
+
+            // Bottom capsule actions.
+            val buttonTop = h * 0.84f
+            val buttonBottom = h * 0.925f
+            val cancel = RectF(w * 0.075f, buttonTop, w * 0.46f, buttonBottom)
+            val send = RectF(w * 0.54f, buttonTop, w * 0.925f, buttonBottom)
+            p.shader = android.graphics.LinearGradient(cancel.left, cancel.top, cancel.right, cancel.bottom,
+                intArrayOf(0xCC34496D.toInt(), 0xCC292C55.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(cancel, 32f * d, 32f * d, p)
+            p.shader = null
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 1f * d
+            p.color = 0x777F9DD6
+            canvas.drawRoundRect(cancel, 32f * d, 32f * d, p)
+            p.shader = android.graphics.LinearGradient(send.left, send.top, send.right, send.bottom,
+                intArrayOf(0xFF1BCDF3.toInt(), 0xFF624CFF.toInt(), 0xFF9B35EF.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            p.style = Paint.Style.FILL
+            canvas.drawRoundRect(send, 32f * d, 32f * d, p)
+            p.shader = null
+            p.textAlign = Paint.Align.CENTER
+            p.textSize = 16f * d
+            p.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            p.color = 0xFFF1F5FF.toInt()
+            canvas.drawText("取消", cancel.centerX(), cancel.centerY() + 6f * d, p)
+            canvas.drawText("发送", send.centerX(), send.centerY() + 6f * d, p)
+
+            if (listening || recognizing) postInvalidateDelayed(32L)
         }
     }
 
@@ -284,6 +415,8 @@ class VoicePanel(
                 sampleCursor = (sampleCursor + 1) % LEVEL_SAMPLES
             }
         }
+
+        fun amplitude(): Float = currentAmplitude
 
         fun setActive(value: Boolean) {
             active = value
@@ -502,25 +635,20 @@ class VoicePanel(
                 varying vec3 vPosition;
                 varying vec3 vNormal;
                 void main() {
-                    float y = (vPosition.y + 150.0) / 300.0;
-                    float x = (vPosition.x + 150.0) / 300.0;
-                    vec3 colorTop = vec3(0.05, 1.0, 1.0);
-                    vec3 colorLeft = vec3(0.02, 0.24, 1.0);
-                    vec3 colorRight = vec3(1.0, 0.025, 0.32);
-                    vec3 colorBottom = vec3(1.0, 0.72, 0.12);
-                    vec3 mix1 = mix(colorLeft, colorRight, x);
-                    vec3 mix2 = mix(colorTop, colorBottom, 1.0 - y);
-                    vec3 finalColor = mix(mix1, mix2,
-                        0.5 + 0.5 * sin(vPosition.z * 0.01 + uTime));
+                    float y = clamp((vPosition.y + 150.0) / 300.0, 0.0, 1.0);
+                    float x = clamp((vPosition.x + 150.0) / 300.0, 0.0, 1.0);
+                    vec3 cyan = vec3(0.04, 0.88, 1.0);
+                    vec3 blue = vec3(0.12, 0.34, 1.0);
+                    vec3 violet = vec3(0.68, 0.22, 1.0);
+                    vec3 gradient = mix(mix(cyan, blue, y), violet, x * 0.78);
                     float fresnel = dot(normalize(vNormal), vec3(0.0, 0.0, 1.0));
                     fresnel = pow(1.0 - abs(fresnel), 2.0);
-                    float audioGlow = 1.0 + uAudioAmplitude * 1.65;
-                    float alpha = mix(0.20, 0.96, fresnel) * (0.88 + uAudioAmplitude * 0.35);
-                    finalColor = min(finalColor * audioGlow + fresnel * vec3(0.12, 0.30, 0.52), vec3(1.0));
-                    // A sharper neon rim makes the fluid contour readable over the keyboard.
-                    float rim = pow(fresnel, 2.4);
-                    finalColor += rim * vec3(0.25, 0.65, 1.0) * (0.8 + uAudioAmplitude);
-                    gl_FragColor = vec4(finalColor, min(alpha, 1.0));
+                    float audioGlow = 1.0 + uAudioAmplitude * 1.15;
+                    float alpha = mix(0.14, 0.84, fresnel) * (0.82 + uAudioAmplitude * 0.28);
+                    vec3 finalColor = min(gradient * audioGlow + fresnel * vec3(0.12, 0.42, 0.72), vec3(1.0));
+                    float rim = pow(fresnel, 2.2);
+                    finalColor += rim * vec3(0.24, 0.72, 1.0) * (0.7 + uAudioAmplitude);
+                    gl_FragColor = vec4(finalColor, min(alpha, 0.92));
                 }
             """
         }
