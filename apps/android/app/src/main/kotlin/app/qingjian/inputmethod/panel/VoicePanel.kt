@@ -55,7 +55,7 @@ class VoicePanel(
 
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val overlay = OverlayView(context)
-    private val glView = FluidSphereSurface(context)
+    private val glView = FluidSphereSurface(context) { overlay.postInvalidateOnAnimation() }
     private val touchLocation = IntArray(2)
 
     private var touchTarget = Target.NONE
@@ -209,8 +209,8 @@ class VoicePanel(
         }
     }
 
-    private class FluidSphereSurface(context: Context) : GLSurfaceView(context) {
-        val renderer = FluidSphereRenderer()
+    private class FluidSphereSurface(context: Context, onFailure: () -> Unit) : GLSurfaceView(context) {
+        val renderer = FluidSphereRenderer(onFailure)
 
         init {
             setEGLContextClientVersion(2)
@@ -224,7 +224,15 @@ class VoicePanel(
         }
     }
 
-    private class FluidSphereRenderer : Renderer {
+    private class FluidSphereRenderer(private val onFailure: () -> Unit) : Renderer {
+        @Volatile private var failed = false
+        fun hasFailed(): Boolean = failed
+        private fun failSafely(error: Throwable) {
+            if (failed) return
+            failed = true
+            android.util.Log.e("QingjianVoice", "OpenGL voice effect disabled; using Canvas fallback", error)
+            onFailure()
+        }
         private val sampleLock = Any()
         private val levels = FloatArray(LEVEL_SAMPLES)
         private var sampleCursor = 0
@@ -262,6 +270,11 @@ class VoicePanel(
         }
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+            if (failed) return
+            try { createSurface(gl, config) } catch (error: Throwable) { failSafely(error) }
+        }
+
+        private fun createSurface(gl: GL10?, config: EGLConfig?) {
             GLES20.glClearColor(0.012f, 0.018f, 0.045f, 0f)
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE)
@@ -280,6 +293,11 @@ class VoicePanel(
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            if (failed) return
+            try { changeSurface(gl, width, height) } catch (error: Throwable) { failSafely(error) }
+        }
+
+        private fun changeSurface(gl: GL10?, width: Int, height: Int) {
             val safeHeight = max(1, height)
             GLES20.glViewport(0, 0, width, safeHeight)
             Matrix.perspectiveM(projection, 0, 45f, width.toFloat() / safeHeight, 0.1f, 2000f)
@@ -287,6 +305,11 @@ class VoicePanel(
         }
 
         override fun onDrawFrame(gl: GL10?) {
+            if (failed) return
+            try { drawFrame(gl) } catch (error: Throwable) { failSafely(error) }
+        }
+
+        private fun drawFrame(gl: GL10?) {
             val now = System.nanoTime()
             val dt = ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
             lastFrameNanos = now
