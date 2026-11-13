@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import app.qingjian.inputmethod.R
+import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.keyboard.layout.KeySlot
 import app.qingjian.inputmethod.keyboard.layout.KeyboardMetrics
@@ -248,6 +249,9 @@ class KeyboardView(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+            GpuEffectBus.pulse(event.rawX, event.rawY, 0.58f)
+        }
         if (side.onTouch(event, ::invalidate)) return true
         val index = event.actionIndex
         val pointer = event.getPointerId(index)
