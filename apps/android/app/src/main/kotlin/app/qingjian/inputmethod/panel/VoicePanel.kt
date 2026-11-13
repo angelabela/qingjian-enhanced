@@ -41,7 +41,21 @@ class VoicePanel(
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
+    private val micHighlightRect = RectF()
+    private val orbitRects = Array(3) { RectF() }
+    private val orbitTailRects = Array(3) { RectF() }
+    private val location = IntArray(2)
     private val levels = FloatArray(BARS)
+    private val ringColors = intArrayOf(
+        0xFF36E9FF.toInt(), 0xFF398EFF.toInt(), 0xFF735CFF.toInt(),
+        0xFFC05CFF.toInt(), 0xFF36E9FF.toInt()
+    )
+    private var backgroundShader: Shader? = null
+    private var ambientShader: Shader? = null
+    private var ringShader: Shader? = null
+    private var orbitShader: Shader? = null
+    private var sphereShader: Shader? = null
+    private var edgeShader: Shader? = null
     private var phase = 0f
     private var touchTarget = Target.NONE
 
@@ -71,7 +85,6 @@ class VoicePanel(
     }
 
     fun track(screenX: Float, screenY: Float) {
-        val location = IntArray(2)
         getLocationOnScreen(location)
         val next = targetAt(screenX - location[0], screenY - location[1])
         if (next == target) return
@@ -87,6 +100,48 @@ class VoicePanel(
             x > width * 0.66f -> Target.ACTION
             else -> Target.NONE
         }
+    }
+
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w <= 0 || h <= 0) return
+        val fw = w.toFloat()
+        val fh = h.toFloat()
+        val cx = fw / 2f
+        val cy = fh * 0.53f
+        val sphereR = minOf(ink.dp(82f), minOf(fw, fh) * 0.205f) * 1.2f
+
+        backgroundShader = LinearGradient(
+            0f, 0f, fw, fh,
+            intArrayOf(0xD90A1534.toInt(), 0xD90D1233.toInt(), 0xDD21113F.toInt()),
+            null, Shader.TileMode.CLAMP
+        )
+        ambientShader = RadialGradient(
+            cx, cy, sphereR * 2.5f,
+            intArrayOf(0x665C65FF, 0x332E4CCB, 0x00201850),
+            null, Shader.TileMode.CLAMP
+        )
+        ringShader = android.graphics.SweepGradient(
+            cx, cy, ringColors, floatArrayOf(0f, 0.25f, 0.53f, 0.78f, 1f)
+        )
+        orbitShader = android.graphics.SweepGradient(
+            cx, cy,
+            intArrayOf(0x002FE8FF, 0xAA42CFFF.toInt(), 0xDD8B70FF.toInt(),
+                0x8845CFFF.toInt(), 0x002FE8FF),
+            floatArrayOf(0f, 0.22f, 0.48f, 0.76f, 1f)
+        )
+        sphereShader = RadialGradient(
+            cx - sphereR * 0.34f, cy - sphereR * 0.40f, sphereR * 1.65f,
+            intArrayOf(0xFFB9FFFF.toInt(), 0xFF39DFFF.toInt(), 0xFF258BEF.toInt(),
+                0xFF5549D9.toInt(), 0xFF29144F.toInt()),
+            floatArrayOf(0f, 0.24f, 0.52f, 0.79f, 1f), Shader.TileMode.CLAMP
+        )
+        edgeShader = RadialGradient(
+            cx, cy, sphereR,
+            intArrayOf(0x00FFFFFF, 0x22BFFFFF, 0xAA9CEBFF.toInt()),
+            floatArrayOf(0.78f, 0.94f, 1f), Shader.TileMode.CLAMP
+        )
     }
 
     private fun micCenterY() = height * 0.53f
@@ -119,11 +174,7 @@ class VoicePanel(
         val sphereR = radius * pulse * sphereScale
 
         // 深蓝至暗紫的宇宙底色，键盘轮廓仍隐约可见。
-        paint.shader = LinearGradient(
-            0f, 0f, width.toFloat(), height.toFloat(),
-            intArrayOf(0xD90A1534.toInt(), 0xD90D1233.toInt(), 0xDD21113F.toInt()),
-            null, Shader.TileMode.CLAMP
-        )
+        paint.shader = backgroundShader
         paint.style = Paint.Style.FILL
         paint.alpha = 255
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
@@ -143,25 +194,15 @@ class VoicePanel(
         paint.alpha = 255
 
         // 柔和的背景能量雾。
-        paint.shader = RadialGradient(
-            cx, cy, sphereR * 2.5f,
-            intArrayOf(0x665C65FF, 0x332E4CCB, 0x00201850),
-            null, Shader.TileMode.CLAMP
-        )
+        paint.shader = ambientShader
         canvas.drawCircle(cx, cy, sphereR * 2.5f, paint)
         paint.shader = null
 
         // 多层同心声波环，随音量改变半径、亮度和脉动幅度。
-        val ringColors = intArrayOf(
-            0xFF36E9FF.toInt(), 0xFF398EFF.toInt(), 0xFF735CFF.toInt(),
-            0xFFC05CFF.toInt(), 0xFF36E9FF.toInt()
-        )
         for (i in 0..3) {
             val rr = sphereR * (1.18f + i * 0.19f) +
                 sin(phase * 0.55f + i * 0.9f) * ink.dp(2.5f + ringEnergy * 5f)
-            paint.shader = android.graphics.SweepGradient(
-                cx, cy, ringColors, floatArrayOf(0f, 0.25f, 0.53f, 0.78f, 1f)
-            )
+            paint.shader = ringShader
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = ink.dp(if (i == 0) 2.2f else 1.15f)
             paint.alpha = (if (i == 0) 125 else 55) + (ringEnergy * 70f).toInt()
@@ -175,15 +216,11 @@ class VoicePanel(
             val orbitH = sphereR * (0.72f + i * 0.11f)
             val rotation = -24f + i * 17f + phase * (if (active) 2.8f else 1.2f) *
                 (if (i % 2 == 0) 1f else -0.72f)
-            val oval = RectF(cx - orbitW / 2f, cy - orbitH / 2f, cx + orbitW / 2f, cy + orbitH / 2f)
+            val oval = orbitRects[i]
+            oval.set(cx - orbitW / 2f, cy - orbitH / 2f, cx + orbitW / 2f, cy + orbitH / 2f)
             canvas.save()
             canvas.rotate(rotation, cx, cy)
-            paint.shader = android.graphics.SweepGradient(
-                cx, cy,
-                intArrayOf(0x002FE8FF, 0xAA42CFFF.toInt(), 0xDD8B70FF.toInt(),
-                    0x8845CFFF.toInt(), 0x002FE8FF),
-                floatArrayOf(0f, 0.22f, 0.48f, 0.76f, 1f)
-            )
+            paint.shader = orbitShader
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = ink.dp(13f + ringEnergy * 3f)
             paint.alpha = 24
@@ -193,7 +230,8 @@ class VoicePanel(
             canvas.drawOval(oval, paint)
             paint.strokeWidth = ink.dp(1f)
             paint.alpha = 105
-            val tail = RectF(oval.left + orbitW * 0.08f, oval.top, oval.right, oval.bottom)
+            val tail = orbitTailRects[i]
+            tail.set(oval.left + orbitW * 0.08f, oval.top, oval.right, oval.bottom)
             canvas.drawArc(tail, 198f, 112f, false, paint)
             canvas.restore()
         }
@@ -202,35 +240,21 @@ class VoicePanel(
         paint.alpha = 255
 
         // 能量球：左上亮青、右下深紫的三维径向渐变。
-        paint.shader = RadialGradient(
-            cx - sphereR * 0.34f, cy - sphereR * 0.40f, sphereR * 1.65f,
-            intArrayOf(
-                0xFFB9FFFF.toInt(), 0xFF39DFFF.toInt(), 0xFF258BEF.toInt(),
-                0xFF5549D9.toInt(), 0xFF29144F.toInt()
-            ),
-            floatArrayOf(0f, 0.24f, 0.52f, 0.79f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        paint.shader = sphereShader
         canvas.drawCircle(cx, cy, sphereR, paint)
         paint.shader = null
 
         // 球体边缘内发光与顶部高光。
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = ink.dp(5f)
-        paint.shader = RadialGradient(
-            cx, cy, sphereR,
-            intArrayOf(0x00FFFFFF, 0x22BFFFFF, 0xAA9CEBFF.toInt()),
-            floatArrayOf(0.78f, 0.94f, 1f), Shader.TileMode.CLAMP
-        )
+        paint.shader = edgeShader
         canvas.drawCircle(cx, cy, sphereR - ink.dp(2f), paint)
         paint.shader = null
         paint.strokeWidth = ink.dp(1.2f)
         paint.color = 0xBFFFFFFF.toInt()
-        canvas.drawArc(
-            RectF(cx - sphereR * 0.86f, cy - sphereR * 0.86f,
-                cx + sphereR * 0.86f, cy + sphereR * 0.86f),
-            205f, 105f, false, paint
-        )
+        micHighlightRect.set(cx - sphereR * 0.86f, cy - sphereR * 0.86f,
+            cx + sphereR * 0.86f, cy + sphereR * 0.86f)
+        canvas.drawArc(micHighlightRect, 205f, 105f, false, paint)
         paint.style = Paint.Style.FILL
 
         // 纯白极简麦克风：话筒、U 型支架和底座，形状保持稳定不随音量变形。
@@ -267,7 +291,7 @@ class VoicePanel(
 
         phase = (phase + if (active) 0.026f else 0.012f) % (2f * PI.toFloat())
         if (active || dimProgress > 0.122f || kotlin.math.abs(sphereScale - 1f) > 0.002f) {
-            postInvalidateDelayed(16L)
+            postInvalidateOnAnimation()
         }
     }
 
