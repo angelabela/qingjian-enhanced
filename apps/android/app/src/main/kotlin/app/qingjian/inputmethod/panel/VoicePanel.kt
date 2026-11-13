@@ -99,10 +99,11 @@ class VoicePanel(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val active = holding || listening || recognizing
-        val recentLevel = levels.indices.sumOf { index ->
+        val weightedLevel = levels.indices.fold(0f) { total, index ->
             val weight = (index + 1).toFloat() / BARS
-            levels[index] * weight
-        } / (BARS * 0.505f)
+            total + levels[index] * weight
+        }
+        val recentLevel = weightedLevel / (BARS * 0.505f)
         val inputLevel = if (active) recentLevel.coerceIn(0f, 1f) else 0f
         ringEnergy += (inputLevel - ringEnergy) * if (active) 0.24f else 0.075f
         val targetDim = if (active) 0.30f else 0.12f
