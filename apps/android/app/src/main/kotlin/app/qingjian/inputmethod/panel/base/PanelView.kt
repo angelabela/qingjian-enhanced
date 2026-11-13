@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import app.qingjian.inputmethod.effects.GpuEffectBus
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.theme.Palette
@@ -96,7 +97,14 @@ abstract class PanelView(
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean = gestures.onTouchEvent(event)
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val screen = IntArray(2)
+            getLocationOnScreen(screen)
+            GpuEffectBus.pulse(screen[0] + event.x, screen[1] + event.y, 0.62f)
+        }
+        return gestures.onTouchEvent(event)
+    }
 
     /**
      * 表头：与工具栏同样浮起的圆角卡片，和下面的内容分出层次；左边返回（编辑类面板换成品牌色的 [leftIcon]，如完成的对勾），[rightIcon] 画在右边一格
