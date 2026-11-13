@@ -78,7 +78,9 @@ class GpuEffectsView(context: Context) : GLSurfaceView(context) {
         private var centerLocation = 0
         private var strengthLocation = 0
         private var resolutionLocation = 0
-        private var startNanos = System.nanoTime()
+        @Volatile private var startNanos = System.nanoTime()
+        @Volatile private var viewportWidth = 1
+        @Volatile private var viewportHeight = 1
         @Volatile private var centerX = 0.5f
         @Volatile private var centerY = 0.5f
         @Volatile private var strength = 0f
@@ -152,6 +154,8 @@ class GpuEffectsView(context: Context) : GLSurfaceView(context) {
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            viewportWidth = width.coerceAtLeast(1)
+            viewportHeight = height.coerceAtLeast(1)
             GLES20.glViewport(0, 0, width, height)
         }
 
@@ -166,7 +170,7 @@ class GpuEffectsView(context: Context) : GLSurfaceView(context) {
             GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, vertices)
             GLES20.glUniform1f(timeLocation, elapsed)
             GLES20.glUniform2f(centerLocation, centerX, centerY)
-            GLES20.glUniform2f(resolutionLocation, width.toFloat(), height.toFloat())
+            GLES20.glUniform2f(resolutionLocation, viewportWidth.toFloat(), viewportHeight.toFloat())
             GLES20.glUniform1f(strengthLocation, strength)
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
             GLES20.glDisableVertexAttribArray(position)
