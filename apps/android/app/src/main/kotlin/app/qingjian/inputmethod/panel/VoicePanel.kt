@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -15,7 +14,7 @@ import android.view.View
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
-import kotlin.math.ceil
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -23,9 +22,9 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Aurora Core：深空等离子共振语音视觉。
- * 使用现有语音音量采样驱动核心脉动、能量环和粒子，不创建第二路麦克风。
- * 语音识别、权限与操作回调仍由现有 VoiceInput/Actions 管理。
+ * Holographic Radial Equalizer Sphere.
+ * The existing speech-level samples drive the radial spectrum; speech recognition,
+ * permissions and callbacks remain owned by VoiceInput/Actions.
  */
 @SuppressLint("ViewConstructor")
 class VoicePanel(
@@ -46,9 +45,7 @@ class VoicePanel(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val micRect = RectF()
-    private val ringRect = RectF()
-    private val path = Path()
+    private val rect = RectF()
     private val levels = FloatArray(LEVEL_SAMPLES)
     private val location = IntArray(2)
     private var phase = 0f
@@ -98,7 +95,6 @@ class VoicePanel(
         }
     }
 
-    private fun micCenterY() = height * 0.49f
     private fun micRadius() = ink.dp(30f)
 
     override fun onDraw(canvas: Canvas) {
@@ -110,220 +106,224 @@ class VoicePanel(
         val dt = if (lastFrameNanos == 0L) 1f / 60f
             else ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
         lastFrameNanos = now
-        phase = (phase + dt * if (active) 1.0f else 0.38f) % 1000f
+        phase = (phase + dt * if (active) 0.72f else 0.24f) % 1000f
 
         var sum = 0f
         var peak = 0f
-        for (level in levels) {
-            sum += level
-            peak = max(peak, level)
+        for (sample in levels) {
+            sum += sample
+            peak = max(peak, sample)
         }
         val average = sum / LEVEL_SAMPLES
-        val targetVolume = if (active) max(average * 2.0f, peak * 0.68f).coerceIn(0f, 1f) else 0f
-        val smoothing = 1f - kotlin.math.exp(-(if (active) 9f else 2.6f) * dt)
-        currentVolume += (targetVolume - currentVolume) * smoothing
+        val targetVolume = if (active) max(average * 2.15f, peak * 0.78f).coerceIn(0f, 1f) else 0f
+        currentVolume += (targetVolume - currentVolume) *
+            (1f - kotlin.math.exp(-(if (active) 8.5f else 2.1f) * dt))
         peakVolume += ((if (active) peak else 0f) - peakVolume) *
-            (1f - kotlin.math.exp(-5.5f * dt))
+            (1f - kotlin.math.exp(-4.8f * dt))
 
         val w = width.toFloat()
         val h = height.toFloat()
         val cx = w * 0.5f
-        val cy = h * 0.49f
+        val cy = h * 0.475f
         val minSide = min(w, h)
-        val coreRadius = minSide * 0.205f
+        val sphereRadius = minSide * 0.285f
         val energy = currentVolume.coerceIn(0f, 1f)
-        val breath = 1f + sin(phase * 1.35f) * 0.018f + energy * 0.10f
-        val coreR = coreRadius * breath
+        val breath = 1f + sin(phase * 1.18f) * 0.012f + energy * 0.045f
 
-        drawDeepSpace(canvas, cx, cy, minSide)
-        drawOuterNebula(canvas, cx, cy, coreR, minSide, energy)
-        drawOrbitRings(canvas, cx, cy, coreR, energy)
-        drawEnergyFilaments(canvas, cx, cy, coreR, energy)
-        drawParticles(canvas, cx, cy, coreR, energy)
-        drawCore(canvas, cx, cy, coreR, energy)
-        drawMicrophone(canvas, cx, cy, coreR, energy)
+        drawBackground(canvas, cx, cy, minSide)
+        drawSphereAura(canvas, cx, cy, sphereRadius * breath, energy)
+        drawRearSpectrum(canvas, cx, cy, sphereRadius * breath, energy)
+        drawSphereGrid(canvas, cx, cy, sphereRadius * breath, energy)
+        drawRadialEqualizer(canvas, cx, cy, sphereRadius * breath, energy)
+        drawFrontSpectrum(canvas, cx, cy, sphereRadius * breath, energy)
+        drawCoreGlass(canvas, cx, cy, sphereRadius * breath, energy)
+        drawMicrophone(canvas, cx, cy, energy)
 
         val actionY = height * 0.91f
-        ink.text(
-            canvas, "撤回", 13f,
+        ink.text(canvas, "撤回", 13f,
             if (target == Target.CANCEL) palette.brand else 0xFFD6E8F5.toInt(),
-            width * 0.17f, actionY, bold = target == Target.CANCEL
-        )
-        ink.text(
-            canvas, actionLabel, 13f,
+            width * 0.17f, actionY, bold = target == Target.CANCEL)
+        ink.text(canvas, actionLabel, 13f,
             if (target == Target.ACTION) palette.brand else 0xFFD6E8F5.toInt(),
-            width * 0.83f, actionY, bold = target == Target.ACTION
-        )
+            width * 0.83f, actionY, bold = target == Target.ACTION)
 
         if (active) postInvalidateOnAnimation()
     }
 
-    private fun drawDeepSpace(canvas: Canvas, cx: Float, cy: Float, minSide: Float) {
-        canvas.drawColor(Color.rgb(3, 5, 12))
+    private fun drawBackground(canvas: Canvas, cx: Float, cy: Float, minSide: Float) {
+        canvas.drawColor(Color.rgb(2, 4, 13))
         paint.style = Paint.Style.FILL
         paint.shader = LinearGradient(
             0f, 0f, width.toFloat(), height.toFloat(),
-            intArrayOf(0xFF080B1C.toInt(), 0xFF080719.toInt(), 0xFF03050C.toInt()),
+            intArrayOf(0xFF080D22.toInt(), 0xFF08091B.toInt(), 0xFF02040D.toInt()),
             null, Shader.TileMode.CLAMP
         )
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         paint.shader = RadialGradient(
-            cx, cy, minSide * 0.76f,
-            intArrayOf(0x553D2A83, 0x29202B72, 0x0003050C),
-            floatArrayOf(0f, 0.48f, 1f), Shader.TileMode.CLAMP
+            cx, cy, minSide * 0.72f,
+            intArrayOf(0x443D59D8, 0x293B2B9D, 0x0002040D),
+            floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, minSide * 0.76f, paint)
+        canvas.drawCircle(cx, cy, minSide * 0.72f, paint)
         paint.shader = null
 
-        // 稀疏且稳定的星尘，避免随机闪烁。
-        for (i in 0 until 34) {
-            val x = ((i * 73 + 19) % 997) / 997f * width
-            val y = ((i * 137 + 41) % 991) / 991f * height
-            val twinkle = 0.35f + 0.65f * (0.5f + 0.5f * sin(phase * 0.55f + i * 1.7f))
-            paint.color = Color.argb((twinkle * 105).toInt(), 150, 205, 255)
-            canvas.drawCircle(x, y, ink.dp(if (i % 7 == 0) 1.35f else 0.7f), paint)
+        // Quiet, fixed star points; no random per-frame flicker.
+        for (i in 0 until 28) {
+            val x = ((i * 83 + 31) % 997) / 997f * width
+            val y = ((i * 149 + 17) % 991) / 991f * height
+            val twinkle = 0.45f + 0.55f * (0.5f + 0.5f * sin(phase * 0.34f + i * 1.9f))
+            paint.color = Color.argb((twinkle * 92).toInt(), 125, 193, 255)
+            canvas.drawCircle(x, y, ink.dp(if (i % 8 == 0) 1.15f else 0.65f), paint)
         }
     }
 
-    private fun drawOuterNebula(
-        canvas: Canvas, cx: Float, cy: Float, radius: Float, minSide: Float, energy: Float
-    ) {
+    private fun drawSphereAura(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
         paint.style = Paint.Style.FILL
+        val glow = radius * (1.85f + energy * 0.24f)
         paint.shader = RadialGradient(
-            cx, cy, radius * (2.65f + energy * 0.42f),
-            intArrayOf(
-                0x6657DFFF, 0x553F69E8, 0x443D20A5, 0x162C1D76, 0x0003050C
-            ),
-            floatArrayOf(0f, 0.28f, 0.52f, 0.76f, 1f), Shader.TileMode.CLAMP
+            cx, cy, glow,
+            intArrayOf(0x6655DFFF, 0x443D8BEE, 0x333D36C8, 0x0002040D),
+            floatArrayOf(0f, 0.36f, 0.66f, 1f), Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, radius * (2.65f + energy * 0.42f), paint)
+        canvas.drawCircle(cx, cy, glow, paint)
         paint.shader = null
     }
 
-    private fun drawOrbitRings(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
-        val base = radius * (1.55f + energy * 0.08f)
-        val rings = 3
-        for (i in 0 until rings) {
-            val scale = 1f + i * 0.34f
-            val rotation = phase * (if (i % 2 == 0) 13f else -9f) + i * 57f
-            canvas.save()
-            canvas.rotate(rotation, cx, cy)
-            ringRect.set(cx - base * scale, cy - base * scale * 0.48f,
-                cx + base * scale, cy + base * scale * 0.48f)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = ink.dp(if (i == 0) 1.7f else 1.0f)
-            paint.color = when (i) {
-                0 -> Color.argb((95 + energy * 95).toInt(), 93, 231, 255)
-                1 -> Color.argb((78 + energy * 65).toInt(), 153, 111, 255)
-                else -> Color.argb(48, 104, 174, 255)
-            }
-            canvas.drawOval(ringRect, paint)
-            // 一段高亮弧线制造全息轨道的方向感。
-            paint.color = Color.argb((105 + energy * 110).toInt(), 173, 240, 255)
-            paint.strokeWidth = ink.dp(2f)
-            canvas.drawArc(ringRect, 205f + i * 38f, 34f + energy * 30f, false, paint)
-            canvas.restore()
+    private fun drawRearSpectrum(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        val count = 192
+        paint.style = Paint.Style.STROKE
+        for (i in 0 until count) {
+            val angle = (i.toFloat() / count) * (PI.toFloat() * 2f)
+            val sample = levels[(i * LEVEL_SAMPLES / count).coerceIn(0, LEVEL_SAMPLES - 1)]
+            val wave = 0.5f + 0.5f * sin(angle * 7.0f + phase * 1.6f)
+            val modulation = (sample * 0.78f + currentVolume * 0.16f + wave * 0.06f)
+            val inner = radius * (0.78f + modulation * 0.10f)
+            val outer = radius * (1.02f + modulation * (0.38f + energy * 0.18f))
+            val x1 = cx + cos(angle) * inner
+            val y1 = cy + sin(angle) * inner * 0.76f
+            val x2 = cx + cos(angle) * outer
+            val y2 = cy + sin(angle) * outer * 0.76f
+            val alpha = (72 + modulation * 155f).toInt().coerceIn(0, 230)
+            paint.color = if (i % 4 == 0) Color.argb(alpha, 164, 111, 255)
+                else Color.argb(alpha, 72, 221, 255)
+            paint.strokeWidth = ink.dp(if (i % 5 == 0) 1.8f else 1.15f)
+            canvas.drawLine(x1, y1, x2, y2, paint)
         }
         paint.style = Paint.Style.FILL
     }
 
-    private fun drawEnergyFilaments(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+    private fun drawSphereGrid(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(0.9f)
         for (i in 0 until 5) {
-            val angle = phase * (0.22f + i * 0.035f) + i * 1.256f
-            val spread = radius * (1.08f + i * 0.09f)
-            val sx = cx + cos(angle) * spread
-            val sy = cy + sin(angle) * spread * 0.56f
-            val ex = cx + cos(angle + 1.55f) * spread * 0.94f
-            val ey = cy + sin(angle + 1.55f) * spread * 0.56f
-            path.reset()
-            path.moveTo(sx, sy)
-            path.cubicTo(
-                cx + cos(angle + 0.8f) * radius * (0.7f + energy * 0.18f),
-                cy + sin(angle + 0.8f) * radius * 0.8f,
-                cx + cos(angle + 1.9f) * radius * 1.1f,
-                cy + sin(angle + 1.9f) * radius * 0.52f,
-                ex, ey
-            )
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = ink.dp(if (i == 0) 2.0f else 1.1f)
-            paint.color = if (i % 2 == 0)
-                Color.argb((38 + energy * 105).toInt(), 76, 224, 255)
-            else Color.argb((42 + energy * 100).toInt(), 174, 105, 255)
-            canvas.drawPath(path, paint)
+            val scale = 0.42f + i * 0.145f
+            rect.set(cx - radius * scale, cy - radius * scale * 0.76f,
+                cx + radius * scale, cy + radius * scale * 0.76f)
+            paint.color = Color.argb((25 + energy * 35).toInt(), 119, 218, 255)
+            canvas.drawOval(rect, paint)
+        }
+        // Fine longitude arcs give the sphere a holographic 3D mesh.
+        for (i in -3..3) {
+            val offset = i / 4f
+            val half = radius * kotlin.math.sqrt(1f - offset * offset)
+            rect.set(cx - half, cy - radius * 0.76f, cx + half, cy + radius * 0.76f)
+            paint.color = Color.argb(34, 126, 195, 255)
+            canvas.drawOval(rect, paint)
         }
         paint.style = Paint.Style.FILL
     }
 
-    private fun drawParticles(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
-        for (i in 0 until 42) {
-            val angle = i * (Math.PI.toFloat() * 2f / 42f) +
-                phase * (if (i % 2 == 0) 0.32f else -0.24f)
-            val orbit = radius * (1.25f + (i % 5) * 0.19f + energy * (i % 3) * 0.10f)
-            val x = cx + cos(angle) * orbit
-            val y = cy + sin(angle) * orbit * 0.58f
-            val pulse = 0.55f + 0.45f * sin(phase * 1.7f + i * 2.1f)
-            val alpha = (45 + pulse * 95 + energy * 100).toInt().coerceIn(0, 235)
-            paint.color = if (i % 3 == 0) Color.argb(alpha, 194, 126, 255)
-                else Color.argb(alpha, 96, 226, 255)
-            val dot = ink.dp((0.8f + (i % 4) * 0.32f) * (1f + energy * 0.65f))
-            canvas.drawCircle(x, y, dot, paint)
+    private fun drawRadialEqualizer(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        val count = 256
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.BUTT
+        for (i in 0 until count) {
+            val angle = (i.toFloat() / count) * (PI.toFloat() * 2f)
+            val sampleIndex = ((i.toFloat() / count) * LEVEL_SAMPLES).toInt()
+                .coerceIn(0, LEVEL_SAMPLES - 1)
+            val sample = levels[sampleIndex]
+            val harmonic = 0.5f + 0.5f * sin(angle * 11f - phase * 1.35f)
+            val detail = 0.5f + 0.5f * sin(angle * 23f + phase * 0.72f)
+            val amplitude = (sample * 0.72f + currentVolume * 0.20f +
+                harmonic * 0.055f + detail * 0.025f).coerceIn(0f, 1f)
+            val start = radius * (0.88f + amplitude * 0.045f)
+            val end = radius * (1.03f + amplitude * (0.58f + energy * 0.22f))
+            val x1 = cx + cos(angle) * start
+            val y1 = cy + sin(angle) * start * 0.76f
+            val x2 = cx + cos(angle) * end
+            val y2 = cy + sin(angle) * end * 0.76f
+            val front = sin(angle) > -0.08f
+            val alpha = (if (front) 105 else 65) + (amplitude * 145f).toInt()
+            paint.color = if (i % 7 == 0)
+                Color.argb(alpha.coerceAtMost(245), 189, 131, 255)
+            else Color.argb(alpha.coerceAtMost(245), 82, 226, 255)
+            paint.strokeWidth = ink.dp(if (i % 8 == 0) 2.0f else 1.25f)
+            canvas.drawLine(x1, y1, x2, y2, paint)
         }
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.style = Paint.Style.FILL
     }
 
-    private fun drawCore(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+    private fun drawFrontSpectrum(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
+        // Bright lower hemisphere arcs sit in front of the sphere, enhancing depth.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = ink.dp(1.5f)
+        rect.set(cx - radius * 1.02f, cy - radius * 0.77f,
+            cx + radius * 1.02f, cy + radius * 0.77f)
+        paint.color = Color.argb((75 + energy * 110).toInt(), 88, 222, 255)
+        canvas.drawArc(rect, 8f, 164f, false, paint)
+        paint.strokeWidth = ink.dp(1.0f)
+        paint.color = Color.argb((48 + energy * 82).toInt(), 176, 118, 255)
+        canvas.drawArc(rect, 188f, 164f, false, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun drawCoreGlass(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
         paint.style = Paint.Style.FILL
         paint.shader = RadialGradient(
-            cx - radius * 0.24f, cy - radius * 0.30f, radius * 1.28f,
-            intArrayOf(
-                0xFFF0FFFF.toInt(), 0xFF75EFFF.toInt(), 0xFF3B8EEB.toInt(),
-                0xFF7139C5.toInt(), 0xFF17112F.toInt(), 0x0017112F
-            ),
-            floatArrayOf(0f, 0.12f, 0.34f, 0.62f, 0.88f, 1f),
-            Shader.TileMode.CLAMP
+            cx - radius * 0.24f, cy - radius * 0.31f, radius * 1.12f,
+            intArrayOf(0xFF1B4D75.toInt(), 0xE9132B58.toInt(), 0xD50C1234.toInt(),
+                0xB10A0B25.toInt(), 0x00204070),
+            floatArrayOf(0f, 0.28f, 0.62f, 0.86f, 1f), Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, radius * (1.03f + energy * 0.08f), paint)
+        canvas.drawCircle(cx, cy, radius * 0.94f, paint)
         paint.shader = null
 
-        // 玻璃质感高光与内部流动的弧形纹理。
+        // Fine glass rim and a soft specular highlight.
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(1.3f)
-        paint.color = Color.argb((100 + energy * 90).toInt(), 203, 250, 255)
-        ringRect.set(cx - radius * 0.78f, cy - radius * 0.78f,
-            cx + radius * 0.78f, cy + radius * 0.78f)
-        canvas.drawArc(ringRect, 205f + phase * 18f, 112f, false, paint)
-        paint.color = Color.argb((65 + energy * 100).toInt(), 190, 128, 255)
-        canvas.drawArc(ringRect, 28f - phase * 12f, 88f, false, paint)
+        paint.strokeWidth = ink.dp(1.6f)
+        rect.set(cx - radius * 0.94f, cy - radius * 0.94f,
+            cx + radius * 0.94f, cy + radius * 0.94f)
+        paint.color = Color.argb((90 + energy * 100).toInt(), 130, 232, 255)
+        canvas.drawArc(rect, 202f + phase * 7f, 118f, false, paint)
+        paint.color = Color.argb(85, 188, 134, 255)
+        canvas.drawArc(rect, 22f - phase * 5f, 82f, false, paint)
         paint.style = Paint.Style.FILL
 
-        // 核心中心的亮点，不使用实时模糊滤镜，控制 GPU 开销。
         paint.shader = RadialGradient(
-            cx - radius * 0.12f, cy - radius * 0.18f, radius * 0.62f,
-            intArrayOf(0x99FFFFFF.toInt(), 0x3389F5FF, 0x001A1A55),
-            floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP
+            cx - radius * 0.36f, cy - radius * 0.45f, radius * 0.9f,
+            intArrayOf(0x3FFFFFFF, 0x12A5F5FF, 0x00000000),
+            floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(cx, cy, radius * 0.62f, paint)
+        canvas.drawCircle(cx, cy, radius * 0.9f, paint)
         paint.shader = null
     }
 
-    private fun drawMicrophone(canvas: Canvas, cx: Float, cy: Float, radius: Float, energy: Float) {
-        val r = micRadius() * 0.78f
+    private fun drawMicrophone(canvas: Canvas, cx: Float, cy: Float, energy: Float) {
+        val r = micRadius() * 0.72f
         paint.shader = null
-        paint.color = Color.argb((225 + energy * 30).toInt().coerceIn(0, 255), 255, 255, 255)
+        paint.color = Color.argb((225 + energy * 30).toInt().coerceIn(0, 255), 244, 253, 255)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = ink.dp(2.5f)
+        paint.strokeWidth = ink.dp(2.4f)
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
-        canvas.drawRoundRect(
-            cx - r * 0.30f, cy - r * 0.72f,
-            cx + r * 0.30f, cy + r * 0.24f,
-            r * 0.30f, r * 0.30f, paint
-        )
-        micRect.set(cx - r * 0.62f, cy - r * 0.20f,
-            cx + r * 0.62f, cy + r * 0.70f)
-        canvas.drawArc(micRect, 0f, 180f, false, paint)
-        canvas.drawLine(cx, cy + r * 0.70f, cx, cy + r * 1.02f, paint)
-        canvas.drawLine(cx - r * 0.36f, cy + r * 1.02f,
-            cx + r * 0.36f, cy + r * 1.02f, paint)
+        canvas.drawRoundRect(cx - r * 0.29f, cy - r * 0.72f,
+            cx + r * 0.29f, cy + r * 0.22f, r * 0.29f, r * 0.29f, paint)
+        rect.set(cx - r * 0.61f, cy - r * 0.2f, cx + r * 0.61f, cy + r * 0.66f)
+        canvas.drawArc(rect, 0f, 180f, false, paint)
+        canvas.drawLine(cx, cy + r * 0.66f, cx, cy + r * 0.98f, paint)
+        canvas.drawLine(cx - r * 0.34f, cy + r * 0.98f,
+            cx + r * 0.34f, cy + r * 0.98f, paint)
         paint.style = Paint.Style.FILL
     }
 
@@ -331,7 +331,7 @@ class VoicePanel(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val x = event.x
         val y = event.y
-        val micHit = hypot(x - width / 2f, y - micCenterY()) <= micRadius() + ink.dp(18f)
+        val micHit = hypot(x - width / 2f, y - height * 0.475f) <= micRadius() + ink.dp(18f)
         val action = targetAt(x, y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
