@@ -128,23 +128,43 @@ class KeyPainter(
         }
     }
 
-    /** 删除键上滑清空、下滑撤销的方向提示，放在主图标两侧避免遮挡。 */
+    /** 删除键提示上下排列：上方垃圾桶表示清空，下方回转箭头表示撤销。 */
     private fun drawBackspaceGestureHints(canvas: Canvas, bounds: RectF) {
-        val cy = bounds.centerY()
-        val offset = 17f * density
-        val half = 4f * density
+        val cx = bounds.centerX()
+        val topY = bounds.top + bounds.height() * 0.23f
+        val bottomY = bounds.bottom - bounds.height() * 0.23f
+        val size = 8f * density
         gestureHint.color = palette.brand
-        gestureHint.strokeWidth = 1.8f * density
-        // 左侧向上箭头：上滑清空
-        val upX = bounds.centerX() - offset
-        canvas.drawLine(upX, cy + half, upX, cy - half, gestureHint)
-        canvas.drawLine(upX - half, cy - half + half, upX, cy - half, gestureHint)
-        canvas.drawLine(upX + half, cy - half + half, upX, cy - half, gestureHint)
-        // 右侧向下箭头：下滑撤销
-        val downX = bounds.centerX() + offset
-        canvas.drawLine(downX, cy - half, downX, cy + half, gestureHint)
-        canvas.drawLine(downX - half, cy + half - half, downX, cy + half, gestureHint)
-        canvas.drawLine(downX + half, cy + half - half, downX, cy + half, gestureHint)
+        gestureHint.strokeWidth = 1.45f * density
+
+        // 上方：垃圾桶图标，表达“清空”动作，不使用上滑箭头。
+        val binLeft = cx - size * 0.34f
+        val binRight = cx + size * 0.34f
+        val binTop = topY - size * 0.28f
+        val binBottom = topY + size * 0.42f
+        canvas.drawLine(cx - size * 0.48f, binTop - size * 0.12f,
+            cx + size * 0.48f, binTop - size * 0.12f, gestureHint)
+        canvas.drawLine(cx - size * 0.18f, binTop - size * 0.30f,
+            cx + size * 0.18f, binTop - size * 0.30f, gestureHint)
+        canvas.drawRoundRect(binLeft, binTop, binRight, binBottom,
+            size * 0.08f, size * 0.08f, gestureHint)
+        canvas.drawLine(cx - size * 0.12f, binTop + size * 0.12f,
+            cx - size * 0.12f, binBottom - size * 0.10f, gestureHint)
+        canvas.drawLine(cx + size * 0.12f, binTop + size * 0.12f,
+            cx + size * 0.12f, binBottom - size * 0.10f, gestureHint)
+
+        // 下方：向左回转的撤销符号，表达恢复上一状态。
+        val undo = android.graphics.Path().apply {
+            moveTo(cx + size * 0.38f, bottomY - size * 0.12f)
+            cubicTo(cx + size * 0.34f, bottomY - size * 0.55f,
+                cx - size * 0.24f, bottomY - size * 0.58f,
+                cx - size * 0.34f, bottomY - size * 0.08f)
+            moveTo(cx - size * 0.34f, bottomY - size * 0.08f)
+            lineTo(cx - size * 0.34f, bottomY - size * 0.42f)
+            moveTo(cx - size * 0.34f, bottomY - size * 0.08f)
+            lineTo(cx + size * 0.02f, bottomY - size * 0.08f)
+        }
+        canvas.drawPath(undo, gestureHint)
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
