@@ -59,6 +59,9 @@ class VoicePanel(
     private val touchLocation = IntArray(2)
 
     private var touchTarget = Target.NONE
+    private var micPressed = false
+    private var touchStartY = 0f
+    private var swipeToCancel = false
     var target = Target.NONE
         private set
 
@@ -128,6 +131,9 @@ class VoicePanel(
         val action = targetAt(x, y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                touchStartY = y
+                swipeToCancel = false
+                micPressed = micHit
                 touchTarget = when {
                     micHit -> Target.NONE
                     action != Target.NONE -> action
@@ -135,25 +141,41 @@ class VoicePanel(
                 }
                 return true
             }
-            MotionEvent.ACTION_MOVE -> return touchTarget != Target.NONE
+            MotionEvent.ACTION_MOVE -> {
+                if (micPressed && touchStartY - y > 44f * resources.displayMetrics.density) {
+                    swipeToCancel = true
+                    target = Target.CANCEL
+                    overlay.invalidate()
+                }
+                return micPressed || touchTarget != Target.NONE
+            }
             MotionEvent.ACTION_UP -> {
                 when {
+                    swipeToCancel -> actions.onCancel()
                     touchTarget == Target.CANCEL || action == Target.CANCEL -> actions.onCancel()
                     touchTarget == Target.ACTION || action == Target.ACTION ->
                         actions.onFinish(act = true, hide = false)
-                    touchTarget == Target.NONE && micHit ->
-                        actions.onFinish(act = false, hide = false)
+                    micPressed && micHit -> actions.onFinish(act = false, hide = false)
                     else -> {
                         touchTarget = Target.NONE
+                        micPressed = false
+                        swipeToCancel = false
                         return super.dispatchTouchEvent(event)
                     }
                 }
                 touchTarget = Target.NONE
+                micPressed = false
+                swipeToCancel = false
+                target = Target.NONE
                 Haptics.tap(context)
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
                 touchTarget = Target.NONE
+                micPressed = false
+                swipeToCancel = false
+                target = Target.NONE
+                overlay.invalidate()
                 return true
             }
         }
