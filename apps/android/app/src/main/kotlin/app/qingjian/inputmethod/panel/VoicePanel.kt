@@ -42,6 +42,7 @@ class VoicePanel(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
     private val micHighlightRect = RectF()
+    private val micStandRect = RectF()
     private val orbitRects = Array(3) { RectF() }
     private val orbitTailRects = Array(3) { RectF() }
     private val location = IntArray(2)
@@ -271,9 +272,9 @@ class VoicePanel(
             cx - sphereR * 0.105f, micTop, cx + sphereR * 0.105f, micBottom,
             sphereR * 0.105f, sphereR * 0.105f, paint
         )
-        val stand = RectF(cx - sphereR * 0.26f, cy - sphereR * 0.12f,
+        micStandRect.set(cx - sphereR * 0.26f, cy - sphereR * 0.12f,
             cx + sphereR * 0.26f, cy + sphereR * 0.30f)
-        canvas.drawArc(stand, 0f, 180f, false, paint)
+        canvas.drawArc(micStandRect, 0f, 180f, false, paint)
         canvas.drawLine(cx, cy + sphereR * 0.30f, cx, cy + sphereR * 0.43f, paint)
         canvas.drawLine(cx - sphereR * 0.17f, cy + sphereR * 0.43f,
             cx + sphereR * 0.17f, cy + sphereR * 0.43f, paint)
