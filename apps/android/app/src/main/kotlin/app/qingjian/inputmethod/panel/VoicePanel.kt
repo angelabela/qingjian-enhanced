@@ -16,6 +16,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.sin
 
@@ -58,6 +59,7 @@ class VoicePanel(
     private var sphereShader: Shader? = null
     private var edgeShader: Shader? = null
     private var phase = 0f
+    private var lastFrameNanos = 0L
     private var touchTarget = Target.NONE
 
     var holding = false
@@ -155,15 +157,27 @@ class VoicePanel(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val active = holding || listening || recognizing
+        // Drive animation from frame time, not draw count: dropped frames must not
+        // change animation speed or create uneven phase steps on different refresh rates.
+        val frameNanos = System.nanoTime()
+        val deltaSeconds = if (lastFrameNanos == 0L) {
+            1f / 60f
+        } else {
+            ((frameNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+        }
+        lastFrameNanos = frameNanos
+        phase = (phase + deltaSeconds * if (active) 1.56f else 0.72f) % (2f * PI.toFloat())
         val weightedLevel = levels.indices.fold(0f) { total, index ->
             val weight = (index + 1).toFloat() / BARS
             total + levels[index] * weight
         }
         val recentLevel = weightedLevel / (BARS * 0.505f)
         val inputLevel = if (active) recentLevel.coerceIn(0f, 1f) else 0f
-        ringEnergy += (inputLevel - ringEnergy) * if (active) 0.24f else 0.075f
+        val ringSmoothing = 1f - exp(-(if (active) 16.5f else 4.7f) * deltaSeconds)
+        ringEnergy += (inputLevel - ringEnergy) * ringSmoothing
         val targetDim = if (active) 0.30f else 0.12f
-        dimProgress += (targetDim - dimProgress) * 0.10f
+        val dimSmoothing = 1f - exp(-6.3f * deltaSeconds)
+        dimProgress += (targetDim - dimProgress) * dimSmoothing
 
         val cx = width / 2f
         val cy = micCenterY()
@@ -171,7 +185,8 @@ class VoicePanel(
         val radius = minOf(ink.dp(82f), minSide * 0.205f)
         val breath = 0.5f + 0.5f * sin(phase * 0.42f)
         val pulse = 1f + breath * 0.025f + ringEnergy * 0.115f
-        sphereScale += ((1f + ringEnergy * 0.10f) - sphereScale) * 0.16f
+        val sphereSmoothing = 1f - exp(-10.5f * deltaSeconds)
+        sphereScale += ((1f + ringEnergy * 0.10f) - sphereScale) * sphereSmoothing
         val sphereR = radius * pulse * sphereScale
 
         // 深蓝至暗紫的宇宙底色，键盘轮廓仍隐约可见。
@@ -290,7 +305,6 @@ class VoicePanel(
             if (target == Target.ACTION) palette.brand else 0xFFD6D9FF.toInt(), width * 0.83f, actionY,
             bold = target == Target.ACTION)
 
-        phase = (phase + if (active) 0.026f else 0.012f) % (2f * PI.toFloat())
         if (active || dimProgress > 0.122f || kotlin.math.abs(sphereScale - 1f) > 0.002f) {
             postInvalidateOnAnimation()
         }
