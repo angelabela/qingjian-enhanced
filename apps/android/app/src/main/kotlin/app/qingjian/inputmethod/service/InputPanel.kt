@@ -11,6 +11,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
+import app.qingjian.inputmethod.effects.GpuEffectBus
+import app.qingjian.inputmethod.effects.GpuEffectsView
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
@@ -88,6 +90,7 @@ class InputPanel(
         clipChildren = false
         clipToPadding = false
         addView(main)
+        addView(GpuEffectsView(context), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
@@ -116,6 +119,7 @@ class InputPanel(
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
     fun open(kind: PanelKind, text: String = "") {
         close()
+        pulsePanelEffect()
         val header = bar.barHeight
         val panel = when (kind) {
             PanelKind.FUNCTIONS -> FunctionPanel(context, palette, actions, header, settings)
@@ -143,6 +147,7 @@ class InputPanel(
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
+        pulsePanelEffect()
         return VoicePanel(context, palette, actionLabel, actions).also { voice ->
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -154,6 +159,7 @@ class InputPanel(
     }
 
     private fun cover(kind: PanelKind, panel: View) {
+        pulsePanelEffect()
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
@@ -176,6 +182,14 @@ class InputPanel(
     }
 
     private var overlay: View? = null
+
+    private fun pulsePanelEffect() {
+        stack.post {
+            val location = IntArray(2)
+            stack.getLocationOnScreen(location)
+            GpuEffectBus.pulse(location[0] + stack.width * 0.5f, location[1] + stack.height * 0.5f, 0.72f)
+        }
+    }
 
     val view: View get() = root
 
