@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -19,7 +18,6 @@ import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.sin
 
 /**
@@ -47,9 +45,7 @@ class VoicePanel(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
-    private val path = Path()
     private val location = IntArray(2)
-    private val density = resources.displayMetrics.density
 
     var holding = false
         set(value) { field = value; invalidate() }
@@ -63,6 +59,10 @@ class VoicePanel(
     private val levels = FloatArray(BARS)
     private var attached = false
     private var smoothedLevel = 0f
+    private var ambientShader: Shader? = null
+    private var bloomShader: Shader? = null
+    private var coreShader: Shader? = null
+    private var ringShaders: Array<Shader?> = arrayOfNulls(3)
 
     init {
         // Keep the existing keyboard/theme surface intact; only the voice artwork is violet.
@@ -90,7 +90,7 @@ class VoicePanel(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         attached = true
-        postInvalidateOnAnimation()
+        postOnAnimationDelayed(frameTick, FRAME_MS)
     }
 
     override fun onDetachedFromWindow() {
@@ -102,7 +102,44 @@ class VoicePanel(
     private val frameTick = Runnable {
         if (attached) {
             invalidate()
-            postInvalidateDelayed(FRAME_MS)
+            postOnAnimationDelayed(frameTick, FRAME_MS)
+        }
+    }
+
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w <= 0 || h <= 0) return
+        val fw = w.toFloat()
+        val fh = h.toFloat()
+        val cx = fw * 0.5f
+        val cy = fh * 0.36f
+        ambientShader = RadialGradient(
+            cx, cy, fw * 0.78f,
+            intArrayOf(withAlpha(VIOLET, 0x38), withAlpha(MAGENTA, 0x1C),
+                withAlpha(palette.board, 0)),
+            floatArrayOf(0f, 0.56f, 1f), Shader.TileMode.CLAMP
+        )
+        val base = ink.dp(39f)
+        bloomShader = RadialGradient(
+            cx, fh * 0.34f, base * 3.35f,
+            intArrayOf(withAlpha(PINK, 0x58), withAlpha(VIOLET, 0x32),
+                withAlpha(PURPLE, 0x12), withAlpha(palette.board, 0)),
+            floatArrayOf(0f, 0.38f, 0.72f, 1f), Shader.TileMode.CLAMP
+        )
+        coreShader = RadialGradient(
+            cx - base * 0.28f, fh * 0.34f - base * 0.38f, base * 1.75f,
+            intArrayOf(0xFFFFF0FF.toInt(), PINK, VIOLET, PURPLE),
+            floatArrayOf(0f, 0.34f, 0.72f, 1f), Shader.TileMode.CLAMP
+        )
+        ringShaders = Array(3) { i ->
+            val maxRadius = base * (1.30f + i * 0.43f) + ink.dp(16f)
+            LinearGradient(
+                cx - maxRadius, fh * 0.34f - maxRadius,
+                cx + maxRadius, fh * 0.34f + maxRadius,
+                intArrayOf(LAVENDER, PINK, VIOLET),
+                null, Shader.TileMode.CLAMP
+            )
         }
     }
 
@@ -173,16 +210,10 @@ class VoicePanel(
         val rowY = h - ink.dp(22f)
         drawBottomAction(canvas, ink.dp(42f), rowY, "收起", Icon.HIDE)
         drawBottomAction(canvas, w - ink.dp(42f), rowY, "键盘", Icon.KEYBOARD)
-        if (attached) postInvalidateDelayed(FRAME_MS)
     }
 
     private fun drawAmbient(canvas: Canvas, w: Float, h: Float, now: Long) {
-        glow.shader = RadialGradient(
-            w * 0.5f, h * 0.36f, w * 0.78f,
-            intArrayOf(withAlpha(VIOLET, 0x38), withAlpha(MAGENTA, 0x1C),
-                withAlpha(palette.board, 0)),
-            floatArrayOf(0f, 0.56f, 1f), Shader.TileMode.CLAMP
-        )
+        glow.shader = ambientShader
         canvas.drawRect(0f, 0f, w, h, glow)
         glow.shader = null
 
@@ -227,12 +258,7 @@ class VoicePanel(
         val rotation = now / 11500f * 360f
 
         // Soft volumetric bloom behind the three independent halo layers.
-        glow.shader = RadialGradient(
-            cx, cy, base * 3.35f,
-            intArrayOf(withAlpha(PINK, 0x58), withAlpha(VIOLET, 0x32),
-                withAlpha(PURPLE, 0x12), withAlpha(palette.board, 0)),
-            floatArrayOf(0f, 0.38f, 0.72f, 1f), Shader.TileMode.CLAMP
-        )
+        glow.shader = bloomShader
         canvas.drawCircle(cx, cy, base * 3.35f, glow)
         glow.shader = null
 
@@ -244,13 +270,7 @@ class VoicePanel(
                 ink.dp(11f) * response
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = ink.dp(if (i == 0) 2.4f else 1.6f)
-            paint.shader = LinearGradient(
-                cx - ringRadius, cy - ringRadius, cx + ringRadius, cy + ringRadius,
-                intArrayOf(withAlpha(LAVENDER, (150 + ringBreath * 70).toInt()),
-                    withAlpha(PINK, (115 + response * 110).toInt()),
-                    withAlpha(VIOLET, (145 + ringBreath * 70).toInt())),
-                null, Shader.TileMode.CLAMP
-            )
+            paint.shader = ringShaders[i]
             canvas.drawCircle(cx, cy, ringRadius, paint)
             paint.shader = null
             paint.style = Paint.Style.FILL
@@ -280,11 +300,7 @@ class VoicePanel(
         }
 
         // Glass-like violet core with a bright lavender centre.
-        glow.shader = RadialGradient(
-            cx - base * 0.28f, cy - base * 0.38f, base * 1.75f,
-            intArrayOf(0xFFFFF0FF.toInt(), PINK, VIOLET, PURPLE),
-            floatArrayOf(0f, 0.34f, 0.72f, 1f), Shader.TileMode.CLAMP
-        )
+        glow.shader = coreShader
         canvas.drawCircle(cx, cy, base * (1f + pulse * 0.06f), glow)
         glow.shader = null
         paint.style = Paint.Style.STROKE
