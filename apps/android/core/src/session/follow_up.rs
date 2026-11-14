@@ -5,7 +5,7 @@ use super::Session;
 use crate::frame::{Frame, FrameCandidate};
 
 /// 候选条上一次放几个联想词：一屏放得下，再多的排在后面也很少有人往后翻。
-const FOLLOW_UP_COUNT: usize = 8;
+const FOLLOW_UP_COUNT: usize = 12;
 
 impl Session {
     /// 刚上屏了 `committed`、组句也结束了：把联想词接在 `frame` 的候选后面。开关关着、工具框开着、日语模式不给。
