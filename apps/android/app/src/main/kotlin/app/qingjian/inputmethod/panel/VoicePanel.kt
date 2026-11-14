@@ -18,8 +18,6 @@ import android.widget.ImageView
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.sin
 
 /** 语音面板：半透明毛玻璃键盘底图 + 随麦克风音量变化的实时波形。 */
@@ -44,7 +42,9 @@ class VoicePanel(
     private val scrim = View(context)
     private val overlay = OverlayView(context)
     private val levels = FloatArray(SAMPLE_COUNT)
+    private val smoothedLevels = FloatArray(SAMPLE_COUNT)
     private var sampleCursor = 0
+    private var lastFrameNanos = 0L
     private var touchTarget = Target.NONE
     var target = Target.NONE
         private set
@@ -80,7 +80,8 @@ class VoicePanel(
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
         // 深蓝黑色染色层保留键盘轮廓与键位明暗，但压低对比度，形成毛玻璃观感。
-        scrim.setBackgroundColor(0xA90A1024.toInt())
+        // 遮罩不透明度较上一版降低约一半，让键盘底图与毛玻璃层次更明显。
+        scrim.setBackgroundColor(0x550A1024.toInt())
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
@@ -172,24 +173,46 @@ class VoicePanel(
             val cy = height * 0.475f
             synchronized(levels) { for (i in samples.indices) samples[i] = levels[(sampleCursor + i) % SAMPLE_COUNT] }
 
-            // 两条柔和的声波轨迹；波峰直接来自实时音量采样，不再绘制球体或圆形扩散环。
-            val now = System.nanoTime() / 1_000_000_000.0
+            // 以时间常数平滑音量输入，避免采样回调间隔造成振幅一格一格跳变。
+            val frameNanos = System.nanoTime()
+            val deltaSeconds = if (lastFrameNanos == 0L) 1.0 / 60.0
+                else ((frameNanos - lastFrameNanos) / 1_000_000_000.0).coerceIn(0.0, 0.05)
+            lastFrameNanos = frameNanos
+            val blend = (1.0 - kotlin.math.exp(-deltaSeconds / 0.075)).toFloat()
+            for (i in smoothedLevels.indices) {
+                smoothedLevels[i] += (samples[i] - smoothedLevels[i]) * blend
+            }
+
+            // 两条连续的流线：音量控制振幅，正弦相位缓慢推进，二次曲线消除折线锯齿感。
+            val now = frameNanos / 1_000_000_000.0
             val halfWidth = width * 0.43f
             for (lane in 0..1) {
-                val baseY = cy + (lane - 0.5f) * 30f * d
+                val baseY = cy + (lane - 0.5f) * 26f * d
                 path.reset()
+                var previousX = 0f
+                var previousY = 0f
                 for (i in 0 until SAMPLE_COUNT) {
                     val x = cx - halfWidth + (2f * halfWidth * i / (SAMPLE_COUNT - 1))
-                    val sample = samples[i]
-                    val wave = (sin(now * 2.1 + i * 0.31 + lane * 0.9) * 0.16f).toFloat()
-                    val amplitude = (sample * 58f * d + abs(wave) * 4f * d).coerceAtLeast(2f * d)
-                    val y = baseY + (if (i % 2 == 0) -1f else 1f) * amplitude
-                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    val envelope = smoothedLevels[i]
+                    val phase = now * 2.35 + i * 0.34 - lane * 0.8
+                    val organicWave = sin(phase).toFloat()
+                    val amplitude = (8f + envelope * 48f) * d
+                    val y = baseY + organicWave * amplitude * (if (lane == 0) 1f else 0.68f)
+                    if (i == 0) {
+                        path.moveTo(x, y)
+                    } else {
+                        val midX = (previousX + x) * 0.5f
+                        val midY = (previousY + y) * 0.5f
+                        path.quadTo(previousX, previousY, midX, midY)
+                    }
+                    previousX = x
+                    previousY = y
                 }
+                path.lineTo(previousX, previousY)
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.ROUND
                 paint.strokeJoin = Paint.Join.ROUND
-                paint.strokeWidth = if (lane == 0) 2.4f * d else 1.35f * d
+                paint.strokeWidth = if (lane == 0) 2.6f * d else 1.45f * d
                 paint.shader = LinearGradient(
                     cx - halfWidth, baseY, cx + halfWidth, baseY,
                     if (lane == 0) intArrayOf(0x0037DFFF, 0xE85FE8FF.toInt(), 0xD99D72FF.toInt(), 0x0037DFFF)
