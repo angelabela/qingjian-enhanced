@@ -38,8 +38,30 @@ class AdvancedActivity : PageActivity() {
     private var restoring = false
 
     override fun content(): List<View> = listOf(
+        // 原有的独立数据/设置备份恢复入口继续保留。
         ui.group(
             R.string.data_backup_section,
+            ui.action(R.string.export_title, getString(if (exporting) R.string.export_running else R.string.export_value)) {
+                if (!exporting && !restoring) pickTarget(CREATE_ZIP)
+            },
+            ui.action(R.string.restore_data_title, getString(if (restoring) R.string.restore_running else R.string.restore_data_value)) {
+                if (!exporting && !restoring) pickSource(RESTORE_ZIP)
+            },
+            footer = R.string.data_backup_note,
+        ),
+        ui.group(
+            R.string.settings_backup_section,
+            ui.action(R.string.settings_backup_title, null) {
+                if (!exporting && !restoring) pickTarget(BACKUP_SETTINGS)
+            },
+            ui.action(R.string.settings_restore_title, null) {
+                if (!exporting && !restoring) pickSource(RESTORE_SETTINGS)
+            },
+            footer = R.string.settings_backup_note,
+        ),
+        // 新增的一键功能独立成组，不替代上面的旧功能。
+        ui.group(
+            R.string.backup_all_title,
             ui.action(
                 R.string.backup_all_title,
                 getString(if (exporting) R.string.backup_all_running else R.string.backup_all_value),
@@ -127,8 +149,24 @@ class AdvancedActivity : PageActivity() {
     }
 
     private fun pickTarget(request: Int) {
-        // 仅日志导出继续使用系统文件选择器；个人数据与设置由「一键备份」统一保存到 Download。
-        openCreateDocument(request)
+        // 保留原有的独立备份：Android 10+ 自动写入 Download；旧系统使用系统文件选择器。
+        if (request == PACK_LOGS || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            openCreateDocument(request)
+            return
+        }
+        if (request == CREATE_ZIP) Engine.flushAll()
+        val settings = request == BACKUP_SETTINGS
+        runBackground(
+            if (settings) "qingjian-settings-backup" else "qingjian-data-backup",
+            {
+                val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                    .format(java.util.Date())
+                writeBackupToDownloads(settings, stamp).second
+            },
+        ) { count ->
+            if (settings) getString(R.string.settings_backup_done, count)
+            else getString(R.string.export_done, count)
+        }
     }
 
     private fun openCreateDocument(request: Int) {
