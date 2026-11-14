@@ -125,6 +125,8 @@ class QingjianInputMethodService :
 
     /** 语音输入：长按空格、工具栏话筒、全面屏底栏的语音键都进它。 */
     private lateinit var voice: VoiceInput
+    private val smartInfo by lazy { SmartInfoProvider(this) }
+    private var smartInfoSequence = 0
 
     /** 返回键关了面板，它的抬起也要吞掉。 */
     private var backConsumed = false
@@ -341,6 +343,40 @@ class QingjianInputMethodService :
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
         if (candidatesEnd == -1 && newSelStart == newSelEnd) composer.refreshCompletions()
+        refreshSmartInfoSuggestions()
+    }
+
+
+    /** 输入地点 / 天气 / 内存等关键词后，异步更新一条可点击的实时信息候选。 */
+    private fun refreshSmartInfoSuggestions() {
+        val currentPanel = panel ?: return
+        if (editor != null || currentPanel.openPanel != null || shownPreedit.isNotEmpty()) return
+        val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
+        val trigger = SmartInfoProvider.TRIGGERS.firstOrNull { before.endsWith(it) }
+        if (trigger == null) {
+            smartInfoSequence++
+            currentPanel.showSmartSuggestions(emptyList()) {}
+            return
+        }
+        val request = ++smartInfoSequence
+        smartInfo.resolve(trigger) { value ->
+            if (request != smartInfoSequence) return@resolve
+            val latest = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
+            if (!latest.endsWith(trigger)) return@resolve
+            currentPanel.showSmartSuggestions(listOf(value)) { selected ->
+                if (selected == SmartInfoProvider.LOCATION_PERMISSION_HINT) {
+                    startActivity(
+                        Intent(this, LocationPermissionActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                } else {
+                    val input = currentInputConnection ?: return@showSmartSuggestions
+                    input.deleteSurroundingText(trigger.length, 0)
+                    input.commitText(selected, 1)
+                    currentPanel.showSmartSuggestions(emptyList()) {}
+                }
+            }
+        }
     }
 
     // 编辑条开着时打的字进编辑条
