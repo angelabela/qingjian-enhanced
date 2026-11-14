@@ -79,8 +79,27 @@ data class Settings(
     val textSize: TextSize,
     /** 工具栏中间那排放的工具，按勾的先后排（#777）。 */
     val toolbar: List<ToolbarTool>,
+    val enterSwipeUp: GestureAction,
+    val enterSwipeDown: GestureAction,
+    val backspaceSwipeUp: GestureAction,
+    val backspaceSwipeDown: GestureAction,
+    val spaceSwipeUp: GestureAction,
+    val spaceSwipeDown: GestureAction,
+    val symbolsSwipeUp: GestureAction,
+    val symbolsSwipeDown: GestureAction,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
+
+    /** 自定义按键滑动动作；DEFAULT 沿用原手势，NONE 明确关闭该方向。 */
+    enum class GestureAction(val label: String) {
+        DEFAULT("沿用默认"), NONE("无"), CLEAR_ALL("清空输入"), RESTORE_CLEAR("撤销清空"),
+        OPEN_CLIPBOARD("打开剪贴板"), SELECT_ALL("全选"), CUT("剪切"), COPY("复制"), PASTE("粘贴"),
+        OPEN_SYMBOLS("打开符号面板"), ENTER("执行回车"), SWITCH_LANGUAGE("切换中英文"), BACKSPACE("删除一个字");
+
+        companion object {
+            fun of(value: String?): GestureAction = entries.firstOrNull { it.name == value } ?: DEFAULT
+        }
+    }
 
     /**
      * 键位排法。改了按键位置的放进另一套，缺省那套一直不变（肌肉记忆）：
@@ -143,6 +162,14 @@ data class Settings(
         const val KEY_APPEARANCE = "appearance"
         const val KEY_TEXT_SIZE = "text_size"
         const val KEY_TOOLBAR = "toolbar"
+        const val KEY_ENTER_SWIPE_UP = "gesture_enter_up"
+        const val KEY_ENTER_SWIPE_DOWN = "gesture_enter_down"
+        const val KEY_BACKSPACE_SWIPE_UP = "gesture_backspace_up"
+        const val KEY_BACKSPACE_SWIPE_DOWN = "gesture_backspace_down"
+        const val KEY_SPACE_SWIPE_UP = "gesture_space_up"
+        const val KEY_SPACE_SWIPE_DOWN = "gesture_space_down"
+        const val KEY_SYMBOLS_SWIPE_UP = "gesture_symbols_up"
+        const val KEY_SYMBOLS_SWIPE_DOWN = "gesture_symbols_down"
 
         /** 没选过时的主题，同 PC 的缺省主题。 */
         const val DEFAULT_THEME = "qingjian"
@@ -225,6 +252,14 @@ data class Settings(
                 appearance = Appearance.of(prefs.getString(KEY_APPEARANCE, null)),
                 textSize = TextSize.of(prefs.getString(KEY_TEXT_SIZE, null)),
                 toolbar = ToolbarTool.parse(prefs.getString(KEY_TOOLBAR, null)),
+                enterSwipeUp = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_UP, null)),
+                enterSwipeDown = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_DOWN, null)),
+                backspaceSwipeUp = GestureAction.of(prefs.getString(KEY_BACKSPACE_SWIPE_UP, null)),
+                backspaceSwipeDown = GestureAction.of(prefs.getString(KEY_BACKSPACE_SWIPE_DOWN, null)),
+                spaceSwipeUp = GestureAction.of(prefs.getString(KEY_SPACE_SWIPE_UP, null)),
+                spaceSwipeDown = GestureAction.of(prefs.getString(KEY_SPACE_SWIPE_DOWN, null)),
+                symbolsSwipeUp = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_UP, null)),
+                symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
             )
         }
     }
