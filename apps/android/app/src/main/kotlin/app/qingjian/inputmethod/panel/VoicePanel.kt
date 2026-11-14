@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
@@ -19,8 +20,9 @@ import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.sin
+import kotlin.math.pow
 
-/** 语音面板：较轻的磨砂背景、双向流动粒子与真实音量响应波形。 */
+/** 语音面板：较轻的磨砂背景、随机渐变双声波与真实音量响应光晕。 */
 @SuppressLint("ViewConstructor")
 class VoicePanel(
     context: Context,
@@ -161,10 +163,19 @@ class VoicePanel(
         private val path = Path()
         private val d = resources.displayMetrics.density
         private val samples = FloatArray(SAMPLE_COUNT)
-        private val particleColors = intArrayOf(
-            0xFF57E8FF.toInt(), 0xFF8C78FF.toInt(), 0xFFFF70C8.toInt(),
-            0xFFB18CFF.toInt(), 0xFF67CFFF.toInt(), 0xFFE6A5FF.toInt(),
-        )
+        // 每次新建语音面板都重新抽取色相；上下两条线保持协调但不再固定为同一套颜色。
+        private val hueSeed = kotlin.random.Random.Default.nextFloat() * 360f
+        private val upperGradient = randomGradientColors(hueSeed)
+        private val lowerGradient = randomGradientColors((hueSeed + 62f + kotlin.random.Random.Default.nextFloat() * 78f) % 360f)
+
+        private fun randomGradientColors(baseHue: Float): IntArray {
+            val stops = listOf(0f, 34f, 76f)
+            val colors = stops.map { offset ->
+                Color.HSVToColor(floatArrayOf((baseHue + offset) % 360f, 0.82f, 1f))
+            }
+            fun alpha(color: Int, value: Int) = (color and 0x00FFFFFF) or (value shl 24)
+            return intArrayOf(alpha(colors[0], 0), alpha(colors[1], 238), alpha(colors[2], 220), alpha(colors[0], 0))
+        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
@@ -188,8 +199,8 @@ class VoicePanel(
             val now = frameNanos / 1_000_000_000.0
             val halfWidth = width * 0.43f
             val laneGap = 15f * d
-            val maxAmplitude = 42f * d
-            val active = smoothedLevels.any { it > 0.025f }
+            val maxAmplitude = 31f * d
+            val peakLevel = smoothedLevels.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
 
             for (lane in 0..1) {
                 val upper = lane == 0
@@ -203,7 +214,7 @@ class VoicePanel(
                     val phase = now * 2.15 + i * 0.39 + if (upper) 0.0 else 1.2
                     // 静音严格保持水平；有声音时，上轨向上、下轨向下展开。
                     val displacement = if (envelope <= 0.012f) 0f
-                        else abs(sin(phase)).toFloat() * envelope * maxAmplitude
+                        else abs(sin(phase)).toFloat().pow(2.25f) * envelope * maxAmplitude
                     val y = baseY + if (upper) -displacement else displacement
                     if (i == 0) path.moveTo(x, y) else {
                         val midX = (previousX + x) * 0.5f
@@ -217,33 +228,19 @@ class VoicePanel(
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.ROUND
                 paint.strokeJoin = Paint.Join.ROUND
-                paint.strokeWidth = if (upper) 2.5f * d else 1.8f * d
                 paint.shader = LinearGradient(
                     cx - halfWidth, baseY, cx + halfWidth, baseY,
-                    if (upper) intArrayOf(0x0057E8FF, 0xF057E8FF.toInt(), 0xE98D78FF.toInt(), 0x0057E8FF)
-                    else intArrayOf(0x008C78FF, 0xE58C78FF.toInt(), 0xE957CFFF.toInt(), 0x008C78FF),
+                    if (upper) upperGradient else lowerGradient,
                     null, Shader.TileMode.CLAMP,
                 )
+                // 声音越强，线条的柔光越明显、线芯略微增粗；没有声音时只留下干净的渐变直线。
+                paint.strokeWidth = 7f * d
+                paint.alpha = (18f + peakLevel * 54f).toInt()
+                canvas.drawPath(path, paint)
+                paint.strokeWidth = (if (upper) 2.4f else 1.8f) * d + peakLevel * 0.45f * d
+                paint.alpha = 255
                 canvas.drawPath(path, paint)
                 paint.shader = null
-
-                // 彩色光点沿两条线流动，方向相反；点位同样读取真实音量包络。
-                for (dot in 0 until DOT_COUNT) {
-                    val progress = ((dot.toFloat() / DOT_COUNT +
-                        (now * DOT_SPEED * if (upper) 1.0 else -1.0)) % 1.0 + 1.0) % 1.0
-                    val x = cx - halfWidth + progress.toFloat() * 2f * halfWidth
-                    val sampleIndex = (progress * (SAMPLE_COUNT - 1)).toInt().coerceIn(0, SAMPLE_COUNT - 1)
-                    val envelope = smoothedLevels[sampleIndex]
-                    val phase = now * 2.15 + sampleIndex * 0.39 + if (upper) 0.0 else 1.2
-                    val displacement = if (envelope <= 0.012f) 0f
-                        else abs(sin(phase)).toFloat() * envelope * maxAmplitude
-                    val y = baseY + if (upper) -displacement else displacement
-                    val radius = (1.5f + (dot % 3) * 0.55f) * d
-                    paint.style = Paint.Style.FILL
-                    paint.color = particleColors[(dot + if (upper) 0 else 3) % particleColors.size]
-                    paint.alpha = 205
-                    canvas.drawCircle(x, y, radius, paint)
-                }
             }
             paint.alpha = 255
 
@@ -260,7 +257,5 @@ class VoicePanel(
 
     private companion object {
         const val SAMPLE_COUNT = 48
-        const val DOT_COUNT = 13
-        const val DOT_SPEED = 0.075
     }
 }
