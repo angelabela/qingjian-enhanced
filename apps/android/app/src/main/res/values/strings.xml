@@ -217,6 +217,16 @@
     <string name="swipe_input_note">手指不抬起，依次划过要打的字母；打不出来就照常点</string>
     <string name="flick_symbols_title">上滑输入</string>
     <string name="flick_symbols_note">在键上往上一划（斜着划也算），上屏键上角的数字或符号</string>
+    <string name="gesture_custom_section">按键手势自定义</string>
+    <string name="gesture_custom_note">四个按键的上滑、下滑可分别指定动作；选择「沿用默认」保持原有行为，选择「无」关闭该方向。保存后立即生效。</string>
+    <string name="gesture_enter_up">回车键 · 上滑</string>
+    <string name="gesture_enter_down">回车键 · 下滑</string>
+    <string name="gesture_backspace_up">删除键 · 上滑</string>
+    <string name="gesture_backspace_down">删除键 · 下滑</string>
+    <string name="gesture_space_up">空格键 · 上滑</string>
+    <string name="gesture_space_down">空格键 · 下滑</string>
+    <string name="gesture_symbols_up">符号键 · 上滑</string>
+    <string name="gesture_symbols_down">符号键 · 下滑</string>
     <string name="long_press_upper_title">长按出大写</string>
     <string name="long_press_upper_note">长按字母不滑直接松手，上屏大写字母；关着时上屏键上角的符号</string>
     <string name="flick_clear_title">上划删除键清空</string>
