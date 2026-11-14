@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
@@ -162,18 +161,17 @@ class VoicePanel(
     private inner class OverlayView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
-        private val gradientMatrix = Matrix()
         private val d = resources.displayMetrics.density
         private val samples = FloatArray(SAMPLE_COUNT)
         // 每次新建语音面板都重新抽取色相；上下两条线保持协调但不再固定为同一套颜色。
         private val hueSeed = kotlin.random.Random.Default.nextFloat() * 360f
-        private val upperGradient = randomGradientColors(hueSeed)
-        private val lowerGradient = randomGradientColors((hueSeed + 62f + kotlin.random.Random.Default.nextFloat() * 78f) % 360f)
+        private val lowerHueSeed = (hueSeed + 62f + kotlin.random.Random.Default.nextFloat() * 78f) % 360f
 
-        private fun randomGradientColors(baseHue: Float): IntArray {
+        /** 固定线条位置，只让渐变色相本身平滑循环变化；不移动 Shader 或线条。 */
+        private fun gradientColors(baseHue: Float, hueShift: Float): IntArray {
             val stops = listOf(0f, 34f, 76f)
             val colors = stops.map { offset ->
-                Color.HSVToColor(floatArrayOf((baseHue + offset) % 360f, 0.82f, 1f))
+                Color.HSVToColor(floatArrayOf((baseHue + hueShift + offset) % 360f, 0.82f, 1f))
             }
             fun alpha(color: Int, value: Int) = (color and 0x00FFFFFF) or (value shl 24)
             return intArrayOf(alpha(colors[0], 0), alpha(colors[1], 238), alpha(colors[2], 220), alpha(colors[0], 0))
@@ -230,16 +228,13 @@ class VoicePanel(
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.ROUND
                 paint.strokeJoin = Paint.Join.ROUND
+                // 颜色渐变在原位随时间平滑变色，线条本身不平移、不改变位置。
+                val hueShift = (now * 24.0).toFloat() % 360f
                 paint.shader = LinearGradient(
                     cx - halfWidth, baseY, cx + halfWidth, baseY,
-                    if (upper) upperGradient else lowerGradient,
-                    null, Shader.TileMode.MIRROR,
-                ).also { shader ->
-                    // 渐变沿线条方向持续平移，镜像平铺保证首尾无缝衔接。
-                    val travel = ((now.toFloat() * 46f * d) % (halfWidth * 2f)) - halfWidth
-                    gradientMatrix.setTranslate(travel, 0f)
-                    shader.setLocalMatrix(gradientMatrix)
-                }
+                    gradientColors(if (upper) hueSeed else lowerHueSeed, hueShift),
+                    null, Shader.TileMode.CLAMP,
+                )
                 // 声音越强，线条的柔光越明显、线芯略微增粗；没有声音时只留下干净的渐变直线。
                 paint.strokeWidth = 7f * d
                 paint.alpha = (18f + peakLevel * 54f).toInt()
@@ -257,7 +252,7 @@ class VoicePanel(
             ink.text(canvas, actionLabel, 14f, if (target == Target.ACTION) palette.brand else palette.text,
                 width * 0.83f, actionY, bold = target == Target.ACTION)
 
-            // 顶部双线的渐变始终持续流动；面板离屏后由 View 生命周期自然停止绘制。
+            // 顶部双线的颜色持续平滑变化；面板离屏后由 View 生命周期自然停止绘制。
             if (isAttachedToWindow && visibility == View.VISIBLE) postInvalidateOnAnimation()
         }
     }
