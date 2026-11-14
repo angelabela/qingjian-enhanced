@@ -27,6 +27,7 @@ import app.qingjian.inputmethod.clipboard.ClipboardWatcher
 import app.qingjian.inputmethod.clipboard.sync.NeonEdgeView
 import org.json.JSONObject
 import android.icu.text.Transliterator
+import java.text.Normalizer
 import app.qingjian.inputmethod.contacts.ContactsSync
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
@@ -696,8 +697,9 @@ class QingjianInputMethodService :
             if (isHanCodePoint(codePoint)) {
                 val syllable = phraseTransliterator.transliterate(String(Character.toChars(codePoint)))
                     .lowercase()
-                    .filter { it in 'a'..'z' }
-                syllable.firstOrNull()?.let { append(it) }
+                // 统一分解带声调的拉丁字母，再取首个 ASCII 字母；兼容 a/e/o 等元音开头的汉字。
+                val normalized = Normalizer.normalize(syllable, Normalizer.Form.NFD)
+                normalized.firstOrNull { it in 'a'..'z' }?.let { append(it) }
             }
         }
     }
