@@ -350,6 +350,7 @@ class KeyboardView(
                         if (flicked.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
                         if (flicked.key is Key.Space) {
                             timer.removeCallbacks(spaceHold)
+                            if (voiceMode) listener.onVoiceRelease(cancel = true)
                             spacePointer = -1
                             cursorMode = false
                             voiceMode = false
