@@ -40,19 +40,19 @@ class AdvancedActivity : PageActivity() {
     override fun content(): List<View> = listOf(
         ui.group(
             R.string.data_backup_section,
-            ui.action(R.string.export_title, getString(if (exporting) R.string.export_running else R.string.export_value)) {
-                if (!exporting && !restoring) pickTarget(CREATE_ZIP)
+            ui.action(
+                R.string.backup_all_title,
+                getString(if (exporting) R.string.backup_all_running else R.string.backup_all_value),
+            ) {
+                if (!exporting && !restoring) backupAll()
             },
-            ui.action(R.string.restore_data_title, getString(if (restoring) R.string.restore_running else R.string.restore_data_value)) {
-                if (!exporting && !restoring) pickSource(RESTORE_ZIP)
+            ui.action(
+                R.string.restore_all_title,
+                getString(if (restoring) R.string.restore_all_running else R.string.restore_all_value),
+            ) {
+                if (!exporting && !restoring) restoreAll()
             },
-            footer = R.string.data_backup_note,
-        ),
-        ui.group(
-            R.string.settings_backup_section,
-            ui.action(R.string.settings_backup_title, null) { if (!exporting && !restoring) pickTarget(BACKUP_SETTINGS) },
-            ui.action(R.string.settings_restore_title, null) { if (!exporting && !restoring) pickSource(RESTORE_SETTINGS) },
-            footer = R.string.settings_backup_note,
+            footer = R.string.backup_all_note,
         ),
         ui.group(
             null,
@@ -68,6 +68,63 @@ class AdvancedActivity : PageActivity() {
             footer = R.string.logs_export_note,
         ),
     )
+
+    /** 一键同时备份个人数据和应用设置；两份 ZIP 使用完全相同的时间戳。 */
+    private fun backupAll() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(this, R.string.backup_requires_android_10, Toast.LENGTH_LONG).show()
+            return
+        }
+        Engine.flushAll()
+        runBackground("qingjian-backup-all", {
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                .format(java.util.Date())
+            val data = writeBackupToDownloads(settings = false, stamp = stamp)
+            try {
+                val settings = writeBackupToDownloads(settings = true, stamp = stamp)
+                data.second to settings.second
+            } catch (failure: Throwable) {
+                contentResolver.delete(data.first, null, null)
+                throw failure
+            }
+        }) { counts ->
+            getString(R.string.backup_all_done, counts.first, counts.second)
+        }
+    }
+
+    /** 自动匹配同一时间戳的一对 ZIP，避免把不同批次的数据和设置混在一起。 */
+    private fun restoreAll() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(this, R.string.restore_requires_android_10, Toast.LENGTH_LONG).show()
+            return
+        }
+        val data = findLatestDownloadBackup("qingjian-data-")
+        val settings = findLatestDownloadBackup("qingjian-settings-")
+        if (data == null || settings == null) {
+            Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
+            return
+        }
+        val dataStamp = data.second.removePrefix("qingjian-data-").removeSuffix(".zip")
+        val settingsStamp = settings.second.removePrefix("qingjian-settings-").removeSuffix(".zip")
+        if (dataStamp != settingsStamp) {
+            Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.restore_all_title)
+            .setMessage(getString(R.string.restore_all_confirm, data.second, settings.second))
+            .setPositiveButton(R.string.restore_confirm) { _, _ ->
+                runBackground("qingjian-restore-all", {
+                    val dataCount = restoreUserData(data.first)
+                    val settingsCount = restoreSettings(settings.first)
+                    dataCount to settingsCount
+                }) { counts ->
+                    getString(R.string.restore_all_done, counts.first, counts.second)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
 
     private fun pickTarget(request: Int) {
         // 仅日志导出继续使用系统文件选择器；个人数据与设置由「一键备份」统一保存到 Download。
@@ -127,10 +184,9 @@ class AdvancedActivity : PageActivity() {
     }
 
     /** Android 10+ 使用 MediaStore 的 Download 集合与 pending 写入，避免申请宽泛存储权限。 */
-    private fun writeBackupToDownloads(settings: Boolean): Int {
+    private fun writeBackupToDownloads(settings: Boolean, stamp: String): Pair<Uri, Int> {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
         val prefix = if (settings) "qingjian-settings" else "qingjian-data"
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, "$prefix-$stamp.zip")
             put(MediaStore.Downloads.MIME_TYPE, "application/zip")
@@ -143,7 +199,7 @@ class AdvancedActivity : PageActivity() {
             val count = if (settings) writeSettingsZip(uri) else writeUserDataZip(uri)
             val ready = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
             if (contentResolver.update(uri, ready, null, null) != 1) error("备份已写入，但无法完成文件发布")
-            return count
+            return uri to count
         } catch (failure: Throwable) {
             contentResolver.delete(uri, null, null)
             throw failure
