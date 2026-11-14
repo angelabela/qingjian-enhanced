@@ -124,16 +124,20 @@ class VoicePanel(
                 touchTarget = when {
                     micHit -> Target.NONE
                     action != Target.NONE -> action
-                    else -> return true
+                    else -> return super.dispatchTouchEvent(event)
                 }
                 return true
             }
-            MotionEvent.ACTION_MOVE -> return true
+            MotionEvent.ACTION_MOVE -> return touchTarget != Target.NONE
             MotionEvent.ACTION_UP -> {
                 when {
                     touchTarget == Target.CANCEL || action == Target.CANCEL -> actions.onCancel()
                     touchTarget == Target.ACTION || action == Target.ACTION -> actions.onFinish(act = true, hide = false)
                     touchTarget == Target.NONE && micHit -> actions.onFinish(act = false, hide = false)
+                    else -> {
+                        touchTarget = Target.NONE
+                        return super.dispatchTouchEvent(event)
+                    }
                 }
                 touchTarget = Target.NONE
                 Haptics.tap(context)
