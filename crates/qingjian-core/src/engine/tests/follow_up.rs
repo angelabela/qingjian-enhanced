@@ -14,7 +14,7 @@ impl LanguageModel for FollowModel {
 
     fn successors(&self, previous: &str, limit: usize) -> Vec<String> {
         let words: &[&str] = match previous {
-            "开发" => &["，", "了", "开发区管委会", "者", "共同创造美好生活"],
+            "开发" => &["，", "了", "开发区管理委员会全体工作人员", "开发区管委会", "者", "共同创造美好生活"],
             "了" => &["吧"],
             _ => &[],
         };
@@ -39,7 +39,7 @@ fn follow_ups_list_short_han_words_after_a_committed_word() {
     let mut engine = follow_engine();
     assert!(engine.follow_ups(8).is_empty(), "句首没有上文");
     assert_eq!(commit_first(&mut engine, "kaifa"), "开发");
-    assert_eq!(engine.follow_ups(8), ["了", "者", "共同创造美好生活"]);
+    assert_eq!(engine.follow_ups(8), ["了", "开发区管委会", "者", "共同创造美好生活"]);
     assert_eq!(engine.follow_ups(1), ["了"]);
     // 还在组句时不给
     engine.set_input("kai");
