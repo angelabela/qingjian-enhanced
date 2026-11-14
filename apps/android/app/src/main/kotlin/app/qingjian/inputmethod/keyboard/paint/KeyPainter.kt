@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.keyboard.paint
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import app.qingjian.inputmethod.keyboard.ShiftState
 import app.qingjian.inputmethod.keyboard.SideColumn
 import app.qingjian.inputmethod.keyboard.layout.Key
@@ -122,8 +123,9 @@ class KeyPainter(
         if (upLabel == null && downLabel == null) return
         val b = slot.bounds
         val inset = 8f * density
-        if (upLabel != null) drawGestureHint(canvas, b.left + inset, b.top + inset, upLabel, upward = true, rightAligned = false)
-        if (downLabel != null) drawGestureHint(canvas, b.right - inset, b.bottom - inset, downLabel, upward = false, rightAligned = true)
+        val onBrand = slot.key is Key.Enter
+        if (upLabel != null) drawGestureHint(canvas, b.left + inset, b.top + inset, upLabel, upward = true, rightAligned = false, onBrand = onBrand)
+        if (downLabel != null) drawGestureHint(canvas, b.right - inset, b.bottom - inset, downLabel, upward = false, rightAligned = true, onBrand = onBrand)
     }
 
     private fun drawGestureHint(
@@ -133,22 +135,32 @@ class KeyPainter(
         label: String,
         upward: Boolean,
         rightAligned: Boolean,
+        onBrand: Boolean,
     ) {
-        gestureHint.color = palette.brand
-        gestureHint.strokeWidth = 1.25f * density
+        // 确定键底色较亮，使用纯白高对比提示；普通键使用亮青色，并加暗色描边阴影。
+        val hintColor = if (onBrand) 0xFFFFFFFF.toInt() else 0xFF75F0FF.toInt()
+        gestureHint.color = hintColor
+        gestureHint.strokeWidth = 1.9f * density
+        gestureHint.setShadowLayer(2f * density, 0f, 0f, 0xCC07111F.toInt())
         val start = if (upward) y + 3f * density else y - 3f * density
         val end = if (upward) y - 3f * density else y + 3f * density
         canvas.drawLine(x, start, x, end, gestureHint)
-        val wing = 2.5f * density
+        val wing = 3.1f * density
         val base = if (upward) end + 2.7f * density else end - 2.7f * density
         canvas.drawLine(x - wing, base, x, end, gestureHint)
         canvas.drawLine(x + wing, base, x, end, gestureHint)
+        gestureHint.clearShadowLayer()
+
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
-        ink.textSize = 7.5f * density
-        ink.color = palette.gloss
-        val baseline = y + 2.7f * density
-        val textX = if (rightAligned) x - 5f * density else x + 5f * density
+        ink.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        ink.textSize = 9f * density
+        ink.color = if (onBrand) 0xFFFFFFFF.toInt() else 0xFFE7FCFF.toInt()
+        ink.setShadowLayer(2.4f * density, 0f, 0f, 0xE6000712.toInt())
+        val baseline = y + 3f * density
+        val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
         canvas.drawText(label, textX, baseline, ink)
+        ink.clearShadowLayer()
+        ink.typeface = Typeface.DEFAULT
         ink.textAlign = Paint.Align.CENTER
     }
 
