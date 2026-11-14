@@ -137,9 +137,22 @@ class KeyPainter(
         rightAligned: Boolean,
         onBrand: Boolean,
     ) {
-        // 确定键底色较亮，使用纯白高对比提示；普通键使用亮青色，并加暗色描边阴影。
-        val hintColor = if (onBrand) 0xFFFFFFFF.toInt() else 0xFF75F0FF.toInt()
-        gestureHint.color = hintColor
+        val baseline = y + 3f * density
+        val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
+        ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
+        ink.typeface = Typeface.DEFAULT
+        ink.textSize = 9f * density
+        if (!onBrand) {
+            // 普通按键只保留简洁文字：不画箭头图标、不加粗、不加阴影。
+            ink.color = palette.gloss
+            ink.clearShadowLayer()
+            canvas.drawText(label, textX, baseline, ink)
+            ink.textAlign = Paint.Align.CENTER
+            return
+        }
+
+        // 回车键保留原有的白色箭头与文字样式。
+        gestureHint.color = 0xFFFFFFFF.toInt()
         gestureHint.strokeWidth = 1.9f * density
         gestureHint.setShadowLayer(2f * density, 0f, 0f, 0xCC07111F.toInt())
         val start = if (upward) y + 3f * density else y - 3f * density
@@ -151,13 +164,9 @@ class KeyPainter(
         canvas.drawLine(x + wing, base, x, end, gestureHint)
         gestureHint.clearShadowLayer()
 
-        ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
         ink.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        ink.textSize = 9f * density
-        ink.color = if (onBrand) 0xFFFFFFFF.toInt() else 0xFFE7FCFF.toInt()
+        ink.color = 0xFFFFFFFF.toInt()
         ink.setShadowLayer(2.4f * density, 0f, 0f, 0xE6000712.toInt())
-        val baseline = y + 3f * density
-        val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
         canvas.drawText(label, textX, baseline, ink)
         ink.clearShadowLayer()
         ink.typeface = Typeface.DEFAULT
