@@ -17,6 +17,7 @@ class CloudSuggestionsView(
     private val onSelect: (Int) -> Unit,
 ) : HorizontalScrollView(context) {
     private val density = resources.displayMetrics.density
+    private var smartSelection: ((String) -> Unit)? = null
     private val items = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -33,7 +34,13 @@ class CloudSuggestionsView(
         visibility = GONE
     }
 
+    fun showSmart(candidates: List<String>, onSelect: (String) -> Unit) {
+        show(candidates.mapIndexed { index, value -> index to value })
+        smartSelection = onSelect
+    }
+
     fun show(candidates: List<Pair<Int, String>>) {
+        smartSelection = null
         items.removeAllViews()
         if (candidates.isEmpty()) {
             visibility = GONE
@@ -45,7 +52,10 @@ class CloudSuggestionsView(
                 gravity = Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { onSelect(index) }
+                setOnClickListener {
+                    val smart = smartSelection
+                    if (smart != null) smart(suggestion) else onSelect(index)
+                }
                 // 只在不同联想结果之间留空，不绘制边框或背景。
                 setPadding(
                     if (position == 0) 0 else (14 * density).toInt(),
