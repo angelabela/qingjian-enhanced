@@ -44,7 +44,7 @@ class SmartInfoProvider(private val context: Context) {
     private fun resolveBlocking(trigger: String): String = when (trigger) {
         "地点", "位置", "地址" -> currentAddress()
         "天气" -> currentWeather()
-        "内存" -> memoryStatus()
+        "内存" -> "${memoryStatus()}；${storageStatus()}"
         "存储" -> storageStatus()
         "电量", "电池" -> batteryStatus()
         "网络" -> networkStatus()
@@ -56,15 +56,17 @@ class SmartInfoProvider(private val context: Context) {
     private fun currentAddress(): String {
         if (!hasLocationPermission()) return LOCATION_PERMISSION_HINT
         val location = currentLocation() ?: return "暂时无法获取当前位置，请确认系统定位已开启后重试"
-        val address = runCatching {
-            @Suppress("DEPRECATION")
-            Geocoder(context, Locale.getDefault()).getFromLocation(location.latitude, location.longitude, 1)
-                ?.firstOrNull()?.getAddressLine(0)
-        }.getOrNull()
+        val address = reverseAddress(location)
         return address ?: "已获取定位（%.5f, %.5f），暂时无法解析详细地址".format(
             Locale.getDefault(), location.latitude, location.longitude
         )
     }
+
+    private fun reverseAddress(location: Location): String? = runCatching {
+        @Suppress("DEPRECATION")
+        Geocoder(context, Locale.getDefault()).getFromLocation(location.latitude, location.longitude, 1)
+            ?.firstOrNull()?.getAddressLine(0)
+    }.getOrNull()
 
     private fun currentWeather(): String {
         if (!hasLocationPermission()) return LOCATION_PERMISSION_HINT
@@ -87,8 +89,11 @@ class SmartInfoProvider(private val context: Context) {
             val wind = current.optDouble("wind_speed_10m", Double.NaN)
             val code = current.optInt("weather_code", -1)
             val desc = weatherDescription(code)
+            val address = reverseAddress(location)
             return buildString {
-                append("当前位置天气：").append(desc)
+                append("天气")
+                if (!address.isNullOrBlank()) append("（").append(address).append("）")
+                append("：").append(desc)
                 if (!temp.isNaN()) append("，气温 ").append(temp.toInt()).append("℃")
                 if (!feels.isNaN()) append("，体感 ").append(feels.toInt()).append("℃")
                 if (humidity >= 0) append("，湿度 ").append(humidity).append("%")
