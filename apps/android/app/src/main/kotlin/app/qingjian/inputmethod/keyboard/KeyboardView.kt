@@ -481,6 +481,13 @@ class KeyboardView(
             key == Key.Backspace && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
             key == Key.Backspace && settings.flickClear && !upward -> Settings.GestureAction.RESTORE_CLEAR
             key is Key.Space && !upward -> Settings.GestureAction.OPEN_CLIPBOARD
+            key is Key.Letter && !upward -> when (key.char.lowercaseChar()) {
+                'z' -> Settings.GestureAction.SELECT_ALL
+                'x' -> Settings.GestureAction.CUT
+                'c' -> Settings.GestureAction.COPY
+                'v' -> Settings.GestureAction.PASTE
+                else -> Settings.GestureAction.NONE
+            }
             else -> Settings.GestureAction.NONE
         }
         return when (action) {
