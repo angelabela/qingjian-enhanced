@@ -245,9 +245,9 @@ class VoicePanel(
             paint.alpha = 255
 
             val actionY = height * 0.91f
-            ink.text(canvas, "撤回", 13f, if (target == Target.CANCEL) palette.brand else 0xFFE0E9F5.toInt(),
+            ink.text(canvas, "撤回", 14f, if (target == Target.CANCEL) palette.brand else palette.text,
                 width * 0.17f, actionY, bold = target == Target.CANCEL)
-            ink.text(canvas, actionLabel, 13f, if (target == Target.ACTION) palette.brand else 0xFFE0E9F5.toInt(),
+            ink.text(canvas, actionLabel, 14f, if (target == Target.ACTION) palette.brand else palette.text,
                 width * 0.83f, actionY, bold = target == Target.ACTION)
 
             // 粒子持续流动；录音结束后不再无意义地持续刷新。

@@ -70,20 +70,8 @@ class AdvancedActivity : PageActivity() {
     )
 
     private fun pickTarget(request: Int) {
-        // 日志仍由系统文件选择器保存；Android 10+ 的数据/设置备份直接写入 Download。
-        if (request == PACK_LOGS || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            openCreateDocument(request)
-            return
-        }
-        if (request == CREATE_ZIP) Engine.flushAll()
-        val settings = request == BACKUP_SETTINGS
-        runBackground(
-            if (settings) "qingjian-settings-backup" else "qingjian-data-backup",
-            { writeBackupToDownloads(settings) },
-        ) { count ->
-            if (settings) getString(R.string.settings_backup_done, count)
-            else getString(R.string.export_done, count)
-        }
+        // 仅日志导出继续使用系统文件选择器；个人数据与设置由「一键备份」统一保存到 Download。
+        openCreateDocument(request)
     }
 
     private fun openCreateDocument(request: Int) {
