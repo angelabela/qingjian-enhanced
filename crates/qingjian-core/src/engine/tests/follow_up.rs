@@ -46,7 +46,10 @@ fn follow_ups_list_short_han_words_after_a_committed_word() {
     let mut engine = follow_engine();
     assert!(engine.follow_ups(8).is_empty(), "句首没有上文");
     assert_eq!(commit_first(&mut engine, "kaifa"), "开发");
-    assert_eq!(engine.follow_ups(8), ["了", "开发区管委会", "者", "共同创造美好生活"]);
+    assert_eq!(
+        engine.follow_ups(8),
+        ["了", "开发区管委会", "者", "共同创造美好生活"]
+    );
     assert_eq!(engine.follow_ups(1), ["了"]);
     // 还在组句时不给
     engine.set_input("kai");
@@ -59,7 +62,10 @@ fn the_users_own_continuations_come_first() {
     commit_first(&mut engine, "kaifa");
     commit_first(&mut engine, "kafei");
     commit_first(&mut engine, "kaifa");
-    assert_eq!(engine.follow_ups(8), ["咖啡", "了", "开发区管委会", "者", "共同创造美好生活"]);
+    assert_eq!(
+        engine.follow_ups(8),
+        ["咖啡", "了", "开发区管委会", "者", "共同创造美好生活"]
+    );
 }
 
 #[test]
@@ -78,7 +84,10 @@ fn follow_ups_follow_traditional_output() {
     let mut engine = follow_engine();
     engine.set_traditional(TraditionalVariant::Taiwan);
     assert_eq!(commit_first(&mut engine, "kaifa"), "開發");
-    assert_eq!(engine.follow_ups(8), ["了", "開發區管委會", "者", "共同創造美好生活"]);
+    assert_eq!(
+        engine.follow_ups(8),
+        ["了", "開發區管委會", "者", "共同創造美好生活"]
+    );
     assert_eq!(engine.commit_follow_up("了"), "了");
     assert_eq!(engine.follow_ups(8), ["吧"]);
 }
