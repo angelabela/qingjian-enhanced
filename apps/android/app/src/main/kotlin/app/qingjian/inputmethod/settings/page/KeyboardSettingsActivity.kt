@@ -72,6 +72,18 @@ class KeyboardSettingsActivity : PageActivity() {
                 },
             ),
             ui.group(
+                R.string.gesture_custom_section,
+                gesturePicker(R.string.gesture_enter_up, Settings.KEY_ENTER_SWIPE_UP, settings.enterSwipeUp),
+                gesturePicker(R.string.gesture_enter_down, Settings.KEY_ENTER_SWIPE_DOWN, settings.enterSwipeDown),
+                gesturePicker(R.string.gesture_backspace_up, Settings.KEY_BACKSPACE_SWIPE_UP, settings.backspaceSwipeUp),
+                gesturePicker(R.string.gesture_backspace_down, Settings.KEY_BACKSPACE_SWIPE_DOWN, settings.backspaceSwipeDown),
+                gesturePicker(R.string.gesture_space_up, Settings.KEY_SPACE_SWIPE_UP, settings.spaceSwipeUp),
+                gesturePicker(R.string.gesture_space_down, Settings.KEY_SPACE_SWIPE_DOWN, settings.spaceSwipeDown),
+                gesturePicker(R.string.gesture_symbols_up, Settings.KEY_SYMBOLS_SWIPE_UP, settings.symbolsSwipeUp),
+                gesturePicker(R.string.gesture_symbols_down, Settings.KEY_SYMBOLS_SWIPE_DOWN, settings.symbolsSwipeDown),
+                footer = R.string.gesture_custom_note,
+            ),
+            ui.group(
                 null,
                 ui.link(R.string.page_game_keyboard, getString(if (GameKeyboard.load(this).enabled) R.string.value_on else R.string.value_off)) {
                     startActivity(Intent(this, GameKeyboardActivity::class.java))
@@ -94,6 +106,15 @@ class KeyboardSettingsActivity : PageActivity() {
             val editor = prefs.edit().putBoolean(Settings.KEY_HAPTIC, index > 0)
             if (index > 0) editor.putString(Settings.KEY_HAPTIC_STRENGTH, HapticStrength.entries[index - 1].key)
             editor.apply()
+            rebuild()
+        }
+    }
+
+    /** 单个按键方向的自定义动作；设置写入后输入法服务会即时重建键盘。 */
+    private fun gesturePicker(title: Int, key: String, current: Settings.GestureAction): View {
+        val options = Settings.GestureAction.entries
+        return ui.picker(title, current.label, options.map { it.label }, options.indexOf(current)) { index ->
+            prefs.edit().putString(key, options[index].name).apply()
             rebuild()
         }
     }
