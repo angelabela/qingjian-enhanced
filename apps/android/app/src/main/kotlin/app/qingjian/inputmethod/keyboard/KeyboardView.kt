@@ -234,7 +234,14 @@ class KeyboardView(
     }
 
     override fun onDraw(canvas: Canvas) {
-        for (slot in slots) painter.drawKey(canvas, slot, down = pressed.containsValue(slot))
+        for (slot in slots) {
+            painter.drawKey(canvas, slot, down = pressed.containsValue(slot))
+            painter.drawGestureHints(
+                canvas, slot,
+                gestureHintLabel(slot.key, upward = true),
+                gestureHintLabel(slot.key, upward = false),
+            )
+        }
         if (side.enabled) painter.drawSide(canvas, side)
         val flicking = flickSlot?.takeIf { flickArmed }
         if (flicking == null) trail.draw(canvas)
@@ -464,6 +471,31 @@ class KeyboardView(
         key is Key.Space -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
         key is Key.Symbols -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
         else -> Settings.GestureAction.DEFAULT
+    }
+
+    /** 键面提示显示实际生效的动作；默认手势也显示，显式选择 NONE 则隐藏。 */
+    private fun gestureHintLabel(key: Key, upward: Boolean): String? {
+        val configured = gestureAction(key, upward)
+        val action = if (configured != Settings.GestureAction.DEFAULT) configured else when {
+            key == Key.Backspace && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
+            key == Key.Backspace && settings.flickClear && !upward -> Settings.GestureAction.RESTORE_CLEAR
+            key is Key.Space && !upward -> Settings.GestureAction.OPEN_CLIPBOARD
+            else -> Settings.GestureAction.NONE
+        }
+        return when (action) {
+            Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> null
+            Settings.GestureAction.CLEAR_ALL -> "清空"
+            Settings.GestureAction.RESTORE_CLEAR -> "撤销"
+            Settings.GestureAction.OPEN_CLIPBOARD -> "剪贴板"
+            Settings.GestureAction.SELECT_ALL -> "全选"
+            Settings.GestureAction.CUT -> "剪切"
+            Settings.GestureAction.COPY -> "复制"
+            Settings.GestureAction.PASTE -> "粘贴"
+            Settings.GestureAction.OPEN_SYMBOLS -> "符号"
+            Settings.GestureAction.ENTER -> "回车"
+            Settings.GestureAction.SWITCH_LANGUAGE -> "中英"
+            Settings.GestureAction.BACKSPACE -> "删除"
+        }
     }
 
     private fun flickable(key: Key): Boolean {
