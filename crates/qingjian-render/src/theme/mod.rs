@@ -298,7 +298,6 @@ const BUILTINS: [(&str, &str, EmbeddedFiles); 16] = [
             ),
         ],
     ),
-
     ("ocean", include_str!("../../themes/ocean/theme.json"), &[]),
     (
         "midnight",
