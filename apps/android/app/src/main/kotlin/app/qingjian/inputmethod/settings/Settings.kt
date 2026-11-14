@@ -94,7 +94,7 @@ data class Settings(
     enum class GestureAction(val label: String) {
         DEFAULT("沿用默认"), NONE("无"), CLEAR_ALL("清空输入"), RESTORE_CLEAR("撤销清空"),
         OPEN_CLIPBOARD("打开剪贴板"), SELECT_ALL("全选"), CUT("剪切"), COPY("复制"), PASTE("粘贴"),
-        OPEN_SYMBOLS("打开符号面板"), ENTER("执行回车"), SWITCH_LANGUAGE("切换中英文"), BACKSPACE("删除一个字");
+        OPEN_SYMBOLS("打开符号面板"), OPEN_THEME_PICKER("选择皮肤"), ENTER("执行回车"), SWITCH_LANGUAGE("切换中英文"), BACKSPACE("删除一个字");
 
         companion object {
             fun of(value: String?): GestureAction = entries.firstOrNull { it.name == value } ?: DEFAULT
