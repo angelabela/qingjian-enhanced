@@ -300,13 +300,24 @@ const BUILTINS: [(&str, &str, EmbeddedFiles); 16] = [
     ),
 
     ("ocean", include_str!("../../themes/ocean/theme.json"), &[]),
-    ("midnight", include_str!("../../themes/midnight/theme.json"), &[]),
-    ("sunset", include_str!("../../themes/sunset/theme.json"), &[]),
+    (
+        "midnight",
+        include_str!("../../themes/midnight/theme.json"),
+        &[],
+    ),
+    (
+        "sunset",
+        include_str!("../../themes/sunset/theme.json"),
+        &[],
+    ),
     ("mint", include_str!("../../themes/mint/theme.json"), &[]),
     ("rose", include_str!("../../themes/rose/theme.json"), &[]),
-    ("aurora", include_str!("../../themes/aurora/theme.json"), &[]),
+    (
+        "aurora",
+        include_str!("../../themes/aurora/theme.json"),
+        &[],
+    ),
 ];
-
 
 /// 最底层的主题：没写 `extends` 的主题都以它为底，它自己不再往下找。
 const ROOT_THEME: &str = "qingjian";
