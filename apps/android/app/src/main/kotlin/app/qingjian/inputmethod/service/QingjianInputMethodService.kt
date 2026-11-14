@@ -668,15 +668,16 @@ class QingjianInputMethodService :
     private fun rememberPhraseShortcuts(text: String) {
         if (!::composer.isInitialized || composer.privateInput || composer.directInput || !composer.chinese || text.isBlank()) return
         val pieces = engine.textPieces(text).filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
-        if (pieces.size < 2) return
+        if (pieces.isEmpty()) return
         val maxCode = PhraseRules.maxCode.takeIf { it > 0 } ?: 32
         val known = ClipboardStore.phrases(this).phrases
             .mapTo(mutableSetOf()) { it.text to it.code }
         var changed = false
-        // 保存连续 2～5 词组合；5 词以上另外保存完整短句，避免超长句产生大量重复条目。
+        // 同时保存单个词和连续 2～5 词组合；这样“安装包”这类单个分词也能记住 azb。
+        // 5 词以上另外保存完整短句，避免超长句产生大量重复条目。
         val spans = mutableListOf<Pair<Int, Int>>()
         for (start in pieces.indices) {
-            for (length in 2..minOf(5, pieces.size - start)) {
+            for (length in 1..minOf(5, pieces.size - start)) {
                 spans += start to (start + length)
             }
         }
