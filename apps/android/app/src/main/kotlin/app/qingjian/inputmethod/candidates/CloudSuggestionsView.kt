@@ -27,8 +27,8 @@ class CloudSuggestionsView(
         overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-        // 透明背景：不盖住或改变普通候选栏的主题底色。
-        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        // 云联想行与键盘底板使用同一主题背景色，视觉上保持整体一致。
+        setBackgroundColor(palette.board)
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
     }
@@ -84,6 +84,8 @@ class CloudSuggestionsView(
                     LayoutParams.WRAP_CONTENT,
                 ),
             )
+            result.alpha = 0f
+            result.translationY = 4f * density
             items.addView(
                 result,
                 LinearLayout.LayoutParams(
@@ -91,6 +93,12 @@ class CloudSuggestionsView(
                     LayoutParams.MATCH_PARENT,
                 ),
             )
+            result.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(position * 18L)
+                .setDuration(190L)
+                .start()
         }
         visibility = VISIBLE
         scrollTo(0, 0)
