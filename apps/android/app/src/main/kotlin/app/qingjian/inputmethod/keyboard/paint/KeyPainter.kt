@@ -115,10 +115,6 @@ class KeyPainter(
         }
 
         // 删除键方向提示独立绘制，避免破坏上方 when 分支结构。
-        if (key == Key.Backspace) drawBackspaceGestureHints(canvas, bounds)
-
-        if (key is Key.Space) drawClipboardSwipeHint(canvas, bounds)
-
         // Z/X/C/V 的下滑编辑手势提示：图标固定在键面下缘，主字仍保持清晰。
         if (key is Key.Letter && key.char.lowercaseChar() in EDIT_GESTURE_KEYS) {
             KeyIcons.drawEditShortcut(
@@ -126,6 +122,34 @@ class KeyPainter(
                 15f * density, ink.apply { color = palette.brand }, key.char.lowercaseChar(),
             )
         }
+    }
+
+    /** 四个可配置按键的手势提示：箭头与动作文字分列在键帽上、下沿。 */
+    fun drawGestureHints(canvas: Canvas, slot: KeySlot, upLabel: String?, downLabel: String?) {
+        if (upLabel == null && downLabel == null) return
+        val b = slot.bounds
+        val cx = b.left + 9f * density
+        if (upLabel != null) drawGestureHint(canvas, cx, b.top + 9f * density, upLabel, upward = true)
+        if (downLabel != null) drawGestureHint(canvas, cx, b.bottom - 9f * density, downLabel, upward = false)
+    }
+
+    private fun drawGestureHint(canvas: Canvas, x: Float, y: Float, label: String, upward: Boolean) {
+        gestureHint.color = palette.brand
+        gestureHint.strokeWidth = 1.25f * density
+        val start = if (upward) y + 3f * density else y - 3f * density
+        val end = if (upward) y - 3f * density else y + 3f * density
+        canvas.drawLine(x, start, x, end, gestureHint)
+        val wing = 2.5f * density
+        val tip = end
+        val base = if (upward) end + 2.7f * density else end - 2.7f * density
+        canvas.drawLine(x - wing, base, x, tip, gestureHint)
+        canvas.drawLine(x + wing, base, x, tip, gestureHint)
+        ink.textAlign = Paint.Align.LEFT
+        ink.textSize = 7.5f * density
+        ink.color = palette.gloss
+        val baseline = y + 2.7f * density
+        canvas.drawText(label, x + 5f * density, baseline, ink)
+        ink.textAlign = Paint.Align.CENTER
     }
 
     /** 删除键提示上下排列：上方垃圾桶表示清空，下方回转箭头表示撤销。 */
