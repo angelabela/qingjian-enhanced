@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
@@ -161,6 +162,7 @@ class VoicePanel(
     private inner class OverlayView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
+        private val gradientMatrix = Matrix()
         private val d = resources.displayMetrics.density
         private val samples = FloatArray(SAMPLE_COUNT)
         // 每次新建语音面板都重新抽取色相；上下两条线保持协调但不再固定为同一套颜色。
@@ -231,8 +233,13 @@ class VoicePanel(
                 paint.shader = LinearGradient(
                     cx - halfWidth, baseY, cx + halfWidth, baseY,
                     if (upper) upperGradient else lowerGradient,
-                    null, Shader.TileMode.CLAMP,
-                )
+                    null, Shader.TileMode.MIRROR,
+                ).also { shader ->
+                    // 渐变沿线条方向持续平移，镜像平铺保证首尾无缝衔接。
+                    val travel = ((now * 46f * d) % (halfWidth * 2f)) - halfWidth
+                    gradientMatrix.setTranslate(travel, 0f)
+                    shader.setLocalMatrix(gradientMatrix)
+                }
                 // 声音越强，线条的柔光越明显、线芯略微增粗；没有声音时只留下干净的渐变直线。
                 paint.strokeWidth = 7f * d
                 paint.alpha = (18f + peakLevel * 54f).toInt()
@@ -250,8 +257,8 @@ class VoicePanel(
             ink.text(canvas, actionLabel, 14f, if (target == Target.ACTION) palette.brand else palette.text,
                 width * 0.83f, actionY, bold = target == Target.ACTION)
 
-            // 粒子持续流动；录音结束后不再无意义地持续刷新。
-            if (listening || recognizing) postInvalidateOnAnimation()
+            // 顶部双线的渐变始终持续流动；面板离屏后由 View 生命周期自然停止绘制。
+            if (isAttachedToWindow && visibility == View.VISIBLE) postInvalidateOnAnimation()
         }
     }
 

@@ -9,7 +9,7 @@
   "extends": "qingjian",
   "variables": {
     "text": {
-      "light": "#F4F2FF",
+      "light": "#3D3566",
       "dark": "#D0C8FF"
     },
     "gloss": {
