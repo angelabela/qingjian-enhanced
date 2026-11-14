@@ -1,6 +1,8 @@
 package app.qingjian.inputmethod.service
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
@@ -143,11 +145,19 @@ class InputPanel(
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
-        return VoicePanel(context, palette, actionLabel, actions).also { voice ->
+        // 先把当前键盘画成一张底图，再由 VoicePanel 做背景模糊和深色染色；
+        // 不直接改键盘视图本身，语音结束后原键盘可立即恢复交互。
+        val backdrop = runCatching {
+            val w = main.width
+            val h = main.height
+            if (w <= 0 || h <= 0) null else Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
+                main.draw(Canvas(bitmap))
+            }
+        }.getOrNull()
+        return VoicePanel(context, palette, actionLabel, actions, backdrop).also { voice ->
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             openPanel = PanelKind.VOICE
-            // 语音时不隐藏键盘：话筒光晕只是透明浮层，用户仍能看到键盘布局。
             overlay?.bringToFront()
             voice.bringToFront()
         }
