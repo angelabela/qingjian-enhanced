@@ -424,6 +424,24 @@ class QingjianInputMethodService :
 
     override fun onOpenClipboard() = clipboard()
 
+    /** 四个功能键的自定义上 / 下滑动作，复用输入法已有的操作入口。 */
+    override fun onGestureAction(action: Settings.GestureAction) {
+        when (action) {
+            Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> Unit
+            Settings.GestureAction.CLEAR_ALL -> onClearAll()
+            Settings.GestureAction.RESTORE_CLEAR -> onRestoreLastClear()
+            Settings.GestureAction.OPEN_CLIPBOARD -> onOpenClipboard()
+            Settings.GestureAction.SELECT_ALL -> onEditShortcut(KeyboardView.EditShortcut.SELECT_ALL)
+            Settings.GestureAction.CUT -> onEditShortcut(KeyboardView.EditShortcut.CUT)
+            Settings.GestureAction.COPY -> onEditShortcut(KeyboardView.EditShortcut.COPY)
+            Settings.GestureAction.PASTE -> onEditShortcut(KeyboardView.EditShortcut.PASTE)
+            Settings.GestureAction.OPEN_SYMBOLS -> openPanel(PanelKind.SYMBOLS)
+            Settings.GestureAction.ENTER -> composer.onKey(Key.Enter())
+            Settings.GestureAction.SWITCH_LANGUAGE -> composer.onKey(Key.Language)
+            Settings.GestureAction.BACKSPACE -> composer.onKey(Key.Backspace)
+        }
+    }
+
     /** 用户确认上屏后，把连续两词及以上的短语缩写写入本机常用语词库。 */
     override fun onPhraseCommitted(text: String) = rememberPhraseShortcuts(text)
 
