@@ -186,7 +186,10 @@ class AdvancedActivity : PageActivity() {
     private fun confirmRestore(source: Uri, settings: Boolean, backupName: String? = null) {
         AlertDialog.Builder(this)
             .setTitle(if (settings) R.string.settings_restore_title else R.string.restore_data_title)
-            .setMessage(buildString {\n                append(getString(if (settings) R.string.settings_restore_confirm else R.string.restore_data_confirm))\n                backupName?.let { append("\\n\\n").append(it) }\n            })
+            .setMessage(buildString {
+                append(getString(if (settings) R.string.settings_restore_confirm else R.string.restore_data_confirm))
+                backupName?.let { append("\n\n").append(it) }
+            })
             .setPositiveButton(R.string.restore_confirm) { _, _ ->
                 if (settings) {
                     runBackground("qingjian-settings-restore", { restoreSettings(source) }) { count ->
