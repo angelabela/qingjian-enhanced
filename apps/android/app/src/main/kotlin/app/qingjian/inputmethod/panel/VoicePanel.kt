@@ -236,7 +236,7 @@ class VoicePanel(
                     null, Shader.TileMode.MIRROR,
                 ).also { shader ->
                     // 渐变沿线条方向持续平移，镜像平铺保证首尾无缝衔接。
-                    val travel = ((now * 46f * d) % (halfWidth * 2f)) - halfWidth
+                    val travel = ((now.toFloat() * 46f * d) % (halfWidth * 2f)) - halfWidth
                     gradientMatrix.setTranslate(travel, 0f)
                     shader.setLocalMatrix(gradientMatrix)
                 }
