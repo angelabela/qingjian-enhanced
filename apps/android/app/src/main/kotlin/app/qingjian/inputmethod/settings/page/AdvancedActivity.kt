@@ -2,8 +2,12 @@ package app.qingjian.inputmethod.settings.page
 
 import android.app.AlertDialog
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.View
 import android.widget.Toast
 import app.qingjian.inputmethod.R
@@ -66,6 +70,23 @@ class AdvancedActivity : PageActivity() {
     )
 
     private fun pickTarget(request: Int) {
+        // 日志仍由系统文件选择器保存；Android 10+ 的数据/设置备份直接写入 Download。
+        if (request == PACK_LOGS || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            openCreateDocument(request)
+            return
+        }
+        if (request == CREATE_ZIP) Engine.flushAll()
+        val settings = request == BACKUP_SETTINGS
+        runBackground(
+            if (settings) "qingjian-settings-backup" else "qingjian-data-backup",
+            { writeBackupToDownloads(settings) },
+        ) { count ->
+            if (settings) getString(R.string.settings_backup_done, count)
+            else getString(R.string.export_done, count)
+        }
+    }
+
+    private fun openCreateDocument(request: Int) {
         val name = when (request) {
             PACK_LOGS -> "qingjian-logs"
             BACKUP_SETTINGS -> "qingjian-settings"
@@ -79,10 +100,66 @@ class AdvancedActivity : PageActivity() {
     }
 
     private fun pickSource(request: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val settings = request == RESTORE_SETTINGS
+            val prefix = if (settings) "qingjian-settings-" else "qingjian-data-"
+            val newest = findLatestDownloadBackup(prefix)
+            if (newest != null) {
+                confirmRestore(newest.first, settings, newest.second)
+                return
+            }
+        }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("application/zip")
         startActivityForResult(intent, request)
+    }
+
+    /** 在 Download 中自动找本应用最近生成的对应备份，不要求用户手动浏览目录。 */
+    private fun findLatestDownloadBackup(prefix: String): Pair<Uri, String>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val projection = arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME)
+        val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
+        val args = arrayOf("$prefix%")
+        val order = "${MediaStore.Downloads.DATE_ADDED} DESC"
+        contentResolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            args,
+            order,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
+                return MediaStore.Downloads.EXTERNAL_CONTENT_URI.buildUpon().appendPath(id.toString()).build() to name
+            }
+        }
+        return null
+    }
+
+    /** Android 10+ 使用 MediaStore 的 Download 集合与 pending 写入，避免申请宽泛存储权限。 */
+    private fun writeBackupToDownloads(settings: Boolean): Int {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        val prefix = if (settings) "qingjian-settings" else "qingjian-data"
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, "$prefix-$stamp.zip")
+            put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: error("无法在 Download 创建备份文件")
+        try {
+            val count = if (settings) writeSettingsZip(uri) else writeUserDataZip(uri)
+            val ready = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+            if (contentResolver.update(uri, ready, null, null) != 1) error("备份已写入，但无法完成文件发布")
+            return count
+        } catch (failure: Throwable) {
+            contentResolver.delete(uri, null, null)
+            throw failure
+        }
     }
 
     @Deprecated("Activity 的老接口，这页没有别的结果要收")
@@ -106,10 +183,10 @@ class AdvancedActivity : PageActivity() {
         }
     }
 
-    private fun confirmRestore(source: Uri, settings: Boolean) {
+    private fun confirmRestore(source: Uri, settings: Boolean, backupName: String? = null) {
         AlertDialog.Builder(this)
             .setTitle(if (settings) R.string.settings_restore_title else R.string.restore_data_title)
-            .setMessage(if (settings) R.string.settings_restore_confirm else R.string.restore_data_confirm)
+            .setMessage(buildString {\n                append(getString(if (settings) R.string.settings_restore_confirm else R.string.restore_data_confirm))\n                backupName?.let { append("\\n\\n").append(it) }\n            })
             .setPositiveButton(R.string.restore_confirm) { _, _ ->
                 if (settings) {
                     runBackground("qingjian-settings-restore", { restoreSettings(source) }) { count ->
@@ -225,6 +302,7 @@ class AdvancedActivity : PageActivity() {
         }.toMap()
         var written = 0
         var totalBytes = 0L
+        var manifestSeen = false
         val input = contentResolver.openInputStream(source) ?: error("无法读取备份文件")
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             var entry = zip.nextEntry
@@ -232,7 +310,13 @@ class AdvancedActivity : PageActivity() {
             while (entry != null) {
                 entries++
                 if (entries > 10000) error("备份文件项目过多")
-                if (!entry.isDirectory) {
+                if (!entry.isDirectory && entry.name == "manifest.json") {
+                    val manifest = JSONObject(String(zip.readBytes(), Charsets.UTF_8))
+                    if (manifest.optString("format") != "qingjian-user-data" || manifest.optInt("version") != 1) {
+                        error("数据备份格式不兼容")
+                    }
+                    manifestSeen = true
+                } else if (!entry.isDirectory) {
                     val relative = when {
                         entry.name.startsWith("user/") -> entry.name.removePrefix("user/")
                         else -> legacy[entry.name]
@@ -261,7 +345,8 @@ class AdvancedActivity : PageActivity() {
                 entry = zip.nextEntry
             }
         }
-        if (written == 0) error("备份里没有可恢复的青简数据")
+        // 新格式必须有正确 manifest；没有 manifest 的旧版 ZIP 仅按原有白名单兼容。
+        if (written == 0 || (!manifestSeen && written == 0)) error("备份里没有可恢复的青简数据")
         if (!Engine.replaceUserData(this, staging)) error("恢复失败，原有数据已保留")
         return written
     }
@@ -305,13 +390,20 @@ class AdvancedActivity : PageActivity() {
     /** 恢复设置前先完整解析备份；只接受 prefs/ 下的 JSON，不执行压缩包里的路径。 */
     private fun restoreSettings(source: Uri): Int {
         val backups = linkedMapOf<String, JSONObject>()
+        var manifestSeen = false
         val input = contentResolver.openInputStream(source) ?: error("无法读取设置备份")
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             var entry = zip.nextEntry
             var total = 0
             while (entry != null) {
                 if (++total > 1000) error("设置备份项目过多")
-                if (!entry.isDirectory && entry.name.startsWith("prefs/") && entry.name.endsWith(".json")) {
+                if (!entry.isDirectory && entry.name == "manifest.json") {
+                    val manifest = JSONObject(String(zip.readBytes(), Charsets.UTF_8))
+                    if (manifest.optString("format") != "qingjian-settings" || manifest.optInt("version") != 1) {
+                        error("设置备份格式不兼容")
+                    }
+                    manifestSeen = true
+                } else if (!entry.isDirectory && entry.name.startsWith("prefs/") && entry.name.endsWith(".json")) {
                     val name = entry.name.removePrefix("prefs/").removeSuffix(".json")
                     if (!name.matches(Regex("[A-Za-z0-9_.-]+"))) error("设置备份名称无效")
                     val bytes = zip.readBytes()
@@ -322,31 +414,56 @@ class AdvancedActivity : PageActivity() {
                 entry = zip.nextEntry
             }
         }
-        if (backups.isEmpty()) error("备份里没有设置")
+        if (!manifestSeen || backups.isEmpty()) error("这不是有效的青简设置备份")
         val current = File(applicationInfo.dataDir, "shared_prefs").listFiles()
             ?.filter { it.isFile && it.name.endsWith(".xml") }
             ?.map { it.name.removeSuffix(".xml") }.orEmpty()
-        (current + backups.keys).distinct().forEach { name ->
+        val names = (current + backups.keys).distinct()
+        val snapshots = names.associateWith { getSharedPreferences(it, MODE_PRIVATE).all.toMap() }
+
+        fun writePreferences(name: String, values: Map<String, *>?) {
             val editor = getSharedPreferences(name, MODE_PRIVATE).edit().clear()
-            backups[name]?.let { json ->
-                val keys = json.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val encoded = json.getJSONObject(key)
-                    when (encoded.getString("type")) {
-                        "string" -> editor.putString(key, encoded.getString("value"))
-                        "boolean" -> editor.putBoolean(key, encoded.getBoolean("value"))
-                        "int" -> editor.putInt(key, encoded.getInt("value"))
-                        "long" -> editor.putLong(key, encoded.getLong("value"))
-                        "float" -> editor.putFloat(key, encoded.getDouble("value").toFloat())
-                        "set" -> {
-                            val array = encoded.getJSONArray("value")
-                            editor.putStringSet(key, List(array.length()) { array.getString(it) }.toSet())
-                        }
-                    }
+            values.orEmpty().forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
                 }
             }
-            if (!editor.commit()) error("写入设置失败")
+            if (!editor.commit()) error("写入设置失败：$name")
+        }
+
+        fun decode(json: JSONObject): Map<String, Any> {
+            val values = linkedMapOf<String, Any>()
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val encoded = json.getJSONObject(key)
+                when (encoded.getString("type")) {
+                    "string" -> values[key] = encoded.getString("value")
+                    "boolean" -> values[key] = encoded.getBoolean("value")
+                    "int" -> values[key] = encoded.getInt("value")
+                    "long" -> values[key] = encoded.getLong("value")
+                    "float" -> values[key] = encoded.getDouble("value").toFloat()
+                    "set" -> {
+                        val array = encoded.getJSONArray("value")
+                        values[key] = List(array.length()) { array.getString(it) }.toSet()
+                    }
+                    else -> error("设置备份包含未知数据类型")
+                }
+            }
+            return values
+        }
+
+        val decoded = backups.mapValues { decode(it.value) }
+        try {
+            names.forEach { name -> writePreferences(name, decoded[name]) }
+        } catch (failure: Throwable) {
+            snapshots.forEach { (name, values) -> runCatching { writePreferences(name, values) } }
+            throw failure
         }
         Settings.preferences(this).edit().putLong(Settings.KEY_DICTIONARIES_STAMP, System.currentTimeMillis()).apply()
         return backups.size
