@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "meta": {
+    "id": "midnight",
+    "name": "曜石黑",
+    "author": "青简",
+    "license": "GPL-3.0-or-later"
+  },
+  "extends": "qingjian",
+  "variables": {
+    "text": {
+      "light": "#F4F2FF",
+      "dark": "#D0C8FF"
+    },
+    "gloss": {
+      "light": "#817B9A",
+      "dark": "#FFFFFFB3"
+    },
+    "faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "fresh": {
+      "light": "#705BD8",
+      "dark": "#8A72FF"
+    },
+    "cloud": {
+      "light": "#B8A7FF",
+      "dark": "#B8A7FF"
+    },
+    "surface": {
+      "light": "#F8F7FF",
+      "dark": "#171821"
+    },
+    "accent": {
+      "light": "#8A72FF7F",
+      "dark": "#8A72FF"
+    },
+    "key": {
+      "light": "#0000000D",
+      "dark": "#FFFFFF14"
+    },
+    "dim": {
+      "light": "#3C345D",
+      "dark": "#FFFFFF2E"
+    },
+    "hl_text": {
+      "light": "#F4F2FF",
+      "dark": "#D0C8FF"
+    },
+    "hl_gloss": {
+      "light": "#817B9A",
+      "dark": "#FFFFFFB3"
+    },
+    "hl_faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "hl_fresh": {
+      "light": "#705BD8",
+      "dark": "#8A72FF"
+    },
+    "hl_cloud": {
+      "light": "#B8A7FF",
+      "dark": "#B8A7FF"
+    }
+  }
+}

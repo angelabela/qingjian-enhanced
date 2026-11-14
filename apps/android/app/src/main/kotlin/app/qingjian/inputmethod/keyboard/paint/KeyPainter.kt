@@ -142,75 +142,28 @@ class KeyPainter(
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
         ink.typeface = Typeface.DEFAULT
         ink.textSize = 9f * density
-        if (!onBrand) {
-            // 普通按键只保留简洁文字：不画箭头图标、不加粗、不加阴影。
-            ink.color = palette.gloss
-            ink.clearShadowLayer()
-            canvas.drawText(label, textX, baseline, ink)
-            ink.textAlign = Paint.Align.CENTER
-            return
-        }
-
-        // 回车键保留原有的白色箭头与文字样式。
-        gestureHint.color = 0xFFFFFFFF.toInt()
-        gestureHint.strokeWidth = 1.9f * density
-        gestureHint.setShadowLayer(2f * density, 0f, 0f, 0xCC07111F.toInt())
-        val start = if (upward) y + 3f * density else y - 3f * density
-        val end = if (upward) y - 3f * density else y + 3f * density
-        canvas.drawLine(x, start, x, end, gestureHint)
-        val wing = 3.1f * density
-        val base = if (upward) end + 2.7f * density else end - 2.7f * density
-        canvas.drawLine(x - wing, base, x, end, gestureHint)
-        canvas.drawLine(x + wing, base, x, end, gestureHint)
-        gestureHint.clearShadowLayer()
-
-        ink.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        ink.color = 0xFFFFFFFF.toInt()
-        ink.setShadowLayer(2.4f * density, 0f, 0f, 0xE6000712.toInt())
-        canvas.drawText(label, textX, baseline, ink)
-        ink.clearShadowLayer()
+        // 所有按键统一只显示文字：无手势图标、无粗体、无阴影。
+        ink.color = if (onBrand) palette.onBrand else palette.gloss
         ink.typeface = Typeface.DEFAULT
+        ink.clearShadowLayer()
+        canvas.drawText(label, textX, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
     }
 
-    /** 删除键提示上下排列：上方垃圾桶表示清空，下方回转箭头表示撤销。 */
+    /** 删除键上下手势仅显示文字，不再绘制垃圾桶或撤销图标。 */
     private fun drawBackspaceGestureHints(canvas: Canvas, bounds: RectF) {
         val cx = bounds.centerX()
-        val topY = bounds.top + bounds.height() * 0.23f
-        val bottomY = bounds.bottom - bounds.height() * 0.23f
-        val size = 8f * density
-        gestureHint.color = palette.brand
-        gestureHint.strokeWidth = 1.45f * density
-
-        // 上方：垃圾桶图标，表达“清空”动作，不使用上滑箭头。
-        val binLeft = cx - size * 0.34f
-        val binRight = cx + size * 0.34f
-        val binTop = topY - size * 0.28f
-        val binBottom = topY + size * 0.42f
-        canvas.drawLine(cx - size * 0.48f, binTop - size * 0.12f,
-            cx + size * 0.48f, binTop - size * 0.12f, gestureHint)
-        canvas.drawLine(cx - size * 0.18f, binTop - size * 0.30f,
-            cx + size * 0.18f, binTop - size * 0.30f, gestureHint)
-        canvas.drawRoundRect(binLeft, binTop, binRight, binBottom,
-            size * 0.08f, size * 0.08f, gestureHint)
-        canvas.drawLine(cx - size * 0.12f, binTop + size * 0.12f,
-            cx - size * 0.12f, binBottom - size * 0.10f, gestureHint)
-        canvas.drawLine(cx + size * 0.12f, binTop + size * 0.12f,
-            cx + size * 0.12f, binBottom - size * 0.10f, gestureHint)
-
-        // 下方：向左回转的撤销符号，表达恢复上一状态。
-        val undo = android.graphics.Path().apply {
-            moveTo(cx + size * 0.38f, bottomY - size * 0.12f)
-            cubicTo(cx + size * 0.34f, bottomY - size * 0.55f,
-                cx - size * 0.24f, bottomY - size * 0.58f,
-                cx - size * 0.34f, bottomY - size * 0.08f)
-            moveTo(cx - size * 0.34f, bottomY - size * 0.08f)
-            lineTo(cx - size * 0.34f, bottomY - size * 0.42f)
-            moveTo(cx - size * 0.34f, bottomY - size * 0.08f)
-            lineTo(cx + size * 0.02f, bottomY - size * 0.08f)
-        }
-        canvas.drawPath(undo, gestureHint)
+        val topY = bounds.top + bounds.height() * 0.30f
+        val bottomY = bounds.bottom - bounds.height() * 0.24f
+        ink.typeface = Typeface.DEFAULT
+        ink.textSize = 8.5f * density
+        ink.color = palette.gloss
+        ink.clearShadowLayer()
+        canvas.drawText("清空", cx, topY, ink)
+        canvas.drawText("撤销", cx, bottomY, ink)
+        ink.textAlign = Paint.Align.CENTER
     }
+
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
     fun drawBubble(canvas: Canvas, slot: KeySlot, viewWidth: Int, text: String = label(slot.key)) {
@@ -244,21 +197,14 @@ class KeyPainter(
         else -> key.label
     }
 
-    /** 空格键上的剪贴板下滑提示：小剪贴板加向下箭头，不遮挡「青简」键名。 */
+    /** 空格键剪贴板手势只显示文字，不再绘制剪贴板和箭头图标。 */
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
-        val cx = bounds.centerX()
-        // 图标放在空格文字下方，贴近键面底边，不占用键名上方空间。
-        val top = bounds.bottom - 16f * density
-        val w = 8f * density
-        val h = 9f * density
-        gestureHint.color = palette.gloss
-        canvas.drawRoundRect(cx - w / 2, top, cx + w / 2, top + h, 1.5f * density, 1.5f * density, gestureHint)
-        canvas.drawLine(cx - 2f * density, top + 2.5f * density, cx + 2f * density, top + 2.5f * density, gestureHint)
-        val arrowTop = top + h + 1f * density
-        val arrowBottom = arrowTop + 4f * density
-        canvas.drawLine(cx, arrowTop, cx, arrowBottom, gestureHint)
-        canvas.drawLine(cx - 2.5f * density, arrowBottom - 2f * density, cx, arrowBottom, gestureHint)
-        canvas.drawLine(cx + 2.5f * density, arrowBottom - 2f * density, cx, arrowBottom, gestureHint)
+        ink.typeface = Typeface.DEFAULT
+        ink.textSize = 8f * density
+        ink.color = palette.gloss
+        ink.clearShadowLayer()
+        canvas.drawText("剪贴板", bounds.centerX(), bounds.bottom - 5f * density, ink)
+        ink.textAlign = Paint.Align.CENTER
     }
 
     /** 带一像素底影的圆角面。 */

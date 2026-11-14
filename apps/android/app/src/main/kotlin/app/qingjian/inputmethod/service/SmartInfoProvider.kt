@@ -81,7 +81,18 @@ class SmartInfoProvider(private val context: Context) {
             requestMethod = "GET"
         }
         try {
-            val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (status !in 200..299) {
+                return when (status) {
+                    401, 403 -> "天气服务暂时拒绝访问，请稍后重试"
+                    429 -> "天气查询过于频繁，请稍后再试"
+                    else -> "天气服务暂时不可用（HTTP $status）"
+                }
+            }
+            if (body.isBlank()) return "天气服务没有返回数据，请检查网络后重试"
+            val json = JSONObject(body)
             val current = json.getJSONObject("current")
             val temp = current.optDouble("temperature_2m", Double.NaN)
             val feels = current.optDouble("apparent_temperature", Double.NaN)
@@ -113,6 +124,8 @@ class SmartInfoProvider(private val context: Context) {
         val last = providers.mapNotNull { provider ->
             runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
         }.maxByOrNull { it.time }
+        // 优先使用两分钟内的定位；若无法取得新定位，仍允许用最近一次缓存定位查询天气，
+        // 避免室内 GPS 首次定位失败时直接中断天气服务。
         if (last != null && System.currentTimeMillis() - last.time < 2 * 60 * 1000L) return last
 
         val result = AtomicReference<Location?>()

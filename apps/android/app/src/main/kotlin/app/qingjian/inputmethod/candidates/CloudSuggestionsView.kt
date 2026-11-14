@@ -95,7 +95,8 @@ class CloudSuggestionsView(
                 ),
             )
             result.alpha = 0f
-            result.translationY = 4f * density
+            result.translationX = -24f * density
+            result.translationY = 0f
             items.addView(
                 result,
                 LinearLayout.LayoutParams(
@@ -105,9 +106,9 @@ class CloudSuggestionsView(
             )
             result.animate()
                 .alpha(1f)
-                .translationY(0f)
-                .setStartDelay(position * 18L)
-                .setDuration(190L)
+                .translationX(0f)
+                .setStartDelay(position * 24L)
+                .setDuration(230L)
                 .start()
         }
         visibility = VISIBLE

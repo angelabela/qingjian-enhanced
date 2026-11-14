@@ -35,7 +35,7 @@ use file::{ColorRef, FontRef, LockedAppearance, SCHEMA, ThemeFile};
 type EmbeddedFiles = &'static [(&'static str, &'static [u8])];
 
 /// 内置主题：id、源文件与图片，按设置界面列出的顺序；第一个是缺省主题。
-const BUILTINS: [(&str, &str, EmbeddedFiles); 10] = [
+const BUILTINS: [(&str, &str, EmbeddedFiles); 16] = [
     (
         "qingjian",
         include_str!("../../themes/qingjian/theme.json"),
@@ -298,7 +298,15 @@ const BUILTINS: [(&str, &str, EmbeddedFiles); 10] = [
             ),
         ],
     ),
+
+    ("ocean", include_str!("../../themes/ocean/theme.json"), &[]),
+    ("midnight", include_str!("../../themes/midnight/theme.json"), &[]),
+    ("sunset", include_str!("../../themes/sunset/theme.json"), &[]),
+    ("mint", include_str!("../../themes/mint/theme.json"), &[]),
+    ("rose", include_str!("../../themes/rose/theme.json"), &[]),
+    ("aurora", include_str!("../../themes/aurora/theme.json"), &[]),
 ];
+
 
 /// 最底层的主题：没写 `extends` 的主题都以它为底，它自己不再往下找。
 const ROOT_THEME: &str = "qingjian";

@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "meta": {
+    "id": "sunset",
+    "name": "落日橙",
+    "author": "青简",
+    "license": "GPL-3.0-or-later"
+  },
+  "extends": "qingjian",
+  "variables": {
+    "text": {
+      "light": "#FFF4E9",
+      "dark": "#FFD1A8"
+    },
+    "gloss": {
+      "light": "#A77B66",
+      "dark": "#FFFFFFB3"
+    },
+    "faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "fresh": {
+      "light": "#D85D2B",
+      "dark": "#F07836"
+    },
+    "cloud": {
+      "light": "#FFB05B",
+      "dark": "#FFB05B"
+    },
+    "surface": {
+      "light": "#FFFAF5",
+      "dark": "#321811"
+    },
+    "accent": {
+      "light": "#F078367F",
+      "dark": "#F07836"
+    },
+    "key": {
+      "light": "#0000000D",
+      "dark": "#FFFFFF14"
+    },
+    "dim": {
+      "light": "#6A3423",
+      "dark": "#FFFFFF2E"
+    },
+    "hl_text": {
+      "light": "#FFF4E9",
+      "dark": "#FFD1A8"
+    },
+    "hl_gloss": {
+      "light": "#A77B66",
+      "dark": "#FFFFFFB3"
+    },
+    "hl_faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "hl_fresh": {
+      "light": "#D85D2B",
+      "dark": "#F07836"
+    },
+    "hl_cloud": {
+      "light": "#FFB05B",
+      "dark": "#FFB05B"
+    }
+  }
+}

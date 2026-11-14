@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "meta": {
+    "id": "rose",
+    "name": "樱雾粉",
+    "author": "青简",
+    "license": "GPL-3.0-or-later"
+  },
+  "extends": "qingjian",
+  "variables": {
+    "text": {
+      "light": "#FFF0F6",
+      "dark": "#F9C6DB"
+    },
+    "gloss": {
+      "light": "#A77D91",
+      "dark": "#FFFFFFB3"
+    },
+    "faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "fresh": {
+      "light": "#BE477B",
+      "dark": "#D85B91"
+    },
+    "cloud": {
+      "light": "#F59BC2",
+      "dark": "#F59BC2"
+    },
+    "surface": {
+      "light": "#FFF8FB",
+      "dark": "#3A1E2D"
+    },
+    "accent": {
+      "light": "#D85B917F",
+      "dark": "#D85B91"
+    },
+    "key": {
+      "light": "#0000000D",
+      "dark": "#FFFFFF14"
+    },
+    "dim": {
+      "light": "#69304B",
+      "dark": "#FFFFFF2E"
+    },
+    "hl_text": {
+      "light": "#FFF0F6",
+      "dark": "#F9C6DB"
+    },
+    "hl_gloss": {
+      "light": "#A77D91",
+      "dark": "#FFFFFFB3"
+    },
+    "hl_faint": {
+      "light": "#00000073",
+      "dark": "#FFFFFF73"
+    },
+    "hl_fresh": {
+      "light": "#BE477B",
+      "dark": "#D85B91"
+    },
+    "hl_cloud": {
+      "light": "#F59BC2",
+      "dark": "#F59BC2"
+    }
+  }
+}
