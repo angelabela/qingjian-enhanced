@@ -14,7 +14,14 @@ impl LanguageModel for FollowModel {
 
     fn successors(&self, previous: &str, limit: usize) -> Vec<String> {
         let words: &[&str] = match previous {
-            "开发" => &["，", "了", "开发区管理委员会全体工作人员", "开发区管委会", "者", "共同创造美好生活"],
+            "开发" => &[
+                "，",
+                "了",
+                "开发区管理委员会全体工作人员",
+                "开发区管委会",
+                "者",
+                "共同创造美好生活",
+            ],
             "了" => &["吧"],
             _ => &[],
         };
