@@ -59,6 +59,7 @@ import app.qingjian.inputmethod.settings.GameKeyboard
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.settings.ToolbarTool
 import app.qingjian.inputmethod.settings.home.MainActivity
+import app.qingjian.inputmethod.settings.page.AppearanceActivity
 import app.qingjian.inputmethod.settings.page.CloudSettingsActivity
 import app.qingjian.inputmethod.settings.page.VoiceSettingsActivity
 import app.qingjian.inputmethod.theme.Palette
@@ -437,6 +438,7 @@ class QingjianInputMethodService :
             Settings.GestureAction.COPY -> onEditShortcut(KeyboardView.EditShortcut.COPY)
             Settings.GestureAction.PASTE -> onEditShortcut(KeyboardView.EditShortcut.PASTE)
             Settings.GestureAction.OPEN_SYMBOLS -> openPanel(PanelKind.SYMBOLS)
+            Settings.GestureAction.OPEN_THEME_PICKER -> startActivity(Intent(this, AppearanceActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             Settings.GestureAction.ENTER -> composer.onKey(Key.Enter())
             Settings.GestureAction.SWITCH_LANGUAGE -> composer.onKey(Key.Language)
             Settings.GestureAction.BACKSPACE -> composer.onKey(Key.Backspace)
