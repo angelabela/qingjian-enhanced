@@ -1,4 +1,4 @@
-//! 上屏后的联想：先个人接续再语言模型、只给短的汉字词、上屏联想词推进上文。
+//! 上屏后的联想：先个人接续再语言模型、只给短的汉字词语与短句、上屏联想词推进上文。
 
 use super::*;
 
@@ -52,7 +52,7 @@ fn the_users_own_continuations_come_first() {
     commit_first(&mut engine, "kaifa");
     commit_first(&mut engine, "kafei");
     commit_first(&mut engine, "kaifa");
-    assert_eq!(engine.follow_ups(8), ["咖啡", "了", "者"]);
+    assert_eq!(engine.follow_ups(8), ["咖啡", "了", "开发区管委会", "者", "共同创造美好生活"]);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn follow_ups_follow_traditional_output() {
     let mut engine = follow_engine();
     engine.set_traditional(TraditionalVariant::Taiwan);
     assert_eq!(commit_first(&mut engine, "kaifa"), "開發");
-    assert_eq!(engine.follow_ups(8), ["了", "者"]);
+    assert_eq!(engine.follow_ups(8), ["了", "开发区管委会", "者", "共同创造美好生活"]);
     assert_eq!(engine.commit_follow_up("了"), "了");
     assert_eq!(engine.follow_ups(8), ["吧"]);
 }
