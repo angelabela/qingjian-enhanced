@@ -673,7 +673,8 @@ class KeyboardView(
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
         // 空格键明显向下滑时打开剪贴板；优先于横向挪光标，且不依赖「空格移动光标」设置。
-        if (!cursorMode && dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
+        if (!cursorMode && settings.spaceSwipeDown == Settings.GestureAction.DEFAULT &&
+            dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
             clipboardMode = true
             timer.removeCallbacks(spaceHold)
             Haptics.tap(context)
