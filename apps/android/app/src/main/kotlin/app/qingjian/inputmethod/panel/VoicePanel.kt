@@ -80,7 +80,7 @@ class VoicePanel(
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        scrim.setBackgroundColor(0x5A0A1024.toInt())
+        scrim.setBackgroundColor((palette.board and 0x00FFFFFF) or (0x48 shl 24))
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
