@@ -13,6 +13,10 @@
     <!-- 语音输入录音（见 voice/EngineRecognizer.kt）；用到时由 voice/MicrophonePermissionActivity.kt 弹框申请 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- 实时地点与天气候选；用户输入相关关键词并点击授权提示后才申请 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
     <!-- 通讯录里的名字进候选（缺省关，见 contacts/ContactsSync.kt）；在「设置 → 词库」打开时才申请，只在本机用 -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
@@ -75,6 +79,13 @@
         </activity>
 
         <!-- 输入法服务弹不了权限框，语音要录音时由它代为申请，见 voice/MicrophonePermissionActivity.kt；不进最近任务，也不带出 App 的任务栈 -->
+        <activity
+            android:name=".service.LocationPermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Qingjian.Transparent" />
+
         <activity
             android:name=".voice.MicrophonePermissionActivity"
             android:exported="false"
