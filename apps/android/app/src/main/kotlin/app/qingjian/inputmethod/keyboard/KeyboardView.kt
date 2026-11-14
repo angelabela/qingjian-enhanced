@@ -500,6 +500,7 @@ class KeyboardView(
             Settings.GestureAction.COPY -> "复制"
             Settings.GestureAction.PASTE -> "粘贴"
             Settings.GestureAction.OPEN_SYMBOLS -> "符号"
+            Settings.GestureAction.OPEN_THEME_PICKER -> "皮肤"
             Settings.GestureAction.ENTER -> "回车"
             Settings.GestureAction.SWITCH_LANGUAGE -> "中英"
             Settings.GestureAction.BACKSPACE -> "删除"
