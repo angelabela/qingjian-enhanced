@@ -114,7 +114,7 @@ class AdvancedActivity : PageActivity() {
         }
     }
 
-    /** 自动匹配同一时间戳的一对 ZIP，避免把不同批次的数据和设置混在一起。 */
+    /** 分别选择用户数据与设置各自最新的 ZIP；两份备份时间戳可以不同。 */
     private fun restoreAll() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             Toast.makeText(this, R.string.restore_requires_android_10, Toast.LENGTH_LONG).show()
@@ -123,12 +123,6 @@ class AdvancedActivity : PageActivity() {
         val data = findLatestDownloadBackup("qingjian-data-")
         val settings = findLatestDownloadBackup("qingjian-settings-")
         if (data == null || settings == null) {
-            Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
-            return
-        }
-        val dataStamp = data.second.removePrefix("qingjian-data-").removeSuffix(".zip")
-        val settingsStamp = settings.second.removePrefix("qingjian-settings-").removeSuffix(".zip")
-        if (dataStamp != settingsStamp) {
             Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
             return
         }
