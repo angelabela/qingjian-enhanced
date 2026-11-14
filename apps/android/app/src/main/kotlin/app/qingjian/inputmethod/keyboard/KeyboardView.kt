@@ -39,6 +39,7 @@ class KeyboardView(
         /** 空格键向下滑：打开剪贴板面板。 */
         fun onOpenClipboard()
         fun onEditShortcut(action: EditShortcut)
+        fun onGestureAction(action: Settings.GestureAction)
 
         /** 长按气泡里选了一项（字母、数字或符号）。 */
         fun onKeyChoice(text: String)
@@ -335,13 +336,20 @@ class KeyboardView(
                 }
                 if (pointer == flickPointer) {
                     val flicked = flickSlot?.takeIf { flickArmed }
-                    val restoreClear = flickDirection < 0
+                    val direction = flickDirection
                     endFlick()
                     if (flicked != null) {
                         if (pointer == trail.pointer) trail.clear()
                         if (flicked.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
+                        if (flicked.key is Key.Space) {
+                            timer.removeCallbacks(spaceHold)
+                            spacePointer = -1
+                            cursorMode = false
+                            voiceMode = false
+                            clipboardMode = false
+                        }
                         pressed.remove(pointer)
-                        flick(flicked.key, restoreClear)
+                        performFlick(flicked.key, direction)
                         invalidate()
                         return true
                     }
@@ -450,9 +458,23 @@ class KeyboardView(
         }
     }
 
-    private fun flickable(key: Key) = (key as? Key.Letter)?.flickShift == true ||
-        (settings.flickSymbols && key.flick != null) ||
-        (settings.flickClear && key == Key.Backspace)
+    private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction = when {
+        key is Key.Enter -> if (upward) settings.enterSwipeUp else settings.enterSwipeDown
+        key == Key.Backspace -> if (upward) settings.backspaceSwipeUp else settings.backspaceSwipeDown
+        key is Key.Space -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
+        key is Key.Symbols -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
+        else -> Settings.GestureAction.DEFAULT
+    }
+
+    private fun flickable(key: Key): Boolean {
+        val up = gestureAction(key, upward = true)
+        val down = gestureAction(key, upward = false)
+        val custom = (up != Settings.GestureAction.DEFAULT && up != Settings.GestureAction.NONE) ||
+            (down != Settings.GestureAction.DEFAULT && down != Settings.GestureAction.NONE)
+        return custom || (key as? Key.Letter)?.flickShift == true ||
+            (settings.flickSymbols && key.flick != null) ||
+            (settings.flickClear && key == Key.Backspace)
+    }
 
     /**
      * 上滑的那根手指挪动：只看方向不看落在哪一列，单手拇指划出的斜线也算（#882）。
@@ -476,9 +498,12 @@ class KeyboardView(
         // 按下附近的抖动不算方向
         if (distance < metrics.density * TRACK_SLOP_DP) return
 
-        val isBackspace = flickSlot?.key == Key.Backspace
+        val key = flickSlot?.key ?: return
+        val isBackspace = key == Key.Backspace
+        val downAction = gestureAction(key, upward = false)
+        val allowsDown = isBackspace || (downAction != Settings.GestureAction.DEFAULT && downAction != Settings.GestureAction.NONE)
         if (flickDirection == 0) {
-            if (side > abs(vertical) * FLICK_SLOPE || vertical == 0f || (vertical < 0f && !isBackspace)) {
+            if (side > abs(vertical) * FLICK_SLOPE || vertical == 0f || (vertical < 0f && !allowsDown)) {
                 flickBroken = true
                 flickArmed = false
                 return
@@ -513,11 +538,20 @@ class KeyboardView(
         flickDirection = 0
     }
 
-    private fun flick(key: Key, restoreClear: Boolean = false) = when {
-        key == Key.Backspace && restoreClear -> listener.onRestoreLastClear()
-        key == Key.Backspace -> listener.onClearAll()
-        (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
-        else -> key.flick?.let(listener::onKeyChoice)
+    /** 自定义动作优先；DEFAULT 才回退到原有按键手势，NONE 吞掉该方向但不执行动作。 */
+    private fun performFlick(key: Key, direction: Int) {
+        val upward = direction > 0
+        val action = gestureAction(key, upward)
+        if (action != Settings.GestureAction.DEFAULT) {
+            if (action != Settings.GestureAction.NONE) listener.onGestureAction(action)
+            return
+        }
+        when {
+            key == Key.Backspace && !upward -> listener.onRestoreLastClear()
+            key == Key.Backspace -> listener.onClearAll()
+            upward && (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
+            upward -> key.flick?.let(listener::onKeyChoice)
+        }
     }
 
     /** 长按气泡里的项：中英键是语言名，其余是键自己的。 */
