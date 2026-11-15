@@ -154,8 +154,12 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         host.toast(message)
     }
 
+    override fun onSpectrum(bands: FloatArray) {
+        panel?.addSpectrum(bands)
+    }
+
     override fun onLevel(level: Float) {
-        panel?.addLevel(level)
+        panel?.addSpectrum(FloatArray(48) { level.coerceIn(0f, 1f) })
     }
 
     private fun end() {

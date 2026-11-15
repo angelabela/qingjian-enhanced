@@ -350,18 +350,21 @@ class Engine(context: Context, private val onReady: () -> Unit) {
             val engines = live.toList()
             engines.forEach(Engine::unload)
             val target = File(context.filesDir, "user")
-            val backup = File(context.filesDir, "user-before-restore")
+            val backup = File(context.filesDir, "user-before-restore-${System.currentTimeMillis()}")
+            var oldMoved = false
             return try {
-                backup.deleteRecursively()
-                if (target.exists() && !target.renameTo(backup)) error("无法备份当前用户数据")
-                if (!staged.renameTo(target)) {
-                    backup.renameTo(target)
-                    error("无法写入恢复数据")
+                if (!staged.isDirectory || staged.listFiles() == null) error("恢复暂存目录无效")
+                if (target.exists()) {
+                    if (!target.renameTo(backup)) error("无法备份当前用户数据")
+                    oldMoved = true
                 }
-                backup.deleteRecursively()
+                if (!staged.renameTo(target)) error("无法写入恢复数据")
+                if (!target.isDirectory) error("恢复后的用户数据目录校验失败")
+                if (oldMoved) backup.deleteRecursively()
                 true
             } catch (_: Exception) {
-                if (!target.exists() && backup.exists()) backup.renameTo(target)
+                if (target.exists() && oldMoved) target.deleteRecursively()
+                if (oldMoved && backup.exists()) backup.renameTo(target)
                 false
             } finally {
                 engines.forEach(Engine::load)

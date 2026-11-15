@@ -8,7 +8,10 @@ import android.os.Handler
 import android.os.Looper
 import app.qingjian.inputmethod.core.Engine
 import kotlin.concurrent.thread
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -50,12 +53,12 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 if (read < 0) break
                 if (read == 0) continue
                 val chunk = buffer.copyOf(read)
-                val levels = levels(chunk)
+                val spectrum = spectrum(chunk)
                 // 句柄只在主线程用；说完之后晚到的那截不再交
                 main.post {
                     if (!recording) return@post
                     engine.voiceFeed(chunk)
-                    levels.forEach { this.listener?.onLevel(it) }
+                    this.listener?.onSpectrum(spectrum)
                 }
             }
             record.stop()
@@ -108,16 +111,85 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     }
 
     /**
-     * 这一截每 [SLICE] 个采样一个响度（0 到 1），波形一截动几格。按分贝算：语音识别音源不带自动增益，正常说话的均方根只有满幅的百分之几，
-     * 线性放大要么说话时几乎不动、要么大声就顶满；[QUIET_DB] 到 [LOUD_DB] 之间线性铺开。
+     * 对真实 16 kHz PCM16 样本做 1024 点 Hann 窗 FFT，输出 48 个对数频段。
+     * 每个频段取 FFT bin 的 RMS 幅度，以 -72 dBFS 到 -18 dBFS 映射到 0..1。
      */
-    private fun levels(samples: ShortArray): List<Float> = (samples.indices step SLICE).map { start ->
-        val end = minOf(start + SLICE, samples.size)
-        var sum = 0.0
-        for (i in start until end) sum += samples[i].toDouble() * samples[i]
-        val rms = sqrt(sum / (end - start)) / Short.MAX_VALUE
-        val db = if (rms > 0) 20 * log10(rms) else QUIET_DB
-        ((db - QUIET_DB) / (LOUD_DB - QUIET_DB)).toFloat().coerceIn(0f, 1f)
+    private fun spectrum(samples: ShortArray): FloatArray {
+        val real = DoubleArray(FFT_SIZE)
+        val imaginary = DoubleArray(FFT_SIZE)
+        val offset = (samples.size - FFT_SIZE).coerceAtLeast(0)
+        val available = minOf(samples.size, FFT_SIZE)
+        for (i in 0 until available) {
+            val sample = samples[offset + i].toDouble() / Short.MAX_VALUE
+            val window = 0.5 - 0.5 * cos(2.0 * PI * i / (FFT_SIZE - 1))
+            real[i] = sample * window
+        }
+
+        // Radix-2 in-place Cooley–Tukey FFT.
+        var j = 0
+        for (i in 1 until FFT_SIZE) {
+            var bit = FFT_SIZE shr 1
+            while (j and bit != 0) {
+                j = j xor bit
+                bit = bit shr 1
+            }
+            j = j xor bit
+            if (i < j) {
+                val r = real[i]; real[i] = real[j]; real[j] = r
+                val im = imaginary[i]; imaginary[i] = imaginary[j]; imaginary[j] = im
+            }
+        }
+        var size = 2
+        while (size <= FFT_SIZE) {
+            val half = size shr 1
+            val angle = -2.0 * PI / size
+            val stepReal = cos(angle)
+            val stepImaginary = kotlin.math.sin(angle)
+            var baseIndex = 0
+            while (baseIndex < FFT_SIZE) {
+                var twiddleReal = 1.0
+                var twiddleImaginary = 0.0
+                for (k in 0 until half) {
+                    val even = baseIndex + k
+                    val odd = even + half
+                    val oddReal = real[odd] * twiddleReal - imaginary[odd] * twiddleImaginary
+                    val oddImaginary = real[odd] * twiddleImaginary + imaginary[odd] * twiddleReal
+                    real[odd] = real[even] - oddReal
+                    imaginary[odd] = imaginary[even] - oddImaginary
+                    real[even] += oddReal
+                    imaginary[even] += oddImaginary
+                    val nextReal = twiddleReal * stepReal - twiddleImaginary * stepImaginary
+                    twiddleImaginary = twiddleReal * stepImaginary + twiddleImaginary * stepReal
+                    twiddleReal = nextReal
+                }
+                baseIndex += size
+            }
+            size = size shl 1
+        }
+
+        val result = FloatArray(SPECTRUM_BANDS)
+        val binHz = SAMPLE_RATE.toDouble() / FFT_SIZE
+        val minFrequency = 55.0
+        val maxFrequency = 7_500.0
+        for (band in 0 until SPECTRUM_BANDS) {
+            val lowHz = minFrequency * (maxFrequency / minFrequency).pow(band.toDouble() / SPECTRUM_BANDS)
+            val highHz = minFrequency * (maxFrequency / minFrequency).pow((band + 1.0) / SPECTRUM_BANDS)
+            val firstBin = (lowHz / binHz).toInt().coerceAtLeast(1)
+            val lastBin = (highHz / binHz).toInt().coerceAtMost(FFT_SIZE / 2)
+            var power = 0.0
+            var count = 0
+            if (firstBin <= lastBin) {
+                for (bin in firstBin..lastBin) {
+                    val magnitude = sqrt(real[bin] * real[bin] + imaginary[bin] * imaginary[bin]) * (2.0 / FFT_SIZE)
+                    power += magnitude * magnitude
+                    count++
+                }
+            }
+            val amplitude = if (count == 0) 0.0 else sqrt(power / count)
+            val dbfs = if (amplitude > 1e-9) 20.0 * log10(amplitude) else FLOOR_DB
+            result[band] = ((dbfs - FLOOR_DB) / (CEILING_DB - FLOOR_DB)).toFloat().coerceIn(0f, 1f)
+        }
+        return result
     }
 
     private companion object {
@@ -128,11 +200,9 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
         /** 一截 100 ms。 */
         const val CHUNK = SAMPLE_RATE / 10
         const val POLL_MS = 100L
-        /** 20 ms 一个响度。 */
-        const val SLICE = SAMPLE_RATE / 50
-
-        /** 低于它算没声（环境底噪大约在这一带），高于 [LOUD_DB] 顶满。 */
-        const val QUIET_DB = -55.0
-        const val LOUD_DB = -15.0
+        const val FFT_SIZE = 1024
+        const val SPECTRUM_BANDS = 48
+        const val FLOOR_DB = -72.0
+        const val CEILING_DB = -18.0
     }
 }

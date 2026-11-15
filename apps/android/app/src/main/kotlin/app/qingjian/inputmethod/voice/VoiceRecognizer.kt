@@ -31,7 +31,10 @@ interface VoiceRecognizer {
         /** 出错，给用户看的一句话；之后不再回调。 */
         fun onError(message: String)
 
-        /** 音量，0 到 1，画话筒的波动用。 */
-        fun onLevel(level: Float)
+        /** 真实 PCM FFT 得到的对数频段能量（48 段，0..1），主线程回调。 */
+        fun onSpectrum(bands: FloatArray)
+
+        /** 兼容旧式音量指示；当前 PCM 识别实现优先回调 onSpectrum。 */
+        fun onLevel(level: Float) {}
     }
 }

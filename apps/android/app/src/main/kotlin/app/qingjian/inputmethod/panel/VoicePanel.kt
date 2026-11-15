@@ -18,9 +18,7 @@ import android.widget.ImageView
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
-import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.sin
 
 /** 语音面板：较轻的磨砂背景、随机渐变双声波与真实音量响应光晕。 */
 @SuppressLint("ViewConstructor")
@@ -43,9 +41,8 @@ class VoicePanel(
     private val backdrop = ImageView(context)
     private val scrim = View(context)
     private val overlay = OverlayView(context)
-    private val levels = FloatArray(SAMPLE_COUNT)
-    private val smoothedLevels = FloatArray(SAMPLE_COUNT)
-    private var sampleCursor = 0
+    private val spectrumBands = FloatArray(SAMPLE_COUNT)
+    private val smoothedBands = FloatArray(SAMPLE_COUNT)
     private var lastFrameNanos = 0L
     private var touchTarget = Target.NONE
     var target = Target.NONE
@@ -98,10 +95,9 @@ class VoicePanel(
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
-    fun addLevel(level: Float) {
-        synchronized(levels) {
-            levels[sampleCursor] = level.coerceIn(0f, 1f)
-            sampleCursor = (sampleCursor + 1) % SAMPLE_COUNT
+    fun addSpectrum(bands: FloatArray) {
+        synchronized(spectrumBands) {
+            for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
         overlay.postInvalidateOnAnimation()
     }
@@ -175,7 +171,6 @@ class VoicePanel(
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
         private val d = resources.displayMetrics.density
-        private val samples = FloatArray(SAMPLE_COUNT)
         // 每次新建语音面板都重新抽取色相；上下两条线保持协调但不再固定为同一套颜色。
         private val hueSeed = kotlin.random.Random.Default.nextFloat() * 360f
         private val lowerHueSeed = (hueSeed + 62f + kotlin.random.Random.Default.nextFloat() * 78f) % 360f
@@ -199,38 +194,37 @@ class VoicePanel(
             if (width <= 0 || height <= 0) return
             val cx = width * 0.5f
             val cy = height * 0.475f
-            synchronized(levels) {
-                for (i in samples.indices) samples[i] = levels[(sampleCursor + i) % SAMPLE_COUNT]
+            val frameBands = FloatArray(SAMPLE_COUNT)
+            synchronized(spectrumBands) {
+                spectrumBands.copyInto(frameBands)
             }
 
             val frameNanos = System.nanoTime()
             val deltaSeconds = if (lastFrameNanos == 0L) 1.0 / 60.0
                 else ((frameNanos - lastFrameNanos) / 1_000_000_000.0).coerceIn(0.0, 0.05)
             lastFrameNanos = frameNanos
-            // 音量上升、回落均使用指数平滑，避免跳帧；静音时平滑回到直线。
-            val blend = (1.0 - exp(-deltaSeconds / 0.085)).toFloat()
-            for (i in smoothedLevels.indices) {
-                smoothedLevels[i] += (samples[i] - smoothedLevels[i]) * blend
+            // 频谱采用快起慢落的包络平滑，保留瞬态，又避免柱高抖动。
+            for (i in smoothedBands.indices) {
+                val attack = (1.0 - exp(-deltaSeconds / 0.045)).toFloat()
+                val release = (1.0 - exp(-deltaSeconds / 0.19)).toFloat()
+                val blend = if (frameBands[i] > smoothedBands[i]) attack else release
+                smoothedBands[i] += (frameBands[i] - smoothedBands[i]) * blend
             }
 
             val now = frameNanos / 1_000_000_000.0
             val halfWidth = width * 0.43f
-            val laneGap = 18f * d
-            val maxAmplitude = 48f * d
-            val peakLevel = smoothedLevels.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+            val maxAmplitude = 54f * d
 
-            // 48 根频谱柱围绕中线成对展开：每根柱都由实时录音音量包络驱动，
-            // 通过频段权重与快速/慢速平滑形成低频厚、中高频细的均衡器观感。
+            // 48 根柱逐一对应真实 FFT 对数频带；不再叠加假音量包络或人为波纹。
+
             val barCount = SAMPLE_COUNT
             val gap = 3.2f * d
             val barWidth = ((halfWidth * 2f) - gap * (barCount - 1)) / barCount
             val hueShift = (now * 32.0).toFloat() % 360f
             for (i in 0 until barCount) {
                 val x = cx - halfWidth + i * (barWidth + gap)
-                val source = smoothedLevels[i].coerceIn(0f, 1f)
-                val centerWeight = 0.34f + 0.66f * (1f - abs(i - (barCount - 1) / 2f) / (barCount / 2f))
-                val ripple = (0.82f + 0.18f * sin(now * 5.0 + i * 0.71)).toFloat()
-                val heightBand = (3.0f * d + source * maxAmplitude * centerWeight * ripple).coerceAtLeast(2f * d)
+                val bandEnergy = smoothedBands[i].coerceIn(0f, 1f)
+                val heightBand = (2.2f * d + bandEnergy * maxAmplitude).coerceAtLeast(2f * d)
                 val color = Color.HSVToColor(floatArrayOf((hueSeed + hueShift + i * 2.8f) % 360f, 0.78f, 1f))
                 paint.shader = null
                 paint.color = color

@@ -126,14 +126,33 @@ class AdvancedActivity : PageActivity() {
             Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
             return
         }
+        Engine.flushAll()
         AlertDialog.Builder(this)
             .setTitle(R.string.restore_all_title)
             .setMessage(getString(R.string.restore_all_confirm, data.second, settings.second))
             .setPositiveButton(R.string.restore_confirm) { _, _ ->
                 runBackground("qingjian-restore-all", {
-                    val dataCount = restoreUserData(data.first)
-                    val settingsCount = restoreSettings(settings.first)
-                    dataCount to settingsCount
+                    val liveUser = Engine.userDir(this)
+                    val snapshot = File(filesDir, "user-before-restore-${System.currentTimeMillis()}")
+                    snapshot.deleteRecursively()
+                    if (liveUser.exists()) liveUser.copyRecursively(snapshot, overwrite = true)
+                    var dataReplaced = false
+                    try {
+                        val dataCount = restoreUserData(data.first)
+                        dataReplaced = true
+                        val settingsCount = restoreSettings(settings.first)
+                        snapshot.deleteRecursively()
+                        dataCount to settingsCount
+                    } catch (failure: Throwable) {
+                        if (dataReplaced && snapshot.exists()) {
+                            if (!Engine.replaceUserData(this, snapshot)) {
+                                error("设置恢复失败，且原用户数据回滚失败；恢复前快照仍保留。原因：${failure.message}")
+                            }
+                        } else {
+                            snapshot.deleteRecursively()
+                        }
+                        throw failure
+                    }
                 }) { counts ->
                     getString(R.string.restore_all_done, counts.first, counts.second)
                 }
@@ -395,6 +414,7 @@ class AdvancedActivity : PageActivity() {
             deleteRecursively()
             mkdirs()
         }
+        try {
         val root = Engine.userDir(this)
         val legacy = Engine.learningFiles(this).mapNotNull { (name, file) ->
             runCatching { name to file.relativeTo(root).invariantSeparatorsPath }.getOrNull()
@@ -402,6 +422,8 @@ class AdvancedActivity : PageActivity() {
         var written = 0
         var totalBytes = 0L
         var manifestSeen = false
+        var modernEntriesSeen = false
+        val restoredPaths = mutableSetOf<String>()
         val input = contentResolver.openInputStream(source) ?: error("无法读取备份文件")
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             var entry = zip.nextEntry
@@ -417,10 +439,14 @@ class AdvancedActivity : PageActivity() {
                     manifestSeen = true
                 } else if (!entry.isDirectory) {
                     val relative = when {
-                        entry.name.startsWith("user/") -> entry.name.removePrefix("user/")
+                        entry.name.startsWith("user/") -> {
+                            modernEntriesSeen = true
+                            entry.name.removePrefix("user/")
+                        }
                         else -> legacy[entry.name]
                     }
                     if (!relative.isNullOrBlank()) {
+                        if (!restoredPaths.add(relative)) error("备份中存在重复文件：$relative")
                         if (relative.startsWith("/") || relative.split('/').any { it == ".." || it.isBlank() }) {
                             error("备份文件路径无效")
                         }
@@ -444,13 +470,15 @@ class AdvancedActivity : PageActivity() {
                 entry = zip.nextEntry
             }
         }
-        // 新格式必须有正确 manifest；没有 manifest 的旧版 ZIP 仅按原有白名单兼容。
+        // 新格式必须同时具有清单和 user/ 前缀；旧版 ZIP 只允许通过 Engine.learningFiles 白名单映射。
         if (written == 0) error("备份里没有可恢复的青简数据")
-        if (!manifestSeen && written > 0 && staging.listFiles().orEmpty().any { it.name == "user" }) {
-            error("数据备份缺少格式清单，已拒绝恢复")
-        }
+        if (modernEntriesSeen && !manifestSeen) error("数据备份缺少格式清单，已拒绝恢复")
+        if (manifestSeen && !modernEntriesSeen) error("数据备份结构不完整，缺少 user/ 数据目录")
         if (!Engine.replaceUserData(this, staging)) error("恢复失败，原有数据已保留")
         return written
+        } finally {
+            staging.deleteRecursively()
+        }
     }
 
     /** 备份应用内全部 SharedPreferences；每个值带类型，避免恢复时把整数变成长整数。 */
