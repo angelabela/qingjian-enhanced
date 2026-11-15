@@ -503,7 +503,8 @@ class KeyboardView(
             Settings.GestureAction.OPEN_THEME_PICKER -> "皮肤"
             Settings.GestureAction.ENTER -> "回车"
             Settings.GestureAction.SWITCH_LANGUAGE -> "中英"
-            Settings.GestureAction.BACKSPACE -> "删除"\n            Settings.GestureAction.OPEN_SCANNER -> "扫码"
+            Settings.GestureAction.BACKSPACE -> "删除"
+            Settings.GestureAction.OPEN_SCANNER -> "扫码"
         }
     }
 
