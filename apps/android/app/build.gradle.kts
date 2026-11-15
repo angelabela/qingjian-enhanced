@@ -127,3 +127,14 @@ val stageData by tasks.registering(Sync::class) {
 tasks.named("preBuild") {
     dependsOn(cargoNdk, stageData)
 }
+
+
+dependencies {
+    // 260：持续相机预览与本机条码识别（不上传扫描内容）
+    implementation("androidx.activity:activity:1.10.1")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+}
