@@ -68,6 +68,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
+    // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
+    private val lastDeliveredAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
@@ -291,7 +293,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped)) return@forEach
-                                    deliverResult(value)
+                                    val now = android.os.SystemClock.elapsedRealtime()
+                                    val previous = lastDeliveredAt.put(value, now)
+                                    if (previous == null || now - previous >= DUPLICATE_SUPPRESS_MS) deliverResult(value)
                                 }
                             }
                         }
@@ -390,12 +394,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
             color = (themePalette?.brand ?: 0xFF55E6D0.toInt()).let { (it and 0x00FFFFFF) or 0x18000000 }
             style = Paint.Style.FILL
         }
-        private val cornerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = themePalette?.brand ?: 0xFF55E6D0.toInt()
-            style = Paint.Style.STROKE
-            strokeWidth = 5f * density
-            strokeCap = Paint.Cap.ROUND
-        }
         private var downX = 0f
         private var downY = 0f
         private var start = RectF()
@@ -431,21 +429,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val mask = android.graphics.Path().apply {
                 fillType = android.graphics.Path.FillType.EVEN_ODD
                 addRect(0f, 0f, width.toFloat(), height.toFloat(), android.graphics.Path.Direction.CW)
-                addRoundRect(rect, 12f * density, 12f * density, android.graphics.Path.Direction.CW)
+                addRect(rect, android.graphics.Path.Direction.CW)
             }
             canvas.drawPath(mask, outsideShade)
-            canvas.drawRoundRect(rect, 12f * density, 12f * density, insideGlow)
-            canvas.drawRoundRect(rect, 12f * density, 12f * density, stroke)
-            val corner = 18f * density
-            val inset = 3f * density
-            canvas.drawLine(rect.left + inset, rect.top + corner, rect.left + inset, rect.top + inset, cornerStroke)
-            canvas.drawLine(rect.left + inset, rect.top + inset, rect.left + corner, rect.top + inset, cornerStroke)
-            canvas.drawLine(rect.right - corner, rect.top + inset, rect.right - inset, rect.top + inset, cornerStroke)
-            canvas.drawLine(rect.right - inset, rect.top + inset, rect.right - inset, rect.top + corner, cornerStroke)
-            canvas.drawLine(rect.left + inset, rect.bottom - corner, rect.left + inset, rect.bottom - inset, cornerStroke)
-            canvas.drawLine(rect.left + inset, rect.bottom - inset, rect.left + corner, rect.bottom - inset, cornerStroke)
-            canvas.drawLine(rect.right - corner, rect.bottom - inset, rect.right - inset, rect.bottom - inset, cornerStroke)
-            canvas.drawLine(rect.right - inset, rect.bottom - inset, rect.right - inset, rect.bottom - corner, cornerStroke)
+            // 只绘制直角矩形边框，去掉重复圆角轮廓。
+            canvas.drawRect(rect, insideGlow)
+            canvas.drawRect(rect, stroke)
         }
 
         fun boundsInView(): RectF = RectF(rect)
@@ -519,5 +508,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val WINDOW_PREFS = "scan_overlay_window"
         private const val KEY_WIDTH_DP = "width_dp"
         private const val KEY_HEIGHT_DP = "height_dp"
+        private const val DUPLICATE_SUPPRESS_MS = 1_500L
     }
 }
