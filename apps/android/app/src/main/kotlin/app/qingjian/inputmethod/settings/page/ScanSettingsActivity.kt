@@ -11,43 +11,41 @@ class ScanSettingsActivity : PageActivity() {
     override fun content(): List<View> {
         val prefs = getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE)
         val mode = prefs.getString(ScanPreferences.KEY_MODE, ScanPreferences.MODE_FULL)
-        return listOf(
-            ui.group(
+        val rows = listOf(
+            ui.toggle(
+                "悬浮扫码",
+                "在当前应用上方显示可移动、可缩放的扫码窗口",
+                mode == ScanPreferences.MODE_FLOATING,
                 null,
-                ui.toggle(
-                    "悬浮扫码",
-                    "在当前应用上方显示可移动、可缩放的扫码窗口",
-                    mode == ScanPreferences.MODE_FLOATING,
-                ) { enabled ->
-                    prefs.edit().putString(
-                        ScanPreferences.KEY_MODE,
-                        if (enabled) ScanPreferences.MODE_FLOATING else ScanPreferences.MODE_FULL,
-                    ).apply()
-                    rebuild()
-                },
-                ui.toggle(
-                    "全屏扫码",
-                    "使用独立全屏页面进行持续扫码",
-                    mode != ScanPreferences.MODE_FLOATING,
-                ) { enabled ->
-                    prefs.edit().putString(
-                        ScanPreferences.KEY_MODE,
-                        if (enabled) ScanPreferences.MODE_FULL else ScanPreferences.MODE_FLOATING,
-                    ).apply()
-                    rebuild()
-                },
-                ui.toggle(
-                    R.string.scan_auto_enter_title,
-                    R.string.scan_auto_enter_note,
-                    prefs.getBoolean(ScanPreferences.KEY_AUTO_ENTER, false),
-                ) { prefs.edit().putBoolean(ScanPreferences.KEY_AUTO_ENTER, it).apply() },
-                ui.toggle(
-                    R.string.scan_vibrate_title,
-                    R.string.scan_vibrate_note,
-                    prefs.getBoolean(ScanPreferences.KEY_VIBRATE, true),
-                ) { prefs.edit().putBoolean(ScanPreferences.KEY_VIBRATE, it).apply() },
-                footer = R.string.scan_settings_note,
-            ),
+            ) { enabled ->
+                prefs.edit().putString(
+                    ScanPreferences.KEY_MODE,
+                    if (enabled) ScanPreferences.MODE_FLOATING else ScanPreferences.MODE_FULL,
+                ).apply()
+                rebuild()
+            },
+            ui.toggle(
+                "全屏扫码",
+                "使用独立全屏页面进行持续扫码",
+                mode != ScanPreferences.MODE_FLOATING,
+                null,
+            ) { enabled ->
+                prefs.edit().putString(
+                    ScanPreferences.KEY_MODE,
+                    if (enabled) ScanPreferences.MODE_FULL else ScanPreferences.MODE_FLOATING,
+                ).apply()
+                rebuild()
+            },
+            ui.toggle(
+                R.string.scan_auto_enter_title,
+                R.string.scan_auto_enter_note,
+                prefs.getBoolean(ScanPreferences.KEY_AUTO_ENTER, false),
+            ) { prefs.edit().putBoolean(ScanPreferences.KEY_AUTO_ENTER, it).apply() },
+            ui.toggle(
+                R.string.scan_vibrate_title,
+                R.string.scan_vibrate_note,
+                prefs.getBoolean(ScanPreferences.KEY_VIBRATE, true),
+            ) { prefs.edit().putBoolean(ScanPreferences.KEY_VIBRATE, it).apply() },
         )
-    }
-}
+        return listOf(ui.group(null, rows, getString(R.string.scan_settings_note)))
+    }}
