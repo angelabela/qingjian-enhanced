@@ -187,8 +187,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                windowParams.x = (moveStartX + event.rawX - moveRawX).toInt().coerceAtLeast(0)
-                windowParams.y = (moveStartY + event.rawY - moveRawY).toInt().coerceAtLeast(0)
+                windowParams.x = (moveStartX + event.rawX - moveRawX).toInt()
+                    .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
+                    .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
                 runCatching { windowManager.updateViewLayout(root, windowParams) }
                 return true
             }
@@ -215,8 +217,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             MotionEvent.ACTION_MOVE -> {
                 val maxW = resources.displayMetrics.widthPixels - windowParams.x
                 val maxH = resources.displayMetrics.heightPixels - windowParams.y
-                windowParams.width = (resizeStartW + event.rawX - resizeRawX).toInt().coerceIn((220 * density).toInt(), maxW)
-                windowParams.height = (resizeStartH + event.rawY - resizeRawY).toInt().coerceIn((220 * density).toInt(), maxH)
+                val minSize = (220 * density).toInt()
+                windowParams.width = (resizeStartW + event.rawX - resizeRawX).toInt()
+                    .coerceIn(minSize, maxOf(minSize, maxW))
+                windowParams.height = (resizeStartH + event.rawY - resizeRawY).toInt()
+                    .coerceIn(minSize, maxOf(minSize, maxH))
                 runCatching { windowManager.updateViewLayout(root, windowParams) }
                 return true
             }
@@ -228,7 +233,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
-            if (isDestroyed) return@addListener
+            if (lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
             val provider = future.get()
             cameraProvider = provider
             val cameraPreview = Preview.Builder().build().also {
