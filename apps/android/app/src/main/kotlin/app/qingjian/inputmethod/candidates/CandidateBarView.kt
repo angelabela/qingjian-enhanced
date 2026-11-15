@@ -35,7 +35,7 @@ class CandidateBarView(
         fun onSelect(index: Int)
 
         /** 候选是电话/短信关键词或手机号时，交给服务展示快捷动作。 */
-        fun onSmartAction(text: String)
+        fun onSmartAction(text: String, action: String)
 
         /** 点了拼音行：光标挪到第 [index] 个字之后。 */
         fun onMoveCaret(index: Int)
@@ -90,6 +90,12 @@ class CandidateBarView(
     private val expandSlot = 46f * density
     private val expandFill = Paint()
     private val expandIcon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.text }
+    private val smartActionBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.brand }
+    private val smartActionText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.onBrand
+        textAlign = Paint.Align.CENTER
+        textSize = 11f * density
+    }
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
@@ -219,6 +225,7 @@ class CandidateBarView(
         strip.isEmpty -> toolbar.draw(canvas, width)
         else -> {
             strip.draw(canvas, scrollX, stripWidth)
+            drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
             // 候选条与键盘之间一道细线，分出层次；滚动时线不跟着走
             canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
@@ -237,6 +244,43 @@ class CandidateBarView(
                 gestures.setIsLongpressEnabled(!onPreedit)
             }
             gestures.onTouchEvent(event)
+        }
+    }
+
+    /** 候选格右上角的小电话/短信入口；普通候选文字区域仍照常点击上屏。 */
+    private fun smartActions(text: String): List<String> {
+        val phone = Regex("(?<!\\\\d)(?:\\\\+?86[- ]?)?1[3-9]\\\\d{9}(?!\\\\d)").containsMatchIn(text)
+        return when {
+            phone -> listOf("phone", "sms")
+            text.contains("电话") -> listOf("phone")
+            text.contains("短信") -> listOf("sms")
+            else -> emptyList()
+        }
+    }
+
+    private fun smartActionAt(index: Int, text: String, contentX: Float, y: Float): String? {
+        val actions = smartActions(text)
+        if (actions.isEmpty()) return null
+        val rect = strip.wordRect(index) ?: return null
+        val cy = rect.top + 10f * density
+        if (y !in (cy - 11f * density)..(cy + 11f * density)) return null
+        actions.forEachIndexed { i, action ->
+            val cx = rect.right - (10f + i * 19f) * density
+            if (contentX in (cx - 10f * density)..(cx + 10f * density)) return action
+        }
+        return null
+    }
+
+    private fun drawSmartActions(canvas: Canvas) {
+        strip.candidates.forEachIndexed { index, candidate ->
+            val actions = smartActions(candidate.text)
+            val rect = strip.wordRect(index) ?: return@forEachIndexed
+            actions.forEachIndexed { i, action ->
+                val cx = rect.right - (10f + i * 19f) * density - scrollX
+                val cy = rect.top + 10f * density
+                canvas.drawCircle(cx, cy, 8f * density, smartActionBg)
+                canvas.drawText(if (action == "phone") "☎" else "✉", cx, cy + 4f * density, smartActionText)
+            }
         }
     }
 
@@ -276,12 +320,9 @@ class CandidateBarView(
         if (!strip.isEmpty) {
             strip.indexAt(x + scrollX).takeIf { it >= 0 }?.let { index ->
                 val text = strip.candidates.getOrNull(index)?.text.orEmpty()
-                val phone = Regex("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)")
-                if (text.contains("电话") || text.contains("短信") || phone.containsMatchIn(text)) {
-                    listener.onSmartAction(text)
-                } else {
-                    listener.onSelect(index)
-                }
+                smartActionAt(index, text, x + scrollX, y)?.let { action ->
+                    listener.onSmartAction(text, action)
+                } ?: listener.onSelect(index)
             }
             return
         }
