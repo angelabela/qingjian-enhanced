@@ -73,9 +73,9 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
             ))
             addView(ui.group(
                 "权限管理",
-                ui.entry(Icon.LOCK, "权限检测", "查看授权状态") {
+                listOf(ui.entry(Icon.LOCK, "权限检测", "查看授权状态") {
                     open(PermissionSettingsActivity::class.java)
-                },
+                }),
             ))
             addView(ui.group(
                 R.string.section_typing,
