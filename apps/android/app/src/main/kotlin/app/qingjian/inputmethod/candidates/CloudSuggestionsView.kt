@@ -1,6 +1,11 @@
 package app.qingjian.inputmethod.candidates
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Shader
+import android.graphics.LinearGradient
+import android.view.MotionEvent
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
@@ -21,6 +26,19 @@ class CloudSuggestionsView(
     private val density = resources.displayMetrics.density
     private var smartSelection: ((String) -> Unit)? = null
     private var selectionAnimating = false
+    private var draggingTips = false
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragStartTranslationX = 0f
+    private var dragStartTranslationY = 0f
+    private val edgeFadeWidth = (22 * density).toFloat()
+    private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rightFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dragHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.text and 0x66FFFFFF
+        strokeWidth = 2f * density
+        strokeCap = Paint.Cap.ROUND
+    }
     private val items = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -39,6 +57,32 @@ class CloudSuggestionsView(
         }
         elevation = 8f * density
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
+        setOnTouchListener { _, event ->
+            // 顶部窄条作为拖动把手，其余区域仍保留原生横向滑动与候选点击。
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    draggingTips = event.y <= 11f * density
+                    if (draggingTips) {
+                        dragStartRawX = event.rawX
+                        dragStartRawY = event.rawY
+                        dragStartTranslationX = translationX
+                        dragStartTranslationY = translationY
+                        true
+                    } else false
+                }
+                MotionEvent.ACTION_MOVE -> if (draggingTips) {
+                    translationX = dragStartTranslationX + event.rawX - dragStartRawX
+                    translationY = dragStartTranslationY + event.rawY - dragStartRawY
+                    true
+                } else false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasDragging = draggingTips
+                    draggingTips = false
+                    wasDragging
+                }
+                else -> draggingTips
+            }
+        }
         visibility = GONE
     }
 
@@ -138,11 +182,21 @@ class CloudSuggestionsView(
     private fun hideTips() {
         if (visibility != VISIBLE) return
         animate().cancel()
-        animate().alpha(0f).translationY(-6f * density).setDuration(150L).withEndAction {
-            visibility = GONE
-            alpha = 1f
-            translationY = 0f
-        }.start()
+        // 沿着输入框所在的上方方向收拢，边移动边渐隐，避免突然消失。
+        animate()
+            .alpha(0f)
+            .translationY(-height.coerceAtLeast((38 * density).toInt()).toFloat())
+            .scaleX(0.92f)
+            .scaleY(0.88f)
+            .setDuration(230L)
+            .withEndAction {
+                visibility = GONE
+                alpha = 1f
+                translationY = 0f
+                scaleX = 1f
+                scaleY = 1f
+            }
+            .start()
     }
 
     /**
@@ -193,6 +247,31 @@ class CloudSuggestionsView(
                 if (isAttachedToWindow) onFinished()
             }
             .start()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w <= 0) return
+        val transparent = palette.surface and 0x00FFFFFF
+        leftFadePaint.shader = LinearGradient(
+            0f, 0f, edgeFadeWidth, 0f,
+            intArrayOf(palette.surface, transparent),
+            null, Shader.TileMode.CLAMP,
+        )
+        rightFadePaint.shader = LinearGradient(
+            w - edgeFadeWidth, 0f, w.toFloat(), 0f,
+            intArrayOf(transparent, palette.surface),
+            null, Shader.TileMode.CLAMP,
+        )
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        // 固定在 Tips 可视窗口边缘绘制渐隐层，不随内部文字一起横向滚动。
+        canvas.drawRect(0f, 0f, edgeFadeWidth, height.toFloat(), leftFadePaint)
+        canvas.drawRect(width - edgeFadeWidth, 0f, width.toFloat(), height.toFloat(), rightFadePaint)
+        val center = width / 2f
+        canvas.drawLine(center - 8f * density, 5f * density, center + 8f * density, 5f * density, dragHandlePaint)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
