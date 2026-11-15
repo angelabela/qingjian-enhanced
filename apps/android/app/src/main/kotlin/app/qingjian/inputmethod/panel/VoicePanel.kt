@@ -191,15 +191,15 @@ class VoicePanel(
                 else ((frameNanos - lastFrameNanos) / 1_000_000_000.0).coerceIn(0.0, 0.05)
             lastFrameNanos = frameNanos
             // 音量上升、回落均使用指数平滑，避免跳帧；静音时平滑回到直线。
-            val blend = (1.0 - exp(-deltaSeconds / 0.11)).toFloat()
+            val blend = (1.0 - exp(-deltaSeconds / 0.085)).toFloat()
             for (i in smoothedLevels.indices) {
                 smoothedLevels[i] += (samples[i] - smoothedLevels[i]) * blend
             }
 
             val now = frameNanos / 1_000_000_000.0
             val halfWidth = width * 0.43f
-            val laneGap = 15f * d
-            val maxAmplitude = 31f * d
+            val laneGap = 18f * d
+            val maxAmplitude = 48f * d
             val peakLevel = smoothedLevels.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
 
             for (lane in 0..1) {
@@ -211,10 +211,10 @@ class VoicePanel(
                 for (i in 0 until SAMPLE_COUNT) {
                     val x = cx - halfWidth + (2f * halfWidth * i / (SAMPLE_COUNT - 1))
                     val envelope = smoothedLevels[i].coerceAtLeast(0f)
-                    val phase = now * 2.15 + i * 0.39 + if (upper) 0.0 else 1.2
+                    val phase = now * 2.7 + i * 0.43 + if (upper) 0.0 else 1.2
                     // 静音严格保持水平；有声音时，上轨向上、下轨向下展开。
                     val displacement = if (envelope <= 0.012f) 0f
-                        else abs(sin(phase)).toFloat().pow(2.25f) * envelope * maxAmplitude
+                        else abs(sin(phase)).toFloat().pow(1.75f) * envelope * maxAmplitude
                     val y = baseY + if (upper) -displacement else displacement
                     if (i == 0) path.moveTo(x, y) else {
                         val midX = (previousX + x) * 0.5f
@@ -229,17 +229,17 @@ class VoicePanel(
                 paint.strokeCap = Paint.Cap.ROUND
                 paint.strokeJoin = Paint.Join.ROUND
                 // 颜色渐变在原位随时间平滑变色，线条本身不平移、不改变位置。
-                val hueShift = (now * 24.0).toFloat() % 360f
+                val hueShift = (now * 32.0).toFloat() % 360f
                 paint.shader = LinearGradient(
                     cx - halfWidth, baseY, cx + halfWidth, baseY,
                     gradientColors(if (upper) hueSeed else lowerHueSeed, hueShift),
                     null, Shader.TileMode.CLAMP,
                 )
                 // 声音越强，线条的柔光越明显、线芯略微增粗；没有声音时只留下干净的渐变直线。
-                paint.strokeWidth = 7f * d
-                paint.alpha = (18f + peakLevel * 54f).toInt()
+                paint.strokeWidth = 10f * d
+                paint.alpha = (32f + peakLevel * 92f).toInt()
                 canvas.drawPath(path, paint)
-                paint.strokeWidth = (if (upper) 2.4f else 1.8f) * d + peakLevel * 0.45f * d
+                paint.strokeWidth = (if (upper) 2.8f else 2.2f) * d + peakLevel * 1.05f * d
                 paint.alpha = 255
                 canvas.drawPath(path, paint)
                 paint.shader = null
