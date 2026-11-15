@@ -75,8 +75,7 @@ class InputPanel(
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
 
-    // 云联想是独立的一行，不能并入普通候选栏，也不与候选栏共用卡片背景。
-    // 普通候选栏自身保持原有绘制、滚动和点击区域，云联想单独位于其上方。
+    // 云联想使用独立悬浮 Tips，不加入垂直布局、不挤占候选栏和键盘高度。
     private val main = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         clipChildren = false
@@ -118,7 +117,7 @@ class InputPanel(
         }
     }
 
-    /** 云联想独立显示在普通候选栏上方；传入原候选下标，点击后仍由引擎选择原候选。 */
+    /** 云联想以浮动 Tips 显示；传入原候选下标，点击后仍由引擎选择原候选。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) = cloudSuggestions.show(candidates)
 
     /** 实时设备信息 / 定位天气候选，点击后由服务决定上屏或申请权限。 */
