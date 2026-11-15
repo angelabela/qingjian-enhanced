@@ -437,7 +437,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             scaleDetector.onTouchEvent(event)
             // 双指捏合只调整镜头变焦倍率，不改变悬浮窗尺寸；窗口大小与相机视野倍率互不绑定。
             if (event.pointerCount > 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
-                event.actionMasked == MotionEvent.ACTION_POINTER_UP) return true
+                event.actionMasked == MotionEvent.ACTION_POINTER_UP) {
+                if (event.actionMasked == MotionEvent.ACTION_POINTER_UP) touchInScanArea = false
+                return true
+            }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
