@@ -70,8 +70,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
-    // 同一悬浮扫码会话内，同一条码只投递一次；静止码持续出现在画面中也不会重复上屏。
-    private val deliveredValues = mutableSetOf<String>()
+    // 记录最近识别时间，避免静止码因短暂识别波动而连续触发；输入框级去重由 IME 负责。
+    private val lastSeen = mutableMapOf<String, Long>()
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
@@ -295,8 +295,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
-                                    // 不使用短时间窗口去重：静止条码即使持续被识别数分钟，也只发送一次。
-                                    if (!deliveredValues.add(value)) return@forEach
+                                    val now = System.currentTimeMillis()
+                                    val previous = lastSeen[value] ?: 0L
+                                    lastSeen[value] = now
+                                    if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
+                                    if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
                                     deliverResult(value)
                                 }
                             }
@@ -496,5 +499,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val WINDOW_PREFS = "scan_overlay_window"
         private const val KEY_WIDTH_DP = "width_dp"
         private const val KEY_HEIGHT_DP = "height_dp"
+        private const val DEDUPE_MS = 2500L
     }
 }
