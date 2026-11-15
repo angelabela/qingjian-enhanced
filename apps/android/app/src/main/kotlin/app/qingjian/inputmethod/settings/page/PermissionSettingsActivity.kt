@@ -38,10 +38,12 @@ class PermissionSettingsActivity : PageActivity() {
             ui.group("特殊权限", special, "悬浮扫码需要允许青简显示在其他应用上层。"),
             ui.group(
                 "系统自动授予的权限",
-                ui.row("网络访问", "联网功能使用；无需单独弹出授权框"),
-                ui.row("网络状态", "检测 Wi-Fi 与网络连接状态"),
-                ui.row("按键震动", "键盘触感反馈使用"),
-                ui.row("前台服务", "保持悬浮扫码运行；由 Android 系统管理"),
+                listOf(
+                    ui.row("网络访问", "联网功能使用；无需单独弹出授权框"),
+                    ui.row("网络状态", "检测 Wi-Fi 与网络连接状态"),
+                    ui.row("按键震动", "键盘触感反馈使用"),
+                    ui.row("前台服务", "保持悬浮扫码运行；由 Android 系统管理"),
+                ),
             ),
         )
     }
@@ -66,7 +68,7 @@ class PermissionSettingsActivity : PageActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::ui.isInitialized) rebuild()
+        rebuild()
     }
 
     override fun onRequestPermissionsResult(
