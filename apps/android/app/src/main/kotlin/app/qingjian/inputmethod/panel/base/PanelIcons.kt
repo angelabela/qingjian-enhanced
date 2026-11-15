@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA }
 
     private val path = Path()
     private val oval = RectF()
@@ -52,6 +52,7 @@ object PanelIcons {
             Icon.TRADITIONAL -> traditional()
             Icon.LEFT_HAND -> leftHand()
             Icon.GAMEPAD -> gamepad()
+            Icon.CAMERA -> camera()
         }
         val scale = size / 24f
         canvas.save()
@@ -302,6 +303,14 @@ object PanelIcons {
         polyline(4.8f, 12.8f, 9.2f, 12.8f)
         circle(16.5f, 11.5f, 1f)
         circle(19f, 14.5f, 1f)
+    }
+
+    private fun camera() {
+        oval.set(3.5f, 7f, 20.5f, 19.5f)
+        path.addRoundRect(oval, 2f, 2f, Path.Direction.CW)
+        polyline(8f, 7f, 9.5f, 4.5f, 14.5f, 4.5f, 16f, 7f)
+        circle(12f, 13.2f, 3.6f)
+        circle(18f, 9.8f, 0.7f)
     }
 
     private fun info() {
