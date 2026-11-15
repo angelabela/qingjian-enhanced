@@ -208,10 +208,7 @@ class CloudSuggestionsView(
             gravity = Gravity.TOP or Gravity.START
             x = position[0]
             y = position[1]
-            if (Build.VERSION.SDK_INT >= 31) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                blurBehindRadius = (28f * density).toInt()
-            }
+            // 只渲染 Tips 自身的液态玻璃外观，不对后方整个屏幕施加系统模糊。
         }
         runCatching {
             windowManager.addView(this, params)
