@@ -2,6 +2,9 @@ package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import app.qingjian.inputmethod.scan.BarcodeScannerActivity
+import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import android.graphics.Canvas
 import android.graphics.RectF
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
@@ -35,6 +38,8 @@ class FunctionPanel(
     private val features = listOf(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
+        Feature(Icon.SYMBOLS, "扫码") { context.startActivity(Intent(context, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+        Feature(Icon.INFO, "验证码监测") { context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
         Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
         Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
             setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
