@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.candidates
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.text.TextPaint
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.strip.StripImage
