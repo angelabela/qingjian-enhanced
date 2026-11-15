@@ -262,11 +262,12 @@ class CandidateBarView(
         val actions = smartActions(text)
         if (actions.isEmpty()) return null
         val rect = strip.wordRect(index) ?: return null
-        val cy = rect.top + 10f * density
-        if (y !in (cy - 11f * density)..(cy + 11f * density)) return null
+        // 快捷按钮固定在候选格底部的独立操作行，不再压在候选文字上。
+        val cy = rect.bottom - 9f * density
+        if (y !in (cy - 9f * density)..(cy + 9f * density)) return null
         actions.forEachIndexed { i, action ->
-            val cx = rect.right - (10f + i * 19f) * density
-            if (contentX in (cx - 10f * density)..(cx + 10f * density)) return action
+            val cx = rect.right - (11f + i * 21f) * density
+            if (contentX in (cx - 9f * density)..(cx + 9f * density)) return action
         }
         return null
     }
@@ -276,9 +277,13 @@ class CandidateBarView(
             val actions = smartActions(candidate.text)
             val rect = strip.wordRect(index) ?: return@forEachIndexed
             actions.forEachIndexed { i, action ->
-                val cx = rect.right - (10f + i * 19f) * density - scrollX
-                val cy = rect.top + 10f * density
-                canvas.drawCircle(cx, cy, 8f * density, smartActionBg)
+                val cx = rect.right - (11f + i * 21f) * density - scrollX
+                val cy = rect.bottom - 9f * density
+                canvas.drawRoundRect(
+                    cx - 9f * density, cy - 8f * density,
+                    cx + 9f * density, cy + 8f * density,
+                    5f * density, 5f * density, smartActionBg,
+                )
                 canvas.drawText(if (action == "phone") "☎" else "✉", cx, cy + 4f * density, smartActionText)
             }
         }
