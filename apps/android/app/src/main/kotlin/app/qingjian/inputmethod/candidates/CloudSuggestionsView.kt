@@ -77,8 +77,8 @@ class CloudSuggestionsView(
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
         // 液态玻璃：多层半透明渐变、细亮边与高光；有悬浮窗权限时再启用系统背景模糊。
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
-            0xDDFBFDFF.toInt(), (palette.surface and 0x00FFFFFF) or 0xB8000000.toInt(),
-            (palette.surface and 0x00FFFFFF) or 0xCC000000.toInt(),
+            0x66F7FBFF, (palette.surface and 0x00FFFFFF) or 0x99000000.toInt(),
+            (palette.surface and 0x00FFFFFF) or 0x88000000.toInt(),
         )).apply {
             cornerRadius = 22f * density
             setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
@@ -117,7 +117,7 @@ class CloudSuggestionsView(
                 )
             }
             val cloudIcon = TextView(context).apply {
-                text = "☁"
+                text = arrayOf("✦", "☁", "✧", "◈", "❖")[Random.nextInt(5)]
                 textSize = 15f
                 setTextColor(palette.cloud)
                 gravity = Gravity.CENTER
@@ -287,7 +287,7 @@ class CloudSuggestionsView(
 
     /**
      * 点击后复制一层文字，从联想词位置飞向输入框所在的上方，再执行一次真实上屏回调。
-     * IME 与宿主编辑器属于不同窗口，系统不允许普通 View 跨窗口绘制；动画到达输入法窗口上沿，
+     * IME 与宿主编辑器属于不同窗口，系统不允许普通 View 跨窗口绘制；动画在 Tips 窗口内完成，
      * 随后只调用一次原有选择回调，不伪造编辑器坐标或重复提交文字。
      */
     private fun flyIntoEditorDirection(source: TextView, value: String, onFinished: () -> Unit) {
