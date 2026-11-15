@@ -19,6 +19,7 @@ enum class ToolbarTool(val label: String, val icon: Icon) {
     PHRASES("常用语", Icon.PHRASES),
     SWITCH_INPUT_METHOD("切换输入法", Icon.GLOBE),
     SETTINGS("设置", Icon.SETTINGS),
+    SCAN("扫码", Icon.SYMBOLS),
     ;
 
     companion object {
