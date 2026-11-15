@@ -539,7 +539,7 @@ class QingjianInputMethodService :
     override fun onSelect(index: Int) = composer.select(index)
 
     override fun onSmartAction(text: String, action: String) {
-        val number = Regex("(?<!\\\\d)(?:\\\\+?86[- ]?)?(1[3-9]\\\\d{9})(?!\\\\d)")
+        val number = Regex("(?<!\\d)(?:\\+?86[- ]?)?(1[3-9]\\d{9})(?!\\d)")
             .find(text)?.groupValues?.getOrNull(1)
         val intent = if (action == "phone") {
             Intent(Intent.ACTION_DIAL, Uri.parse(if (number == null) "tel:" else "tel:$number"))
