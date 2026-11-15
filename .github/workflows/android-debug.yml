@@ -4,7 +4,7 @@ name: android-debug
 on:
   # APK 只在代码推送时构建；237 基线的实时信息功能与输入手势样式在此工作流验证。
   push:
-    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter, fix/voice-animation-frame-pacing, feature/android-input-efficiency-phase1, feature/run234-voice-gestures-smart-candidates, feature/run236-memory-voice-cloud, feature/run237-smart-context, feature/run250-local-phrase-followups-voice-gradient-themes, feature/workflow259-voice-color-followup-backup-restore, feature/workflow260-sms-barcode-smart-actions, feature/workflow289-scan-roi-candidate-layout, feature/workflow290-floating-scan-settings, feature/workflow291-visible-scan-settings]
+    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter, fix/voice-animation-frame-pacing, feature/android-input-efficiency-phase1, feature/run234-voice-gestures-smart-candidates, feature/run236-memory-voice-cloud, feature/run237-smart-context, feature/run250-local-phrase-followups-voice-gradient-themes, feature/workflow259-voice-color-followup-backup-restore, feature/workflow260-sms-barcode-smart-actions, feature/workflow289-scan-roi-candidate-layout, feature/workflow290-floating-scan-settings, feature/workflow291-visible-scan-settings, feature/workflow292-real-floating-scanner]
   workflow_dispatch:
 
 permissions:
