@@ -1,5 +1,8 @@
 package app.qingjian.inputmethod.service
 
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.os.Build
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -66,6 +69,8 @@ import app.qingjian.inputmethod.theme.Palette
 import app.qingjian.inputmethod.translate.QuickTranslate
 import app.qingjian.inputmethod.translate.TranslateBar
 import app.qingjian.inputmethod.voice.VoiceInput
+import app.qingjian.inputmethod.scan.BarcodeScannerActivity
+import app.qingjian.inputmethod.sms.SmsCodeReceiver
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
 class QingjianInputMethodService :
@@ -96,6 +101,14 @@ class QingjianInputMethodService :
     private var reopenPanel: PanelKind? = null
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
+
+    /** 短信验证码只通过本机广播送到候选条；短信正文不进入输入法服务。 */
+    private val smsCodeListener = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            val code = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)?.takeIf { it.matches(Regex("\\d{4,6}")) } ?: return
+            panel?.bar?.showNotice("验证码 $code · 点击上屏") { commitText(code) }
+        }
+    }
 
     private var neon: NeonEdgeView? = null
 
@@ -175,6 +188,9 @@ class QingjianInputMethodService :
             )
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
+        val smsFilter = IntentFilter(SmsCodeReceiver.ACTION_CODE_READY)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(smsCodeListener, smsFilter, RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(smsCodeListener, smsFilter)
         cloud.start()
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
@@ -187,6 +203,7 @@ class QingjianInputMethodService :
         contacts.stop()
         ClipboardSync.removeListener(syncListener)
         Settings.preferences(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
+        runCatching { unregisterReceiver(smsCodeListener) }
         cloud.stop()
         engine.close()
         super.onDestroy()
@@ -474,6 +491,7 @@ class QingjianInputMethodService :
             Settings.GestureAction.COPY -> onEditShortcut(KeyboardView.EditShortcut.COPY)
             Settings.GestureAction.PASTE -> onEditShortcut(KeyboardView.EditShortcut.PASTE)
             Settings.GestureAction.OPEN_SYMBOLS -> openPanel(PanelKind.SYMBOLS)
+            Settings.GestureAction.OPEN_SCANNER -> openBarcodeScanner()
             Settings.GestureAction.OPEN_THEME_PICKER -> startActivity(Intent(this, AppearanceActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             Settings.GestureAction.ENTER -> composer.onKey(Key.Enter())
             Settings.GestureAction.SWITCH_LANGUAGE -> composer.onKey(Key.Language)
@@ -541,9 +559,14 @@ class QingjianInputMethodService :
         ToolbarTool.PHRASES -> openPanel(PanelKind.PHRASES)
         ToolbarTool.SWITCH_INPUT_METHOD -> switchInputMethod()
         ToolbarTool.SETTINGS -> openSettings()
+        ToolbarTool.SCAN -> openBarcodeScanner()
     }
 
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
+
+    private fun openBarcodeScanner() {
+        startActivity(Intent(this, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 
     override fun openPanel(kind: PanelKind) {
         val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT
