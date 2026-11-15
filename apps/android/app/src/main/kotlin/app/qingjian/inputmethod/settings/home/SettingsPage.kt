@@ -26,6 +26,7 @@ import app.qingjian.inputmethod.settings.page.InputSettingsActivity
 import app.qingjian.inputmethod.settings.page.KeyboardSettingsActivity
 import app.qingjian.inputmethod.settings.page.VoiceSettingsActivity
 import app.qingjian.inputmethod.settings.page.ScanSettingsActivity
+import app.qingjian.inputmethod.settings.page.PermissionSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import app.qingjian.inputmethod.scan.ScanPreferences
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
@@ -69,6 +70,12 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                     R.string.page_scan_settings,
                     activity.getString(R.string.scan_settings_summary),
                 ) { open(ScanSettingsActivity::class.java) },
+            ))
+            addView(ui.group(
+                "权限管理",
+                ui.entry(Icon.LOCK, "权限检测", "查看授权状态") {
+                    open(PermissionSettingsActivity::class.java)
+                },
             ))
             addView(ui.group(
                 R.string.section_typing,
