@@ -60,34 +60,6 @@ class CloudSuggestionsView(
         }
         elevation = 8f * density
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
-        setOnTouchListener { _, event ->
-            // 顶部窄条作为拖动把手，其余区域仍保留原生横向滑动与候选点击。
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    draggingTips = event.y <= 11f * density
-                    if (draggingTips) {
-                        dragStartRawX = event.rawX
-                        dragStartRawY = event.rawY
-                        dragStartTranslationX = translationX
-                        dragStartTranslationY = translationY
-                        true
-                    } else false
-                }
-                MotionEvent.ACTION_MOVE -> if (draggingTips) {
-                    dragOffsetX = dragStartTranslationX + event.rawX - dragStartRawX
-                    dragOffsetY = dragStartTranslationY + event.rawY - dragStartRawY
-                    translationX = dragOffsetX
-                    translationY = dragOffsetY
-                    true
-                } else false
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val wasDragging = draggingTips
-                    draggingTips = false
-                    wasDragging
-                }
-                else -> draggingTips
-            }
-        }
         visibility = GONE
     }
 
@@ -252,6 +224,35 @@ class CloudSuggestionsView(
                 if (isAttachedToWindow) onFinished()
             }
             .start()
+    }
+
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            draggingTips = event.y <= 11f * density
+            if (draggingTips) {
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                dragStartTranslationX = translationX
+                dragStartTranslationY = translationY
+                return true
+            }
+        }
+        if (draggingTips) return true
+        return super.onInterceptTouchEvent(event)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!draggingTips) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                dragOffsetX = dragStartTranslationX + event.rawX - dragStartRawX
+                dragOffsetY = dragStartTranslationY + event.rawY - dragStartRawY
+                translationX = dragOffsetX
+                translationY = dragOffsetY
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> draggingTips = false
+        }
+        return true
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
