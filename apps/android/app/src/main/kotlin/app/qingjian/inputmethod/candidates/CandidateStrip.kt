@@ -59,7 +59,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val frame = image ?: return null
         val rect = frame.wordRect(index) ?: return null
         if (frame.candidatesTop == 0) {
-            rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0).toFloat())
+            rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f))
         }
         return rect
     }
