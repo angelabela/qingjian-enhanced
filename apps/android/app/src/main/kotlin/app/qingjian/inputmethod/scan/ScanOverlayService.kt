@@ -45,6 +45,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import app.qingjian.inputmethod.R
+import app.qingjian.inputmethod.theme.Palette
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -65,6 +66,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var torchEnabled = false
+    private val themePalette by lazy { runCatching { Palette.of(this) }.getOrNull() }
     private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
@@ -109,7 +111,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
         preview = PreviewView(this).apply {
-            scaleType = PreviewView.ScaleType.FIT_CENTER
+            scaleType = PreviewView.ScaleType.FILL_CENTER
             // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
@@ -117,7 +119,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         scanArea = ScanAreaView(this)
         root = FrameLayout(this).apply {
             background = GradientDrawable().apply {
-                setColor(0xFF182033.toInt())
+                setColor(themePalette?.board ?: 0xFF182033.toInt())
                 cornerRadius = dp(16).toFloat()
             }
             clipToOutline = true
@@ -129,12 +131,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, dp(8), 0)
-            setBackgroundColor(0xFF101522.toInt())
+            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
         }
         val title = TextView(this).apply {
             text = "扫码悬浮窗 · 双指缩放镜头 · 拖动此处移动"
             textSize = 13f
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER_VERTICAL
             setOnTouchListener { _, event -> moveWindow(event) }
         }
@@ -142,7 +144,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         torchButton = TextView(this).apply {
             text = "手电筒：关"
             textSize = 12f
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             setPadding(dp(8), 0, dp(8), 0)
             setOnClickListener { toggleTorch() }
@@ -163,7 +165,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             textSize = 25f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
-            setBackgroundColor(0xFF101522.toInt())
+            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
             setOnTouchListener { _, event -> resizeWindow(event) }
         }
         root.addView(resize, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.RIGHT or Gravity.BOTTOM))
@@ -370,12 +372,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private val prefs = getSharedPreferences("barcode_scan_area", MODE_PRIVATE)
         private val rect = RectF()
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF55E6D0.toInt()
+            color = themePalette?.brand ?: 0xFF55E6D0.toInt()
             style = Paint.Style.STROKE
             strokeWidth = 2.5f * density
         }
-        private val shade = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33000000 }
-        private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF55E6D0.toInt() }
+        private val shade = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val base = themePalette?.board ?: 0xFF000000.toInt()
+            color = (0x99000000.toInt() or (base and 0x00FFFFFF))
+        }
+        private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = themePalette?.brand ?: 0xFF55E6D0.toInt() }
         private var downX = 0f
         private var downY = 0f
         private var start = RectF()
