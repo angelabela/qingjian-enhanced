@@ -96,10 +96,6 @@ class QingjianInputMethodService :
     private var shownPreedit = ""
     private var shownCandidates: List<Candidate> = emptyList()
 
-    /** 同一输入框内已经上屏过的扫码内容，避免持续扫描时重复插入。 */
-    private val scannedValuesInCurrentField = mutableSetOf<String>()
-    private var scanFieldSignature: String? = null
-
     /** 拖动调高度开始时的百分比；拖动中不为 null。 */
     private var resizeFrom: Int? = null
 
@@ -127,7 +123,6 @@ class QingjianInputMethodService :
             val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
             val after = connection.getTextAfterCursor(8192, 0)?.toString().orEmpty()
             if (before.contains(value) || after.contains(value)) return
-            if (!scannedValuesInCurrentField.add(value)) return
             connection.beginBatchEdit()
             try {
                 if (!connection.commitText(value, 1)) return
@@ -331,15 +326,6 @@ class QingjianInputMethodService :
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
-        // 某些编辑器会在同一个输入框中因提交回车而重新启动输入；只有焦点字段确实变化才清空扫码去重记录。
-        val nextScanFieldSignature = listOf(
-            attribute.packageName.orEmpty(), attribute.fieldId.toString(), attribute.inputType.toString(),
-            attribute.imeOptions.toString(), attribute.privateImeOptions.orEmpty(), attribute.hintText?.toString().orEmpty(),
-        ).joinToString("|")
-        if (scanFieldSignature != nextScanFieldSignature) {
-            scannedValuesInCurrentField.clear()
-            scanFieldSignature = nextScanFieldSignature
-        }
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
         composer.privateInput = attribute.wantsPrivacy()
