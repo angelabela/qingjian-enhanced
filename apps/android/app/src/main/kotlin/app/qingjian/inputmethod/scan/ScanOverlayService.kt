@@ -20,12 +20,14 @@ import android.os.Vibrator
 import android.util.Size
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -61,6 +63,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var scanArea: ScanAreaView
     private lateinit var scanner: BarcodeScanner
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var torchEnabled = false
+    private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
     private val lastSeen = mutableMapOf<String, Long>()
@@ -105,14 +110,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
         fun dp(v: Int) = (v * density).toInt()
         preview = PreviewView(this).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
-            // COMPATIBLE 使用 TextureView，允许预览层半透明混合底下应用。
+            // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-            alpha = 0.82f
+            alpha = 1f
         }
         scanArea = ScanAreaView(this)
         root = FrameLayout(this).apply {
             background = GradientDrawable().apply {
-                setColor(0x55303A50)
+                setColor(0xFF182033.toInt())
                 cornerRadius = dp(16).toFloat()
             }
             clipToOutline = true
@@ -124,16 +129,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, dp(8), 0)
-            setBackgroundColor(0xAA101522.toInt())
+            setBackgroundColor(0xFF101522.toInt())
         }
         val title = TextView(this).apply {
-            text = "扫码悬浮窗 · 拖动此处移动"
+            text = "扫码悬浮窗 · 双指缩放镜头 · 拖动此处移动"
             textSize = 13f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER_VERTICAL
             setOnTouchListener { _, event -> moveWindow(event) }
         }
         header.addView(title, LinearLayout.LayoutParams(0, dp(42), 1f))
+        torchButton = TextView(this).apply {
+            text = "手电筒：关"
+            textSize = 12f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            setPadding(dp(8), 0, dp(8), 0)
+            setOnClickListener { toggleTorch() }
+        }
+        header.addView(torchButton, LinearLayout.LayoutParams(-2, dp(42)))
         header.addView(TextView(this).apply {
             text = "关闭"
             textSize = 13f
@@ -149,7 +163,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             textSize = 25f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
-            setBackgroundColor(0xAA101522.toInt())
+            setBackgroundColor(0xFF101522.toInt())
             setOnTouchListener { _, event -> resizeWindow(event) }
         }
         root.addView(resize, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.RIGHT or Gravity.BOTTOM))
@@ -163,7 +177,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
+            PixelFormat.OPAQUE,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dp(16)
@@ -236,9 +250,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
             val provider = future.get()
             cameraProvider = provider
-            val cameraPreview = Preview.Builder().build().also {
-                it.setSurfaceProvider(preview.surfaceProvider)
-            }
+            val cameraPreview = Preview.Builder()
+                .setTargetResolution(Size(1280, 720))
+                .build().also {
+                    it.setSurfaceProvider(preview.surfaceProvider)
+                }
             val analysis = ImageAnalysis.Builder()
                 .setTargetResolution(Size(1280, 720))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -277,8 +293,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
             }
             provider.unbindAll()
-            provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
+            camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
+            torchButton.isEnabled = camera?.cameraInfo?.hasFlashUnit() == true
+            torchButton.text = if (torchButton.isEnabled) "手电筒：关" else "无闪光灯"
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun toggleTorch() {
+        val activeCamera = camera ?: return
+        if (!activeCamera.cameraInfo.hasFlashUnit()) {
+            Toast.makeText(this, "当前摄像头没有闪光灯", Toast.LENGTH_SHORT).show()
+            return
+        }
+        torchEnabled = !torchEnabled
+        activeCamera.cameraControl.enableTorch(torchEnabled)
+        torchButton.text = if (torchEnabled) "手电筒：开" else "手电筒：关"
     }
 
     private fun deliverResult(value: String) {
@@ -351,6 +380,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var downY = 0f
         private var start = RectF()
         private var resizing = false
+        private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val activeCamera = camera ?: return false
+                val zoom = activeCamera.cameraInfo.zoomState.value ?: return false
+                val next = (zoom.zoomRatio * detector.scaleFactor)
+                    .coerceIn(zoom.minZoomRatio, zoom.maxZoomRatio)
+                activeCamera.cameraControl.setZoomRatio(next)
+                return true
+            }
+        })
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             if (w <= 0 || h <= 0) return
@@ -394,6 +433,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            scaleDetector.onTouchEvent(event)
+            // 双指捏合只调整镜头变焦倍率，不改变悬浮窗尺寸；窗口大小与相机视野倍率互不绑定。
+            if (event.pointerCount > 1 || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+                event.actionMasked == MotionEvent.ACTION_POINTER_UP) return true
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
