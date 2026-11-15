@@ -96,6 +96,9 @@ class QingjianInputMethodService :
     private var shownPreedit = ""
     private var shownCandidates: List<Candidate> = emptyList()
 
+    /** 同一输入框内已经上屏过的扫码内容，避免持续扫描时重复插入。 */
+    private val scannedValuesInCurrentField = mutableSetOf<String>()
+
     /** 拖动调高度开始时的百分比；拖动中不为 null。 */
     private var resizeFrom: Int? = null
 
@@ -118,11 +121,24 @@ class QingjianInputMethodService :
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
             val connection = currentInputConnection ?: return
-            connection.commitText(value, 1)
-            if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
-                // 扫码设置中的「自动换行」语义固定为插入换行符，不再被输入框的发送/搜索等 EditorAction 截走。
-                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            // 同一输入框内同一条码只上屏一次；新输入框开始时清空集合。
+            if (!scannedValuesInCurrentField.add(value)) return
+            val before = connection.getTextBeforeCursor(value.length, 0)?.toString().orEmpty()
+            val after = connection.getTextAfterCursor(value.length, 0)?.toString().orEmpty()
+            if (before.endsWith(value) || after.startsWith(value)) return
+            connection.beginBatchEdit()
+            try {
+                connection.commitText(value, 1)
+                if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
+                    // 优先直接提交换行字符，避免某些编辑器把 Enter 当成发送/搜索动作；
+                    // 对不接受换行字符的编辑器再退回真实 Enter 按键事件。
+                    if (!connection.commitText("\n", 1)) {
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+                    }
+                }
+            } finally {
+                connection.endBatchEdit()
             }
         }
     }
@@ -310,6 +326,7 @@ class QingjianInputMethodService :
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        if (!restarting) scannedValuesInCurrentField.clear()
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
         composer.privateInput = attribute.wantsPrivacy()
