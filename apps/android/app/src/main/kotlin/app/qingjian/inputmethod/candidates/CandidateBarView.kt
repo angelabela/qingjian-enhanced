@@ -184,6 +184,13 @@ class CandidateBarView(
         invalidate()
     }
 
+    /** 短信验证码等需要用户主动处理的提示：不自动消失，点击或开始输入后收起。 */
+    fun showPersistentNotice(message: String, action: () -> Unit) {
+        notice = message to action
+        removeCallbacks(clearNotice)
+        invalidate()
+    }
+
     /** 进入拖动调高度（功能面板里点「键盘高度」）。 */
     fun startResize() {
         resizing = true
