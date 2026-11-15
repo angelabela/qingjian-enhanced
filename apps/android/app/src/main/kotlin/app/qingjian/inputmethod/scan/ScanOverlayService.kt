@@ -294,8 +294,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped)) return@forEach
                                     val now = android.os.SystemClock.elapsedRealtime()
-                                    val previous = lastDeliveredAt.put(value, now)
-                                    if (previous == null || now - previous >= DUPLICATE_SUPPRESS_MS) deliverResult(value)
+                                    val previous = lastDeliveredAt[value]
+                                    if (previous == null || now - previous >= DUPLICATE_SUPPRESS_MS) {
+                                        lastDeliveredAt[value] = now
+                                        deliverResult(value)
+                                    }
                                 }
                             }
                         }
