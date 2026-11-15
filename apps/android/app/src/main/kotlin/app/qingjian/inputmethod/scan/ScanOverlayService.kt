@@ -4,8 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -330,8 +328,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     private fun deliverResult(value: String) {
         android.os.Handler(mainLooper).post {
-            getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
