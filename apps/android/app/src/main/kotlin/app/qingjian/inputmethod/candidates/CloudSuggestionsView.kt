@@ -31,6 +31,8 @@ class CloudSuggestionsView(
     private var dragStartRawY = 0f
     private var dragStartTranslationX = 0f
     private var dragStartTranslationY = 0f
+    private var dragOffsetX = 0f
+    private var dragOffsetY = 0f
     private val edgeFadeWidth = (22 * density).toFloat()
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rightFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -71,8 +73,10 @@ class CloudSuggestionsView(
                     } else false
                 }
                 MotionEvent.ACTION_MOVE -> if (draggingTips) {
-                    translationX = dragStartTranslationX + event.rawX - dragStartRawX
-                    translationY = dragStartTranslationY + event.rawY - dragStartRawY
+                    dragOffsetX = dragStartTranslationX + event.rawX - dragStartRawX
+                    dragOffsetY = dragStartTranslationY + event.rawY - dragStartRawY
+                    translationX = dragOffsetX
+                    translationY = dragOffsetY
                     true
                 } else false
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -172,9 +176,9 @@ class CloudSuggestionsView(
         visibility = VISIBLE
         if (!wasVisible) {
             alpha = 0f
-            translationY = -8f * density
+            translationY = dragOffsetY - 8f * density
         }
-        animate().alpha(1f).translationY(0f).setDuration(190L).start()
+        animate().alpha(1f).translationY(dragOffsetY).setDuration(190L).start()
         scrollTo(0, 0)
     }
 
@@ -185,14 +189,14 @@ class CloudSuggestionsView(
         // 沿着输入框所在的上方方向收拢，边移动边渐隐，避免突然消失。
         animate()
             .alpha(0f)
-            .translationY(-height.coerceAtLeast((38 * density).toInt()).toFloat())
+            .translationY(dragOffsetY - height.coerceAtLeast((38 * density).toInt()).toFloat())
             .scaleX(0.92f)
             .scaleY(0.88f)
             .setDuration(230L)
             .withEndAction {
                 visibility = GONE
                 alpha = 1f
-                translationY = 0f
+                translationY = dragOffsetY
                 scaleX = 1f
                 scaleY = 1f
             }
