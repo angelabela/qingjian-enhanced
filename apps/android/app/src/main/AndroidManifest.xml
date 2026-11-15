@@ -77,6 +77,7 @@
         <activity android:name=".settings.page.DictionariesActivity" android:exported="false" />
         <activity android:name=".settings.page.AdvancedActivity" android:exported="false" />
         <activity android:name=".settings.page.VoiceSettingsActivity" android:exported="false" />
+        <activity android:name=".settings.page.ScanSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.ClipboardSyncActivity" android:exported="false" />
         <activity android:name=".settings.page.GameKeyboardActivity" android:exported="false" />
 

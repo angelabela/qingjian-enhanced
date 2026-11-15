@@ -71,6 +71,7 @@ import app.qingjian.inputmethod.translate.QuickTranslate
 import app.qingjian.inputmethod.translate.TranslateBar
 import app.qingjian.inputmethod.voice.VoiceInput
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
+import app.qingjian.inputmethod.scan.ScanPreferences
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
@@ -109,6 +110,24 @@ class QingjianInputMethodService :
             val code = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)?.takeIf { it.matches(Regex("\\d{4,6}")) } ?: return
             panel?.bar?.show("", emptyList())
             panel?.bar?.showPersistentNotice("验证码 $code · 点击上屏") { commitText(code) }
+        }
+    }
+
+    /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
+    private val scanResultListener = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
+            val connection = currentInputConnection ?: return
+            connection.commitText(value, 1)
+            if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
+                val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
+                if (action != EditorInfo.IME_ACTION_NONE && action != EditorInfo.IME_ACTION_UNSPECIFIED) {
+                    connection.performEditorAction(action)
+                } else {
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+                }
+            }
         }
     }
 
@@ -193,6 +212,9 @@ class QingjianInputMethodService :
         val smsFilter = IntentFilter(SmsCodeReceiver.ACTION_CODE_READY)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(smsCodeListener, smsFilter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(smsCodeListener, smsFilter)
+        val scanFilter = IntentFilter(ScanPreferences.ACTION_RESULT)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(scanResultListener, scanFilter, RECEIVER_NOT_EXPORTED)
+        else registerReceiver(scanResultListener, scanFilter)
         cloud.start()
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
@@ -206,6 +228,7 @@ class QingjianInputMethodService :
         ClipboardSync.removeListener(syncListener)
         Settings.preferences(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
         runCatching { unregisterReceiver(smsCodeListener) }
+        runCatching { unregisterReceiver(scanResultListener) }
         cloud.stop()
         engine.close()
         super.onDestroy()

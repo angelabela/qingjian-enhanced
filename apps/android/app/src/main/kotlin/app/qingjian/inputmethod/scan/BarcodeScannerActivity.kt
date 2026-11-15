@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -15,6 +16,7 @@ import android.util.Size
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -48,6 +50,7 @@ class BarcodeScannerActivity : ComponentActivity() {
     private val processing = AtomicBoolean(false)
     private val lastSeen = mutableMapOf<String, Long>()
     private var cameraProvider: ProcessCameraProvider? = null
+    private val floatingMode by lazy { ScanPreferences.isFloating(this) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
         setUsingRotationDegrees(true)
@@ -88,9 +91,35 @@ class BarcodeScannerActivity : ComponentActivity() {
             setPadding(dp(16), dp(10), dp(16), dp(10))
             setBackgroundColor(0xCC101522.toInt())
             addView(TextView(this@BarcodeScannerActivity).apply {
-                text = "二维码 / 条形码 · 持续扫描"
+                text = if (floatingMode) "扫码窗口 · 按住标题可移动" else "二维码 / 条形码 · 持续扫描"
                 textSize = 16f
                 setTextColor(-1)
+                if (floatingMode) {
+                    var downRawX = 0f
+                    var downRawY = 0f
+                    var startX = 0
+                    var startY = 0
+                    setOnTouchListener { _, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                downRawX = event.rawX
+                                downRawY = event.rawY
+                                val p = window.attributes
+                                startX = p.x
+                                startY = p.y
+                                true
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                val p = window.attributes
+                                p.x = startX + (event.rawX - downRawX).toInt()
+                                p.y = startY + (event.rawY - downRawY).toInt()
+                                window.attributes = p
+                                true
+                            }
+                            else -> true
+                        }
+                    }
+                }
             }, LinearLayout.LayoutParams(0, dp(44), 1f))
             addView(TextView(this@BarcodeScannerActivity).apply {
                 text = "关闭"
@@ -109,7 +138,7 @@ class BarcodeScannerActivity : ComponentActivity() {
         }
         root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         val hint = TextView(this).apply {
-            text = "仅识别框内二维码和条码。拖动扫描框可移动，拖右下角可调整大小。识别后自动复制并震动，持续扫描。"
+            text = if (floatingMode) "仅识别框内二维码和条码。可拖动标题移动窗口，拖动扫描框可调整识别区域；识别结果直接发送到当前输入框。" else "仅识别框内二维码和条码。拖动扫描框可移动，拖右下角可调整大小；识别结果直接发送到当前输入框。"
             textSize = 12f
             setTextColor(-1)
             setPadding(dp(12), dp(9), dp(12), dp(9))
@@ -117,6 +146,7 @@ class BarcodeScannerActivity : ComponentActivity() {
         }
         root.addView(hint, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         setContentView(root)
+        configureFloatingWindow()
         ViewCompat.requestApplyInsets(header)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -195,15 +225,40 @@ class BarcodeScannerActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    /** 悬浮模式以小窗覆盖输入区域；拖动标题栏可自由移动。 */
+    private fun configureFloatingWindow() {
+        if (!floatingMode) return
+        val width = minOf(dp(360), resources.displayMetrics.widthPixels - dp(24))
+        val height = minOf(dp(520), resources.displayMetrics.heightPixels - dp(96))
+        window.setBackgroundDrawable(ColorDrawable(0xFF101522.toInt()))
+        val params = window.attributes
+        params.width = width.coerceAtLeast(dp(260))
+        params.height = height.coerceAtLeast(dp(320))
+        params.gravity = Gravity.CENTER
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
+        params.dimAmount = 0.24f
+        window.attributes = params
+        window.setLayout(params.width, params.height)
+    }
+
     private fun copyResult(value: String) {
         runOnUiThread {
+            // 剪贴板作为兼容性备份；正常路径由输入法服务直接提交到当前编辑框。
             getSystemService(ClipboardManager::class.java)
                 .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            if (vibrator?.hasVibrator() == true) {
-                vibrator.vibrate(VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE))
+            sendBroadcast(
+                android.content.Intent(ScanPreferences.ACTION_RESULT)
+                    .setPackage(packageName)
+                    .putExtra(ScanPreferences.EXTRA_TEXT, value)
+                    .putExtra(ScanPreferences.EXTRA_ENTER, ScanPreferences.autoEnter(this)),
+            )
+            if (ScanPreferences.vibrate(this)) {
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                if (vibrator?.hasVibrator() == true) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE))
+                }
             }
-            Toast.makeText(this, "已复制：$value", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已识别并发送到输入框：$value", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -260,7 +315,7 @@ class BarcodeScannerActivity : ComponentActivity() {
 
         private fun clampRect() {
             val minW = 120f * density
-            val minH = 100f * density
+            val minH = 50f * density
             if (width <= 0 || height <= 0) return
             rect.left = rect.left.coerceIn(0f, (width - minW).coerceAtLeast(0f))
             rect.top = rect.top.coerceIn(0f, (height - minH).coerceAtLeast(0f))
@@ -293,7 +348,7 @@ class BarcodeScannerActivity : ComponentActivity() {
                     val dy = event.y - downY
                     if (resizing) {
                         rect.right = (start.right + dx).coerceIn(start.left + 120f * density, width.toFloat())
-                        rect.bottom = (start.bottom + dy).coerceIn(start.top + 100f * density, height.toFloat())
+                        rect.bottom = (start.bottom + dy).coerceIn(start.top + 50f * density, height.toFloat())
                     } else {
                         val w = start.width()
                         val h = start.height()

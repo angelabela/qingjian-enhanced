@@ -275,6 +275,18 @@
 打字时候选旁的译词会记到这里</string>
 
     <string name="page_advanced">数据</string>
+
+    <string name="page_scan_settings">扫描功能</string>
+    <string name="page_sms_code_settings">验证码监测</string>
+    <string name="scan_mode">扫描窗口模式</string>
+    <string name="scan_mode_full">全屏</string>
+    <string name="scan_mode_floating">悬浮窗口</string>
+    <string name="scan_auto_enter_title">扫描结果输入后自动回车</string>
+    <string name="scan_auto_enter_note">识别内容直接输入当前编辑框；开启后继续执行当前输入框的回车/发送动作</string>
+    <string name="scan_vibrate_title">扫描成功时震动</string>
+    <string name="scan_vibrate_note">关闭后识别成功仍会输入结果，但不触发震动</string>
+    <string name="scan_settings_note">悬浮窗口可按住标题栏拖动；扫描框仍可独立移动和调整大小。扫码结果也会保留在系统剪贴板中。</string>
+
     <string name="page_voice">语音识别</string>
     <string name="voice_provider">识别服务</string>
     <string name="voice_provider_none">不用</string>
