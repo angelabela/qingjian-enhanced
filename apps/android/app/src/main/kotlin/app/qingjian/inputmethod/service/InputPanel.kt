@@ -81,7 +81,6 @@ class InputPanel(
         orientation = LinearLayout.VERTICAL
         clipChildren = false
         clipToPadding = false
-        addView(cloudSuggestions)
         addView(bar)
         addView(keyboard)
     }
@@ -90,6 +89,13 @@ class InputPanel(
         clipChildren = false
         clipToPadding = false
         addView(main)
+        addView(
+            cloudSuggestions,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+                topMargin = (bar.barHeight + 6f * context.resources.displayMetrics.density).toInt()
+                marginEnd = (10f * context.resources.displayMetrics.density).toInt()
+            },
+        )
     }
 
     /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
@@ -243,6 +249,11 @@ class InputPanel(
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
+                if (child is CloudSuggestionsView) {
+                    // 悬浮 Tips 自己测量高度，不参与候选栏/键盘的垂直排版。
+                    measureChild(child, widthMeasureSpec, heightMeasureSpec)
+                    continue
+                }
                 val childHeight = if (child is ChatOverlay) {
                     (main.measuredHeight - (main as? LinearLayout)?.getChildAt(2)?.measuredHeight.orZero()).coerceAtLeast(0)
                 } else main.measuredHeight
