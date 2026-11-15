@@ -6,6 +6,9 @@ import android.graphics.Paint
 import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.animation.ValueAnimator
+import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
@@ -27,6 +30,9 @@ class CloudSuggestionsView(
     private var smartSelection: ((String) -> Unit)? = null
     private var selectionAnimating = false
     private var draggingTips = false
+    private var dragCandidate = false
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var autoScrollAnimator: ValueAnimator? = null
     private var dragStartRawX = 0f
     private var dragStartRawY = 0f
     private var dragStartTranslationX = 0f
@@ -54,9 +60,10 @@ class CloudSuggestionsView(
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
         // 小型悬浮提示：采用主题面板底色与细边框，不再铺满输入法宽度。
         background = GradientDrawable().apply {
-            setColor(palette.surface)
+            // 半透明主题底色与细边框形成毛玻璃观感。
+            setColor((palette.surface and 0x00FFFFFF) or 0xD9000000.toInt())
             cornerRadius = 18f * density
-            setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
+            setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint and 0x66FFFFFF)
         }
         elevation = 8f * density
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
@@ -141,7 +148,7 @@ class CloudSuggestionsView(
                 .alpha(1f)
                 .translationX(0f)
                 .setStartDelay(position * 24L)
-                .setDuration(230L)
+                .setDuration(360L)
                 .start()
         }
         val wasVisible = visibility == VISIBLE
@@ -151,13 +158,15 @@ class CloudSuggestionsView(
             alpha = 0f
             translationY = dragOffsetY - 8f * density
         }
-        animate().alpha(1f).translationY(dragOffsetY).setDuration(190L).start()
+        animate().alpha(1f).translationY(dragOffsetY).setDuration(320L).start()
         scrollTo(0, 0)
+        startAutoScroll()
     }
 
 
     private fun hideTips() {
         if (visibility != VISIBLE) return
+        stopAutoScroll()
         animate().cancel()
         // 沿着输入框所在的上方方向收拢，边移动边渐隐，避免突然消失。
         animate()
@@ -165,7 +174,7 @@ class CloudSuggestionsView(
             .translationY(dragOffsetY - height.coerceAtLeast((38 * density).toInt()).toFloat())
             .scaleX(0.92f)
             .scaleY(0.88f)
-            .setDuration(230L)
+            .setDuration(360L)
             .withEndAction {
                 visibility = GONE
                 alpha = 1f
@@ -227,32 +236,74 @@ class CloudSuggestionsView(
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            draggingTips = event.y <= 11f * density
-            if (draggingTips) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragCandidate = true
+                draggingTips = false
                 dragStartRawX = event.rawX
                 dragStartRawY = event.rawY
                 dragStartTranslationX = translationX
                 dragStartTranslationY = translationY
-                return true
             }
+            MotionEvent.ACTION_MOVE -> if (dragCandidate && !draggingTips) {
+                val dx = event.rawX - dragStartRawX
+                val dy = event.rawY - dragStartRawY
+                if (kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                    draggingTips = true
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragCandidate = false
         }
-        if (draggingTips) return true
-        return super.onInterceptTouchEvent(event)
+        return draggingTips || super.onInterceptTouchEvent(event)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!draggingTips) return super.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
-                dragOffsetX = dragStartTranslationX + event.rawX - dragStartRawX
-                dragOffsetY = dragStartTranslationY + event.rawY - dragStartRawY
+                val maxX = (resources.displayMetrics.widthPixels - width).coerceAtLeast(0).toFloat()
+                val maxY = (resources.displayMetrics.heightPixels - height).coerceAtLeast(0).toFloat()
+                dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), maxX - left)
+                dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), maxY - top)
                 translationX = dragOffsetX
                 translationY = dragOffsetY
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> draggingTips = false
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                draggingTips = false
+                dragCandidate = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
         }
         return true
+    }
+
+    /** 内容过长时自动往返滚动。 */
+    private fun startAutoScroll() {
+        stopAutoScroll()
+        post {
+            val distance = items.width - width
+            if (distance <= (8 * density).toInt() || visibility != VISIBLE) return@post
+            autoScrollAnimator = ValueAnimator.ofInt(0, distance).apply {
+                duration = (distance * 22L).coerceIn(9000L, 26000L)
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                interpolator = LinearInterpolator()
+                addUpdateListener { scrollTo(it.animatedValue as Int, 0) }
+                start()
+            }
+        }
+    }
+
+    private fun stopAutoScroll() {
+        autoScrollAnimator?.cancel()
+        autoScrollAnimator = null
+    }
+
+    override fun onDetachedFromWindow() {
+        stopAutoScroll()
+        super.onDetachedFromWindow()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
