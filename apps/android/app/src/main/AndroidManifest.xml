@@ -2,7 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 按键震动直接调振动器（见 keyboard/Haptics.kt） -->
-    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- 只有快捷翻译、青简翻译、补充译词与云联想（后两样缺省关）连用户自己填的大模型接口（见 cloud/ 与 Rust 侧 apps/android/core/src/cloud），语音输入连用户自己填的识别服务（见 voice/ 与 crates/qingjian-voice）；不开云联想时打字不联网 -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -50,6 +52,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".service.SmartActionActivity" android:exported="false" />
+        <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
+        <activity android:name=".sms.SmsCodeSettingsActivity" android:exported="false" />
+
+        <receiver
+            android:name=".sms.SmsCodeReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="500">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
 
         <activity android:name=".settings.page.InputSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.KeyboardSettingsActivity" android:exported="false" />
