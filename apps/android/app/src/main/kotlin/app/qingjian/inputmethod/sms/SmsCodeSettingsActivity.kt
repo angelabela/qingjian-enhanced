@@ -27,7 +27,7 @@ class SmsCodeSettingsActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(36), dp(24), dp(24))
+            setPadding(dp(24), dp(48), dp(24), dp(24))
             setBackgroundColor(colors.background)
         }
         root.addView(TextView(this).apply {
