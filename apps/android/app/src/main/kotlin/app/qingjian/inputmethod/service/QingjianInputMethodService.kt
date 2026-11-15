@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.service
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.os.Build
+import android.net.Uri
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -535,6 +536,22 @@ class QingjianInputMethodService :
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
     override fun onSelect(index: Int) = composer.select(index)
+
+    override fun onSmartAction(text: String) {
+        val number = Regex("(?<!\\d)(?:\\+?86[- ]?)?(1[3-9]\\d{9})(?!\\d)")
+            .find(text)?.groupValues?.getOrNull(1)
+        when {
+            number != null -> startActivity(
+                Intent(this, SmartActionActivity::class.java)
+                    .putExtra(SmartActionActivity.EXTRA_NUMBER, number)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            text.contains("电话") -> startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            text.contains("短信") -> startActivity(
+                Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
 
     override fun onMoveCaret(index: Int) = composer.moveCaret(index)
 
