@@ -19,6 +19,11 @@ import android.os.StatFs
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.util.Calendar
+import java.util.Date
+import android.icu.util.ChineseCalendar
+import android.icu.util.Calendar as IcuCalendar
+import kotlin.random.Random
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -48,10 +53,112 @@ class SmartInfoProvider(private val context: Context) {
         "存储" -> storageStatus()
         "电量", "电池" -> batteryStatus()
         "网络" -> networkStatus()
-        "时间" -> java.text.SimpleDateFormat("现在 HH:mm:ss", Locale.getDefault()).format(java.util.Date())
-        "日期" -> java.text.SimpleDateFormat("yyyy年M月d日 EEEE", Locale.getDefault()).format(java.util.Date())
+        "时间" -> varied(listOf(
+            java.text.SimpleDateFormat("现在 HH:mm:ss", Locale.getDefault()).format(Date()),
+            java.text.SimpleDateFormat("⏱ HH:mm:ss · 今天也要顺顺利利", Locale.getDefault()).format(Date()),
+            java.text.SimpleDateFormat("此刻是 HH:mm:ss", Locale.getDefault()).format(Date()),
+        ))
+        "日期", "农历", "节日" -> currentDateInfo()
+        "生肖" -> currentZodiac()
+        "星期" -> java.text.SimpleDateFormat("EEEE · yyyy年M月d日", Locale.getDefault()).format(Date())
+        "星座" -> currentZodiacSign()
         else -> ""
     }
+
+
+    /** 公历、农历、生肖与节日均按设备当前日期计算；无需联网，离线可用。 */
+    private fun currentDateInfo(): String {
+        val now = Date()
+        val solar = Calendar.getInstance()
+        solar.time = now
+        val month = solar.get(Calendar.MONTH) + 1
+        val day = solar.get(Calendar.DAY_OF_MONTH)
+        val lunar = ChineseCalendar().apply { time = now }
+        val lunarMonth = lunar.get(IcuCalendar.MONTH) + 1
+        val lunarDay = lunar.get(IcuCalendar.DAY_OF_MONTH)
+        val lunarMonths = arrayOf("正月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "冬月", "腊月")
+        val lunarDays = arrayOf(
+            "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+            "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+            "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十",
+        )
+        val lunarText = (lunarMonths.getOrNull(lunarMonth - 1) ?: "${lunarMonth}月") +
+            (lunarDays.getOrNull(lunarDay - 1) ?: "${lunarDay}日")
+        val holiday = solarHoliday(month, day) ?: lunarHoliday(lunarMonth, lunarDay)
+        val solarText = java.text.SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA).format(now)
+        val extras = listOfNotNull(holiday?.let { "🎉 $it" }, "农历$lunarText")
+        return varied(listOf(
+            "$solarText · ${extras.joinToString(" · ")}",
+            "今天是$solarText，$lunarText，${holiday?.let { "今天是$it" } ?: "愿你今天有好心情"}",
+            "📅 $solarText  |  农历$lunarText${holiday?.let { "  |  $it" } ?: ""}",
+        ))
+    }
+
+    private fun currentZodiac(): String {
+        val lunar = ChineseCalendar().apply { time = Date() }
+        val cycleYear = lunar.get(IcuCalendar.YEAR)
+        val animals = arrayOf("鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪")
+        val animal = animals[(cycleYear - 1).mod(12)]
+        return varied(listOf(
+            "今年农历生肖是$animal，属于$animal年",
+            "🐉 农历生肖：$animal（$animal年）",
+            "按当前农历年份计算：$animal年",
+        ))
+    }
+
+    private fun currentZodiacSign(): String {
+        val calendar = Calendar.getInstance()
+        val month = calendar.get(Calendar.MONTH) + 1
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+        val sign = when {
+            month == 1 && day >= 20 || month == 2 && day <= 18 -> "水瓶座"
+            month == 2 && day >= 19 || month == 3 && day <= 20 -> "双鱼座"
+            month == 3 && day >= 21 || month == 4 && day <= 19 -> "白羊座"
+            month == 4 && day >= 20 || month == 5 && day <= 20 -> "金牛座"
+            month == 5 && day >= 21 || month == 6 && day <= 21 -> "双子座"
+            month == 6 && day >= 22 || month == 7 && day <= 22 -> "巨蟹座"
+            month == 7 && day >= 23 || month == 8 && day <= 22 -> "狮子座"
+            month == 8 && day >= 23 || month == 9 && day <= 22 -> "处女座"
+            month == 9 && day >= 23 || month == 10 && day <= 23 -> "天秤座"
+            month == 10 && day >= 24 || month == 11 && day <= 22 -> "天蝎座"
+            month == 11 && day >= 23 || month == 12 && day <= 21 -> "射手座"
+            else -> "摩羯座"
+        }
+        return varied(listOf("♈ 当前日期对应的星座：$sign", "星座小提示：$sign", "按今天的公历生日区间，属于$sign"))
+    }
+
+    private fun solarHoliday(month: Int, day: Int): String? = when (month to day) {
+        1 to 1 -> "元旦"
+        2 to 14 -> "情人节"
+        3 to 8 -> "国际妇女节"
+        3 to 12 -> "植树节"
+        4 to 1 -> "愚人节"
+        5 to 1 -> "劳动节"
+        5 to 4 -> "五四青年节"
+        6 to 1 -> "儿童节"
+        9 to 10 -> "教师节"
+        10 to 1 -> "国庆节"
+        12 to 24 -> "平安夜"
+        12 to 25 -> "圣诞节"
+        else -> null
+    }
+
+    private fun lunarHoliday(month: Int, day: Int): String? = when {
+        month == 1 && day == 1 -> "春节"
+        month == 1 && day == 15 -> "元宵节"
+        month == 2 && day == 2 -> "龙抬头"
+        month == 5 && day == 5 -> "端午节"
+        month == 7 && day == 7 -> "七夕节"
+        month == 7 && day == 15 -> "中元节"
+        month == 8 && day == 15 -> "中秋节"
+        month == 9 && day == 9 -> "重阳节"
+        month == 12 && day == 8 -> "腊八节"
+        month == 12 && day in 29..30 -> "除夕"
+        else -> null
+    }
+
+    /** 同一信息准备几种自然表达，避免每次都像固定模板播报。 */
+    private fun varied(options: List<String>): String = options[Random.nextInt(options.size)]
 
     private fun currentAddress(): String {
         if (!hasLocationPermission()) return LOCATION_PERMISSION_HINT
@@ -208,6 +315,6 @@ class SmartInfoProvider(private val context: Context) {
 
     companion object {
         const val LOCATION_PERMISSION_HINT = "点击授权定位权限后即可显示当前位置"
-        val TRIGGERS = listOf("地点", "位置", "地址", "天气", "内存", "存储", "电量", "电池", "网络", "时间", "日期")
+        val TRIGGERS = listOf("地点", "位置", "地址", "天气", "内存", "存储", "电量", "电池", "网络", "日期", "农历", "生肖", "节日", "星期", "星座", "时间")
     }
 }
