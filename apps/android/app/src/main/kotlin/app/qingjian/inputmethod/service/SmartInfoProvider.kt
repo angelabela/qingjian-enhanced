@@ -100,9 +100,9 @@ class SmartInfoProvider(private val context: Context) {
         val animals = arrayOf("鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪")
         val animal = animals[(cycleYear - 1).mod(12)]
         return varied(listOf(
-            "今年农历生肖是$animal，属于$animal年",
-            "🐉 农历生肖：$animal（$animal年）",
-            "按当前农历年份计算：$animal年",
+            "今年农历生肖是$animal，属于${animal}年",
+            "🐉 农历生肖：$animal（${animal}年）",
+            "按当前农历年份计算：${animal}年",
         ))
     }
 
