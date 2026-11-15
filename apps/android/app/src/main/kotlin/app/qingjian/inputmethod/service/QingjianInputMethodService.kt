@@ -120,10 +120,8 @@ class QingjianInputMethodService :
             val connection = currentInputConnection ?: return
             connection.commitText(value, 1)
             if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
-                val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
-                if (action != EditorInfo.IME_ACTION_NONE && action != EditorInfo.IME_ACTION_UNSPECIFIED) {
-                    connection.performEditorAction(action)
-                } else {
+                // 扫码设置中的「自动换行」语义固定为插入换行符，不再被输入框的发送/搜索等 EditorAction 截走。
+                if (!connection.commitText("\n", 1)) {
                     connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
                     connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
                 }
