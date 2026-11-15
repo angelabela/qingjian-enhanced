@@ -136,15 +136,13 @@ class AdvancedActivity : PageActivity() {
                     val snapshot = File(filesDir, "user-before-restore-${System.currentTimeMillis()}")
                     snapshot.deleteRecursively()
                     if (liveUser.exists()) liveUser.copyRecursively(snapshot, overwrite = true)
-                    var dataReplaced = false
                     try {
                         val dataCount = restoreUserData(data.first)
-                        dataReplaced = true
                         val settingsCount = restoreSettings(settings.first)
                         snapshot.deleteRecursively()
                         dataCount to settingsCount
                     } catch (failure: Throwable) {
-                        if (dataReplaced && snapshot.exists()) {
+                        if (snapshot.exists()) {
                             if (!Engine.replaceUserData(this, snapshot)) {
                                 error("设置恢复失败，且原用户数据回滚失败；恢复前快照仍保留。原因：${failure.message}")
                             }
