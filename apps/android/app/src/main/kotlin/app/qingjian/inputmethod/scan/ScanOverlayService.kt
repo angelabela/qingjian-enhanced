@@ -9,10 +9,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
@@ -70,7 +70,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
-    private val lastSeen = mutableMapOf<String, Long>()
+    // 同一悬浮扫码会话内，同一条码只投递一次；静止码持续出现在画面中也不会重复上屏。
+    private val deliveredValues = mutableSetOf<String>()
+    private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
         setUsingRotationDegrees(true)
@@ -115,14 +117,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
             // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
+            setBackgroundColor(Color.TRANSPARENT)
         }
         scanArea = ScanAreaView(this)
         root = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                setColor(themePalette?.board ?: 0xFF182033.toInt())
-                cornerRadius = dp(16).toFloat()
-            }
-            clipToOutline = true
+            setBackgroundColor(Color.TRANSPARENT)
+            clipToOutline = false
+            clipChildren = false
         }
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         root.addView(scanArea, FrameLayout.LayoutParams(-1, -1))
@@ -153,7 +154,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         header.addView(TextView(this).apply {
             text = "关闭"
             textSize = 13f
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             setPadding(dp(12), 0, dp(8), 0)
             setOnClickListener { stopSelf() }
@@ -163,15 +164,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val resize = TextView(this).apply {
             text = "↘"
             textSize = 25f
-            setTextColor(0xFFFFFFFF.toInt())
+            // 仅保留中性白色的缩放提示，不给相机画面叠加主题色底块。
+            setTextColor(0xCCFFFFFF.toInt())
             gravity = Gravity.CENTER
-            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
+            setBackgroundColor(Color.TRANSPARENT)
             setOnTouchListener { _, event -> resizeWindow(event) }
         }
         root.addView(resize, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.RIGHT or Gravity.BOTTOM))
 
-        val width = minOf(dp(340), resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
-        val height = minOf(dp(360), resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
+        val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
+        val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
+        val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), maxWidth)
+        val height = dp(windowPrefs.getInt(KEY_HEIGHT_DP, 360)).coerceIn(dp(220), maxHeight)
         windowParams = WindowManager.LayoutParams(
             width,
             height,
@@ -179,7 +183,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.OPAQUE,
+            PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dp(16)
@@ -241,9 +245,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 runCatching { windowManager.updateViewLayout(root, windowParams) }
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> return true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                saveWindowSize()
+                return true
+            }
         }
         return true
+    }
+
+    private fun saveWindowSize() {
+        if (!::windowParams.isInitialized) return
+        val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
+        windowPrefs.edit()
+            .putInt(KEY_WIDTH_DP, (windowParams.width / density).toInt())
+            .putInt(KEY_HEIGHT_DP, (windowParams.height / density).toInt())
+            .apply()
     }
 
     private fun startCamera() {
@@ -279,11 +295,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
-                                    val now = System.currentTimeMillis()
-                                    val previous = lastSeen[value] ?: 0L
-                                    lastSeen[value] = now
-                                    if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
-                                    if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
+                                    // 不使用短时间窗口去重：静止条码即使持续被识别数分钟，也只发送一次。
+                                    if (!deliveredValues.add(value)) return@forEach
                                     deliverResult(value)
                                 }
                             }
@@ -359,6 +372,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         cameraProvider?.unbindAll()
         if (::scanner.isInitialized) scanner.close()
+        saveWindowSize()
         if (::root.isInitialized) runCatching { windowManager.removeView(root) }
         executor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -376,11 +390,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
             style = Paint.Style.STROKE
             strokeWidth = 2.5f * density
         }
-        private val shade = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            val base = themePalette?.board ?: 0xFF000000.toInt()
-            color = (0x99000000.toInt() or (base and 0x00FFFFFF))
-        }
-        private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = themePalette?.brand ?: 0xFF55E6D0.toInt() }
         private var downX = 0f
         private var downY = 0f
         private var start = RectF()
@@ -412,12 +421,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            canvas.drawRect(0f, 0f, width.toFloat(), rect.top, shade)
-            canvas.drawRect(0f, rect.top, rect.left, rect.bottom, shade)
-            canvas.drawRect(rect.right, rect.top, width.toFloat(), rect.bottom, shade)
-            canvas.drawRect(0f, rect.bottom, width.toFloat(), height.toFloat(), shade)
+            // 预览层保持完全透明：不在相机画面上叠加主题色或黑色遮罩。
             canvas.drawRoundRect(rect, 12f * density, 12f * density, stroke)
-            canvas.drawCircle(rect.right, rect.bottom, 10f * density, handle)
         }
 
         fun boundsInView(): RectF = RectF(rect)
@@ -488,6 +493,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     companion object {
         private const val NOTIFICATION_ID = 2921
         private const val CHANNEL_ID = "qingjian_scan_overlay"
-        private const val DEDUPE_MS = 1400L
+        private const val WINDOW_PREFS = "scan_overlay_window"
+        private const val KEY_WIDTH_DP = "width_dp"
+        private const val KEY_HEIGHT_DP = "height_dp"
     }
 }
