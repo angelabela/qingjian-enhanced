@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- 悬浮扫码窗：显示在其他应用上方且不获取输入焦点 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 悬浮扫码使用前台相机服务，避免应用退到后台后相机被系统回收 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <!-- 只有快捷翻译、青简翻译、补充译词与云联想（后两样缺省关）连用户自己填的大模型接口（见 cloud/ 与 Rust 侧 apps/android/core/src/cloud），语音输入连用户自己填的识别服务（见 voice/ 与 crates/qingjian-voice）；不开云联想时打字不联网 -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -55,6 +60,10 @@
 
         <activity android:name=".service.SmartActionActivity" android:exported="false" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
+        <service
+            android:name=".scan.ScanOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
         <activity android:name=".sms.SmsCodeSettingsActivity" android:exported="false" />
 
         <receiver
