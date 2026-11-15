@@ -108,7 +108,7 @@ class QingjianInputMethodService :
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val code = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)?.takeIf { it.matches(Regex("\\d{4,6}")) } ?: return
             panel?.bar?.show("", emptyList())
-            panel?.bar?.showNotice("验证码 $code · 点击上屏") { commitText(code) }
+            panel?.bar?.showPersistentNotice("验证码 $code · 点击上屏") { commitText(code) }
         }
     }
 
