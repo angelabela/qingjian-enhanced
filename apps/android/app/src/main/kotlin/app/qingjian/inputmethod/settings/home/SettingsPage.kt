@@ -46,6 +46,9 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
         ImeState.of(activity), settings.layout, settings.theme, settings.appearance, settings.inputOptions.learningLanguage,
         settings.recordClipboard, settings.clipboardLimit, ClipboardSync.enabled(activity),
         CloudConfig.load(activity).ready, VoiceConfig.load(activity).provider,
+        ScanPreferences.isFloating(activity),
+        activity.getSharedPreferences(ScanPreferences.PREFS, Activity.MODE_PRIVATE).getBoolean(ScanPreferences.KEY_AUTO_ENTER, false),
+        activity.getSharedPreferences(ScanPreferences.PREFS, Activity.MODE_PRIVATE).getBoolean(ScanPreferences.KEY_VIBRATE, true),
     )
 
     override fun stale() = signature(Settings.load(activity)) != shown
@@ -58,6 +61,15 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(statusCard(ImeState.of(activity), settings), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = ui.dp(20) })
+            // 扫描设置独立放在设置页顶部，不再藏在「打字」分组中，避免用户找不到入口。
+            addView(ui.group(
+                R.string.section_scan_tools,
+                ui.entry(
+                    Icon.SYMBOLS,
+                    R.string.page_scan_settings,
+                    activity.getString(R.string.scan_settings_summary),
+                ) { open(ScanSettingsActivity::class.java) },
+            ))
             addView(ui.group(
                 R.string.section_typing,
                 ui.entry(Icon.PEN, R.string.page_input, activity.getString(layoutName(settings.layout))) { open(InputSettingsActivity::class.java) },
@@ -66,9 +78,6 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                     open(AppearanceActivity::class.java)
                 },
                 ui.entry(Icon.BOOK, R.string.page_dictionaries, null) { open(DictionariesActivity::class.java) },
-                ui.entry(Icon.SYMBOLS, R.string.page_scan_settings, activity.getString(if (ScanPreferences.isFloating(activity)) R.string.scan_mode_floating else R.string.scan_mode_full)) {
-                    open(ScanSettingsActivity::class.java)
-                },
             ))
             addView(learning(settings))
             addView(ui.group(
