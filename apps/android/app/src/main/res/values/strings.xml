@@ -276,6 +276,8 @@
 
     <string name="page_advanced">数据</string>
 
+    <string name="section_scan_tools">扫描工具</string>
+    <string name="scan_settings_summary">设置全屏或悬浮扫描、自动回车和成功震动</string>
     <string name="page_scan_settings">扫描功能</string>
     <string name="page_sms_code_settings">验证码监测</string>
     <string name="scan_mode">扫描窗口模式</string>
