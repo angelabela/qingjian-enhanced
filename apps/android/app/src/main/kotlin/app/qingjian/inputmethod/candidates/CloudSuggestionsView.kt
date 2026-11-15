@@ -3,6 +3,14 @@ package app.qingjian.inputmethod.candidates
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.view.WindowManager
 import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.view.MotionEvent
@@ -15,6 +23,7 @@ import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.random.Random
 import app.qingjian.inputmethod.theme.Palette
 
 /**
@@ -39,14 +48,22 @@ class CloudSuggestionsView(
     private var dragStartTranslationY = 0f
     private var dragOffsetX = 0f
     private var dragOffsetY = 0f
+    private val windowManager = context.getSystemService(WindowManager::class.java)
+    private var overlayParams: WindowManager.LayoutParams? = null
+    private var overlayAttached = false
+    private var dragStartWindowX = 0
+    private var dragStartWindowY = 0
+    private val hideHandler = Handler(Looper.getMainLooper())
+    private val autoHideRunnable = Runnable { shatterAndHide() }
+    private var shatterAnimator: ValueAnimator? = null
+    private var shatterProgress = 0f
+    private data class Shard(val x: Float, val y: Float, val size: Float, val angle: Float, val dx: Float, val dy: Float, val color: Int)
+    private var shards: List<Shard> = emptyList()
+    private val shardPath = Path()
+    private val shardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edgeFadeWidth = (22 * density).toFloat()
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rightFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val dragHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = palette.text and 0x66FFFFFF
-        strokeWidth = 2f * density
-        strokeCap = Paint.Cap.ROUND
-    }
     private val items = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -58,14 +75,16 @@ class CloudSuggestionsView(
         clipToPadding = false
         clipToOutline = true
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-        // 小型悬浮提示：采用主题面板底色与细边框，不再铺满输入法宽度。
-        background = GradientDrawable().apply {
-            // 半透明主题底色与细边框形成毛玻璃观感。
-            setColor((palette.surface and 0x00FFFFFF) or 0xD9000000.toInt())
-            cornerRadius = 18f * density
-            setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint and 0x66FFFFFF)
+        // 液态玻璃：多层半透明渐变、细亮边与高光；有悬浮窗权限时再启用系统背景模糊。
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
+            0xDDFBFDFF.toInt(), (palette.surface and 0x00FFFFFF) or 0xB8000000.toInt(),
+            (palette.surface and 0x00FFFFFF) or 0xCC000000.toInt(),
+        )).apply {
+            cornerRadius = 22f * density
+            setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
         }
-        elevation = 8f * density
+        elevation = 18f * density
+        setLayerType(View.LAYER_TYPE_HARDWARE, null)
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
     }
@@ -82,7 +101,8 @@ class CloudSuggestionsView(
             hideTips()
             return
         }
-        candidates.forEachIndexed { position, (index, suggestion) ->
+        // 云联想始终只呈现最相关的一条，避免 Tips 变成第二条候选栏。
+        candidates.take(1).forEachIndexed { position, (index, suggestion) ->
             val result = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -152,8 +172,13 @@ class CloudSuggestionsView(
                 .start()
         }
         val wasVisible = visibility == VISIBLE
+        hideHandler.removeCallbacks(autoHideRunnable)
+        shatterAnimator?.cancel()
+        shatterProgress = 0f
+        alpha = 1f
         animate().cancel()
         visibility = VISIBLE
+        attachAsScreenOverlayIfAllowed()
         if (!wasVisible) {
             alpha = 0f
             translationY = dragOffsetY - 8f * density
@@ -161,10 +186,85 @@ class CloudSuggestionsView(
         animate().alpha(1f).translationY(dragOffsetY).setDuration(320L).start()
         scrollTo(0, 0)
         startAutoScroll()
+        scheduleAutoHide()
     }
 
+    private fun attachAsScreenOverlayIfAllowed() {
+        if (overlayAttached || !Settings.canDrawOverlays(context) || !isAttachedToWindow) return
+        val position = IntArray(2)
+        getLocationOnScreen(position)
+        val oldParent = parent as? ViewGroup ?: return
+        oldParent.removeView(this)
+        val params = WindowManager.LayoutParams(
+            LayoutParams.WRAP_CONTENT,
+            LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = position[0]
+            y = position[1]
+            if (Build.VERSION.SDK_INT >= 31) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                blurBehindRadius = (28f * density).toInt()
+            }
+        }
+        runCatching {
+            windowManager.addView(this, params)
+            overlayParams = params
+            overlayAttached = true
+        }.onFailure {
+            // 系统拒绝悬浮窗时保留原有键盘内显示，不影响基本联想。
+            oldParent.addView(this)
+        }
+    }
+
+    private fun scheduleAutoHide() {
+        hideHandler.removeCallbacks(autoHideRunnable)
+        hideHandler.postDelayed(autoHideRunnable, 5_000L)
+    }
+
+    private fun shatterAndHide() {
+        if (visibility != VISIBLE || draggingTips) return
+        stopAutoScroll()
+        val random = Random(System.nanoTime())
+        shards = List(18) {
+            val x = random.nextFloat() * width
+            val y = random.nextFloat() * height
+            Shard(x, y, (5f + random.nextFloat() * 12f) * density,
+                random.nextFloat() * 6.28f,
+                (random.nextFloat() - 0.5f) * 90f * density,
+                (-18f - random.nextFloat() * 80f) * density,
+                if (it % 2 == 0) palette.cloud else 0xFFEAF7FF.toInt())
+        }
+        shatterAnimator?.cancel()
+        shatterAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 720L
+            addUpdateListener {
+                shatterProgress = it.animatedValue as Float
+                alpha = 1f - shatterProgress
+                invalidate()
+            }
+            start()
+        }
+        postDelayed({
+            if (shatterProgress >= 0.99f) {
+                visibility = GONE
+                alpha = 1f
+                shatterProgress = 0f
+                shards = emptyList()
+            }
+        }, 740L)
+    }
 
     private fun hideTips() {
+        hideHandler.removeCallbacks(autoHideRunnable)
+        shatterAnimator?.cancel()
+        shatterProgress = 0f
+        shards = emptyList()
         if (visibility != VISIBLE) return
         stopAutoScroll()
         animate().cancel()
@@ -244,12 +344,17 @@ class CloudSuggestionsView(
                 dragStartRawY = event.rawY
                 dragStartTranslationX = translationX
                 dragStartTranslationY = translationY
+                overlayParams?.let {
+                    dragStartWindowX = it.x
+                    dragStartWindowY = it.y
+                }
             }
             MotionEvent.ACTION_MOVE -> if (dragCandidate && !draggingTips) {
                 val dx = event.rawX - dragStartRawX
                 val dy = event.rawY - dragStartRawY
                 if (kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
                     draggingTips = true
+                    hideHandler.removeCallbacks(autoHideRunnable)
                     parent?.requestDisallowInterceptTouchEvent(true)
                     return true
                 }
@@ -263,17 +368,25 @@ class CloudSuggestionsView(
         if (!draggingTips) return super.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
-                val maxX = (resources.displayMetrics.widthPixels - width).coerceAtLeast(0).toFloat()
-                val maxY = (resources.displayMetrics.heightPixels - height).coerceAtLeast(0).toFloat()
-                dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), maxX - left)
-                dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), maxY - top)
-                translationX = dragOffsetX
-                translationY = dragOffsetY
+                val maxX = (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
+                val maxY = (resources.displayMetrics.heightPixels - height).coerceAtLeast(0)
+                val params = overlayParams
+                if (overlayAttached && params != null) {
+                    params.x = (dragStartWindowX + event.rawX - dragStartRawX).toInt().coerceIn(0, maxX)
+                    params.y = (dragStartWindowY + event.rawY - dragStartRawY).toInt().coerceIn(0, maxY)
+                    runCatching { windowManager.updateViewLayout(this, params) }
+                } else {
+                    dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), maxX - left)
+                    dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), maxY - top)
+                    translationX = dragOffsetX
+                    translationY = dragOffsetY
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 draggingTips = false
                 dragCandidate = false
                 parent?.requestDisallowInterceptTouchEvent(false)
+                scheduleAutoHide()
             }
         }
         return true
@@ -309,30 +422,49 @@ class CloudSuggestionsView(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0) return
-        val transparent = palette.surface and 0x00FFFFFF
+        val opaqueEdge = (palette.surface and 0x00FFFFFF) or 0xD8000000.toInt()
+        val clearEdge = (palette.surface and 0x00FFFFFF)
         leftFadePaint.shader = LinearGradient(
             0f, 0f, edgeFadeWidth, 0f,
-            intArrayOf(palette.surface, transparent),
+            intArrayOf(opaqueEdge, clearEdge),
             null, Shader.TileMode.CLAMP,
         )
         rightFadePaint.shader = LinearGradient(
             w - edgeFadeWidth, 0f, w.toFloat(), 0f,
-            intArrayOf(transparent, palette.surface),
+            intArrayOf(clearEdge, opaqueEdge),
             null, Shader.TileMode.CLAMP,
         )
     }
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
-        // 固定在 Tips 可视窗口边缘绘制渐隐层，不随内部文字一起横向滚动。
+        // 渐隐层始终绘制在滚动内容之上，固定于 Tips 左右边缘。
         canvas.drawRect(0f, 0f, edgeFadeWidth, height.toFloat(), leftFadePaint)
         canvas.drawRect(width - edgeFadeWidth, 0f, width.toFloat(), height.toFloat(), rightFadePaint)
-        val center = width / 2f
-        canvas.drawLine(center - 8f * density, 5f * density, center + 8f * density, 5f * density, dragHandlePaint)
+        if (shatterProgress > 0f && shards.isNotEmpty()) {
+            shards.forEach { shard ->
+                val travel = shatterProgress
+                val cx = shard.x + shard.dx * travel
+                val cy = shard.y + shard.dy * travel
+                val radius = shard.size * (1f - travel * 0.28f)
+                shardPath.reset()
+                for (point in 0..2) {
+                    val angle = shard.angle + point * (Math.PI * 2.0 / 3.0).toFloat()
+                    val px = cx + kotlin.math.cos(angle) * radius
+                    val py = cy + kotlin.math.sin(angle) * radius
+                    if (point == 0) shardPath.moveTo(px, py) else shardPath.lineTo(px, py)
+                }
+                shardPath.close()
+                shardPaint.color = shard.color
+                shardPaint.alpha = ((1f - travel) * 220f).toInt()
+                shardPaint.style = Paint.Style.FILL
+                canvas.drawPath(shardPath, shardPaint)
+            }
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val height = (38 * density).toInt()
+        val height = (46 * density).toInt()
         val parentWidth = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast((120 * density).toInt())
         val maxWidth = minOf(parentWidth, (resources.displayMetrics.widthPixels * 0.82f).toInt())
         super.onMeasure(
