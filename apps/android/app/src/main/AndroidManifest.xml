@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 悬浮扫码窗：显示在其他应用上方且不获取输入焦点 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 悬浮扫码使用前台相机服务，避免应用退到后台后相机被系统回收 -->
@@ -87,6 +88,7 @@
         <activity android:name=".settings.page.AdvancedActivity" android:exported="false" />
         <activity android:name=".settings.page.VoiceSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.ScanSettingsActivity" android:exported="false" />
+        <activity android:name=".settings.page.PermissionSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.ClipboardSyncActivity" android:exported="false" />
         <activity android:name=".settings.page.GameKeyboardActivity" android:exported="false" />
 
