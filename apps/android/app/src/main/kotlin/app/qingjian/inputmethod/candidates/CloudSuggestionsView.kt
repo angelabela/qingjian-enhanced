@@ -10,8 +10,8 @@ import android.widget.TextView
 import app.qingjian.inputmethod.theme.Palette
 
 /**
- * 云端联想独立行：无胶囊、无色块。云图标与联想文字分开布局，
- * 点击整条结果上屏；普通候选栏继续由 Rust 单独绘制。
+ * 云端联想独立浮动 Tips：不占用候选栏高度，有结果时轻量出现、无结果时淡出；
+ * 点击联想词上屏，普通候选栏继续由 Rust 单独绘制。
  */
 class CloudSuggestionsView(
     context: Context,
