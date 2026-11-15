@@ -77,10 +77,10 @@
           { "type": "icon", "icon": "cloud", "when": "cloud", "size": 14, "height": 23,
             "color": { "if": "highlighted", "then": "@hl_cloud", "else": "@cloud" }, "margin": [0, 4, 0, 0] },
           { "type": "text", "bind": "text", "when": "cloud",
-            "font": { "base": "candidate", "size": 19, "line_height": 23 },
+            "font": { "base": "candidate", "size": 19, "line_height": 23, "weight": "semibold" },
             "color": { "if": "highlighted", "then": "@hl_cloud", "else": "@cloud" } },
           { "type": "text", "bind": "text", "when": "!cloud",
-            "font": { "base": "candidate", "size": 19, "line_height": 23 },
+            "font": { "base": "candidate", "size": 19, "line_height": 23, "weight": "semibold" },
             "color": { "if": "highlighted", "then": "@hl_text", "else": "@text" } }
         ] },
         { "type": "annotation", "bind": "annotation", "when": "annotations", "align_self": "center",
