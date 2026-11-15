@@ -1,4 +1,4 @@
-# 只构建 Android Debug APK；294 轮验证悬浮扫码变焦、自动换行与权限检测。
+# 只构建 Android Debug APK；313 轮修复备份发现、扫码去重与云 Tips 拖动。
 name: android-debug
 
 on:
