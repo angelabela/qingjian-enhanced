@@ -122,14 +122,18 @@ class QingjianInputMethodService :
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
             val connection = currentInputConnection ?: return
-            // 同一输入框内同一条码只上屏一次；新输入框开始时清空集合。
+            // 仅检查当前输入框已有文本，不读取剪贴板作为去重依据。
+            // 因此剪贴板里即使已有相同条码，只要当前输入框没有，仍然允许扫码上屏。
+            val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
+            val after = connection.getTextAfterCursor(8192, 0)?.toString().orEmpty()
+            if (before.contains(value) || after.contains(value)) return
             if (!scannedValuesInCurrentField.add(value)) return
-            val before = connection.getTextBeforeCursor(value.length, 0)?.toString().orEmpty()
-            val after = connection.getTextAfterCursor(value.length, 0)?.toString().orEmpty()
-            if (before.endsWith(value) || after.startsWith(value)) return
             connection.beginBatchEdit()
             try {
-                connection.commitText(value, 1)
+                if (!connection.commitText(value, 1)) return
+                // 扫码成功写入输入框后再更新系统剪贴板，剪贴板不参与拦截逻辑。
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
                 if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
                     // 优先直接提交换行字符，避免某些编辑器把 Enter 当成发送/搜索动作；
                     // 对不接受换行字符的编辑器再退回真实 Enter 按键事件。
