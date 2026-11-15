@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.panel
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -80,7 +81,20 @@ class VoicePanel(
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        scrim.setBackgroundColor((palette.board and 0x00FFFFFF) or (0x48 shl 24))
+        // 语音面板自身采用液态玻璃质感：半透明冷色渐层、柔和高光和细亮边。
+        val glassRadius = 26f * resources.displayMetrics.density
+        scrim.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                0x55F5FBFF,
+                (palette.board and 0x00FFFFFF) or 0x55405070,
+                (palette.surface and 0x00FFFFFF) or 0x66405070,
+                0x33202A48,
+            ),
+        ).apply {
+            cornerRadius = glassRadius
+            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x77FFFFFF)
+        }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
@@ -166,6 +180,10 @@ class VoicePanel(
         // 每次新建语音面板都重新抽取色相；上下两条线保持协调但不再固定为同一套颜色。
         private val hueSeed = kotlin.random.Random.Default.nextFloat() * 360f
         private val lowerHueSeed = (hueSeed + 62f + kotlin.random.Random.Default.nextFloat() * 78f) % 360f
+        init {
+            // 仅对两条声波的光晕层做软件模糊，核心线条仍保持清晰。
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
 
         /** 固定线条位置，只让渐变色相本身平滑循环变化；不移动 Shader 或线条。 */
         private fun gradientColors(baseHue: Float, hueShift: Float): IntArray {
@@ -235,11 +253,13 @@ class VoicePanel(
                     gradientColors(if (upper) hueSeed else lowerHueSeed, hueShift),
                     null, Shader.TileMode.CLAMP,
                 )
-                // 声音越强，线条的柔光越明显、线芯略微增粗；没有声音时只留下干净的渐变直线。
-                paint.strokeWidth = 10f * d
-                paint.alpha = (32f + peakLevel * 92f).toInt()
+                // 先绘制轻薄、向上下两侧柔化的发光层，再叠加更细的清晰线芯。
+                paint.strokeWidth = 5.2f * d
+                paint.alpha = (34f + peakLevel * 48f).toInt()
+                paint.maskFilter = BlurMaskFilter(4.8f * d, BlurMaskFilter.Blur.NORMAL)
                 canvas.drawPath(path, paint)
-                paint.strokeWidth = (if (upper) 2.8f else 2.2f) * d + peakLevel * 1.05f * d
+                paint.maskFilter = null
+                paint.strokeWidth = (if (upper) 1.9f else 1.7f) * d + peakLevel * 0.35f * d
                 paint.alpha = 255
                 canvas.drawPath(path, paint)
                 paint.shader = null
