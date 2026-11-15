@@ -15,6 +15,7 @@
     <string name="stats_recent">近 7 天</string>
     <string name="stats_keys_per_hanzi">每字键数</string>
 
+    <string name="page_permissions">权限检测</string>
     <string name="page_stats">输入统计</string>
     <string name="stats_unavailable">统计数据读取失败</string>
     <string name="stats_period_today">今天</string>
