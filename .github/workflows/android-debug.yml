@@ -1,4 +1,4 @@
-# 只构建 Android Debug APK；用于功能分支快速验证，不启动桌面平台构建。
+# 只构建 Android Debug APK；294 轮验证悬浮扫码变焦、自动换行与权限检测。
 name: android-debug
 
 on:
