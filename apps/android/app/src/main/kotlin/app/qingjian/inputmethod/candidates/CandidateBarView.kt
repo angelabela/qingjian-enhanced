@@ -249,7 +249,7 @@ class CandidateBarView(
 
     /** 候选格右上角的小电话/短信入口；普通候选文字区域仍照常点击上屏。 */
     private fun smartActions(text: String): List<String> {
-        val phone = Regex("(?<!\\\\d)(?:\\\\+?86[- ]?)?1[3-9]\\\\d{9}(?!\\\\d)").containsMatchIn(text)
+        val phone = Regex("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)").containsMatchIn(text)
         return when {
             phone -> listOf("phone", "sms")
             text.contains("电话") -> listOf("phone")
