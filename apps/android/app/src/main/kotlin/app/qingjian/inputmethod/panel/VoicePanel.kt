@@ -21,7 +21,6 @@ import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.sin
-import kotlin.math.pow
 
 /** 语音面板：较轻的磨砂背景、随机渐变双声波与真实音量响应光晕。 */
 @SuppressLint("ViewConstructor")
@@ -120,8 +119,8 @@ class VoicePanel(
     private fun targetAt(x: Float, y: Float): Target {
         if (y < height * 0.77f || y > height * 0.96f) return Target.NONE
         return when {
-            x < width * 0.34f -> Target.CANCEL
-            x > width * 0.66f -> Target.ACTION
+            x < width * 0.46f -> Target.CANCEL
+            x > width * 0.54f -> Target.ACTION
             else -> Target.NONE
         }
     }
@@ -220,57 +219,39 @@ class VoicePanel(
             val maxAmplitude = 48f * d
             val peakLevel = smoothedLevels.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
 
-            for (lane in 0..1) {
-                val upper = lane == 0
-                val baseY = cy + if (upper) -laneGap else laneGap
-                path.reset()
-                var previousX = 0f
-                var previousY = baseY
-                for (i in 0 until SAMPLE_COUNT) {
-                    val x = cx - halfWidth + (2f * halfWidth * i / (SAMPLE_COUNT - 1))
-                    val envelope = smoothedLevels[i].coerceAtLeast(0f)
-                    val phase = now * 2.7 + i * 0.43 + if (upper) 0.0 else 1.2
-                    // 静音严格保持水平；有声音时，上轨向上、下轨向下展开。
-                    val displacement = if (envelope <= 0.012f) 0f
-                        else abs(sin(phase)).toFloat().pow(1.75f) * envelope * maxAmplitude
-                    val y = baseY + if (upper) -displacement else displacement
-                    if (i == 0) path.moveTo(x, y) else {
-                        val midX = (previousX + x) * 0.5f
-                        val midY = (previousY + y) * 0.5f
-                        path.quadTo(previousX, previousY, midX, midY)
-                    }
-                    previousX = x
-                    previousY = y
-                }
-                path.lineTo(previousX, previousY)
+            // 48 根频谱柱围绕中线成对展开：每根柱都由实时录音音量包络驱动，
+            // 通过频段权重与快速/慢速平滑形成低频厚、中高频细的均衡器观感。
+            val barCount = SAMPLE_COUNT
+            val gap = 3.2f * d
+            val barWidth = ((halfWidth * 2f) - gap * (barCount - 1)) / barCount
+            val hueShift = (now * 32.0).toFloat() % 360f
+            for (i in 0 until barCount) {
+                val x = cx - halfWidth + i * (barWidth + gap)
+                val source = smoothedLevels[i].coerceIn(0f, 1f)
+                val centerWeight = 0.34f + 0.66f * (1f - abs(i - (barCount - 1) / 2f) / (barCount / 2f))
+                val ripple = (0.82f + 0.18f * sin(now * 5.0 + i * 0.71)).toFloat()
+                val heightBand = (3.0f * d + source * maxAmplitude * centerWeight * ripple).coerceAtLeast(2f * d)
+                val color = Color.HSVToColor(floatArrayOf((hueSeed + hueShift + i * 2.8f) % 360f, 0.78f, 1f))
+                paint.shader = null
+                paint.color = color
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.ROUND
-                paint.strokeJoin = Paint.Join.ROUND
-                // 颜色渐变在原位随时间平滑变色，线条本身不平移、不改变位置。
-                val hueShift = (now * 32.0).toFloat() % 360f
-                paint.shader = LinearGradient(
-                    cx - halfWidth, baseY, cx + halfWidth, baseY,
-                    gradientColors(if (upper) hueSeed else lowerHueSeed, hueShift),
-                    null, Shader.TileMode.CLAMP,
-                )
-                // 先绘制轻薄、向上下两侧柔化的发光层，再叠加更细的清晰线芯。
-                paint.strokeWidth = 5.2f * d
-                paint.alpha = (34f + peakLevel * 48f).toInt()
-                paint.maskFilter = BlurMaskFilter(4.8f * d, BlurMaskFilter.Blur.NORMAL)
-                canvas.drawPath(path, paint)
+                paint.strokeWidth = barWidth.coerceAtLeast(1.2f * d)
+                paint.alpha = 75
+                paint.maskFilter = BlurMaskFilter(5f * d, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
                 paint.maskFilter = null
-                paint.strokeWidth = (if (upper) 1.9f else 1.7f) * d + peakLevel * 0.35f * d
-                paint.alpha = 255
-                canvas.drawPath(path, paint)
-                paint.shader = null
+                paint.alpha = 245
+                paint.strokeWidth = (barWidth * 0.72f).coerceAtLeast(1.1f * d)
+                canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
             }
             paint.alpha = 255
 
             val actionY = height * 0.91f
             ink.text(canvas, "撤回", 14f, if (target == Target.CANCEL) palette.brand else palette.text,
-                width * 0.17f, actionY, bold = target == Target.CANCEL)
+                width * 0.32f, actionY, bold = target == Target.CANCEL)
             ink.text(canvas, actionLabel, 14f, if (target == Target.ACTION) palette.brand else palette.text,
-                width * 0.83f, actionY, bold = target == Target.ACTION)
+                width * 0.68f, actionY, bold = target == Target.ACTION)
 
             // 顶部双线的颜色持续平滑变化；面板离屏后由 View 生命周期自然停止绘制。
             if (isAttachedToWindow && visibility == View.VISIBLE) postInvalidateOnAnimation()

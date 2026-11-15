@@ -38,16 +38,18 @@ class BottomActionsView(
 
     override fun onDraw(canvas: Canvas) {
         val cy = stripHeight / 2 + 2 * density
-        left.icon?.let { PanelIcons.draw(canvas, it, slotWidth / 2, cy, 24 * density, stroke) }
-        right.icon?.let { PanelIcons.draw(canvas, it, width - slotWidth / 2, cy, 24 * density, stroke) }
+        val leftCenter = width * 0.32f
+        val rightCenter = width * 0.68f
+        left.icon?.let { PanelIcons.draw(canvas, it, leftCenter, cy, 24 * density, stroke) }
+        right.icon?.let { PanelIcons.draw(canvas, it, rightCenter, cy, 24 * density, stroke) }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_UP) {
             when {
-                event.x < slotWidth -> onAction(left)
-                event.x > width - slotWidth -> onAction(right)
+                event.x < width * 0.46f -> onAction(left)
+                event.x > width * 0.54f -> onAction(right)
             }
         }
         return true

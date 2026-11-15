@@ -62,9 +62,6 @@ class CloudSuggestionsView(
     private var shards: List<Shard> = emptyList()
     private val shardPath = Path()
     private val shardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val edgeFadeWidth = (22 * density).toFloat()
-    private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val rightFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val items = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -75,7 +72,7 @@ class CloudSuggestionsView(
         overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
         clipToOutline = true
-        setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
+        setPadding((18 * density).toInt(), 0, (18 * density).toInt(), 0)
         // 液态玻璃：多层半透明渐变、细亮边与高光；有悬浮窗权限时再启用系统背景模糊。
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
             0x66F7FBFF, (palette.surface and 0x00FFFFFF) or 0x99000000.toInt(),
@@ -131,7 +128,7 @@ class CloudSuggestionsView(
                 gravity = Gravity.CENTER_VERTICAL
                 includeFontPadding = false
                 isSingleLine = true
-                setPadding((5 * density).toInt(), 0, 0, 0)
+                setPadding((9 * density).toInt(), 0, 0, 0)
             }
             result.addView(
                 cloudIcon,
@@ -420,25 +417,11 @@ class CloudSuggestionsView(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0) return
-        val opaqueEdge = (palette.surface and 0x00FFFFFF) or 0xD8000000.toInt()
-        val clearEdge = (palette.surface and 0x00FFFFFF)
-        leftFadePaint.shader = LinearGradient(
-            0f, 0f, edgeFadeWidth, 0f,
-            intArrayOf(opaqueEdge, clearEdge),
-            null, Shader.TileMode.CLAMP,
-        )
-        rightFadePaint.shader = LinearGradient(
-            w - edgeFadeWidth, 0f, w.toFloat(), 0f,
-            intArrayOf(clearEdge, opaqueEdge),
-            null, Shader.TileMode.CLAMP,
-        )
+
     }
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
-        // 渐隐层始终绘制在滚动内容之上，固定于 Tips 左右边缘。
-        canvas.drawRect(0f, 0f, edgeFadeWidth, height.toFloat(), leftFadePaint)
-        canvas.drawRect(width - edgeFadeWidth, 0f, width.toFloat(), height.toFloat(), rightFadePaint)
         if (shatterProgress > 0f && shards.isNotEmpty()) {
             shards.forEach { shard ->
                 val travel = shatterProgress

@@ -354,7 +354,10 @@ class AdvancedActivity : PageActivity() {
         rebuild()
         thread(name = name) {
             val result = runCatching(work)
-            val notice = result.fold(message) { getString(R.string.export_failed) }
+            val notice = result.fold(message) { failure ->
+                AppLog.error("$name failed: ${android.util.Log.getStackTraceString(failure)}")
+                failure.message?.takeIf { it.isNotBlank() } ?: getString(R.string.export_failed)
+            }
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 exporting = false
@@ -388,7 +391,7 @@ class AdvancedActivity : PageActivity() {
 
     /** 恢复整个用户数据目录；兼容旧版根目录平铺的学习数据 ZIP。 */
     private fun restoreUserData(source: Uri): Int {
-        val staging = File(cacheDir, "qingjian-restore-${System.currentTimeMillis()}").apply {
+        val staging = File(filesDir, "user-restore-staging-${System.currentTimeMillis()}").apply {
             deleteRecursively()
             mkdirs()
         }
@@ -442,7 +445,10 @@ class AdvancedActivity : PageActivity() {
             }
         }
         // 新格式必须有正确 manifest；没有 manifest 的旧版 ZIP 仅按原有白名单兼容。
-        if (written == 0 || (!manifestSeen && written == 0)) error("备份里没有可恢复的青简数据")
+        if (written == 0) error("备份里没有可恢复的青简数据")
+        if (!manifestSeen && written > 0 && staging.listFiles().orEmpty().any { it.name == "user" }) {
+            error("数据备份缺少格式清单，已拒绝恢复")
+        }
         if (!Engine.replaceUserData(this, staging)) error("恢复失败，原有数据已保留")
         return written
     }
