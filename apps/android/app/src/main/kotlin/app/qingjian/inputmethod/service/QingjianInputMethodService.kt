@@ -538,20 +538,15 @@ class QingjianInputMethodService :
 
     override fun onSelect(index: Int) = composer.select(index)
 
-    override fun onSmartAction(text: String) {
-        val number = Regex("(?<!\\d)(?:\\+?86[- ]?)?(1[3-9]\\d{9})(?!\\d)")
+    override fun onSmartAction(text: String, action: String) {
+        val number = Regex("(?<!\\\\d)(?:\\\\+?86[- ]?)?(1[3-9]\\\\d{9})(?!\\\\d)")
             .find(text)?.groupValues?.getOrNull(1)
-        when {
-            number != null -> startActivity(
-                Intent(this, SmartActionActivity::class.java)
-                    .putExtra(SmartActionActivity.EXTRA_NUMBER, number)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-            text.contains("电话") -> startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            text.contains("短信") -> startActivity(
-                Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+        val intent = if (action == "phone") {
+            Intent(Intent.ACTION_DIAL, Uri.parse(if (number == null) "tel:" else "tel:$number"))
+        } else {
+            Intent(Intent.ACTION_SENDTO, Uri.parse(if (number == null) "smsto:" else "smsto:$number"))
         }
+        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override fun onMoveCaret(index: Int) = composer.moveCaret(index)
