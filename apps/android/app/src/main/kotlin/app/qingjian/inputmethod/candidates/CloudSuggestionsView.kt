@@ -50,6 +50,7 @@ class CloudSuggestionsView(
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
+        clipToOutline = true
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
         // 小型悬浮提示：采用主题面板底色与细边框，不再铺满输入法宽度。
         background = GradientDrawable().apply {
