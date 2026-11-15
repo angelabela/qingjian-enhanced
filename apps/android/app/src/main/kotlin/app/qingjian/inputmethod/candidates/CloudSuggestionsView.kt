@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
+import android.view.View
 import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.view.MotionEvent
@@ -376,8 +377,8 @@ class CloudSuggestionsView(
                     params.y = (dragStartWindowY + event.rawY - dragStartRawY).toInt().coerceIn(0, maxY)
                     runCatching { windowManager.updateViewLayout(this, params) }
                 } else {
-                    dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), maxX - left)
-                    dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), maxY - top)
+                    dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), (maxX - left).toFloat())
+                    dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), (maxY - top).toFloat())
                     translationX = dragOffsetX
                     translationY = dragOffsetY
                 }
