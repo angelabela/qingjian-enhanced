@@ -195,21 +195,44 @@ class AdvancedActivity : PageActivity() {
     /** 在 Download 中自动找本应用最近生成的对应备份，不要求用户手动浏览目录。 */
     private fun findLatestDownloadBackup(prefix: String): Pair<Uri, String>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val projection = arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME)
-        val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
-        val args = arrayOf("$prefix%")
+        // 只从公共 Download 目录读取已发布文件；显式排除 pending 项，避免不同设备
+        // 对 Downloads 集合默认过滤行为不一致而漏掉本应用刚完成的备份。
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+            MediaStore.Downloads.RELATIVE_PATH,
+            MediaStore.Downloads.IS_PENDING,
+        )
+        val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ? AND ${MediaStore.Downloads.IS_PENDING} = 0"
+        val args = arrayOf("$prefix%", Environment.DIRECTORY_DOWNLOADS + "/")
         val order = "${MediaStore.Downloads.DATE_ADDED} DESC"
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        contentResolver.query(collection, projection, selection, args, order)?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
+                val relativePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH))
+                if (relativePath == Environment.DIRECTORY_DOWNLOADS + "/" && name.startsWith(prefix)) {
+                    return collection.buildUpon().appendPath(id.toString()).build() to name
+                }
+            }
+        }
+        // 个别 ROM 的 Downloads provider 对 VOLUME_EXTERNAL 查询实现不完整，回退到默认集合，
+        // 仍严格校验目录与文件名前缀，避免误取其它目录的同名文件。
         contentResolver.query(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
             projection,
-            selection,
-            args,
+            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?",
+            arrayOf("$prefix%"),
             order,
         )?.use { cursor ->
-            if (cursor.moveToFirst()) {
+            while (cursor.moveToNext()) {
                 val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
                 val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
-                return MediaStore.Downloads.EXTERNAL_CONTENT_URI.buildUpon().appendPath(id.toString()).build() to name
+                val relativePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH))
+                if (relativePath == Environment.DIRECTORY_DOWNLOADS + "/" && name.startsWith(prefix)) {
+                    return MediaStore.Downloads.EXTERNAL_CONTENT_URI.buildUpon().appendPath(id.toString()).build() to name
+                }
             }
         }
         return null
