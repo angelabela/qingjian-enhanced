@@ -120,8 +120,8 @@ class AdvancedActivity : PageActivity() {
             Toast.makeText(this, R.string.restore_requires_android_10, Toast.LENGTH_LONG).show()
             return
         }
-        val data = findLatestDownloadBackup("qingjian-data-")
-        val settings = findLatestDownloadBackup("qingjian-settings-")
+        val data = findLatestDownloadBackup("qingjian-data")
+        val settings = findLatestDownloadBackup("qingjian-settings")
         if (data == null || settings == null) {
             Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
             return
@@ -179,7 +179,7 @@ class AdvancedActivity : PageActivity() {
     private fun pickSource(request: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val settings = request == RESTORE_SETTINGS
-            val prefix = if (settings) "qingjian-settings-" else "qingjian-data-"
+            val prefix = if (settings) "qingjian-settings" else "qingjian-data"
             val newest = findLatestDownloadBackup(prefix)
             if (newest != null) {
                 confirmRestore(newest.first, settings, newest.second)
@@ -195,8 +195,11 @@ class AdvancedActivity : PageActivity() {
     /** 在 Download 中自动找本应用最近生成的对应备份，不要求用户手动浏览目录。 */
     private fun findLatestDownloadBackup(prefix: String): Pair<Uri, String>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        // 只从公共 Download 目录读取已发布文件；显式排除 pending 项，避免不同设备
-        // 对 Downloads 集合默认过滤行为不一致而漏掉本应用刚完成的备份。
+        require(prefix == "qingjian-data" || prefix == "qingjian-settings") {
+            "只允许查找青简数据或设置备份"
+        }
+        // 只接受 Download 根目录中以指定前缀开头、且扩展名为 ZIP 的文件。
+        // DATE_MODIFIED 优先，确保同类备份有多个时选取最近修改的一份。
         val projection = arrayOf(
             MediaStore.Downloads._ID,
             MediaStore.Downloads.DISPLAY_NAME,
@@ -205,37 +208,28 @@ class AdvancedActivity : PageActivity() {
         )
         val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ? AND ${MediaStore.Downloads.IS_PENDING} = 0"
         val args = arrayOf("$prefix%", Environment.DIRECTORY_DOWNLOADS + "/")
-        val order = "${MediaStore.Downloads.DATE_ADDED} DESC"
-        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        contentResolver.query(collection, projection, selection, args, order)?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
-                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
-                val relativePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH))
-                if (relativePath == Environment.DIRECTORY_DOWNLOADS + "/" && name.startsWith(prefix)) {
-                    return collection.buildUpon().appendPath(id.toString()).build() to name
+        val order = "${MediaStore.Downloads.DATE_MODIFIED} DESC, ${MediaStore.Downloads.DATE_ADDED} DESC"
+
+        fun findIn(collection: Uri): Pair<Uri, String>? {
+            contentResolver.query(collection, projection, selection, args, order)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                    val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
+                    val relativePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH))
+                    if (
+                        relativePath == Environment.DIRECTORY_DOWNLOADS + "/" &&
+                        name.startsWith(prefix, ignoreCase = false) &&
+                        name.endsWith(".zip", ignoreCase = true)
+                    ) {
+                        return collection.buildUpon().appendPath(id.toString()).build() to name
+                    }
                 }
             }
+            return null
         }
-        // 个别 ROM 的 Downloads provider 对 VOLUME_EXTERNAL 查询实现不完整，回退到默认集合，
-        // 仍严格校验目录与文件名前缀，避免误取其它目录的同名文件。
-        contentResolver.query(
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            projection,
-            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?",
-            arrayOf("$prefix%"),
-            order,
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
-                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME))
-                val relativePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH))
-                if (relativePath == Environment.DIRECTORY_DOWNLOADS + "/" && name.startsWith(prefix)) {
-                    return MediaStore.Downloads.EXTERNAL_CONTENT_URI.buildUpon().appendPath(id.toString()).build() to name
-                }
-            }
-        }
-        return null
+
+        return findIn(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL))
+            ?: findIn(MediaStore.Downloads.EXTERNAL_CONTENT_URI)
     }
 
     /** Android 10+ 使用 MediaStore 的 Download 集合与 pending 写入，避免申请宽泛存储权限。 */
