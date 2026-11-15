@@ -53,6 +53,16 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     fun indexAt(contentX: Float): Int = image?.candidateAt(contentX) ?: -1
 
+    /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
+    fun wordRect(index: Int): RectF? {
+        val frame = image ?: return null
+        val rect = frame.wordRect(index) ?: return null
+        if (frame.candidatesTop == 0) {
+            rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0).toFloat())
+        }
+        return rect
+    }
+
     /** 点在拼音行上（视图坐标，拼音行不随候选滚动）：光标该落在第几个字之后；不在拼音行上为 -1。 */
     fun caretAt(x: Float, y: Float): Int = image?.caretAt(x, y) ?: -1
 
