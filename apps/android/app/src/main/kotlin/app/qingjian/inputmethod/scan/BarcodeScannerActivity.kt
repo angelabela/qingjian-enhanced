@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -58,6 +60,21 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 悬浮模式只启动非焦点系统悬浮服务，Activity 随即退出，不再覆盖或抢占宿主输入框。
+        if (floatingMode) {
+            if (!Settings.canDrawOverlays(this)) {
+                startActivityForResult(
+                    android.content.Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${packageName}"),
+                    ),
+                    REQUEST_OVERLAY,
+                )
+            } else {
+                startFloatingOverlay()
+            }
+            return
+        }
         val options = BarcodeScannerOptions.Builder()
             // 明确启用二维码和常用一维码格式，避免只依赖默认格式集合。
             .setBarcodeFormats(
@@ -159,12 +176,34 @@ class BarcodeScannerActivity : ComponentActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startCamera()
-            else {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                if (floatingMode) startFloatingOverlay() else startCamera()
+            } else {
                 Toast.makeText(this, "需要摄像头权限才能扫码", Toast.LENGTH_LONG).show()
                 finish()
             }
         }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_OVERLAY) {
+            if (Settings.canDrawOverlays(this)) startFloatingOverlay()
+            else {
+                Toast.makeText(this, "需要允许青简显示悬浮窗，才能使用不抢焦点的扫码模式", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
+
+    private fun startFloatingOverlay() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+            return
+        }
+        val serviceIntent = android.content.Intent(this, ScanOverlayService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
+        finish()
     }
 
     private fun startCamera() {
@@ -250,7 +289,7 @@ class BarcodeScannerActivity : ComponentActivity() {
                 android.content.Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
                     .putExtra(ScanPreferences.EXTRA_TEXT, value)
-                    .putExtra(ScanPreferences.EXTRA_ENTER, ScanPreferences.autoEnter(this)),
+                    .putExtra(ScanPreferences.EXTRA_ENTER, floatingMode && ScanPreferences.autoEnter(this)),
             )
             if (ScanPreferences.vibrate(this)) {
                 val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
@@ -264,7 +303,7 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         cameraProvider?.unbindAll()
-        scanner.close()
+        if (::scanner.isInitialized) scanner.close()
         executor.shutdown()
         super.onDestroy()
     }
@@ -375,6 +414,7 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_CAMERA = 2601
+        private const val REQUEST_OVERLAY = 2603
         private const val DEDUPE_MS = 1400L
     }
 }
