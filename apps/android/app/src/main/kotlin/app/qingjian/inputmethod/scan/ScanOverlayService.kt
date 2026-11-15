@@ -109,7 +109,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
         preview = PreviewView(this).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
+            scaleType = PreviewView.ScaleType.FIT_CENTER
             // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
@@ -380,6 +380,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var downY = 0f
         private var start = RectF()
         private var resizing = false
+        private var touchInScanArea = false
         private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val activeCamera = camera ?: return false
@@ -443,9 +444,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     downY = event.y
                     start = RectF(rect)
                     resizing = event.x >= start.right - 28f * density && event.y >= start.bottom - 28f * density
-                    return rect.contains(event.x, event.y)
+                    touchInScanArea = rect.contains(event.x, event.y)
+                    // 整个预览层都接收触摸，以便在扫描框之外也能双指缩放镜头。
+                    return true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (!touchInScanArea) return true
                     val dx = event.x - downX
                     val dy = event.y - downY
                     if (resizing) {
@@ -466,7 +470,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     invalidate()
                     return true
                 }
-                MotionEvent.ACTION_UP -> { saveRect(); return true }
+                MotionEvent.ACTION_UP -> { if (touchInScanArea) saveRect(); touchInScanArea = false; return true }
                 MotionEvent.ACTION_CANCEL -> return true
             }
             return true
