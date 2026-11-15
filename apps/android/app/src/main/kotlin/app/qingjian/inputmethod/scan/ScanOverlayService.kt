@@ -68,8 +68,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var torchButton: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
-    // 记录最近识别时间，避免静止码因短暂识别波动而连续触发；输入框级去重由 IME 负责。
-    private val lastSeen = mutableMapOf<String, Long>()
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
@@ -293,11 +291,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped)) return@forEach
-                                    val now = System.currentTimeMillis()
-                                    val previous = lastSeen[value] ?: 0L
-                                    lastSeen[value] = now
-                                    if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
-                                    if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
                                     deliverResult(value)
                                 }
                             }
@@ -526,6 +519,5 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val WINDOW_PREFS = "scan_overlay_window"
         private const val KEY_WIDTH_DP = "width_dp"
         private const val KEY_HEIGHT_DP = "height_dp"
-        private const val DEDUPE_MS = 2500L
     }
 }
