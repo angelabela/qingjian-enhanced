@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.candidates
 
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
@@ -30,8 +31,13 @@ class CloudSuggestionsView(
         overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
         setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-        // 云联想行与键盘底板使用同一主题背景色，视觉上保持整体一致。
-        setBackgroundColor(palette.board)
+        // 小型悬浮提示：采用主题面板底色与细边框，不再铺满输入法宽度。
+        background = GradientDrawable().apply {
+            setColor(palette.surface)
+            cornerRadius = 18f * density
+            setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
+        }
+        elevation = 8f * density
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
     }
@@ -45,7 +51,7 @@ class CloudSuggestionsView(
         smartSelection = null
         items.removeAllViews()
         if (candidates.isEmpty()) {
-            visibility = GONE
+            hideTips()
             return
         }
         candidates.forEachIndexed { position, (index, suggestion) ->
@@ -64,14 +70,14 @@ class CloudSuggestionsView(
             }
             val cloudIcon = TextView(context).apply {
                 text = "☁"
-                textSize = 17f
+                textSize = 15f
                 setTextColor(palette.cloud)
                 gravity = Gravity.CENTER
                 includeFontPadding = false
             }
             val label = TextView(context).apply {
                 text = suggestion
-                textSize = 17f
+                textSize = 14f
                 setTextColor(palette.text)
                 gravity = Gravity.CENTER_VERTICAL
                 includeFontPadding = false
@@ -117,10 +123,27 @@ class CloudSuggestionsView(
                 .setDuration(230L)
                 .start()
         }
+        val wasVisible = visibility == VISIBLE
+        animate().cancel()
         visibility = VISIBLE
+        if (!wasVisible) {
+            alpha = 0f
+            translationY = -8f * density
+        }
+        animate().alpha(1f).translationY(0f).setDuration(190L).start()
         scrollTo(0, 0)
     }
 
+
+    private fun hideTips() {
+        if (visibility != VISIBLE) return
+        animate().cancel()
+        animate().alpha(0f).translationY(-6f * density).setDuration(150L).withEndAction {
+            visibility = GONE
+            alpha = 1f
+            translationY = 0f
+        }.start()
+    }
 
     /**
      * 点击后复制一层文字，从联想词位置飞向输入框所在的上方，再执行一次真实上屏回调。
@@ -173,9 +196,11 @@ class CloudSuggestionsView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val height = (44 * density).toInt()
+        val height = (38 * density).toInt()
+        val parentWidth = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast((120 * density).toInt())
+        val maxWidth = minOf(parentWidth, (resources.displayMetrics.widthPixels * 0.82f).toInt())
         super.onMeasure(
-            widthMeasureSpec,
+            MeasureSpec.makeMeasureSpec(maxWidth, MeasureSpec.AT_MOST),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
         )
     }
