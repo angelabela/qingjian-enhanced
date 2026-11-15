@@ -190,7 +190,7 @@ class QingjianInputMethodService :
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         val smsFilter = IntentFilter(SmsCodeReceiver.ACTION_CODE_READY)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(smsCodeListener, smsFilter, RECEIVER_NOT_EXPORTED)
-        else @Suppress("DEPRECATION") registerReceiver(smsCodeListener, smsFilter)
+        else registerReceiver(smsCodeListener, smsFilter)
         cloud.start()
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
