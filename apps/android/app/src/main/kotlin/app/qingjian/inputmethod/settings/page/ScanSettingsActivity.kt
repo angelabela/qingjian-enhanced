@@ -14,14 +14,25 @@ class ScanSettingsActivity : PageActivity() {
         return listOf(
             ui.group(
                 null,
-                ui.segmentedRow(
-                    R.string.scan_mode,
-                    listOf(getString(R.string.scan_mode_full), getString(R.string.scan_mode_floating)),
-                    if (mode == ScanPreferences.MODE_FLOATING) 1 else 0,
-                ) { selected ->
+                ui.toggle(
+                    "悬浮扫码",
+                    "在当前应用上方显示可移动、可缩放的扫码窗口",
+                    mode == ScanPreferences.MODE_FLOATING,
+                ) { enabled ->
                     prefs.edit().putString(
                         ScanPreferences.KEY_MODE,
-                        if (selected == 1) ScanPreferences.MODE_FLOATING else ScanPreferences.MODE_FULL,
+                        if (enabled) ScanPreferences.MODE_FLOATING else ScanPreferences.MODE_FULL,
+                    ).apply()
+                    rebuild()
+                },
+                ui.toggle(
+                    "全屏扫码",
+                    "使用独立全屏页面进行持续扫码",
+                    mode != ScanPreferences.MODE_FLOATING,
+                ) { enabled ->
+                    prefs.edit().putString(
+                        ScanPreferences.KEY_MODE,
+                        if (enabled) ScanPreferences.MODE_FULL else ScanPreferences.MODE_FLOATING,
                     ).apply()
                     rebuild()
                 },
