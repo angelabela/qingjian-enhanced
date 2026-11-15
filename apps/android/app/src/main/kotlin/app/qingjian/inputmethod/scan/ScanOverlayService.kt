@@ -294,7 +294,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     if (value.isBlank()) return@forEach
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
-                                    if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
+                                    if (!roi.contains(mapped)) return@forEach
                                     val now = System.currentTimeMillis()
                                     val previous = lastSeen[value] ?: 0L
                                     lastSeen[value] = now
@@ -391,7 +391,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = themePalette?.brand ?: 0xFF55E6D0.toInt()
             style = Paint.Style.STROKE
-            strokeWidth = 2.5f * density
+            strokeWidth = 3f * density
+        }
+        private val outsideShade = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xB8000000.toInt()
+            style = Paint.Style.FILL
+        }
+        private val insideGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = (themePalette?.brand ?: 0xFF55E6D0.toInt()).let { (it and 0x00FFFFFF) or 0x18000000 }
+            style = Paint.Style.FILL
+        }
+        private val cornerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = themePalette?.brand ?: 0xFF55E6D0.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 5f * density
+            strokeCap = Paint.Cap.ROUND
         }
         private var downX = 0f
         private var downY = 0f
@@ -424,8 +438,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            // 预览层保持完全透明：不在相机画面上叠加主题色或黑色遮罩。
+            // 使用偶奇填充只压暗扫描框外部；框内保持清晰，并叠加轻微主题色高亮。
+            val mask = android.graphics.Path().apply {
+                fillType = android.graphics.Path.FillType.EVEN_ODD
+                addRect(0f, 0f, width.toFloat(), height.toFloat(), android.graphics.Path.Direction.CW)
+                addRoundRect(rect, 12f * density, 12f * density, android.graphics.Path.Direction.CW)
+            }
+            canvas.drawPath(mask, outsideShade)
+            canvas.drawRoundRect(rect, 12f * density, 12f * density, insideGlow)
             canvas.drawRoundRect(rect, 12f * density, 12f * density, stroke)
+            val corner = 18f * density
+            val inset = 3f * density
+            canvas.drawLine(rect.left + inset, rect.top + corner, rect.left + inset, rect.top + inset, cornerStroke)
+            canvas.drawLine(rect.left + inset, rect.top + inset, rect.left + corner, rect.top + inset, cornerStroke)
+            canvas.drawLine(rect.right - corner, rect.top + inset, rect.right - inset, rect.top + inset, cornerStroke)
+            canvas.drawLine(rect.right - inset, rect.top + inset, rect.right - inset, rect.top + corner, cornerStroke)
+            canvas.drawLine(rect.left + inset, rect.bottom - corner, rect.left + inset, rect.bottom - inset, cornerStroke)
+            canvas.drawLine(rect.left + inset, rect.bottom - inset, rect.left + corner, rect.bottom - inset, cornerStroke)
+            canvas.drawLine(rect.right - corner, rect.bottom - inset, rect.right - inset, rect.bottom - inset, cornerStroke)
+            canvas.drawLine(rect.right - inset, rect.bottom - inset, rect.right - inset, rect.bottom - corner, cornerStroke)
         }
 
         fun boundsInView(): RectF = RectF(rect)
