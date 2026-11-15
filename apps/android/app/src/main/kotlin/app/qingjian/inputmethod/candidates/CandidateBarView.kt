@@ -34,6 +34,9 @@ class CandidateBarView(
     interface Listener {
         fun onSelect(index: Int)
 
+        /** 候选是电话/短信关键词或手机号时，交给服务展示快捷动作。 */
+        fun onSmartAction(text: String)
+
         /** 点了拼音行：光标挪到第 [index] 个字之后。 */
         fun onMoveCaret(index: Int)
 
@@ -264,7 +267,15 @@ class CandidateBarView(
             return
         }
         if (!strip.isEmpty) {
-            strip.indexAt(x + scrollX).takeIf { it >= 0 }?.let(listener::onSelect)
+            strip.indexAt(x + scrollX).takeIf { it >= 0 }?.let { index ->
+                val text = strip.candidates.getOrNull(index)?.text.orEmpty()
+                val phone = Regex("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)")
+                if (text.contains("电话") || text.contains("短信") || phone.containsMatchIn(text)) {
+                    listener.onSmartAction(text)
+                } else {
+                    listener.onSelect(index)
+                }
+            }
             return
         }
         notice?.let { (_, action) ->
