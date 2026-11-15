@@ -128,8 +128,10 @@ class BarcodeScannerActivity : ComponentActivity() {
                                 if (!area.contains(cx, cy)) return@forEach
                                 val now = System.currentTimeMillis()
                                 val previous = lastSeen[raw] ?: 0L
-                                if (now - previous < DEDUPE_MS) return@forEach
+                                // 每帧刷新最后可见时间：静止在镜头里的同一个码不会周期性重复提示；
+                                // 移出扫描框超过间隔后再放回来，会再次复制。
                                 lastSeen[raw] = now
+                                if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
                                 if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
                                 copyResult(raw)
                             }
