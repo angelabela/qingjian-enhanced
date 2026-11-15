@@ -1,7 +1,6 @@
 package app.qingjian.inputmethod.scan
 
 import android.Manifest
-import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -10,6 +9,9 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.util.Size
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -23,8 +25,12 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.camera.view.transform.CoordinateTransform
+import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -33,7 +39,7 @@ import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** 持续扫码页：识别结果复制后继续预览；只有点关闭才退出。 */
+/** 持续扫码页：仅识别扫描框内的码，复制并震动提示后继续预览。 */
 class BarcodeScannerActivity : ComponentActivity() {
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
@@ -42,15 +48,36 @@ class BarcodeScannerActivity : ComponentActivity() {
     private val processing = AtomicBoolean(false)
     private val lastSeen = mutableMapOf<String, Long>()
     private var cameraProvider: ProcessCameraProvider? = null
+    private val transformFactory = ImageProxyTransformFactory().apply {
+        setUsingCropRect(true)
+        setUsingRotationDegrees(true)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val options = BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+            // 明确启用二维码和常用一维码格式，避免只依赖默认格式集合。
+            .setBarcodeFormats(
+                Barcode.FORMAT_QR_CODE,
+                Barcode.FORMAT_CODE_128,
+                Barcode.FORMAT_CODE_39,
+                Barcode.FORMAT_CODE_93,
+                Barcode.FORMAT_CODABAR,
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_EAN_8,
+                Barcode.FORMAT_ITF,
+                Barcode.FORMAT_UPC_A,
+                Barcode.FORMAT_UPC_E,
+                Barcode.FORMAT_PDF417,
+                Barcode.FORMAT_AZTEC,
+                Barcode.FORMAT_DATA_MATRIX,
+            )
             .build()
         scanner = BarcodeScanning.getClient(options)
 
-        preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
+        preview = PreviewView(this).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
         scanArea = ScanAreaView(this)
         val root = FrameLayout(this)
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
@@ -74,9 +101,15 @@ class BarcodeScannerActivity : ComponentActivity() {
                 setOnClickListener { finish() }
             }, LinearLayout.LayoutParams(-2, dp(44)))
         }
+        // 状态栏高度由系统 Insets 提供，标题栏向下避让，不再与状态栏文字重叠。
+        ViewCompat.setOnApplyWindowInsetsListener(header) { view, insets ->
+            val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            view.setPadding(dp(16), dp(10) + top, dp(16), dp(10))
+            insets
+        }
         root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         val hint = TextView(this).apply {
-            text = "拖动扫描框可移动，拖动右下角可调整大小。识别后自动复制，不会停止扫描。"
+            text = "仅识别框内二维码和条码。拖动扫描框可移动，拖右下角可调整大小。识别后自动复制并震动，持续扫描。"
             textSize = 12f
             setTextColor(-1)
             setPadding(dp(12), dp(9), dp(12), dp(9))
@@ -84,6 +117,7 @@ class BarcodeScannerActivity : ComponentActivity() {
         }
         root.addView(hint, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         setContentView(root)
+        ViewCompat.requestApplyInsets(header)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
@@ -96,7 +130,10 @@ class BarcodeScannerActivity : ComponentActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startCamera()
-            else { Toast.makeText(this, "需要摄像头权限才能扫码", Toast.LENGTH_LONG).show(); finish() }
+            else {
+                Toast.makeText(this, "需要摄像头权限才能扫码", Toast.LENGTH_LONG).show()
+                finish()
+            }
         }
     }
 
@@ -105,8 +142,12 @@ class BarcodeScannerActivity : ComponentActivity() {
         future.addListener({
             val provider = future.get()
             cameraProvider = provider
-            val cameraPreview = Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
+            val cameraPreview = Preview.Builder().build().also {
+                it.setSurfaceProvider(preview.surfaceProvider)
+            }
             val analysis = ImageAnalysis.Builder()
+                // 提高小尺寸/复杂二维码的识别成功率，同时只保留最新帧。
+                .setTargetResolution(Size(1280, 720))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
             analysis.setAnalyzer(executor) { proxy ->
@@ -117,23 +158,30 @@ class BarcodeScannerActivity : ComponentActivity() {
                     val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
                     scanner.process(image)
                         .addOnSuccessListener { codes ->
-                            val area = scanArea.normalizedRect()
-                            codes.forEach { barcode ->
-                                val raw = barcode.rawValue?.trim().orEmpty()
-                                val box = barcode.boundingBox ?: return@forEach
-                                if (raw.isBlank()) return@forEach
-                                val cx = box.exactCenterX() / image.width.toFloat()
-                                val cy = box.exactCenterY() / image.height.toFloat()
-                                // ROI 坐标归一化；扫描框可拖动/缩放，框外的码不触发复制。
-                                if (!area.contains(cx, cy)) return@forEach
-                                val now = System.currentTimeMillis()
-                                val previous = lastSeen[raw] ?: 0L
-                                // 每帧刷新最后可见时间：静止在镜头里的同一个码不会周期性重复提示；
-                                // 移出扫描框超过间隔后再放回来，会再次复制。
-                                lastSeen[raw] = now
-                                if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
-                                if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
-                                copyResult(raw)
+                            val previewTransform = preview.outputTransform
+                            if (previewTransform != null) {
+                                val imageTransform = transformFactory.getOutputTransform(proxy)
+                                val coordinateTransform = CoordinateTransform(imageTransform, previewTransform)
+                                val roi = scanArea.boundsInView()
+                                codes.forEach { barcode ->
+                                    val raw = barcode.rawValue?.trim().orEmpty()
+                                    val box = barcode.boundingBox ?: return@forEach
+                                    if (raw.isBlank()) return@forEach
+                                    // 把相机图像中的条码框转换为屏幕预览坐标，再判断是否落入可视扫描框。
+                                    val mapped = RectF(box)
+                                    coordinateTransform.mapRect(mapped)
+                                    if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
+
+                                    val now = System.currentTimeMillis()
+                                    val previous = lastSeen[raw] ?: 0L
+                                    // 静止码只提示一次；离开识别区超过间隔后再次放入，可再次触发。
+                                    lastSeen[raw] = now
+                                    if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
+                                    if (lastSeen.size > 100) {
+                                        lastSeen.entries.removeAll { now - it.value > 30_000L }
+                                    }
+                                    copyResult(raw)
+                                }
                             }
                         }
                         .addOnCompleteListener {
@@ -151,6 +199,10 @@ class BarcodeScannerActivity : ComponentActivity() {
         runOnUiThread {
             getSystemService(ClipboardManager::class.java)
                 .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (vibrator?.hasVibrator() == true) {
+                vibrator.vibrate(VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
             Toast.makeText(this, "已复制：$value", Toast.LENGTH_SHORT).show()
         }
     }
@@ -164,12 +216,15 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
-    /** 扫描框可拖动；拖右下角圆点调整大小。 */
+    /** 扫描框可拖动；拖右下角圆点调整大小；保存归一化区域，下一次打开恢复。 */
     private class ScanAreaView(context: Context) : View(context) {
         private val density = resources.displayMetrics.density
+        private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         private val rect = RectF()
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF55E6D0.toInt(); style = Paint.Style.STROKE; strokeWidth = 2.5f * density
+            color = 0xFF55E6D0.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * density
         }
         private val shade = Paint().apply { color = 0x55000000 }
         private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF55E6D0.toInt() }
@@ -179,7 +234,15 @@ class BarcodeScannerActivity : ComponentActivity() {
         private var resizing = false
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-            if (rect.isEmpty) rect.set(w * .12f, h * .30f, w * .88f, h * .68f)
+            if (w <= 0 || h <= 0) return
+            if (rect.isEmpty) {
+                val left = prefs.getFloat("left", .12f) * w
+                val top = prefs.getFloat("top", .30f) * h
+                val right = prefs.getFloat("right", .88f) * w
+                val bottom = prefs.getFloat("bottom", .68f) * h
+                rect.set(left, top, right, bottom)
+                clampRect()
+            }
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -192,25 +255,48 @@ class BarcodeScannerActivity : ComponentActivity() {
             canvas.drawCircle(rect.right, rect.bottom, 10f * density, handle)
         }
 
-        fun normalizedRect(): RectF {
-            if (width <= 0 || height <= 0) return RectF(0f, 0f, 1f, 1f)
-            return RectF(rect.left / width, rect.top / height, rect.right / width, rect.bottom / height)
+        /** 扫描框坐标与 PreviewView 共享同一视图坐标系。 */
+        fun boundsInView(): RectF = RectF(rect)
+
+        private fun clampRect() {
+            val minW = 120f * density
+            val minH = 100f * density
+            if (width <= 0 || height <= 0) return
+            rect.left = rect.left.coerceIn(0f, (width - minW).coerceAtLeast(0f))
+            rect.top = rect.top.coerceIn(0f, (height - minH).coerceAtLeast(0f))
+            rect.right = rect.right.coerceIn(rect.left + minW, width.toFloat())
+            rect.bottom = rect.bottom.coerceIn(rect.top + minH, height.toFloat())
+        }
+
+        private fun saveRect() {
+            if (width <= 0 || height <= 0) return
+            prefs.edit()
+                .putFloat("left", rect.left / width)
+                .putFloat("top", rect.top / height)
+                .putFloat("right", rect.right / width)
+                .putFloat("bottom", rect.bottom / height)
+                .apply()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.x; downY = event.y; start = RectF(rect)
-                    resizing = start.let { event.x >= it.right - 28f * density && event.y >= it.bottom - 28f * density }
+                    downX = event.x
+                    downY = event.y
+                    start = RectF(rect)
+                    resizing = event.x >= start.right - 28f * density &&
+                        event.y >= start.bottom - 28f * density
                     return rect.contains(event.x, event.y)
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.x - downX; val dy = event.y - downY
+                    val dx = event.x - downX
+                    val dy = event.y - downY
                     if (resizing) {
                         rect.right = (start.right + dx).coerceIn(start.left + 120f * density, width.toFloat())
                         rect.bottom = (start.bottom + dy).coerceIn(start.top + 100f * density, height.toFloat())
                     } else {
-                        val w = start.width(); val h = start.height()
+                        val w = start.width()
+                        val h = start.height()
                         val left = (start.left + dx).coerceIn(0f, width - w)
                         val top = (start.top + dy).coerceIn(0f, height - h)
                         rect.set(left, top, left + w, top + h)
@@ -218,9 +304,17 @@ class BarcodeScannerActivity : ComponentActivity() {
                     invalidate()
                     return true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> return true
+                MotionEvent.ACTION_UP -> {
+                    saveRect()
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> return true
             }
             return true
+        }
+
+        companion object {
+            private const val PREFS = "barcode_scan_area"
         }
     }
 
