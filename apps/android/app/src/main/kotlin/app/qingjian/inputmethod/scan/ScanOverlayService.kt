@@ -26,6 +26,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.camera.core.Camera
+import androidx.camera.camera2.interop.Camera2Interop
+import android.hardware.camera2.CaptureRequest
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -260,21 +262,41 @@ class ScanOverlayService : Service(), LifecycleOwner {
             .apply()
     }
 
+    /**
+     * 请求相机连续自动对焦与高质量边缘/降噪处理。由设备 ISP 执行，
+     * Camera2 不支持这些模式时 CameraX 会按设备能力回退，不影响扫码流程。
+     */
+    private fun applyScanCaptureQuality(builder: Preview.Builder) {
+        Camera2Interop.Extender(builder)
+            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            .setCaptureRequestOption(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+            .setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+    }
+
+    private fun applyScanCaptureQuality(builder: ImageAnalysis.Builder) {
+        Camera2Interop.Extender(builder)
+            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            .setCaptureRequestOption(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+            .setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+    }
+
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             if (lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
             val provider = future.get()
             cameraProvider = provider
-            val cameraPreview = Preview.Builder()
-                .setTargetResolution(Size(1280, 720))
-                .build().also {
-                    it.setSurfaceProvider(preview.surfaceProvider)
-                }
-            val analysis = ImageAnalysis.Builder()
-                .setTargetResolution(Size(1280, 720))
+            val previewBuilder = Preview.Builder()
+                .setTargetResolution(Size(1920, 1080))
+            applyScanCaptureQuality(previewBuilder)
+            val cameraPreview = previewBuilder.build().also {
+                it.setSurfaceProvider(preview.surfaceProvider)
+            }
+            val analysisBuilder = ImageAnalysis.Builder()
+                .setTargetResolution(Size(1920, 1080))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
+            applyScanCaptureQuality(analysisBuilder)
+            val analysis = analysisBuilder.build()
             analysis.setAnalyzer(executor) { proxy ->
                 val media = proxy.image
                 if (media == null || !processing.compareAndSet(false, true)) {
