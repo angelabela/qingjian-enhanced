@@ -133,16 +133,17 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     fun cancel() = onCancel()
 
     override fun onPartial(text: String) {
-        if (active) host.composeVoice(text)
+        if (active) host.composeVoice(VoiceTextNormalizer.normalize(text))
     }
 
     override fun onFinal(text: String) {
         val then = after
         end()
-        if (text.isBlank()) {
+        val cleaned = VoiceTextNormalizer.normalize(text)
+        if (cleaned.isBlank()) {
             host.composeVoice("")
         } else {
-            host.commitVoice(text)
+            host.commitVoice(cleaned)
             if (then == After.ACTION) host.performVoiceAction()
         }
         if (then == After.HIDE) host.hideKeyboard()
