@@ -464,7 +464,7 @@ class QingjianInputMethodService :
 
     override fun showComposition(preedit: String, candidates: List<Candidate>) {
         candidateRerankSequence++
-        candidateRerankHandler.removeCallbacks(candidateRerankRunnable)
+        candidateRerankRunnable?.let(candidateRerankHandler::removeCallbacks)
         candidateRerankRunnable = null
         shownPreedit = preedit
         shownCandidates = candidates
