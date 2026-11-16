@@ -399,10 +399,7 @@ mod tests {
         req.syllables = 3;
         req.candidates = vec!["知道吗".into()];
         req.guess = "知道吗".into();
-        let reply = parse_reply(
-            r#"{"words":[],"sentence":"知道吗？"}"#,
-            &req,
-        );
+        let reply = parse_reply(r#"{"words":[],"sentence":"知道吗？"}"#, &req);
         assert_eq!(reply.sentence.as_deref(), Some("知道吗？"));
     }
 
