@@ -133,12 +133,7 @@ class ClipboardPanel(
             // 独立的可视化开关与独立触摸热区，避免触发面板外层的点击/关闭逻辑。
             val toggleWidth = ink.dp(132f)
             val toggleHeight = ink.dp(24f)
-            pasteToggleRect.set(
-                width - ink.dp(10f) - toggleWidth,
-                summaryCenterY - toggleHeight / 2f,
-                width - ink.dp(10f),
-                summaryCenterY + toggleHeight / 2f,
-            )
+            pasteToggleRect.set(pasteToggleBounds())
             ink.textStart(canvas, summary, 12.5f, palette.gloss, ink.dp(12f), summaryCenterY, pasteToggleRect.left - ink.dp(8f))
             ink.round(canvas, pasteToggleRect, 12f, if (pasteEnter) palette.brand else palette.surface)
             ink.text(canvas, if (pasteEnter) "粘贴后回车  开" else "粘贴后回车  关", 11.5f,
@@ -380,27 +375,33 @@ class ClipboardPanel(
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
+    private fun pasteToggleBounds(): RectF = RectF(
+        width - ink.dp(142f),
+        headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
+        width - ink.dp(10f),
+        headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
+    )
+
     private fun isPasteSummaryTouch(y: Float): Boolean =
         !showingPhrases && y >= headerHeight && y < headerHeight + ink.dp(SUMMARY_DP)
 
-    private fun isPasteToggleTouch(x: Float): Boolean =
-        x >= width - ink.dp(142f) && x <= width - ink.dp(6f)
-
     @SuppressLint("ClickableViewAccessibility")
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        // 必须在 View/PanelView 的触摸分发入口截获：仅覆盖 onTouchEvent 仍可能让
-        // 上层触摸监听器先收到 ACTION_UP，并把这次点击当成“关闭面板/返回键盘”。
+        // 开关所在整条摘要栏由本面板独占处理，先禁止父容器拦截，再决定是否切换；
+        // 热区按当前尺寸实时计算，不依赖上一次 onDraw 是否已执行。
         if (pasteSummaryTracking || (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
                 isPasteSummaryTouch(event.y))) {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
                     pasteSummaryTracking = true
-                    pasteToggleTracking = pasteToggleRect.contains(event.x, event.y)
+                    pasteToggleTracking = pasteToggleBounds().contains(event.x, event.y)
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    val activate = pasteToggleTracking && pasteToggleRect.contains(event.x, event.y)
+                    val activate = pasteToggleTracking && pasteToggleBounds().contains(event.x, event.y)
                     pasteSummaryTracking = false
                     pasteToggleTracking = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
                     if (activate) {
                         pasteEnter = !pasteEnter
                         Settings.preferences(context).edit()
@@ -413,6 +414,7 @@ class ClipboardPanel(
                 android.view.MotionEvent.ACTION_CANCEL -> {
                     pasteSummaryTracking = false
                     pasteToggleTracking = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 }
             }
             return true
