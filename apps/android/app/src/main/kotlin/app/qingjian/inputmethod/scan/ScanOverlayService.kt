@@ -83,6 +83,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var imageCapture: ImageCapture? = null
     @Volatile private var ocrMode = false
     private lateinit var captureButton: ScanToolbarIconView
+    private lateinit var modeButton: ScanToolbarIconView
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var torchEnabled = false
@@ -107,7 +108,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         windowManager = getSystemService(WindowManager::class.java)
-        ocrMode = windowPrefs.getBoolean(KEY_OCR_MODE, false)
+        // 悬浮窗每次新建都以连续扫码为默认模式；识图模式只在当前窗口内由用户主动切换。
+        ocrMode = false
+        windowPrefs.edit().putBoolean(KEY_OCR_MODE, false).apply()
         textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
         scanner = BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder().setBarcodeFormats(
@@ -219,7 +222,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        attachHeaderDrag(prefixInput) { _, event ->
+        prefixInput.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN &&
                 (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
                 headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
@@ -247,18 +250,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
             } else false
         }
 
-        val modeSwitch = Switch(this).apply {
-            text = "拍照识图"
-            textSize = 11f
-            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            isChecked = ocrMode
-            isClickable = true
-            setOnCheckedChangeListener { _, enabled ->
-                setOcrMode(enabled)
-                contentDescription = if (enabled) "拍照识图已开启" else "扫码模式已开启"
+        // 标题栏用图标切换模式：扫码状态显示相机图标，识图状态显示二维码图标。
+        modeButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "切换到拍照识图").apply {
+            setOnClickListener {
+                setOcrMode(!ocrMode)
                 Toast.makeText(
                     this@ScanOverlayService,
-                    if (enabled) "已切换到拍照识图，点击相机按钮拍照" else "已切换到连续扫码",
+                    if (ocrMode) "已切换到拍照识图，点击相机快门拍照" else "已切换到连续扫码",
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -268,10 +266,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
-        toolbar.addView(modeSwitch, LinearLayout.LayoutParams(-2, dp(40)))
-        val dragButton = ScanToolbarIconView(this, PanelIcons.Icon.DRAG, "长按标题栏拖动悬浮窗")
-        attachHeaderDrag(dragButton)
-        toolbar.addView(dragButton, LinearLayout.LayoutParams(dp(36), dp(40)))
+        toolbar.addView(modeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
@@ -294,11 +289,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setOnClickListener { finishPrefixEditing(); stopSelf() }
         }
         toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
-        attachHeaderDrag(modeSwitch)
+        // 空白标题栏/行区域可直接拖动；按钮和输入框保留各自点击、编辑行为。
         attachHeaderDrag(prefixRow)
         attachHeaderDrag(toolbar)
-        attachHeaderDrag(torchButton)
-         attachHeaderDrag(closeButton)
 
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -322,7 +315,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xE64A566A.toInt(), 0xD9364358.toInt(), 0xC92A3548.toInt()),
+                intArrayOf(0xA64A566A.toInt(), 0x99364358.toInt(), 0x8C2A3548.toInt()),
             ).apply {
                 cornerRadius = dp(16).toFloat()
                 setStroke(dp(1), 0x66FFFFFF)
@@ -350,6 +343,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(captureButton, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             bottomMargin = dp(14)
         })
+        setOcrMode(ocrMode)
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
@@ -381,7 +375,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = (windowParams.y - headerView.measuredHeight).coerceAtLeast(0)
             // 标题栏位于相机窗口上方，与相机预览完全分离。
-            // 标题栏改用局部半透明渐变、柔和描边模拟磨砂玻璃，不影响标题栏以外画面。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                blurBehindRadius = dp(24)
+            }
         }
         windowManager.addView(root, windowParams)
         windowManager.addView(headerView, headerWindowParams)
@@ -390,22 +387,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
     /**
-     * 标题栏触摸区域统一使用长按状态机，不依赖子控件是否消费 GestureDetector 的事件。
-     * 普通点击仍返回给 Switch/EditText/按钮；按住约 420ms 后才进入拖动状态。
+     * 标题栏空白区域按下即可开始跟手拖动，不再等待长按计时；
+     * 子控件（模式、闪光灯、关闭、前缀输入）不挂拖动监听，点击行为互不干扰。
      */
-    private fun attachHeaderDrag(view: View, delegate: ((View, MotionEvent) -> Boolean)? = null) {
+    private fun attachHeaderDrag(view: View) {
         var dragging = false
         var downRawX = 0f
         var downRawY = 0f
         var startX = 0
         var startY = 0
-        val startDrag = Runnable {
-            dragging = true
-            finishPrefixEditing()
-        }
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         view.isClickable = true
-        view.setOnTouchListener { target, event ->
+        view.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     dragging = false
@@ -413,11 +406,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     downRawY = event.rawY
                     startX = windowParams.x
                     startY = windowParams.y
-                    target.removeCallbacks(startDrag)
-                    target.postDelayed(startDrag, 420L)
-                    delegate?.invoke(target, event) ?: false
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (!dragging &&
+                        (kotlin.math.abs(event.rawX - downRawX) > slop ||
+                         kotlin.math.abs(event.rawY - downRawY) > slop)) {
+                        dragging = true
+                        finishPrefixEditing()
+                    }
                     if (dragging) {
                         windowParams.x = (startX + event.rawX - downRawX).toInt()
                             .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
@@ -425,20 +422,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         windowParams.y = (startY + event.rawY - downRawY).toInt()
                             .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
                         updateOverlayPositions()
-                        true
-                    } else {
-                        if (kotlin.math.abs(event.rawX - downRawX) > slop ||
-                            kotlin.math.abs(event.rawY - downRawY) > slop) target.removeCallbacks(startDrag)
-                        delegate?.invoke(target, event) ?: false
                     }
+                    true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    target.removeCallbacks(startDrag)
-                    val wasDragging = dragging
                     dragging = false
-                    if (wasDragging) true else delegate?.invoke(target, event) ?: false
+                    true
                 }
-                else -> delegate?.invoke(target, event) ?: false
+                else -> true
             }
         }
     }
@@ -466,7 +457,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     /** 与青简 App 面板共用 PanelIcons 的 24dp 线框图标绘制风格。 */
     private inner class ScanToolbarIconView(
         context: Context,
-        private val icon: PanelIcons.Icon,
+        private var icon: PanelIcons.Icon,
         description: String,
     ) : View(context) {
         private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -481,6 +472,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             contentDescription = description
             isClickable = true
             isFocusable = true
+        }
+
+        fun setIcon(next: PanelIcons.Icon, description: String) {
+            icon = next
+            contentDescription = description
+            invalidate()
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -654,6 +651,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private fun setOcrMode(enabled: Boolean) {
         ocrMode = enabled
         windowPrefs.edit().putBoolean(KEY_OCR_MODE, enabled).apply()
+        if (::modeButton.isInitialized) {
+            modeButton.setIcon(
+                if (enabled) PanelIcons.Icon.QR_SCAN else PanelIcons.Icon.CAMERA,
+                if (enabled) "切换到连续扫码" else "切换到拍照识图",
+            )
+        }
         if (::captureButton.isInitialized) {
             captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
             captureButton.isEnabled = enabled
