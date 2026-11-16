@@ -13,12 +13,13 @@ class ScanSettingsActivity : PageActivity() {
         val mode = prefs.getString(ScanPreferences.KEY_MODE, ScanPreferences.MODE_FULL)
         val rows = listOf(
             ui.input(
-                "指定扫码前缀",
+                R.string.scan_prefix_title,
                 prefs.getString(ScanPreferences.KEY_PREFIX, "").orEmpty(),
-                "留空表示接受所有二维码和条形码",
+                prefs.getString(ScanPreferences.KEY_PREFIX, "").orEmpty(),
                 secret = false,
             ) { value ->
                 prefs.edit().putString(ScanPreferences.KEY_PREFIX, value.trim()).apply()
+                rebuild()
             },
             ui.toggle(
                 "悬浮扫码",
