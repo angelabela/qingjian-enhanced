@@ -186,6 +186,10 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 字母直接上屏时上屏解出的整串（Shift 单次首字母大写，锁定全大写）。
      */
     fun onSwipe(input: String) {
+        if (!undoGroupOpen) captureUndoSnapshot()
+        undoGroupOpen = true
+        handler.removeCallbacks(undoGroupTimeout)
+        handler.postDelayed(undoGroupTimeout, UNDO_GROUP_TIMEOUT_MS)
         if (composing || (engine.ready && composesLetters && !host.shift.on)) {
             apply(engine.swipe(input))
             return
