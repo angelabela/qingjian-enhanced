@@ -101,6 +101,7 @@ class ClipboardPanel(
     private var pasteEnter = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
     private val pasteToggleRect = RectF()
     private var pasteToggleTracking = false
+    private var pasteSummaryTracking = false
 
     /** 每张卡片在列表内容里的上下边（不含滚动），画与点共用。 */
     private var tops = FloatArray(0)
@@ -379,18 +380,26 @@ class ClipboardPanel(
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
+    private fun isPasteSummaryTouch(y: Float): Boolean =
+        !showingPhrases && y >= headerHeight && y < headerHeight + ink.dp(SUMMARY_DP)
+
+    private fun isPasteToggleTouch(x: Float): Boolean =
+        x >= width - ink.dp(142f) && x <= width - ink.dp(6f)
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-        // 开关使用独立触摸状态机：按下、抬起均由剪贴板面板消费，不交给宿主面板关闭逻辑。
-        if (!showingPhrases && (pasteToggleTracking || pasteToggleRect.contains(event.x, event.y))) {
+        // 整条摘要栏都由本面板接管触摸，避免点击开关时 GestureDetector 把事件交给外层面板。
+        if (pasteSummaryTracking || isPasteSummaryTouch(event.y)) {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
-                    pasteToggleTracking = pasteToggleRect.contains(event.x, event.y)
-                    return pasteToggleTracking
+                    pasteSummaryTracking = true
+                    pasteToggleTracking = isPasteToggleTouch(event.x)
+                    return true
                 }
-                android.view.MotionEvent.ACTION_MOVE -> return pasteToggleTracking
+                android.view.MotionEvent.ACTION_MOVE -> return true
                 android.view.MotionEvent.ACTION_UP -> {
-                    val activate = pasteToggleTracking && pasteToggleRect.contains(event.x, event.y)
+                    val activate = pasteToggleTracking && isPasteToggleTouch(event.x)
+                    pasteSummaryTracking = false
                     pasteToggleTracking = false
                     if (activate) {
                         pasteEnter = !pasteEnter
@@ -403,6 +412,7 @@ class ClipboardPanel(
                     return true
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
+                    pasteSummaryTracking = false
                     pasteToggleTracking = false
                     return true
                 }
@@ -426,14 +436,6 @@ class ClipboardPanel(
         }
         when {
             y < headerHeight && isRightIcon(x, y) -> onRightIcon()
-            !showingPhrases && y >= headerHeight && y < headerHeight + ink.dp(SUMMARY_DP) -> {
-                pasteEnter = !pasteEnter
-                Settings.preferences(context).edit()
-                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter).apply()
-                clearArmed = false
-                invalidate()
-                return
-            }
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->
                 groups.selected = index
