@@ -13,6 +13,9 @@ interface PanelActions {
     /** 面板里点了一个符号或表情：组句中先顶首选再上屏。 */
     fun commitText(text: String)
 
+    /** 剪贴板记录上屏；按全局开关决定是否紧接着执行回车换行。 */
+    fun commitClipboardText(text: String)
+
     /** AI 回复整段替换当前输入框内容，并保留一次撤销快照。 */
     fun replaceInputText(text: String): Boolean
 
