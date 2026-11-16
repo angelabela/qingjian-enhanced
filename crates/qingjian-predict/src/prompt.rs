@@ -394,6 +394,18 @@ mod tests {
     }
 
     #[test]
+    fn sentence_can_add_contextual_chinese_punctuation_to_local_candidate() {
+        let mut req = request("zhi'dao'ma", true);
+        req.candidates = vec!["知道吗".into()];
+        req.guess = "知道吗".into();
+        let reply = parse_reply(
+            r#"{"words":[],"sentence":"知道吗？"}"#,
+            &req,
+        );
+        assert_eq!(reply.sentence.as_deref(), Some("知道吗？"));
+    }
+
+    #[test]
     fn user_prompt_is_the_request_as_json() {
         let prompt = user_prompt(&request("zhang'tao", true));
         assert!(prompt.contains("\"letters\":\"zhangtao\""));
