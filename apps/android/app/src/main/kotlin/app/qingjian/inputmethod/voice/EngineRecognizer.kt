@@ -22,6 +22,9 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     private val main = Handler(Looper.getMainLooper())
     private var listener: VoiceRecognizer.Listener? = null
 
+    /** 每个频带独立估计环境底噪；语音峰值只慢速抬高估计，低能量段较快回落。 */
+    private val noiseFloorDb = DoubleArray(SPECTRUM_BANDS) { -58.0 }
+
     /** 录音线程看它停；主线程写。 */
     @Volatile
     private var recording = false
@@ -208,7 +211,16 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
             }
             val amplitude = if (count == 0) 0.0 else sqrt(power / count)
             val dbfs = if (amplitude > 1e-9) 20.0 * log10(amplitude) else FLOOR_DB
-            result[band] = ((dbfs - FLOOR_DB) / (CEILING_DB - FLOOR_DB)).toFloat().coerceIn(0f, 1f)
+            // 自适应噪声门：低于估计底噪的能量不显示；高于底噪约 8 dB 才逐渐进入频谱。
+            // 底噪下降跟得快、上升跟得慢，避免把持续说话误学成噪声。
+            val previousFloor = noiseFloorDb[band]
+            val floorBlend = if (dbfs < previousFloor) 0.055 else 0.0015
+            val floor = (previousFloor + (dbfs - previousFloor) * floorBlend)
+                .coerceIn(-72.0, -34.0)
+            noiseFloorDb[band] = floor
+            val gateDb = (floor + NOISE_GATE_DB).coerceIn(-64.0, -32.0)
+            result[band] = if (dbfs <= gateDb) 0f
+                else ((dbfs - gateDb) / (CEILING_DB - gateDb)).toFloat().coerceIn(0f, 1f)
         }
         return result
     }
@@ -225,5 +237,6 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
         const val SPECTRUM_BANDS = 48
         const val FLOOR_DB = -72.0
         const val CEILING_DB = -18.0
+        const val NOISE_GATE_DB = 8.0
     }
 }
