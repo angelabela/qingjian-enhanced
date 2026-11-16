@@ -114,11 +114,7 @@ class VoicePanel(
 
     private fun targetAt(x: Float, y: Float): Target {
         if (y < height * 0.77f || y > height * 0.96f) return Target.NONE
-        return when {
-            x < width * 0.46f -> Target.CANCEL
-            x > width * 0.54f -> Target.ACTION
-            else -> Target.NONE
-        }
+        return if (kotlin.math.abs(x - width * 0.5f) <= width * 0.18f) Target.CANCEL else Target.NONE
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -241,11 +237,10 @@ class VoicePanel(
             }
             paint.alpha = 255
 
+            // 只保留撤销入口，固定在面板下方正中；不再显示完成/发送按钮。
             val actionY = height * 0.91f
-            ink.text(canvas, "撤回", 14f, if (target == Target.CANCEL) palette.brand else palette.text,
-                width * 0.32f, actionY, bold = target == Target.CANCEL)
-            ink.text(canvas, actionLabel, 14f, if (target == Target.ACTION) palette.brand else palette.text,
-                width * 0.68f, actionY, bold = target == Target.ACTION)
+            ink.text(canvas, "撤销", 14f, if (target == Target.CANCEL) palette.brand else palette.text,
+                width * 0.5f, actionY, bold = target == Target.CANCEL)
 
             // 顶部双线的颜色持续平滑变化；面板离屏后由 View 生命周期自然停止绘制。
             if (isAttachedToWindow && visibility == View.VISIBLE) postInvalidateOnAnimation()
