@@ -28,6 +28,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
+    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER }
+    private val fallbackRects = ArrayList<RectF>()
     private val src = Rect()
     private val dst = Rect()
 
@@ -38,7 +40,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     var candidates: List<Candidate> = emptyList()
         private set
 
-    val isEmpty: Boolean get() = preedit.isEmpty() && candidates.none { !it.cloud }
+    val isEmpty: Boolean get() = preedit.isEmpty() && candidates.isEmpty()
 
     /** 主题底色；还没画过为透明。 */
     val background: Int get() = image?.background ?: 0
@@ -49,7 +51,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 位图宽（像素），比视口宽时可以横向滚动。 */
     val contentWidth: Float
         get() {
-            val frame = image ?: return 0f
+            val frame = image ?: return fallbackWidth()
             val extra = extraCandidates()
             if (extra.isEmpty()) return frame.bitmap.width.toFloat()
             return frame.bitmap.width + 12f * density + extra.size * 38f * density
@@ -66,7 +68,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     }
 
     fun indexAt(contentX: Float): Int {
-        val frame = image ?: return -1
+        val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()
         val start = frame.bitmap.width + 12f * density
@@ -81,7 +83,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
     fun wordRect(index: Int): RectF? {
-        val frame = image ?: return null
+        val frame = image ?: return fallbackRects.getOrNull(index)?.let { RectF(it) }
         val rect = frame.wordRect(index) ?: return null
         if (frame.candidatesTop == 0) {
             rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f))
@@ -97,7 +99,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int) {
-        val image = image ?: return
+        val image = image
+        if (image == null) { drawFallback(canvas, scrollX, viewWidth); return }
         val bitmap = image.bitmap
         val top = image.candidatesTop.coerceIn(0, bitmap.height)
         fill.color = image.background
@@ -148,6 +151,32 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
     }
 
+    /** 原生位图暂不可用时，仍按候选数据绘制可见、可点击的候选。 */
+    private fun fallbackWidth(): Float = (if (preedit.isNotEmpty()) 52f * density else 8f * density) + candidates.size * 56f * density + 8f * density
+
+    private fun drawFallback(canvas: Canvas, scrollX: Int, viewWidth: Int) {
+        fill.color = 0xFFF2F3F5.toInt()
+        canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        fallbackRects.clear()
+        val start = if (preedit.isNotEmpty()) 52f * density else 8f * density
+        if (preedit.isNotEmpty()) {
+            fallbackText.textAlign = Paint.Align.LEFT
+            fallbackText.textSize = 13f * density
+            canvas.drawText(preedit, 8f * density - scrollX, barHeight * 0.28f, fallbackText)
+        }
+        fallbackText.textAlign = Paint.Align.CENTER
+        fallbackText.textSize = 19f * density
+        val cell = 56f * density
+        candidates.forEachIndexed { index, candidate ->
+            val left = start + index * cell
+            val rect = RectF(left + density, 4f * density, left + cell - density, barHeight - 4f * density)
+            fallbackRects += rect
+            if (rect.right < scrollX || rect.left > scrollX + viewWidth) return@forEachIndexed
+            val baseline = rect.centerY() - (fallbackText.ascent() + fallbackText.descent()) / 2f
+            canvas.drawText(candidate.text, rect.centerX() - scrollX, baseline, fallbackText)
+        }
+        canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
+    }
     private companion object {
         /** 人头标记多大（dp）：比译文字号小一点，不抢候选字。 */
         const val CONTACT_MARK_DP = 11f
