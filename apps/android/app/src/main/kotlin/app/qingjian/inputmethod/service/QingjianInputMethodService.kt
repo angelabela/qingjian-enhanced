@@ -84,9 +84,9 @@ class QingjianInputMethodService :
     private val phraseTransliterator by lazy { Transliterator.getInstance("Han-Latin; Latin-ASCII") }
     private lateinit var composer: Composer
     private var panel: InputPanel? = null
-    private var selectionActive = false
+    private var hasActiveSelection = false
 
-    override val selectionActive: Boolean get() = selectionActive
+    override val selectionActive: Boolean get() = hasActiveSelection
 
     private val game = GameMode(this, this)
 
@@ -345,7 +345,7 @@ class QingjianInputMethodService :
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
-        selectionActive = false
+        hasActiveSelection = false
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
         composer.privateInput = attribute.wantsPrivacy()
@@ -413,7 +413,7 @@ class QingjianInputMethodService :
         super.onUpdateSelection(
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
-        selectionActive = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (editor != null) return
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
