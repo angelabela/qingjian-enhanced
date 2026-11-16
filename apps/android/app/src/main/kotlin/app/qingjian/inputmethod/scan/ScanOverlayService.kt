@@ -183,7 +183,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         prefixEditor = prefixInput
-        prefixRow.addView(prefixInput, LinearLayout.LayoutParams(dp(140), dp(36)))
+        prefixRow.addView(prefixInput, LinearLayout.LayoutParams(dp(112), dp(36)))
 
         val prefixSwitch = Switch(this).apply {
             text = "过滤"
@@ -212,7 +212,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         fun resizePrefixEditor() {
             val contentWidth = prefixInput.paint.measureText(prefixInput.text?.toString().orEmpty())
             val hintWidth = prefixInput.paint.measureText(prefixInput.hint?.toString().orEmpty())
-            val target = (maxOf(contentWidth, hintWidth) + dp(24)).toInt().coerceIn(dp(104), dp(216))
+            val target = (maxOf(contentWidth, hintWidth) + dp(20)).toInt().coerceIn(dp(96), dp(156))
             val params = prefixInput.layoutParams as? LinearLayout.LayoutParams ?: return
             if (params.width != target || params.weight != 0f) {
                 params.width = target
@@ -272,6 +272,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
+        // 横向布局时用独立弹性间隔把工具按钮推到右侧，前缀区本身只占实际内容宽度。
+        val headerSpacer = View(this)
         toolbar.addView(modeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
@@ -302,10 +304,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
-                val compact = availableWidth < dp(430)
+                // 340dp 默认窗口可容纳紧凑单行；只有小于约 300dp 才换成两行。
+                val compact = availableWidth < dp(300)
                 orientation = if (compact) VERTICAL else HORIZONTAL
                 prefixRow.layoutParams = if (compact) {
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40))
+                } else {
+                    LayoutParams(LayoutParams.WRAP_CONTENT, dp(40))
+                }
+                headerSpacer.visibility = if (compact) View.GONE else View.VISIBLE
+                headerSpacer.layoutParams = if (compact) {
+                    LayoutParams(0, 0)
                 } else {
                     LayoutParams(0, dp(40), 1f)
                 }
@@ -321,7 +330,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xB84A566A.toInt(), 0xAD364358.toInt(), 0xA62A3548.toInt()),
+                intArrayOf(
+                    themePalette?.surface ?: 0xFF303846.toInt(),
+                    themePalette?.board ?: 0xFF252D39.toInt(),
+                ),
             ).apply {
                 // 标题栏底边与相机预览顶边贴合；只保留上方圆角，避免形成悬浮的双层圆角缝隙。
                 cornerRadii = floatArrayOf(
@@ -332,6 +344,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setStroke(dp(1), 0x66FFFFFF)
             }
             addView(prefixRow)
+            addView(headerSpacer)
             addView(toolbar)
         }
         attachHeaderDrag(header)
@@ -385,8 +398,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
-            // WindowManager.LayoutParams 不提供背景模糊 API；标题栏先使用半透明磨砂底色，
-            // 避免调用 Window#setBackgroundBlurRadius 导致 Kotlin 编译失败。
+            // 标题栏独立成窗，模糊范围只落在标题栏后方；背景使用键盘主题实色。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                setBlurBehindRadius(dp(22))
+            }
         }
         // 两个窗口都由 WindowManager 直接管理：不经过 Dialog decor/inset 二次偏移，
         // 标题栏始终是相机窗口上方的独立触摸层，不会被 Dialog 的默认窗口布局挤走。
