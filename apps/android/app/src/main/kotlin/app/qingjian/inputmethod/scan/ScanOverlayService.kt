@@ -255,11 +255,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
             textSize = 11f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             isChecked = ocrMode
+            isClickable = true
             setOnCheckedChangeListener { _, enabled ->
-                ocrMode = enabled
-                windowPrefs.edit().putBoolean(KEY_OCR_MODE, enabled).apply()
-                captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
+                setOcrMode(enabled)
                 contentDescription = if (enabled) "拍照识图已开启" else "扫码模式已开启"
+                Toast.makeText(
+                    this@ScanOverlayService,
+                    if (enabled) "已切换到拍照识图，点击相机按钮拍照" else "已切换到连续扫码",
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
         }
 
@@ -268,19 +272,22 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
         toolbar.addView(modeSwitch, LinearLayout.LayoutParams(-2, dp(40)))
-        toolbar.addView(ScanToolbarIconView(this, PanelIcons.Icon.DRAG, "拖动悬浮窗").apply {
-            setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) finishPrefixEditing()
-                moveWindow(event)
-            }
-        }, LinearLayout.LayoutParams(dp(36), dp(40)))
+        val dragButton = ScanToolbarIconView(this, PanelIcons.Icon.DRAG, "长按标题栏拖动悬浮窗")
+        attachHeaderDrag(dragButton)
+        toolbar.addView(dragButton, LinearLayout.LayoutParams(dp(36), dp(40)))
         torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
         toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         captureButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "拍照识别文字").apply {
             visibility = if (ocrMode) View.VISIBLE else View.GONE
-            setOnClickListener { finishPrefixEditing(); if (ocrMode) capturePhotoForOcr() }
+            isEnabled = ocrMode
+            alpha = if (ocrMode) 1f else 0f
+            setOnClickListener {
+                finishPrefixEditing()
+                if (ocrMode) capturePhotoForOcr()
+                else Toast.makeText(this@ScanOverlayService, "请先开启拍照识图", Toast.LENGTH_SHORT).show()
+            }
         }
         toolbar.addView(captureButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
@@ -316,7 +323,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xD93B4658.toInt(), 0xB9283448.toInt(), 0xA91C2638.toInt()),
+                intArrayOf(0xE64A566A.toInt(), 0xD9364358.toInt(), 0xC92A3548.toInt()),
             ).apply {
                 cornerRadius = dp(16).toFloat()
                 setStroke(dp(1), 0x66FFFFFF)
@@ -364,14 +371,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) WindowManager.LayoutParams.FLAG_BLUR_BEHIND else 0),
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = windowParams.y
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) blurBehindRadius = dp(24)
+            // 不使用系统级 BLUR_BEHIND：部分系统会把整块屏幕（含相机预览）一起模糊。
+            // 标题栏改用局部半透明渐变、柔和描边模拟磨砂玻璃，不影响标题栏以外画面。
         }
         windowManager.addView(root, windowParams)
         windowManager.addView(headerView, headerWindowParams)
@@ -594,7 +601,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
                 val media = proxy.image
-                if (ocrMode || media == null || !processing.compareAndSet(false, true)) {
+                if (ocrMode) {
+                    // 拍照识图模式下不运行条码识别，释放每一帧，等待用户主动拍照。
+                    proxy.close()
+                } else if (media == null || !processing.compareAndSet(false, true)) {
                     proxy.close()
                 } else {
                     scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
@@ -633,6 +643,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    /** 两种扫描模式明确互斥：拍照识图时暂停条码分析并显示拍照按钮。 */
+    private fun setOcrMode(enabled: Boolean) {
+        ocrMode = enabled
+        windowPrefs.edit().putBoolean(KEY_OCR_MODE, enabled).apply()
+        if (::captureButton.isInitialized) {
+            captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
+            captureButton.isEnabled = enabled
+            captureButton.alpha = if (enabled) 1f else 0f
+        }
+    }
+
     /** 拍照识图仅在本机运行 ML Kit；识别完成后将整段文字写入当前输入框。 */
     private fun capturePhotoForOcr() {
         val capture = imageCapture ?: run {
@@ -654,15 +675,19 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 textRecognizer.process(InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees))
                     .addOnSuccessListener { result ->
                         val recognized = result.text.trim()
-                        if (recognized.isBlank()) {
-                            Toast.makeText(this@ScanOverlayService, "没有识别到文字，请调整角度后重拍", Toast.LENGTH_SHORT).show()
-                        } else {
-                            deliverResult(recognized)
-                            Toast.makeText(this@ScanOverlayService, "已识别文字并粘贴到输入框", Toast.LENGTH_SHORT).show()
+                        android.os.Handler(mainLooper).post {
+                            if (recognized.isBlank()) {
+                                Toast.makeText(this@ScanOverlayService, "没有识别到文字，请调整角度后重拍", Toast.LENGTH_SHORT).show()
+                            } else {
+                                deliverResult(recognized)
+                                Toast.makeText(this@ScanOverlayService, "已识别文字并粘贴到输入框", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                     .addOnFailureListener {
-                        Toast.makeText(this@ScanOverlayService, "文字识别失败，请重试", Toast.LENGTH_SHORT).show()
+                        android.os.Handler(mainLooper).post {
+                            Toast.makeText(this@ScanOverlayService, "文字识别失败，请重试", Toast.LENGTH_SHORT).show()
+                        }
                     }
                     .addOnCompleteListener {
                         image.close()
