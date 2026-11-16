@@ -23,6 +23,8 @@ data class Settings(
     val keyPopup: Boolean,
     /** 键面字号档（#826），与候选字号分开。 */
     val keyTextSize: TextSize,
+    /** 键帽质感主题；只改变颜色与高光，不改变原有按键轮廓。 */
+    val keySkin: KeySkin = KeySkin.ORIGINAL,
     /** 候选出繁体（字形按 [InputOptions.traditionalVariant]）。 */
     val traditional: Boolean,
     /** 上次用的语言与中英键的另一边（[app.qingjian.inputmethod.service.input.Language] 的名字），没记过为 null。 */
@@ -90,6 +92,15 @@ data class Settings(
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
 
+    /** 独立于整套配色的按键皮肤；颜色变化时键面文字与图标同步使用高对比色。 */
+    enum class KeySkin(val label: String, val base: Int, val functional: Int, val pressed: Int, val foreground: Int, val secondary: Int) {
+        ORIGINAL("跟随主题", 0, 0, 0, 0, 0),
+        EMERALD("翡翠绿", 0xFF20B653.toInt(), 0xFF159344.toInt(), 0xFF35D16B.toInt(), 0xFFFFFFFF.toInt(), 0xFFE4FFEA.toInt()),
+        ICE("冰川蓝", 0xFF168FD0.toInt(), 0xFF126FA8.toInt(), 0xFF39B9F5.toInt(), 0xFFFFFFFF.toInt(), 0xFFE5F7FF.toInt()),
+        PURPLE("幻彩紫", 0xFF8050C8.toInt(), 0xFF6339A5.toInt(), 0xFFA77BE8.toInt(), 0xFFFFFFFF.toInt(), 0xFFF0E7FF.toInt()),
+        AMBER("琥珀橙", 0xFFED8A22.toInt(), 0xFFC66B17.toInt(), 0xFFFFB14D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFF1DE.toInt()),
+    }
+
     /** 自定义按键滑动动作；DEFAULT 沿用原手势，NONE 明确关闭该方向。 */
     enum class GestureAction(val label: String) {
         DEFAULT("沿用默认"), NONE("无"), CLEAR_ALL("清空输入"), RESTORE_CLEAR("撤销清空"),
@@ -117,6 +128,7 @@ data class Settings(
         const val KEY_HAPTIC_STRENGTH = "haptic_strength"
         const val KEY_POPUP = "key_popup"
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
+        const val KEY_KEY_SKIN = "key_skin"
         const val KEY_TRADITIONAL = "traditional"
         const val KEY_LANGUAGE = "language"
         const val KEY_PARTNER = "language_partner"
@@ -203,6 +215,7 @@ data class Settings(
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
                 keyTextSize = TextSize.of(prefs.getString(KEY_KEY_TEXT_SIZE, null)),
+                keySkin = KeySkin.entries.firstOrNull { it.name == prefs.getString(KEY_KEY_SKIN, null) } ?: KeySkin.ORIGINAL,
                 traditional = prefs.getBoolean(KEY_TRADITIONAL, false),
                 language = prefs.getString(KEY_LANGUAGE, null),
                 partner = prefs.getString(KEY_PARTNER, null),
