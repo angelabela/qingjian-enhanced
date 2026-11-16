@@ -173,7 +173,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setSingleLine(true)
             textSize = 13f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            setHintTextColor((themePalette?.text ?: 0xFFFFFFFF.toInt()).let { (it and 0x00FFFFFF) or 0x88000000.toInt() })
+            setHintTextColor(themePalette?.gloss ?: themePalette?.text ?: 0xFFFFFFFF.toInt())
             hint = "输入扫码前缀"
             setPadding(dp(9), 0, dp(7), 0)
             // 输入框与标题栏共用背景，不再单独绘制色块或边框。
@@ -469,17 +469,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 同步更新相机内容窗与独立标题栏窗，二者始终贴合。 */
     private fun updateOverlayPositions() {
-        runCatching { windowManager.updateViewLayout(root, windowParams) }
         if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
-            val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
+            val measuredHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
                 .coerceAtLeast(0)
+            val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
+            // 标题栏与相机预览必须共用同一条边界。不能只把标题栏 y 截到 0，
+            // 否则窗口被拖到屏幕顶部时，标题栏会被钉在 0、相机窗仍继续下移，二者之间就出现空白。
+            windowParams.y = windowParams.y.coerceAtLeast(headerHeight)
             headerWindowParams.x = windowParams.x
-            // 标题栏窗口的底边与相机窗口顶边共用同一条坐标线；相机窗口不包含标题栏。
-            headerWindowParams.height = headerHeight.takeIf { it > 0 } ?: headerWindowParams.height
-            headerWindowParams.y = (windowParams.y - headerWindowParams.height).coerceAtLeast(0)
+            headerWindowParams.height = headerHeight
+            headerWindowParams.y = windowParams.y - headerHeight
             headerWindowParams.width = windowParams.width
             runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
         }
+        runCatching { windowManager.updateViewLayout(root, windowParams) }
     }
 
     private fun finishPrefixEditing() {
