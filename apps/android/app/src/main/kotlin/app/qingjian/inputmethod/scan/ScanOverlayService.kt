@@ -11,19 +11,26 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Size
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Switch
 import android.widget.Toast
 import androidx.camera.core.Camera
 import androidx.camera.camera2.interop.Camera2Interop
@@ -128,38 +135,115 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         root.addView(scanArea, FrameLayout.LayoutParams(-1, -1))
 
+        // 顶部控制区：第一行直接编辑扫码前缀并启停过滤；第二行只保留图标工具，不再显示悬浮窗标题文字。
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(8), 0)
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(5), dp(8), dp(4))
             setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
         }
-        val title = TextView(this).apply {
-            text = "扫码悬浮窗 · 双指缩放镜头 · 拖动此处移动"
+        val prefixRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val prefixInput = EditText(this).apply {
+            setSingleLine(true)
             textSize = 13f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER_VERTICAL
-            setOnTouchListener { _, event -> moveWindow(event) }
+            setHintTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt() and 0x88FFFFFF.toInt())
+            hint = "输入扫码前缀"
+            setPadding(dp(10), 0, dp(8), 0)
+            background = GradientDrawable().apply {
+                setColor(themePalette?.surface ?: 0xFF101522.toInt())
+                cornerRadius = dp(7).toFloat()
+                setStroke(dp(1), 0x44FFFFFF)
+            }
+            setText(ScanPreferences.prefix(this@ScanOverlayService))
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
-        header.addView(title, LinearLayout.LayoutParams(0, dp(42), 1f))
+        prefixRow.addView(prefixInput, LinearLayout.LayoutParams(0, dp(36), 1f))
+        val prefixSwitch = Switch(this).apply {
+            text = "前缀过滤"
+            textSize = 11f
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
+            isChecked = ScanPreferences.prefixEnabled(this@ScanOverlayService)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE).edit()
+                    .putBoolean(ScanPreferences.KEY_PREFIX_ENABLED, enabled).apply()
+            }
+        }
+        prefixRow.addView(prefixSwitch, LinearLayout.LayoutParams(-2, dp(40)).apply { marginStart = dp(7) })
+        header.addView(prefixRow, LinearLayout.LayoutParams(-1, dp(40)))
+
+        prefixInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE).edit()
+                    .putString(ScanPreferences.KEY_PREFIX, s?.toString()?.trim().orEmpty()).apply()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        prefixInput.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+                (windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                runCatching { windowManager.updateViewLayout(root, windowParams) }
+                prefixInput.post {
+                    prefixInput.requestFocus()
+                    (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
+            false
+        }
+        prefixInput.setOnFocusChangeListener { _, focused ->
+            if (!focused && ::windowParams.isInitialized) {
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(prefixInput.windowToken, 0)
+                windowParams.flags = windowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                runCatching { windowManager.updateViewLayout(root, windowParams) }
+            }
+        }
+        prefixInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                prefixInput.clearFocus()
+                true
+            } else false
+        }
+
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        toolbar.addView(TextView(this).apply {
+            text = "⠿"
+            textSize = 18f
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER_VERTICAL
+            contentDescription = "拖动悬浮窗"
+            setOnTouchListener { _, event -> moveWindow(event) }
+        }, LinearLayout.LayoutParams(0, dp(40), 1f))
         torchButton = TextView(this).apply {
-            text = "手电筒：关"
-            textSize = 12f
+            text = "🔦"
+            textSize = 20f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
+            contentDescription = "打开手电筒"
             setPadding(dp(8), 0, dp(8), 0)
             setOnClickListener { toggleTorch() }
         }
-        header.addView(torchButton, LinearLayout.LayoutParams(-2, dp(42)))
-        header.addView(TextView(this).apply {
-            text = "关闭"
-            textSize = 13f
+        toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(44), dp(40)))
+        toolbar.addView(TextView(this).apply {
+            text = "×"
+            textSize = 25f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
-            setPadding(dp(12), 0, dp(8), 0)
+            contentDescription = "关闭扫码窗口"
+            setPadding(dp(8), 0, dp(5), 0)
             setOnClickListener { stopSelf() }
-        }, LinearLayout.LayoutParams(-2, dp(42)))
-        root.addView(header, FrameLayout.LayoutParams(-1, dp(42), Gravity.TOP))
+        }, LinearLayout.LayoutParams(dp(42), dp(40)))
+        header.addView(toolbar, LinearLayout.LayoutParams(-1, dp(40)))
+        root.addView(header, FrameLayout.LayoutParams(-1, dp(88), Gravity.TOP))
 
         val resize = TextView(this).apply {
             text = "↘"
@@ -333,7 +417,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             provider.unbindAll()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
             torchButton.isEnabled = camera?.cameraInfo?.hasFlashUnit() == true
-            torchButton.text = if (torchButton.isEnabled) "手电筒：关" else "无闪光灯"
+            torchButton.alpha = if (torchButton.isEnabled) 1f else 0.4f
+            torchButton.contentDescription = if (torchButton.isEnabled) "打开手电筒" else "当前摄像头没有闪光灯"
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -345,7 +430,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         torchEnabled = !torchEnabled
         activeCamera.cameraControl.enableTorch(torchEnabled)
-        torchButton.text = if (torchEnabled) "手电筒：开" else "手电筒：关"
+        torchButton.contentDescription = if (torchEnabled) "关闭手电筒" else "打开手电筒"
     }
 
     private fun deliverResult(value: String) {
