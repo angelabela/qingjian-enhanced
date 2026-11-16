@@ -328,7 +328,7 @@ class AdvancedActivity : PageActivity() {
         Engine.flushAll()
         AlertDialog.Builder(this)
             .setTitle(R.string.restore_all_title)
-            .setMessage(getString(R.string.restore_all_confirm, "数据备份", "设置备份") + "\\n\\n" + label)
+            .setMessage(getString(R.string.restore_all_confirm, "数据备份", "设置备份") + "\n\n" + label)
             .setPositiveButton(R.string.restore_confirm) { _, _ ->
                 runBackground("qingjian-restore-all", {
                     restoredSecretsUnavailable = false
@@ -349,7 +349,7 @@ class AdvancedActivity : PageActivity() {
                     }
                 }) { counts ->
                     getString(R.string.restore_all_done, counts.first, counts.second) +
-                        if (restoredSecretsUnavailable) "\\n云端大模型和语音识别 API Key 因 Android 安全密钥随卸载删除，需要重新填写。" else ""
+                        if (restoredSecretsUnavailable) "\n云端大模型和语音识别 API Key 因 Android 安全密钥随卸载删除，需要重新填写。" else ""
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -365,8 +365,12 @@ class AdvancedActivity : PageActivity() {
             })
             .setPositiveButton(R.string.restore_confirm) { _, _ ->
                 if (settings) {
-                    runBackground("qingjian-settings-restore", { restoreSettings(source) }) { count ->
-                        getString(R.string.settings_restore_done, count)
+                    runBackground("qingjian-settings-restore", {
+                        restoredSecretsUnavailable = false
+                        restoreSettings(source)
+                    }) { count ->
+                        getString(R.string.settings_restore_done, count) +
+                            if (restoredSecretsUnavailable) "\n云端大模型和语音识别 API Key 因 Android 安全密钥随卸载删除，需要重新填写。" else ""
                     }
                 } else {
                     runBackground("qingjian-data-restore", { restoreUserData(source) }) { count ->
