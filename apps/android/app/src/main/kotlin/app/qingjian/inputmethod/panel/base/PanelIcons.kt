@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, FLASHLIGHT, DRAG, CLOSE }
 
     private val path = Path()
     private val oval = RectF()
@@ -53,6 +53,9 @@ object PanelIcons {
             Icon.LEFT_HAND -> leftHand()
             Icon.GAMEPAD -> gamepad()
             Icon.CAMERA -> camera()
+            Icon.FLASHLIGHT -> flashlight()
+            Icon.DRAG -> drag()
+            Icon.CLOSE -> { polyline(6f, 6f, 18f, 18f); polyline(18f, 6f, 6f, 18f) }
         }
         val scale = size / 24f
         canvas.save()
@@ -303,6 +306,17 @@ object PanelIcons {
         polyline(4.8f, 12.8f, 9.2f, 12.8f)
         circle(16.5f, 11.5f, 1f)
         circle(19f, 14.5f, 1f)
+    }
+
+    private fun flashlight() {
+        polyline(7f, 3.5f, 17f, 3.5f, 15.5f, 8f, 14f, 9.5f, 14f, 20.5f, 10f, 20.5f, 10f, 9.5f, 8.5f, 8f, 7f, 3.5f)
+        polyline(9f, 6.5f, 15f, 6.5f)
+    }
+
+    private fun drag() {
+        for (x in listOf(7f, 12f, 17f)) {
+            for (y in listOf(7f, 12f, 17f)) circle(x, y, 0.85f)
+        }
     }
 
     private fun camera() {
