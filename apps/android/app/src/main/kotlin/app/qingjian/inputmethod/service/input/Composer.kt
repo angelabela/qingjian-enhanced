@@ -224,8 +224,9 @@ class Composer(private val engine: Engine, private val host: Host) {
             }
         }
         // 候选条上放着电话邮箱或「撤销」时，删除、重输先只收起它们，不动输入框里的字
-        if ((key == Key.Backspace || key == Key.Clear) && !composing && completing && engine.hasOffer()) {
+        if (key == Key.Clear && !composing && completing && engine.hasOffer()) {
             apply(engine.clear())
+            refreshCompletions()
             return
         }
         when (key) {
@@ -303,7 +304,12 @@ class Composer(private val engine: Engine, private val host: Host) {
             // 拼音、日语组句里的大写字母另有含义，组句中只有英文能换大小写
             Key.Shift -> if (!composing || english || (chinese && !shuangpin && !wubi && !zhuyin)) toggleShift()
 
-            Key.Backspace -> if (composing) apply(engine.backspace()) else deleteBackward()
+            Key.Backspace -> {
+                if (composing) apply(engine.backspace()) else {
+                    deleteBackward()
+                    refreshCompletions()
+                }
+            }
 
             is Key.Space -> when {
                 !composing -> commit(" ")
@@ -527,8 +533,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
         pendingBackspaceSnapshot = null
-        val snapshot = undoHistory.removeLastOrNull() ?: lastClearSnapshot ?: return
+        val snapshot = undoHistory.lastOrNull() ?: lastClearSnapshot ?: return
         val connection = host.connection ?: return
+        if (undoHistory.isNotEmpty()) undoHistory.removeLast()
         // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
         apply(engine.clear())
         connection.beginBatchEdit()
@@ -547,6 +554,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         lastClearSnapshot = undoHistory.lastOrNull()
         closeUndoGroup()
+        refreshCompletions()
     }
 
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
