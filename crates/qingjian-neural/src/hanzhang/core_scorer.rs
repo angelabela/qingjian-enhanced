@@ -78,7 +78,6 @@ impl SentenceScorer for P2cScorer {
     }
 }
 
-
 /// Android/轻量端也复用含章模型做候选上下文重排：只在 Core 已给出的拼音候选中比较，
 /// 以光标前文的神经语言模型概率补充词频与 bigram，不改变候选的拼音匹配范围。
 impl ChoiceModel for CharScorer {
