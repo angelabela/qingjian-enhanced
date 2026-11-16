@@ -211,6 +211,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        val groupedEdit = key is Key.Space || key is Key.Text
+        if (groupedEdit) editHistory.beginGroup()
+        try {
         if (key == Key.Backspace) {
             pendingBackspaceSnapshot?.let(::pushUndoSnapshot)
             pendingBackspaceSnapshot = null
@@ -355,6 +358,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         if (key is Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
         if (!composing && key != Key.Backspace && key != Key.Clear) refreshCompletions()
+        } finally {
+            if (groupedEdit) editHistory.endGroup()
+        }
     }
 
     /** 上次用的语言与另一边（从设置里读回来）；引擎的模式在 [onEngineReady] 里补。 */
@@ -404,8 +410,13 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 符号 / 表情面板里点的一格：组句中先顶首选再上屏。 */
     fun commitPanelText(text: String) {
-        if (composing) selectFirst()
-        commit(text)
+        editHistory.beginGroup()
+        try {
+            if (composing) selectFirst()
+            commit(text)
+        } finally {
+            editHistory.endGroup()
+        }
     }
 
     /** 扫码等服务侧产生的单次上屏也进入统一历史。 */
