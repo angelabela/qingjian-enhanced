@@ -99,6 +99,8 @@ class ClipboardPanel(
 
     /** 剪贴板粘贴后回车换行：全局开关，不按记录分别保存。 */
     private var pasteEnter = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
+    private val pasteToggleRect = RectF()
+    private var pasteToggleTracking = false
 
     /** 每张卡片在列表内容里的上下边（不含滚动），画与点共用。 */
     private var tops = FloatArray(0)
@@ -122,8 +124,25 @@ class ClipboardPanel(
         } else {
             "共 ${clips.size}/${actions.clipboardLimit} 条"
         }
-        val shownSummary = if (showingPhrases) summary else "$summary  ·  粘贴后回车：${if (pasteEnter) "开" else "关"}（点此切换）"
-        ink.text(canvas, shownSummary, 12.5f, palette.gloss, width / 2f, headerHeight + ink.dp(SUMMARY_DP) / 2)
+        val summaryCenterY = headerHeight + ink.dp(SUMMARY_DP) / 2
+        if (showingPhrases) {
+            pasteToggleRect.setEmpty()
+            ink.text(canvas, summary, 12.5f, palette.gloss, width / 2f, summaryCenterY)
+        } else {
+            // 独立的可视化开关与独立触摸热区，避免触发面板外层的点击/关闭逻辑。
+            val toggleWidth = ink.dp(132f)
+            val toggleHeight = ink.dp(24f)
+            pasteToggleRect.set(
+                width - ink.dp(10f) - toggleWidth,
+                summaryCenterY - toggleHeight / 2f,
+                width - ink.dp(10f),
+                summaryCenterY + toggleHeight / 2f,
+            )
+            ink.textStart(canvas, summary, 12.5f, palette.gloss, ink.dp(12f), summaryCenterY, pasteToggleRect.left - ink.dp(8f))
+            ink.round(canvas, pasteToggleRect, 12f, if (pasteEnter) palette.brand else palette.surface)
+            ink.text(canvas, if (pasteEnter) "粘贴后回车  开" else "粘贴后回车  关", 11.5f,
+                if (pasteEnter) palette.onBrand else palette.text, pasteToggleRect.centerX(), pasteToggleRect.centerY(), bold = true)
+        }
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, headerHeight + ink.dp(SUMMARY_DP), width.toFloat(), listBottom)
         arrange()
@@ -358,6 +377,39 @@ class ClipboardPanel(
         var sample = 1
         while (bounds.outHeight / (sample * 2) >= ink.dp(IMAGE_DP)) sample *= 2
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        // 开关使用独立触摸状态机：按下、抬起均由剪贴板面板消费，不交给宿主面板关闭逻辑。
+        if (!showingPhrases && (pasteToggleTracking || pasteToggleRect.contains(event.x, event.y))) {
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    pasteToggleTracking = pasteToggleRect.contains(event.x, event.y)
+                    return pasteToggleTracking
+                }
+                android.view.MotionEvent.ACTION_MOVE -> return pasteToggleTracking
+                android.view.MotionEvent.ACTION_UP -> {
+                    val activate = pasteToggleTracking && pasteToggleRect.contains(event.x, event.y)
+                    pasteToggleTracking = false
+                    if (activate) {
+                        pasteEnter = !pasteEnter
+                        Settings.preferences(context).edit()
+                            .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter).apply()
+                        clearArmed = false
+                        Haptics.tap(context)
+                        invalidate()
+                    }
+                    return true
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    pasteToggleTracking = false
+                    return true
+                }
+            }
+            return true
+        }
+        return super.onTouchEvent(event)
     }
 
     override fun onTap(x: Float, y: Float) {
