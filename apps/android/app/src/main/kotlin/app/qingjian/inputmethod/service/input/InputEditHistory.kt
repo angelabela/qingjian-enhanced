@@ -76,7 +76,7 @@ class InputEditHistory(
         if (operation == Operation.DELETE && previous?.operation == Operation.DELETE &&
             previous.insertedBefore.isEmpty() && previous.insertedAfter.isEmpty() &&
             previous.deletedAfter.isEmpty() && deletedAfter.isEmpty() &&
-            before == previous.afterState && timestamp - previous.timestamp in 0..deleteMergeWindowMs
+            before == previous.afterState && timestamp - previous.timestamp in 0L..deleteMergeWindowMs
         ) {
             undoStack.removeLast()
             undoStack.addLast(
