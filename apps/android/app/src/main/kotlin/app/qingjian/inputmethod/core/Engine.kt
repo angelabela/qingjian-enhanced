@@ -222,7 +222,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
             return result
         }
         if (digits.startsWith("0") && digits.length in 10..12) {
-            val areaLength = if (digits.getOrNull(1) in '3'..'9') 4 else 3
+            val areaLength = if (digits.getOrNull(1)?.let { it in '3'..'9' } == true) 4 else 3
             if (raw.all(Char::isDigit)) {
                 val area = digits.take(areaLength)
                 val subscriber = digits.drop(areaLength)
