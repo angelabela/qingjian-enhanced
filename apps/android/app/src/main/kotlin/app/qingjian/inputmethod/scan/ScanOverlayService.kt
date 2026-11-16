@@ -21,7 +21,6 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.GestureDetector
 import android.view.ViewOutlineProvider
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -74,6 +73,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     private lateinit var windowManager: WindowManager
     private lateinit var windowParams: WindowManager.LayoutParams
+    private lateinit var headerWindowParams: WindowManager.LayoutParams
+    private lateinit var headerView: View
     private lateinit var root: FrameLayout
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
@@ -223,9 +224,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         })
         attachHeaderDrag(prefixInput) { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-                (windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                runCatching { windowManager.updateViewLayout(root, windowParams) }
+                (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
                 prefixInput.post {
                     prefixInput.requestFocus()
                     (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
@@ -238,8 +239,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (!focused && ::windowParams.isInitialized) {
                 (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
                     ?.hideSoftInputFromWindow(prefixInput.windowToken, 0)
-                windowParams.flags = windowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                runCatching { windowManager.updateViewLayout(root, windowParams) }
+                headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
             }
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
@@ -325,7 +326,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         attachHeaderDrag(header)
         attachHeaderDrag(prefixSwitch)
-        root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        // 标题栏独立成一个小型悬浮窗口：BLUR_BEHIND 只覆盖标题栏范围，
+        // 避免把整块相机预览也一起模糊。
+        headerView = header
 
         val resize = TextView(this).apply {
             text = "↘"
@@ -348,53 +351,94 @@ class ScanOverlayService : Service(), LifecycleOwner {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) WindowManager.LayoutParams.FLAG_BLUR_BEHIND else 0),
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dp(16)
             y = dp(120)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) blurBehindRadius = dp(22)
+        }
+        headerWindowParams = WindowManager.LayoutParams(
+            windowParams.width,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) WindowManager.LayoutParams.FLAG_BLUR_BEHIND else 0),
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = windowParams.x
+            y = windowParams.y
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) blurBehindRadius = dp(24)
         }
         windowManager.addView(root, windowParams)
+        windowManager.addView(headerView, headerWindowParams)
     }
 
     /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
+    /**
+     * 标题栏触摸区域统一使用长按状态机，不依赖子控件是否消费 GestureDetector 的事件。
+     * 普通点击仍返回给 Switch/EditText/按钮；按住约 420ms 后才进入拖动状态。
+     */
     private fun attachHeaderDrag(view: View, delegate: ((View, MotionEvent) -> Boolean)? = null) {
         var dragging = false
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(event: MotionEvent): Boolean {
-                moveRawX = event.rawX
-                moveRawY = event.rawY
-                moveStartX = windowParams.x
-                moveStartY = windowParams.y
-                return true
-            }
-
-            override fun onLongPress(event: MotionEvent) {
-                dragging = true
-                finishPrefixEditing()
-            }
-        })
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0
+        var startY = 0
+        val startDrag = Runnable {
+            dragging = true
+            finishPrefixEditing()
+        }
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         view.isClickable = true
         view.setOnTouchListener { target, event ->
-            detector.onTouchEvent(event)
-            if (dragging) {
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_MOVE -> {
-                        windowParams.x = (moveStartX + event.rawX - moveRawX).toInt()
-                            .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                        windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
-                            .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
-                        runCatching { windowManager.updateViewLayout(root, windowParams) }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragging = false
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = windowParams.x
+                    startY = windowParams.y
+                    target.removeCallbacks(startDrag)
+                    target.postDelayed(startDrag, 420L)
+                    delegate?.invoke(target, event) ?: false
                 }
-                true
-            } else {
-                delegate?.invoke(target, event) ?: false
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragging) {
+                        windowParams.x = (startX + event.rawX - downRawX).toInt()
+                            .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                        windowParams.y = (startY + event.rawY - downRawY).toInt()
+                            .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
+                        updateOverlayPositions()
+                        true
+                    } else {
+                        if (kotlin.math.abs(event.rawX - downRawX) > slop ||
+                            kotlin.math.abs(event.rawY - downRawY) > slop) target.removeCallbacks(startDrag)
+                        delegate?.invoke(target, event) ?: false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    target.removeCallbacks(startDrag)
+                    val wasDragging = dragging
+                    dragging = false
+                    if (wasDragging) true else delegate?.invoke(target, event) ?: false
+                }
+                else -> delegate?.invoke(target, event) ?: false
             }
+        }
+    }
+
+    /** 同步更新相机内容窗与独立标题栏窗，二者始终贴合。 */
+    private fun updateOverlayPositions() {
+        runCatching { windowManager.updateViewLayout(root, windowParams) }
+        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
+            headerWindowParams.x = windowParams.x
+            headerWindowParams.y = windowParams.y
+            headerWindowParams.width = windowParams.width
+            runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
         }
     }
 
@@ -457,7 +501,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
                 windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
                     .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
-                runCatching { windowManager.updateViewLayout(root, windowParams) }
+                updateOverlayPositions()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> return true
@@ -488,7 +532,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     .coerceIn(minSize, maxOf(minSize, maxW))
                 windowParams.height = (resizeStartH + event.rawY - resizeRawY).toInt()
                     .coerceIn(minSize, maxOf(minSize, maxH))
-                runCatching { windowManager.updateViewLayout(root, windowParams) }
+                updateOverlayPositions()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -694,6 +738,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (::scanner.isInitialized) scanner.close()
         if (::textRecognizer.isInitialized) textRecognizer.close()
         saveWindowSize()
+        if (::headerView.isInitialized) runCatching { windowManager.removeView(headerView) }
         if (::root.isInitialized) runCatching { windowManager.removeView(root) }
         executor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
