@@ -114,7 +114,10 @@ pub fn rank(
     let mut positions_by_pinyin: HashMap<&str, Vec<usize>> = HashMap::new();
     for (index, (_, item)) in keyed.iter().enumerate() {
         if !item.hit.pinyin.is_empty() {
-            positions_by_pinyin.entry(item.hit.pinyin).or_default().push(index);
+            positions_by_pinyin
+                .entry(item.hit.pinyin)
+                .or_default()
+                .push(index);
         }
     }
     for positions in positions_by_pinyin.values_mut() {
