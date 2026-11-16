@@ -83,7 +83,7 @@ class KeyPainter(
                 val topColor = if (keySkin == Settings.KeySkin.ORIGINAL && key.initial.isNotEmpty()) palette.brand else secondaryColor
                 text(canvas, top, 10f, topColor, bounds.centerX(), bounds.top + bounds.height() * 0.2f)
                 text(canvas, label, 19f, labelColor, bounds.centerX(), bounds.top + bounds.height() * 0.5f)
-                fitted(canvas, key.finals, 9f, palette.gloss, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
+                fitted(canvas, key.finals, 9f, secondaryColor, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
             }
 
             key is Key.Letter && key.hint.isNotEmpty() -> {
