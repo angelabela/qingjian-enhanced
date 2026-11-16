@@ -84,6 +84,9 @@ class QingjianInputMethodService :
     private val phraseTransliterator by lazy { Transliterator.getInstance("Han-Latin; Latin-ASCII") }
     private lateinit var composer: Composer
     private var panel: InputPanel? = null
+    private var selectionActive = false
+
+    override val selectionActive: Boolean get() = selectionActive
 
     private val game = GameMode(this, this)
 
@@ -342,6 +345,7 @@ class QingjianInputMethodService :
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        selectionActive = false
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
         composer.privateInput = attribute.wantsPrivacy()
@@ -409,6 +413,7 @@ class QingjianInputMethodService :
         super.onUpdateSelection(
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
+        selectionActive = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (editor != null) return
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
@@ -739,7 +744,10 @@ class QingjianInputMethodService :
             if (selected) {
                 val extracted = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return
                 val end = maxOf(extracted.selectionStart, extracted.selectionEnd)
-                if (end >= 0) ic.setSelection(end, end) else return
+                if (end >= 0) {
+                    ic.setSelection(end, end)
+                    selectionActive = false
+                } else return
             }
             if (!composer.commitExternalText(text, ic)) {
                 toast("插入失败，当前输入框不支持此操作")
@@ -752,7 +760,9 @@ class QingjianInputMethodService :
         if (ic.getSelectedText(0).isNullOrEmpty()) return false
         // 选区替换暂不纳入普通撤销栈，避免在受限 InputConnection 上猜测被选中的原文。
         composer.invalidateEditHistory()
-        return runCatching { ic.commitText(text, 1) }.getOrDefault(false)
+        val replaced = runCatching { ic.commitText(text, 1) }.getOrDefault(false)
+        if (replaced) selectionActive = false
+        return replaced
     }
 
     override fun commitClipboardText(text: String) {
