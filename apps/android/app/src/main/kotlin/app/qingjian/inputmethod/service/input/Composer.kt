@@ -797,6 +797,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         var editBefore: InputEditHistory.CursorState? = null
         var deletedBefore = ""
         var editSucceeded = true
+        var replacementSnapshotComplete = true
         if (host.selectionActive) editHistory.clear()
         // 一段组句开头：组合文字放进去之前读光标前后文，给云联想
         val surrounding = if (engine.predicting && preedit.isEmpty() && frame.preedit.isNotEmpty()) {
@@ -812,7 +813,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         if (frame.replace > 0) {
             deletedBefore = connection.getTextBeforeCursor(frame.replace, 0)?.toString().orEmpty()
-            editSucceeded = connection.deleteSurroundingText(frame.replace, 0)
+            replacementSnapshotComplete = deletedBefore.length == frame.replace
+            editSucceeded = connection.deleteSurroundingText(frame.replace, 0) && replacementSnapshotComplete
         }
         if (frame.commit.isNotEmpty()) {
             editSucceeded = connection.commitText(frame.commit, 1) && editSucceeded
@@ -825,6 +827,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             connection.finishComposingText()
         }
         connection.endBatchEdit()
+        if (!editSucceeded && (frame.commit.isNotEmpty() || frame.replace > 0)) editHistory.clear()
         if (editSucceeded && (frame.commit.isNotEmpty() || deletedBefore.isNotEmpty()) && frame.preedit.isEmpty()) {
             editHistory.record(
                 editBefore,
