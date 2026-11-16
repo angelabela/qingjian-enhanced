@@ -1,8 +1,10 @@
 package app.qingjian.inputmethod.keyboard.paint
 
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import app.qingjian.inputmethod.keyboard.ShiftState
 import app.qingjian.inputmethod.keyboard.SideColumn
@@ -10,6 +12,7 @@ import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.keyboard.layout.KeySlot
 import app.qingjian.inputmethod.keyboard.layout.KeyboardMetrics
 import app.qingjian.inputmethod.theme.Palette
+import app.qingjian.inputmethod.settings.Settings
 
 /** 画键与按键气泡。 */
 class KeyPainter(
@@ -17,6 +20,7 @@ class KeyPainter(
     private val metrics: KeyboardMetrics,
     /** 键面字号档的倍数（键盘设置「键面字号」），键上的主字与气泡一起缩放。 */
     private val textScale: Float,
+    private val keySkin: Settings.KeySkin = Settings.KeySkin.ORIGINAL,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -45,12 +49,7 @@ class KeyPainter(
         val brand = key is Key.Enter
         drawPlate(
             canvas, bounds,
-            when {
-                brand -> palette.brand
-                down || ((key == Key.Shift || (key as? Key.Letter)?.flickShift == true) && shift.on) -> palette.accent
-                key.functional -> palette.functionalKey
-                else -> palette.surface
-            },
+            keyFillColor(key, down, brand),
         )
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
@@ -59,12 +58,12 @@ class KeyPainter(
 
         // 锁定大写：在亮着的底色上再加右上角一个品牌色小点，和「只大写一次」分开
         if (shift == ShiftState.LOCKED && (key == Key.Shift || (key as? Key.Letter)?.flickShift == true)) {
-            fill.color = palette.brand
+            fill.color = if (keySkin == Settings.KeySkin.ORIGINAL) palette.brand else keySkin.pressed
             canvas.drawCircle(bounds.right - LOCK_DOT_INSET_DP * density, bounds.top + LOCK_DOT_INSET_DP * density, LOCK_DOT_DP * density, fill)
         }
 
         // 角标先画会把 ink 换成浅色，正文的颜色另存一份
-        val labelColor = if (brand) palette.onBrand else palette.text
+        val labelColor = if (keySkin == Settings.KeySkin.ORIGINAL) { if (brand) palette.onBrand else palette.text } else keySkin.foreground
         ink.color = labelColor
         val label = label(key)
         when {
@@ -72,7 +71,7 @@ class KeyPainter(
                 KeyIcons.draw(canvas, key, bounds.centerX(), bounds.centerY(), 24 * density, ink, shift)
             // 兼作大写的 `;`：上方小 Shift 图标（上滑出它），中间 `;`，下方韵母
             key is Key.Letter && key.flickShift -> {
-                ink.color = palette.gloss
+                ink.color = secondaryColor
                 KeyIcons.draw(canvas, Key.Shift, bounds.centerX(), bounds.top + bounds.height() * 0.22f, 13 * density, ink, shift)
                 text(canvas, label, 19f, labelColor, bounds.centerX(), bounds.top + bounds.height() * 0.5f)
                 fitted(canvas, key.finals, 9f, palette.gloss, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
@@ -99,8 +98,8 @@ class KeyPainter(
             }
 
             key is Key.Digit -> {
-                text(canvas, key.digit.toString(), 11f, palette.faint, bounds.centerX(), bounds.top + bounds.height() * 0.24f)
-                text(canvas, label, 18f, palette.text, bounds.centerX(), bounds.top + bounds.height() * belowHint)
+                text(canvas, key.digit.toString(), 11f, secondaryColor, bounds.centerX(), bounds.top + bounds.height() * 0.24f)
+                text(canvas, label, 18f, labelColor, bounds.centerX(), bounds.top + bounds.height() * belowHint)
             }
 
             else -> {
@@ -111,7 +110,7 @@ class KeyPainter(
                     is Key.Space -> 13f
                     else -> 15f
                 }
-                text(canvas, label, size, if (key is Key.Space) palette.faint else ink.color, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
+                text(canvas, label, size, if (key is Key.Space) palette.faint else labelColor, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
             }
         }
 
@@ -176,7 +175,7 @@ class KeyPainter(
             bounds.top - 4 * density,
         )
         drawPlate(canvas, bubble, palette.surface)
-        text(canvas, text, 30f, palette.text, bubble.centerX(), bubble.centerY())
+        text(canvas, text, 30f, if (keySkin == Settings.KeySkin.ORIGINAL) palette.text else keySkin.foreground, bubble.centerX(), bubble.centerY())
     }
 
     /** 拼音列：一块圆角面板，项目竖排。 */
@@ -207,16 +206,61 @@ class KeyPainter(
         ink.textAlign = Paint.Align.CENTER
     }
 
-    /** 带一像素底影的圆角面。 */
+    /** 键帽颜色跟随皮肤变化；轮廓、边界与圆角半径始终沿用原来的 bounds。 */
+    private fun keyFillColor(key: Key, down: Boolean, brand: Boolean): Int {
+        if (keySkin == Settings.KeySkin.ORIGINAL) return when {
+            brand -> palette.brand
+            down || ((key == Key.Shift || (key as? Key.Letter)?.flickShift == true) && shift.on) -> palette.accent
+            key.functional -> palette.functionalKey
+            else -> palette.surface
+        }
+        return when {
+            down || ((key == Key.Shift || (key as? Key.Letter)?.flickShift == true) && shift.on) -> keySkin.pressed
+            brand -> keySkin.pressed
+            key.functional -> keySkin.functional
+            else -> keySkin.base
+        }
+    }
+
+    private val secondaryColor: Int
+        get() = if (keySkin == Settings.KeySkin.ORIGINAL) palette.gloss else keySkin.secondary
+
+    private fun labelColorForBrand(): Int =
+        if (keySkin == Settings.KeySkin.ORIGINAL) palette.onBrand else keySkin.foreground
+
+    /** 带底影与顶部柔和高光的圆角键帽；不改变原有按键形状。 */
     private fun drawPlate(canvas: Canvas, bounds: RectF, color: Int) {
+        fill.shader = null
         fill.color = palette.keyShadow
         canvas.drawRoundRect(
             bounds.left, bounds.top + metrics.shadowOffset,
             bounds.right, bounds.bottom + metrics.shadowOffset,
             metrics.radius, metrics.radius, fill,
         )
-        fill.color = color
+        if (keySkin == Settings.KeySkin.ORIGINAL) {
+            fill.color = color
+            canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+            return
+        }
+        val top = lighten(color, 1.22f)
+        val bottom = darken(color, 0.88f)
+        fill.shader = LinearGradient(bounds.left, bounds.top, bounds.left, bounds.bottom, top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+        fill.shader = null
+        // 顶部半透明高光同样裁在原按键圆角内，不扩张尺寸、不改变轮廓。
+        fill.color = 0x44FFFFFF
+        val inset = 1.5f * density
+        val shine = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.top + bounds.height() * 0.28f)
+        canvas.drawRoundRect(shine, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+        fill.color = color
+    }
+
+    private fun lighten(color: Int, factor: Float): Int = tint(color, factor)
+    private fun darken(color: Int, factor: Float): Int = tint(color, factor)
+
+    private fun tint(color: Int, factor: Float): Int {
+        fun channel(shift: Int) = (((color ushr shift) and 0xFF) * factor).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
