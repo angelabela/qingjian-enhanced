@@ -65,6 +65,35 @@ class AiChatGenerator(private val context: Context) {
         }
     }
 
+    /**
+     * 用户主动点击后执行单项文字任务。只发送调用方明确传入的最小上下文，
+     * 不读取输入框、不监听逐字输入，也不在打开面板时自动请求。
+     */
+    fun transform(task: String, contextText: String, callback: (Result<String>) -> Unit) {
+        val allowed = setOf("grammar", "translate", "continue")
+        if (task !in allowed) {
+            callback(Result.failure(IllegalArgumentException("不支持的文字处理任务")))
+            return
+        }
+        val source = contextText.trim().takeLast(1600)
+        if (source.isBlank()) {
+            callback(Result.failure(IllegalArgumentException("没有可处理的文字")))
+            return
+        }
+        execute(callback) { config, key ->
+            val instruction = when (task) {
+                "grammar" -> "检查并修正下面英文的语法、拼写和标点。保持原意和语气，只返回修正后的英文，不要解释。"
+                "translate" -> "将下面内容翻译成自然、准确的简体中文。保留专有名词和原有格式，只返回译文，不要解释。"
+                else -> "根据下面文字自然续写后续内容。保持原有语气、主题和逻辑，不重复已有句子，不擅自编造具体事实。只返回续写部分，不要改写或复述原文。"
+            }
+            val content = request(config.baseUrl, config.model, key, listOf(
+                JSONObject().put("role", "system").put("content", instruction),
+                JSONObject().put("role", "user").put("content", source),
+            ), 900).trim()
+            content.takeIf { it.isNotBlank() } ?: throw IllegalStateException("模型没有返回内容，请重试")
+        }
+    }
+
     private fun <T> execute(
         callback: (Result<T>) -> Unit,
         block: (CloudConfig, String) -> T,
