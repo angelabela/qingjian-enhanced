@@ -331,8 +331,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(
-                    themePalette?.surface ?: 0xFF303846.toInt(),
-                    themePalette?.board ?: 0xFF252D39.toInt(),
+                    (themePalette?.surface ?: 0xFF303846.toInt()).let { (it and 0x00FFFFFF) or (0xCC shl 24) },
+                    (themePalette?.board ?: 0xFF252D39.toInt()).let { (it and 0x00FFFFFF) or (0xCC shl 24) },
                 ),
             ).apply {
                 // 标题栏底边与相机预览顶边贴合；只保留上方圆角，避免形成悬浮的双层圆角缝隙。
@@ -398,10 +398,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
-            // 标题栏独立成窗，模糊范围只落在标题栏后方；背景使用键盘主题实色。
+            // 只模糊标题栏窗口范围内的后景；不使用 BLUR_BEHIND（它可能扩散到整屏）。
+            // Background blur 作用于窗口背景层，标题栏文字、图标和交互控件仍保持清晰。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                setBlurBehindRadius(dp(22))
+                setBackgroundBlurRadius(dp(22))
             }
         }
         // 两个窗口都由 WindowManager 直接管理：不经过 Dialog decor/inset 二次偏移，
