@@ -105,7 +105,7 @@ data class Settings(
 
     /** 自定义按键滑动动作；DEFAULT 沿用原手势，NONE 明确关闭该方向。 */
     enum class GestureAction(val label: String) {
-        DEFAULT("沿用默认"), NONE("无"), CLEAR_ALL("清空输入"), RESTORE_CLEAR("撤销清空"),
+        DEFAULT("沿用默认"), NONE("无"), CLEAR_ALL("清空输入"), RESTORE_CLEAR("撤销清空"), UNDO("撤销"), REDO("重做"),
         OPEN_CLIPBOARD("打开剪贴板"), SELECT_ALL("全选"), CUT("剪切"), COPY("复制"), PASTE("粘贴"),
         OPEN_SYMBOLS("打开符号面板"), OPEN_THEME_PICKER("选择皮肤"), ENTER("执行回车"), SWITCH_LANGUAGE("切换中英文"), BACKSPACE("删除一个字"), OPEN_SCANNER("打开扫码");
 
