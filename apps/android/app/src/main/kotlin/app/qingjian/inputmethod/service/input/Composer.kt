@@ -807,7 +807,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         connection.beginBatchEdit()
         dropStalePreedit(connection)
-        if (frame.commit.isNotEmpty() && frame.preedit.isEmpty() || frame.replace > 0) {
+        if (!host.selectionActive && (frame.commit.isNotEmpty() && frame.preedit.isEmpty() || frame.replace > 0)) {
             editBefore = editHistory.capture(connection)
         }
         if (frame.replace > 0) {
@@ -913,6 +913,11 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 补过的右半边在光标后面就跳过它，不在（挪过光标）就照常上屏。`pairable` 为假（网址框、直接输入）时照常上屏。
      */
     private fun commitSymbol(text: String, pairable: Boolean) {
+        if (host.selectionActive) {
+            editHistory.clear()
+            commit(text)
+            return
+        }
         val edit = if (pairable) engine.pairPunctuation(text, english) else null
         val connection = host.connection
         if (edit == null || connection == null) {
