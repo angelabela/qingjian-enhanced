@@ -74,26 +74,26 @@ class KeyPainter(
                 ink.color = secondaryColor
                 KeyIcons.draw(canvas, Key.Shift, bounds.centerX(), bounds.top + bounds.height() * 0.22f, 13 * density, ink, shift)
                 text(canvas, label, 19f, labelColor, bounds.centerX(), bounds.top + bounds.height() * 0.5f)
-                fitted(canvas, key.finals, 9f, palette.gloss, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
+                fitted(canvas, key.finals, 9f, secondaryColor, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
             }
 
             // 双拼：上方翘舌声母（没有就印角标），中间字母，下方韵母
             key is Key.Letter && (key.initial.isNotEmpty() || key.finals.isNotEmpty()) -> {
                 val top = key.initial.ifEmpty { key.hint }
-                val topColor = if (key.initial.isNotEmpty()) palette.brand else palette.gloss
+                val topColor = if (keySkin == Settings.KeySkin.ORIGINAL && key.initial.isNotEmpty()) palette.brand else secondaryColor
                 text(canvas, top, 10f, topColor, bounds.centerX(), bounds.top + bounds.height() * 0.2f)
                 text(canvas, label, 19f, labelColor, bounds.centerX(), bounds.top + bounds.height() * 0.5f)
                 fitted(canvas, key.finals, 9f, palette.gloss, bounds.centerX(), bounds.top + bounds.height() * 0.8f, bounds.width() * 0.92f)
             }
 
             key is Key.Letter && key.hint.isNotEmpty() -> {
-                text(canvas, key.hint, 11f, palette.gloss, bounds.centerX(), bounds.top + bounds.height() * 0.24f)
+                text(canvas, key.hint, 11f, secondaryColor, bounds.centerX(), bounds.top + bounds.height() * 0.24f)
                 text(canvas, label, 21f, labelColor, bounds.centerX(), bounds.top + bounds.height() * belowHint)
             }
 
             // 中英键：角上写按一下会切到哪种语言，长按换
             key == Key.Language && languageHint.isNotEmpty() -> {
-                text(canvas, languageHint, 10f, palette.gloss, bounds.right - bounds.width() * 0.22f, bounds.top + bounds.height() * 0.24f)
+                text(canvas, languageHint, 10f, secondaryColor, bounds.right - bounds.width() * 0.22f, bounds.top + bounds.height() * 0.24f)
                 text(canvas, label, 17f, labelColor, bounds.centerX(), bounds.centerY())
             }
 
@@ -110,7 +110,7 @@ class KeyPainter(
                     is Key.Space -> 13f
                     else -> 15f
                 }
-                text(canvas, label, size, if (key is Key.Space) palette.faint else labelColor, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
+                text(canvas, label, size, if (key is Key.Space) secondaryColor else labelColor, bounds.centerX(), bounds.centerY() - if (key is Key.Space) 4f * density else 0f)
             }
         }
 
@@ -142,7 +142,7 @@ class KeyPainter(
         ink.typeface = Typeface.DEFAULT
         ink.textSize = 9f * density
         // 所有按键统一只显示文字：无手势图标、无粗体、无阴影。
-        ink.color = if (onBrand) palette.onBrand else palette.gloss
+        ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.typeface = Typeface.DEFAULT
         ink.clearShadowLayer()
         canvas.drawText(label, textX, baseline, ink)
@@ -156,7 +156,7 @@ class KeyPainter(
         val bottomY = bounds.bottom - bounds.height() * 0.24f
         ink.typeface = Typeface.DEFAULT
         ink.textSize = 8.5f * density
-        ink.color = palette.gloss
+        ink.color = secondaryColor
         ink.clearShadowLayer()
         canvas.drawText("清空", cx, topY, ink)
         canvas.drawText("撤销", cx, bottomY, ink)
@@ -200,7 +200,7 @@ class KeyPainter(
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
         ink.typeface = Typeface.DEFAULT
         ink.textSize = 8f * density
-        ink.color = palette.gloss
+        ink.color = secondaryColor
         ink.clearShadowLayer()
         canvas.drawText("剪贴板", bounds.centerX(), bounds.bottom - 5f * density, ink)
         ink.textAlign = Paint.Align.CENTER
