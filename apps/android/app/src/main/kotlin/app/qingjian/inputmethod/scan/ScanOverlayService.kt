@@ -13,7 +13,6 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
