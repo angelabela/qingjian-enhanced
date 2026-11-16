@@ -42,6 +42,7 @@ class ContextToolsPanel(
         gravity = Gravity.CENTER
         setPadding(dp(6), dp(10), dp(6), dp(10))
     }
+    private val generatedActions = LinearLayout(context).apply { orientation = VERTICAL }
     private val result = TextView(context).apply {
         textSize = 15f
         setTextColor(palette.text)
@@ -101,6 +102,7 @@ class ContextToolsPanel(
         })
         body.addView(status)
         body.addView(result)
+        body.addView(generatedActions)
         if (source.isNotBlank()) buildActions()
     }
 
@@ -198,38 +200,40 @@ class ContextToolsPanel(
     private fun requestAi(task: String) {
         if (source.isBlank()) return showStatus("没有可发送的文字")
         val request = ++requestId
-        val prompt = if (task == "continue" && generated.isNotBlank()) "$source\\n$generated" else source
+        val previous = generated
+        val prompt = if (task == "continue" && previous.isNotBlank()) "$source\\n$previous" else source
         result.visibility = View.GONE
         showStatus("正在请求云端模型…（仅发送本次任务所需文字）")
         generator.transform(task, prompt) { response ->
             if (request != requestId) return@transform
             response.onSuccess {
-                generated = it.trim()
+                val next = it.trim()
+                generated = if (task == "continue" && previous.isNotBlank()) "$previous\\n$next" else next
                 showResult(generated)
-                if (task == "continue") showGeneratedActions()
-                else showGeneratedActions()
+                showGeneratedActions()
             }.onFailure { showStatus(it.message ?: "处理失败，请检查云端配置和网络") }
         }
     }
 
     private fun showGeneratedActions() {
-        section("使用结果")
-        action("插入到光标位置") {
+        generatedActions.removeAllViews()
+        section("使用结果", generatedActions)
+        action("插入到光标位置", generatedActions) {
             if (generated.isNotBlank()) {
                 onInsert(generated)
                 showStatus("已插入；原有文字未被整段覆盖")
             }
         }
-        action("替换选中文字") {
+        action("替换选中文字", generatedActions) {
             if (!hasSelection) showStatus("请先选中文字，再重新打开文字工具")
             else if (onReplaceSelection(generated)) showStatus("已替换选中文字")
             else showStatus("替换失败，当前输入框不支持此操作")
         }
-        action("继续生成") { requestAi("continue") }
+        action("继续生成", generatedActions) { requestAi("continue") }
     }
 
-    private fun section(label: String) {
-        body.addView(TextView(context).apply {
+    private fun section(label: String, target: LinearLayout = body) {
+        target.addView(TextView(context).apply {
             text = label
             textSize = 14f
             setTextColor(palette.brand)
@@ -238,8 +242,8 @@ class ContextToolsPanel(
         })
     }
 
-    private fun action(label: String, run: () -> Unit) {
-        body.addView(TextView(context).apply {
+    private fun action(label: String, target: LinearLayout = body, run: () -> Unit) {
+        target.addView(TextView(context).apply {
             text = label
             textSize = 14f
             gravity = Gravity.CENTER_VERTICAL
