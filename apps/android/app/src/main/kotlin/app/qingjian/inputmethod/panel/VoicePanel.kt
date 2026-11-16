@@ -120,31 +120,11 @@ class VoicePanel(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         val x = event.x
         val y = event.y
-        val density = resources.displayMetrics.density
-        // 保留中央轻触结束识别的触控区域，但不再绘制麦克风图标。
-        val centerHit = kotlin.math.hypot(x - width / 2f, y - height * 0.475f) <= 52f * density
-        val action = targetAt(x, y)
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                touchTarget = when {
-                    centerHit -> Target.NONE
-                    action != Target.NONE -> action
-                    else -> return super.dispatchTouchEvent(event)
-                }
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> return touchTarget != Target.NONE
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> return true
             MotionEvent.ACTION_UP -> {
-                when {
-                    touchTarget == Target.CANCEL || action == Target.CANCEL -> actions.onCancel()
-                    touchTarget == Target.ACTION || action == Target.ACTION -> actions.onFinish(act = true, hide = false)
-                    touchTarget == Target.NONE && centerHit -> actions.onFinish(act = false, hide = false)
-                    else -> {
-                        touchTarget = Target.NONE
-                        return super.dispatchTouchEvent(event)
-                    }
-                }
                 touchTarget = Target.NONE
+                actions.onFinish(act = false, hide = false)
                 Haptics.tap(context)
                 return true
             }
@@ -236,11 +216,6 @@ class VoicePanel(
                 canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
             }
             paint.alpha = 255
-
-            // 只保留撤销入口，固定在面板下方正中；不再显示完成/发送按钮。
-            val actionY = height * 0.91f
-            ink.text(canvas, "撤销", 14f, if (target == Target.CANCEL) palette.brand else palette.text,
-                width * 0.5f, actionY, bold = target == Target.CANCEL)
 
             // 顶部双线的颜色持续平滑变化；面板离屏后由 View 生命周期自然停止绘制。
             if (isAttachedToWindow && visibility == View.VISIBLE) postInvalidateOnAnimation()
