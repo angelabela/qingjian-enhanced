@@ -10,6 +10,7 @@ object ScanPreferences {
     const val MODE_FLOATING = "floating"
     const val KEY_AUTO_ENTER = "scan_auto_enter"
     const val KEY_VIBRATE = "scan_vibrate"
+    const val KEY_PREFIX = "scan_barcode_prefix"
     const val ACTION_RESULT = "app.qingjian.inputmethod.action.SCAN_RESULT"
     const val EXTRA_TEXT = "scan_text"
     const val EXTRA_ENTER = "scan_enter"
@@ -22,4 +23,11 @@ object ScanPreferences {
 
     fun vibrate(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .getBoolean(KEY_VIBRATE, true)
+
+    /** 空前缀接受所有条码；非空时只接受以指定字符串开头的内容。 */
+    fun accepts(context: Context, value: String): Boolean {
+        val prefix = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PREFIX, "").orEmpty().trim()
+        return prefix.isEmpty() || value.startsWith(prefix)
+    }
 }
