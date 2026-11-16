@@ -24,6 +24,8 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 最近六步输入前的编辑框快照；每个词/短句作为一组，撤销时逐步回退。 */
     private val undoHistory = ArrayDeque<ClearSnapshot>()
+    /** 面向普通编辑的 50 步撤销/重做历史；与「撤销清空」旧快照分开。 */
+    private val editHistory = InputEditHistory()
     private var lastClearSnapshot: ClearSnapshot? = null
     private var pendingBackspaceSnapshot: ClearSnapshot? = null
     /** 删除键手势开始时的快照；普通退格后仍保留，供同一次上滑清空使用。 */
@@ -406,6 +408,52 @@ class Composer(private val engine: Engine, private val host: Host) {
         commit(text)
     }
 
+    /** 扫码等服务侧产生的单次上屏也进入统一历史。 */
+    fun commitExternalText(text: String, connection: InputConnection = host.connection ?: return) {
+        if (text.isEmpty()) return
+        val before = editHistory.capture(connection)
+        if (connection.commitText(text, 1)) {
+            editHistory.record(before, editHistory.capture(connection), insertedBefore = text)
+        }
+    }
+
+    /** 拼音仍在候选栏时，撤销优先取消组合；只有没有组合输入时才回退已上屏编辑。 */
+    fun undo(): Boolean {
+        if (composing) {
+            closeUndoGroup()
+            apply(engine.clear())
+            return true
+        }
+        val connection = host.connection ?: return false
+        return when (editHistory.undo(connection)) {
+            InputEditHistory.Result.SUCCESS -> {
+                refreshCompletions()
+                true
+            }
+            InputEditHistory.Result.MISMATCH -> {
+                host.showNotice("无法撤销")
+                false
+            }
+            InputEditHistory.Result.EMPTY, InputEditHistory.Result.FAILED -> false
+        }
+    }
+
+    fun redo(): Boolean {
+        if (composing) return false
+        val connection = host.connection ?: return false
+        return when (editHistory.redo(connection)) {
+            InputEditHistory.Result.SUCCESS -> {
+                refreshCompletions()
+                true
+            }
+            InputEditHistory.Result.MISMATCH -> {
+                host.showNotice("无法重做")
+                false
+            }
+            InputEditHistory.Result.EMPTY, InputEditHistory.Result.FAILED -> false
+        }
+    }
+
     /** 开始说话前：组句落下（同回车），识别出的字接在后面。 */
     fun prepareVoice() {
         if (composing) settle()
@@ -577,6 +625,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
+        // 整框清空继续由原有「撤销清空」快照负责，避免普通历史尝试覆盖整份宿主文本。
+        editHistory.clear()
         val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
         if (snapshot != null) {
             pushUndoSnapshot(snapshot)
@@ -644,6 +694,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 输入框换了或键盘收起：组句不带走。 */
     fun abandon() {
         undoHistory.clear()
+        editHistory.clear()
         lastClearSnapshot = null
         pendingBackspaceSnapshot = null
         closeUndoGroup()
@@ -720,6 +771,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     private fun apply(frame: Frame) {
         val connection = host.connection ?: return
         if (frame.commit.isNotEmpty() && !undoGroupOpen) captureUndoSnapshot()
+        var editBefore: InputEditHistory.CursorState? = null
+        var deletedBefore = ""
+        var editSucceeded = true
         // 一段组句开头：组合文字放进去之前读光标前后文，给云联想
         val surrounding = if (engine.predicting && preedit.isEmpty() && frame.preedit.isNotEmpty()) {
             (connection.getTextBeforeCursor(SURROUNDING_BEFORE, 0)?.toString().orEmpty()) to
@@ -729,9 +783,15 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         connection.beginBatchEdit()
         dropStalePreedit(connection)
-        if (frame.replace > 0) connection.deleteSurroundingText(frame.replace, 0)
+        if (frame.commit.isNotEmpty() && frame.preedit.isEmpty() || frame.replace > 0) {
+            editBefore = editHistory.capture(connection)
+        }
+        if (frame.replace > 0) {
+            deletedBefore = connection.getTextBeforeCursor(frame.replace, 0)?.toString().orEmpty()
+            editSucceeded = connection.deleteSurroundingText(frame.replace, 0)
+        }
         if (frame.commit.isNotEmpty()) {
-            connection.commitText(frame.commit, 1)
+            editSucceeded = connection.commitText(frame.commit, 1) && editSucceeded
             host.onPhraseCommitted(frame.commit)
         }
         if (frame.preedit.isNotEmpty()) {
@@ -741,6 +801,14 @@ class Composer(private val engine: Engine, private val host: Host) {
             connection.finishComposingText()
         }
         connection.endBatchEdit()
+        if (editSucceeded && (frame.commit.isNotEmpty() || deletedBefore.isNotEmpty()) && frame.preedit.isEmpty()) {
+            editHistory.record(
+                editBefore,
+                editHistory.capture(connection),
+                deletedBefore = deletedBefore,
+                insertedBefore = frame.commit,
+            )
+        }
         preedit = frame.preedit
         if (frame.commit.isNotEmpty() && preedit.isEmpty()) closeUndoGroup()
         if (preedit.isEmpty()) {
@@ -777,8 +845,13 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     private fun commit(text: String) {
-        if (text.isNotEmpty() && !undoGroupOpen) captureUndoSnapshot()
-        host.connection?.commitText(text, 1)
+        if (text.isEmpty()) return
+        if (!undoGroupOpen) captureUndoSnapshot()
+        val connection = host.connection ?: return
+        val before = editHistory.capture(connection)
+        if (connection.commitText(text, 1)) {
+            editHistory.record(before, editHistory.capture(connection), insertedBefore = text)
+        }
     }
 
     /** 保存当前输入框完整内容与选区；相同快照不重复入栈，最多保留六步。 */
@@ -822,20 +895,30 @@ class Composer(private val engine: Engine, private val host: Host) {
             "insert" -> {
                 val pair = parts[2]
                 val back = parts[1].toInt().coerceIn(0, pair.length)
+                val left = pair.dropLast(back)
+                val right = pair.takeLast(back)
+                val before = editHistory.capture(connection)
                 connection.beginBatchEdit()
-                connection.commitText(pair.dropLast(back), 1)
+                val firstOk = connection.commitText(left, 1)
                 // 光标位置 0 落在这段的开头，也就是左右两半中间
-                connection.commitText(pair.takeLast(back), 0)
+                val secondOk = connection.commitText(right, 0)
                 connection.endBatchEdit()
+                if (firstOk && secondOk) {
+                    editHistory.record(before, editHistory.capture(connection), insertedBefore = left, insertedAfter = right)
+                }
             }
             "skip" -> {
                 val closer = parts[1]
                 if (connection.getTextAfterCursor(closer.length, 0)?.toString() == closer) {
                     // 换掉光标后的那个再上屏同一个字：光标落到它后面，不用算绝对位置
+                    val before = editHistory.capture(connection)
                     connection.beginBatchEdit()
-                    connection.deleteSurroundingText(0, closer.length)
-                    connection.commitText(closer, 1)
+                    val deleted = connection.deleteSurroundingText(0, closer.length)
+                    val inserted = connection.commitText(closer, 1)
                     connection.endBatchEdit()
+                    if (deleted && inserted) {
+                        editHistory.record(before, editHistory.capture(connection), deletedAfter = closer, insertedBefore = closer)
+                    }
                 } else {
                     commit(closer)
                 }
@@ -847,14 +930,34 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 没在组句时的退格：刚补完一对、光标前后正是这一对就一起删，否则照常退格。 */
     private fun deleteBackward() {
         val pair = engine.pairBackspace()
-        val connection = host.connection
-        if (pair != null && pair.length == 2 && connection != null &&
+        val connection = host.connection ?: run {
+            host.sendKey(KeyEvent.KEYCODE_DEL)
+            return
+        }
+        if (pair != null && pair.length == 2 &&
             connection.getTextBeforeCursor(1, 0)?.toString() == pair.substring(0, 1) &&
             connection.getTextAfterCursor(1, 0)?.toString() == pair.substring(1)
         ) {
-            connection.deleteSurroundingText(1, 1)
-        } else {
+            val before = editHistory.capture(connection)
+            if (connection.deleteSurroundingText(1, 1)) {
+                editHistory.record(before, editHistory.capture(connection), deletedBefore = pair.substring(0, 1), deletedAfter = pair.substring(1))
+            }
+            return
+        }
+
+        // 退格按 Unicode 码点删除，避免把代理项拆开；每次物理退格先记为一步。
+        val preceding = connection.getTextBeforeCursor(2, 0)?.toString().orEmpty()
+        if (preceding.isEmpty()) {
             host.sendKey(KeyEvent.KEYCODE_DEL)
+            return
+        }
+        val deleted = if (preceding.length >= 2 &&
+            Character.isHighSurrogate(preceding[preceding.length - 2]) &&
+            Character.isLowSurrogate(preceding.last())
+        ) preceding.takeLast(2) else preceding.takeLast(1)
+        val before = editHistory.capture(connection)
+        if (connection.deleteSurroundingText(deleted.length, 0)) {
+            editHistory.record(before, editHistory.capture(connection), deletedBefore = deleted)
         }
     }
 
