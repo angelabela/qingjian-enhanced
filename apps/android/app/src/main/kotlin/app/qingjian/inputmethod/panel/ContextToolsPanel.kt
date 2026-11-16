@@ -47,7 +47,24 @@ class ContextToolsPanel(
         setTextColor(palette.text)
         setPadding(dp(12), dp(12), dp(12), dp(12))
         background = rounded(palette.surface, 12)
+        setTextIsSelectable(true)
         visibility = View.GONE
+    }
+    private val copyResult = TextView(context).apply {
+        text = "复制处理结果"
+        textSize = 13f
+        gravity = Gravity.CENTER
+        setTextColor(palette.brand)
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+        isClickable = true
+        visibility = View.GONE
+        setOnClickListener {
+            val value = result.text?.toString().orEmpty()
+            if (value.isNotBlank()) {
+                onCopy(value)
+                showStatus("已复制处理结果")
+            }
+        }
     }
     private var generated = ""
     private var requestId = 0
@@ -101,13 +118,14 @@ class ContextToolsPanel(
         })
         body.addView(status)
         body.addView(result)
+        body.addView(copyResult)
         body.addView(generatedActions)
         if (source.isNotBlank()) buildActions()
     }
 
     private fun buildActions() {
         val value = source.trim()
-        val url = URL_REGEX.find(value)?.value
+        val url = URL_REGEX.find(value)?.value?.trimEnd('.', ',', '，', '。', '!', '?', '！', '？', ')', '】')
         val phone = PHONE_REGEX.find(value)?.value
         val email = EMAIL_REGEX.find(value)?.value
         val date = DATE_REGEX.find(value)?.value
@@ -259,6 +277,7 @@ class ContextToolsPanel(
     private fun showResult(value: String) {
         result.text = value
         result.visibility = View.VISIBLE
+        copyResult.visibility = View.VISIBLE
         showStatus("处理结果")
     }
 
