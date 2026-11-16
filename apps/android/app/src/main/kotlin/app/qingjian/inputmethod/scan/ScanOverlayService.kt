@@ -311,7 +311,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 codes.forEach { code ->
                                     val value = code.rawValue?.trim().orEmpty()
                                     val bounds = code.boundingBox ?: return@forEach
-                                    if (value.isBlank()) return@forEach
+                                    if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped)) return@forEach
