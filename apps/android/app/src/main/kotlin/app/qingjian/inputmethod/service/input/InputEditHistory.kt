@@ -104,7 +104,11 @@ class InputEditHistory(
         insertedAfter: String = "",
         timestamp: Long = SystemClock.uptimeMillis(),
     ) {
-        if (before == null || after == null) return
+        if (before == null || after == null) {
+            // 宿主拒绝提供完整光标上下文时，宁可禁用旧历史，也不保留可能过期的撤销点。
+            clear()
+            return
+        }
         if (deletedBefore.isEmpty() && deletedAfter.isEmpty() &&
             insertedBefore.isEmpty() && insertedAfter.isEmpty()
         ) return
@@ -146,8 +150,11 @@ class InputEditHistory(
                 connection.endBatchEdit()
             }
         }.getOrDefault(false)
-        if (!applied) return Result.FAILED
-        val restoredState = capture(connection) ?: return Result.FAILED
+        if (!applied) {
+            clear()
+            return Result.FAILED
+        }
+        val restoredState = capture(connection) ?: run { clear(); return Result.FAILED }
         undoStack.removeLast()
         // 记录实际恢复后的光标上下文，供重做前再次校验。
         redoStack.addLast(edit.copy(beforeState = restoredState))
@@ -169,7 +176,7 @@ class InputEditHistory(
             }
         }.getOrDefault(false)
         if (!applied) return Result.FAILED
-        val appliedState = capture(connection) ?: return Result.FAILED
+        val appliedState = capture(connection) ?: run { clear(); return Result.FAILED }
         redoStack.removeLast()
         undoStack.addLast(edit.copy(afterState = appliedState))
         while (undoStack.size > limit) undoStack.removeFirst()
