@@ -133,12 +133,88 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     /** 没在组句时的退格：刚补完一对时回这一对，见 [Native.pairBackspace]。 */
     fun pairBackspace(): String? = if (ready) Native.pairBackspace(handle) else null
 
-    /** 拆词；引擎没装好时一字一块。 */
+    /**
+     * 剪贴板智能拆分：普通中文交 Core 语言模型；网址、邮箱、电话号码按结构切分，
+     * 分隔符仍作为独立块保留，所有块按原顺序拼回去与原文完全一致。
+     */
     fun textPieces(text: String): List<String> {
+        if (text.isEmpty()) return emptyList()
+        val result = mutableListOf<String>()
+        var cursor = 0
+        for (match in STRUCTURED_TEXT.findAll(text)) {
+            if (match.range.first > cursor) result += nativeTextPieces(text.substring(cursor, match.range.first))
+            result += structuredPieces(match.value)
+            cursor = match.range.last + 1
+        }
+        if (cursor < text.length) result += nativeTextPieces(text.substring(cursor))
+        return result
+    }
+
+    private fun nativeTextPieces(text: String): List<String> {
+        if (text.isEmpty()) return emptyList()
         val json = if (ready) Native.textPieces(handle, text) else null
         json ?: return text.map(Char::toString)
         val array = org.json.JSONArray(json)
         return List(array.length(), array::getString)
+    }
+
+    private fun structuredPieces(raw: String): List<String> {
+        // 邮箱：用户名、@、域名分开，方便单独选择或复制局部。
+        if ('@' in raw && !raw.startsWith("http", ignoreCase = true) && !raw.startsWith("www.", ignoreCase = true)) {
+            val at = raw.indexOf('@')
+            return listOf(raw.substring(0, at), "@", raw.substring(at + 1)).filter(String::isNotEmpty)
+        }
+
+        // 网址：协议、主机名作为完整语义块；路径与查询参数按分隔符切，不把域名拆成碎字符。
+        if (raw.startsWith("http://", true) || raw.startsWith("https://", true) || raw.startsWith("www.", true)) {
+            val schemeLength = when {
+                raw.startsWith("https://", true) -> 8
+                raw.startsWith("http://", true) -> 7
+                else -> 0
+            }
+            val result = mutableListOf<String>()
+            if (schemeLength > 0) result += raw.substring(0, schemeLength)
+            val rest = raw.substring(schemeLength)
+            val hostEnd = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }.let { if (it < 0) rest.length else it }
+            if (hostEnd > 0) result += rest.substring(0, hostEnd)
+            if (hostEnd < rest.length) {
+                val tail = rest.substring(hostEnd)
+                val delimiter = Regex("([/?&#=])")
+                var start = 0
+                for (part in delimiter.findAll(tail)) {
+                    if (part.range.first > start) result += tail.substring(start, part.range.first)
+                    result += part.value
+                    start = part.range.last + 1
+                }
+                if (start < tail.length) result += tail.substring(start)
+            }
+            return result.filter(String::isNotEmpty)
+        }
+
+        // 11 位手机号无分隔符时按 3-4-4 分组；已有空格/连字符则保留分隔符。
+        val digits = raw.filter(Char::isDigit)
+        if (digits.length == 11 && digits.firstOrNull() == '1') {
+            if (raw.all(Char::isDigit)) return listOf(raw.substring(0, 3), raw.substring(3, 7), raw.substring(7))
+            val result = mutableListOf<String>()
+            val chunks = Regex("(\\d+|\\D+)")
+            for (part in chunks.findAll(raw)) {
+                val value = part.value
+                if (value.all(Char::isDigit) && value.length > 4) {
+                    var index = 0
+                    while (index < value.length) {
+                        val size = when {
+                            index == 0 -> 3
+                            value.length - index > 4 -> 4
+                            else -> value.length - index
+                        }
+                        result += value.substring(index, index + size)
+                        index += size
+                    }
+                } else result += value
+            }
+            return result
+        }
+        return nativeTextPieces(raw)
     }
 
     fun reloadPhrases(userDir: String) {
@@ -304,6 +380,9 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     }
 
     companion object {
+        private val STRUCTURED_TEXT = Regex(
+            """(?i)(?:https?://[^\\s<>()]+|www\\.[^\\s<>()]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|(?<![A-Z0-9])(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)|(?<!\\d)0\\d{2,3}[- ]?\\d{7,8}(?!\\d))"""
+        )
         /** 进程里开着的引擎（输入法服务那一个；App 与输入法同进程）。只在主线程用。 */
         private val live = mutableSetOf<Engine>()
 
