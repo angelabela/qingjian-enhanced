@@ -3,7 +3,8 @@
 //! `data_dir` 是壳从 APK assets 解出来的随包数据目录（`.qj` 要 mmap，必须是真文件），
 //! `user_dir` 是应用私有目录下的学习数据目录。
 
-use std::path::{Path, PathBuf};\nuse std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
@@ -17,7 +18,8 @@ use crate::error::AndroidError;
 
 /// Android 端补充的业务短语；独立于跨平台产品数据包，确保常见简拼可命中。
 pub(crate) fn builtin_android_dictionary() -> Dictionary {
-    Dictionary::parse("已回访\tyi hui fang\t3000\n").expect("内置 Android 词条格式固定")
+    Dictionary::parse("已回访\tyi hui fang\t3000
+").expect("内置 Android 词条格式固定")
 }
 
 pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError> {
