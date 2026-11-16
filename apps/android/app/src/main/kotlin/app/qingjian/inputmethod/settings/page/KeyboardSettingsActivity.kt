@@ -45,7 +45,7 @@ class KeyboardSettingsActivity : PageActivity() {
                     prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
                 },
                 ui.picker(
-                    R.string.section_keys,
+                    R.string.key_skin_title,
                     settings.keySkin.label,
                     Settings.KeySkin.entries.map { it.label },
                     Settings.KeySkin.entries.indexOf(settings.keySkin),
