@@ -505,9 +505,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (before.isEmpty() || before != before.trimEnd()) return emptyList()
         if (before.last() in "，。！？；：、,.!?;:") return emptyList()
         val tail = before.takeLast(24)
-        val question = Regex("(吗|呢|么|什么|谁|哪个|哪里|何时|为什么|怎么|怎样|如何|多少|几|是否|能不能|可不可以|有没有|是不是)$")
+        val question = Regex("(吗|呢|么|什么|谁|哪个|哪里|何时|为什么|怎么|怎样|怎么样|怎么看|怎么回事|如何|多少|几|是否|能不能|可不可以|有没有|是不是|好不好|行不行|对不对|要不要)$")
         val excited = Regex("(太好了|太棒了|真棒|厉害|恭喜|谢谢|欢迎|完美|加油|好耶|哇|糟糕|竟然|终于)$")
-        val connective = Regex("(如果|因为|但是|不过|所以|而且|例如|比如|首先|其次|然后|另外|同时|虽然|既然|一旦)$")
+        val connective = Regex("(如果|因为|但是|不过|所以|而且|例如|比如|首先|其次|然后|另外|同时|虽然|既然|一旦|的话|的时候|之后|之前)$")
         return when {
             question.containsMatchIn(tail) -> listOf("？", "。", "！")
             excited.containsMatchIn(tail) -> listOf("！", "。", "？")
