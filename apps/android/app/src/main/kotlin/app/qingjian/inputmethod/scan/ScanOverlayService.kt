@@ -232,7 +232,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
-                val compact = availableWidth < dp(330)
+                val compact = availableWidth < dp(292)
                 orientation = if (compact) VERTICAL else HORIZONTAL
                 prefixRow.layoutParams = if (compact) {
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40))
@@ -626,6 +626,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    // 在悬浮窗预览/扫描区域点击即结束前缀编辑；输入已由 TextWatcher 即时保存，无需回车确认。
+                    finishPrefixEditing()
                     downX = event.x
                     downY = event.y
                     start = RectF(rect)
