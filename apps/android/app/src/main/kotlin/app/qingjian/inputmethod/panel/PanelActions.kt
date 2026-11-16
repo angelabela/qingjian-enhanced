@@ -13,6 +13,12 @@ interface PanelActions {
     /** 面板里点了一个符号或表情：组句中先顶首选再上屏。 */
     fun commitText(text: String)
 
+    /** 在光标处插入，不用生成内容覆盖选区或原文。 */
+    fun insertAtCursor(text: String)
+
+    /** 只替换当前选区；没有选中文字时返回 false。 */
+    fun replaceSelectedText(text: String): Boolean
+
     /** 剪贴板记录上屏；按全局开关决定是否紧接着执行回车换行。 */
     fun commitClipboardText(text: String)
 
