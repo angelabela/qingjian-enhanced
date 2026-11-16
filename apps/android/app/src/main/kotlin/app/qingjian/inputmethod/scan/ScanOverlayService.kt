@@ -1,5 +1,6 @@
 package app.qingjian.inputmethod.scan
 
+import android.app.Dialog
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,6 +13,7 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
@@ -75,6 +77,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var windowParams: WindowManager.LayoutParams
     private lateinit var headerWindowParams: WindowManager.LayoutParams
     private lateinit var headerView: View
+    private var headerDialog: Dialog? = null
     private lateinit var root: FrameLayout
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
@@ -226,7 +229,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (event.actionMasked == MotionEvent.ACTION_DOWN &&
                 (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
                 headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
+                runCatching { headerDialog?.window?.attributes = headerWindowParams }
                 prefixInput.post {
                     prefixInput.requestFocus()
                     (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
@@ -240,7 +243,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
                     ?.hideSoftInputFromWindow(prefixInput.windowToken, 0)
                 headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
+                runCatching { headerDialog?.window?.attributes = headerWindowParams }
             }
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
@@ -375,13 +378,35 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = (windowParams.y - headerView.measuredHeight).coerceAtLeast(0)
             // 标题栏位于相机窗口上方，与相机预览完全分离。
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                blurBehindRadius = dp(24)
-            }
         }
         windowManager.addView(root, windowParams)
-        windowManager.addView(headerView, headerWindowParams)
+        // 使用独立 Dialog 窗口的 background blur：模糊严格限制在标题栏边界内，
+        // 不会像 FLAG_BLUR_BEHIND 那样把标题栏以外的整屏内容一起模糊。
+        headerDialog = Dialog(this).apply {
+            window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            setContentView(headerView)
+            setCancelable(false)
+            window?.let { headerWindow ->
+                headerWindow.setBackgroundDrawable(
+                    GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        setColor(0x22000000)
+                        cornerRadius = dp(16).toFloat()
+                    },
+                )
+                headerWindow.addFlags(
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                )
+                headerWindow.setDimAmount(0f)
+                headerWindow.attributes = headerWindowParams
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    headerWindow.setBackgroundBlurRadius(dp(24))
+                }
+            }
+            show()
+        }
         headerView.post { updateOverlayPositions() }
     }
 
@@ -442,7 +467,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             // 标题栏始终贴在相机区域上方，不覆盖相机预览。
             headerWindowParams.y = (windowParams.y - headerView.height).coerceAtLeast(0)
             headerWindowParams.width = windowParams.width
-            runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
+            runCatching { headerDialog?.window?.attributes = headerWindowParams }
         }
     }
 
@@ -778,7 +803,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (::scanner.isInitialized) scanner.close()
         if (::textRecognizer.isInitialized) textRecognizer.close()
         saveWindowSize()
-        if (::headerView.isInitialized) runCatching { windowManager.removeView(headerView) }
+        runCatching { headerDialog?.dismiss() }
+        headerDialog = null
         if (::root.isInitialized) runCatching { windowManager.removeView(root) }
         executor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
