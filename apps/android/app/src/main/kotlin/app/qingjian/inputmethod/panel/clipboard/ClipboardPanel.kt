@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -29,6 +30,9 @@ import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 
 /**
  * 剪贴板与常用语：表头两个页签，下面一张张圆角卡片，点卡片上屏，点右边 ⌄ 展开。
@@ -90,6 +94,12 @@ class ClipboardPanel(
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
 
+    /** 当前展示二维码的剪贴板文字；再次点击面板即可关闭。 */
+    private var qrPreview: String? = null
+
+    /** 剪贴板粘贴后回车换行：全局开关，不按记录分别保存。 */
+    private var pasteEnter = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
+
     /** 每张卡片在列表内容里的上下边（不含滚动），画与点共用。 */
     private var tops = FloatArray(0)
     private var bottoms = FloatArray(0)
@@ -112,7 +122,8 @@ class ClipboardPanel(
         } else {
             "共 ${clips.size}/${actions.clipboardLimit} 条"
         }
-        ink.text(canvas, summary, 12.5f, palette.gloss, width / 2f, headerHeight + ink.dp(SUMMARY_DP) / 2)
+        val shownSummary = if (showingPhrases) summary else "$summary  ·  粘贴后回车：${if (pasteEnter) "开" else "关"}（点此切换）"
+        ink.text(canvas, shownSummary, 12.5f, palette.gloss, width / 2f, headerHeight + ink.dp(SUMMARY_DP) / 2)
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, headerHeight + ink.dp(SUMMARY_DP), width.toFloat(), listBottom)
         arrange()
@@ -136,6 +147,7 @@ class ClipboardPanel(
             groups.draw(canvas)
         }
         preview?.let { drawPreview(canvas, it) }
+        qrPreview?.let(::drawQrPreview)
     }
 
     /** 长按图片的大图：盖住整个面板，图按比例放到最大，底下 关闭 / 发送。 */
@@ -160,6 +172,31 @@ class ClipboardPanel(
             val primary = i == PREVIEW_BUTTONS.lastIndex
             ink.round(canvas, card, 12f, if (primary) palette.brand else palette.surface)
             ink.text(canvas, label, 15f, if (primary) palette.onBrand else palette.text, card.centerX(), card.centerY(), bold = primary)
+        }
+    }
+
+    /** 在面板内显示当前剪贴板文字的二维码，不离开输入法。 */
+    private fun drawQrPreview(canvas: Canvas, value: String) {
+        canvas.drawColor(palette.board)
+        val side = minOf(width - ink.dp(48f), height - ink.dp(112f)).coerceAtLeast(ink.dp(120f))
+        val matrix = runCatching {
+            QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, 512, 512,
+                mapOf(EncodeHintType.MARGIN to 1))
+        }.getOrNull()
+        if (matrix == null) {
+            ink.text(canvas, "内容过长，无法生成二维码", 14f, palette.text, width / 2f, height / 2f)
+        } else {
+            val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888)
+            for (y in 0 until matrix.height) for (x in 0 until matrix.width) {
+                bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+            }
+            val left = (width - side) / 2f
+            val top = (height - side - ink.dp(28f)) / 2f
+            card.set(left, top, left + side, top + side)
+            ink.round(canvas, card, 8f, Color.WHITE)
+            canvas.drawBitmap(bitmap, null, card, imagePaint)
+            bitmap.recycle()
+            ink.text(canvas, "二维码 · 点击任意位置关闭", 13f, palette.text, width / 2f, top + side + ink.dp(24f))
         }
     }
 
@@ -298,7 +335,7 @@ class ClipboardPanel(
     } else if (clips.getOrNull(expanded)?.image != null) {
         listOf(Icon.TRASH to "删除")
     } else {
-        listOf(Icon.PEN to "编辑", Icon.PLUS to "常用语", Icon.SPLIT to "拆词", Icon.TRASH to "删除")
+        listOf(Icon.PEN to "编辑", Icon.PLUS to "常用语", Icon.SPLIT to "拆词", Icon.CAMERA to "二维码", Icon.TRASH to "删除")
     }
 
     /** 每个操作的宽度：96dp，剪贴板文字的四个在窄屏上放不下时均分卡片宽度。 */
@@ -324,6 +361,11 @@ class ClipboardPanel(
     }
 
     override fun onTap(x: Float, y: Float) {
+        if (qrPreview != null) {
+            qrPreview = null
+            invalidate()
+            return
+        }
         preview?.let { path ->
             val send = y > height - ink.dp(PREVIEW_BAR_DP) && x > width / 2f
             closePreview()
@@ -332,6 +374,12 @@ class ClipboardPanel(
         }
         when {
             y < headerHeight && isRightIcon(x, y) -> onRightIcon()
+            !showingPhrases && y >= headerHeight && y < headerHeight + ink.dp(SUMMARY_DP) -> {
+                pasteEnter = !pasteEnter
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter).apply()
+                invalidate()
+            }
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->
                 groups.selected = index
@@ -382,7 +430,7 @@ class ClipboardPanel(
             }
             inActions -> onAction(i, ((x - ink.dp(CARD_MARGIN_DP + CARD_PADDING_DP)) / actionWidth()).toInt())
             showingPhrases -> actions.commitText(shownPhrases()[i].text)
-            else -> clips[i].let { clip -> clip.image?.let(actions::commitImage) ?: actions.commitText(clip.text) }
+            else -> clips[i].let { clip -> clip.image?.let(actions::commitImage) ?: actions.commitClipboardText(clip.text) }
         }
     }
 
@@ -406,6 +454,10 @@ class ClipboardPanel(
                 actions.toast("已加入常用语「$group」")
             }
             "拆词" -> actions.openPieces(clips[i].text)
+            "二维码" -> {
+                qrPreview = clips[i].text
+                invalidate()
+            }
             "删除" -> {
                 clips = ClipboardStore.remove(context, i, actions.clipboardLimit)
                 app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
