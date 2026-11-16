@@ -41,6 +41,19 @@ class AppearanceActivity : PageActivity() {
             themeGrid(settings, dark),
             ui.group(
                 null,
+                ui.picker(
+                    R.string.key_skin_title,
+                    settings.keySkin.label,
+                    Settings.KeySkin.entries.map { it.label },
+                    Settings.KeySkin.entries.indexOf(settings.keySkin),
+                ) { index ->
+                    prefs.edit().putString(Settings.KEY_KEY_SKIN, Settings.KeySkin.entries[index].name).apply()
+                    rebuild()
+                },
+                footer = R.string.arrangement_note,
+            ),
+            ui.group(
+                null,
                 ui.segmentedRow(R.string.section_text_size, TextSize.entries.map { getString(it.label) }, settings.textSize.ordinal) {
                     prefs.edit().putString(Settings.KEY_TEXT_SIZE, TextSize.entries[it].key).apply()
                     rebuild()
