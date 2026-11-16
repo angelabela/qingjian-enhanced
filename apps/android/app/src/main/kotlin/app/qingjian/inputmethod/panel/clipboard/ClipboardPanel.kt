@@ -147,7 +147,7 @@ class ClipboardPanel(
             groups.draw(canvas)
         }
         preview?.let { drawPreview(canvas, it) }
-        qrPreview?.let(::drawQrPreview)
+        qrPreview?.let { drawQrPreview(canvas, it) }
     }
 
     /** 长按图片的大图：盖住整个面板，图按比例放到最大，底下 关闭 / 发送。 */
