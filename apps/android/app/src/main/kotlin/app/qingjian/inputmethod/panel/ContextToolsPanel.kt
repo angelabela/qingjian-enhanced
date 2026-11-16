@@ -15,7 +15,6 @@ import app.qingjian.inputmethod.theme.Palette
 import java.math.BigDecimal
 import java.net.URI
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
 
 /** 用户主动打开的上下文工具；本面板初始化和识别过程绝不发起云端请求。 */
@@ -201,14 +200,14 @@ class ContextToolsPanel(
         if (source.isBlank()) return showStatus("没有可发送的文字")
         val request = ++requestId
         val previous = generated
-        val prompt = if (task == "continue" && previous.isNotBlank()) "$source\\n$previous" else source
+        val prompt = if (task == "continue" && previous.isNotBlank()) "$source\n$previous" else source
         result.visibility = View.GONE
         showStatus("正在请求云端模型…（仅发送本次任务所需文字）")
         generator.transform(task, prompt) { response ->
             if (request != requestId) return@transform
             response.onSuccess {
                 val next = it.trim()
-                generated = if (task == "continue" && previous.isNotBlank()) "$previous\\n$next" else next
+                generated = if (task == "continue" && previous.isNotBlank()) "$previous\n$next" else next
                 showResult(generated)
                 showGeneratedActions()
             }.onFailure { showStatus(it.message ?: "处理失败，请检查云端配置和网络") }
