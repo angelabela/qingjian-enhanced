@@ -78,12 +78,12 @@ fn context_score_orders_within_the_same_structure() {
             split: false,
         },
     ];
-    // 上下文说 吧 更像：词频高的 把 让位
+    // 同一读音结构档内先按词库频率排序：高频的 把 不被较低频但更符合上下文的 吧 压过。
     let by_context = |s: &Scored<'_>| (0, if s.hit.text == "吧" { -1.0 } else { -6.0 });
     rank(&mut items, usize::MAX, by_context);
     let texts: Vec<&str> = items.iter().map(|s| s.hit.text).collect();
-    assert_eq!(texts, ["吧", "把"]);
-    // 同一输入串下选过的压过上下文
+    assert_eq!(texts, ["把", "吧"]);
+    // 同一输入串下选过的仍优先
     rank(&mut items, usize::MAX, |s| {
         (
             u32::from(s.hit.text == "把"),
