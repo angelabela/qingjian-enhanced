@@ -177,6 +177,8 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 上一帧的候选。 */
     private var candidates: List<Candidate> = emptyList()
+    private var localCompletionStart = Int.MAX_VALUE
+    private var localCompletions: List<String> = emptyList()
 
     /**
      * 滑完一笔（[input] 是轨迹与键位的 JSON）：同点字母，组句时解出的字母进组句，
@@ -396,7 +398,18 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (engine.ready && !directInput) apply(engine.commitVoice(text)) else commit(text)
     }
 
-    fun select(index: Int) = apply(engine.select(index))
+    fun select(index: Int) {
+        val localIndex = index - localCompletionStart
+        val local = localCompletions.getOrNull(localIndex)
+        if (local != null) {
+            localCompletions = emptyList()
+            localCompletionStart = Int.MAX_VALUE
+            commit(local)
+            refreshCompletions()
+        } else {
+            apply(engine.select(index))
+        }
+    }
 
     /** 展开面板里点了「全部 / 单字」。 */
     fun toggleSingleChars() = apply(engine.toggleSingleChars())
@@ -464,12 +477,34 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 有就放在候选条上，选中走 [select]。只显示、不写输入框，所以不会再触发光标变化。
      */
     fun refreshCompletions() {
-        if (composing || !engine.ready) return
+        if (composing || !engine.ready || directInput || plainPunctuation || privateInput) return
         val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
-        if (!completing && '@' !in before && !before.contains("www.", ignoreCase = true) && before.lastOrNull()?.let(engine::mayEndCalculation) != true) return
+        val symbols = punctuationSuggestions(before)
+        if (!completing && '@' !in before && !before.contains("www.", ignoreCase = true) &&
+            before.lastOrNull()?.let(engine::mayEndCalculation) != true && symbols.isEmpty()
+        ) return
         val frame = engine.complete(before)
-        completing = frame.candidates.isNotEmpty()
-        host.showComposition("", frame.candidates)
+        localCompletionStart = frame.candidates.size
+        localCompletions = symbols
+        val merged = frame.candidates + symbols.map { Candidate(text = it, senses = emptyList()) }
+        completing = merged.isNotEmpty()
+        host.showComposition("", merged)
+    }
+
+    /** 依据句尾语义排序标点候选；明确问句优先问号，情绪表达优先叹号，承接语优先逗号。 */
+    private fun punctuationSuggestions(before: String): List<String> {
+        if (before.isEmpty() || before != before.trimEnd()) return emptyList()
+        if (before.last() in "，。！？；：、,.!?;:") return emptyList()
+        val tail = before.takeLast(24)
+        val question = Regex("(吗|呢|么|什么|谁|哪个|哪里|何时|为什么|怎么|怎样|如何|多少|几|是否|能不能|可不可以|有没有|是不是)$")
+        val excited = Regex("(太好了|太棒了|真棒|厉害|恭喜|谢谢|欢迎|完美|加油|好耶|哇|糟糕|竟然|终于)$")
+        val connective = Regex("(如果|因为|但是|不过|所以|而且|例如|比如|首先|其次|然后|另外|同时|虽然|既然|一旦)$")
+        return when {
+            question.containsMatchIn(tail) -> listOf("？", "。", "！")
+            excited.containsMatchIn(tail) -> listOf("！", "。", "？")
+            connective.containsMatchIn(tail) -> listOf("，", "。", "；")
+            else -> listOf("。", "，", "！", "？")
+        }
     }
 
     /** 删除键按下时记录状态；清空动作本身统一处理整个输入框。 */
@@ -675,6 +710,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         expression = frame.expression
         singleChars = frame.singleChars
         candidates = frame.candidates
+        localCompletions = emptyList()
+        localCompletionStart = Int.MAX_VALUE
         // 不在组句却带着候选：上屏通讯录名字后接着给的电话、邮箱，光标再动时要问 Core 还留不留
         completing = frame.preedit.isEmpty() && frame.candidates.isNotEmpty()
         host.showSideItems(pinyinChoices)
