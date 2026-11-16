@@ -83,7 +83,7 @@ class InputEditHistory(
                     hasDelete -> Operation.DELETE
                     else -> Operation.INSERT
                 },
-                SystemClock.uptimeMillis(),
+                groupTimestamp,
                 parts,
             ),
         )
@@ -246,6 +246,6 @@ class InputEditHistory(
     }
 
     private companion object {
-        const val CONTEXT_UNITS = 128
+        const val CONTEXT_UNITS = 256
     }
 }
