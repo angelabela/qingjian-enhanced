@@ -25,6 +25,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 最近六步输入前的编辑框快照；每个词/短句作为一组，撤销时逐步回退。 */
     private val undoHistory = ArrayDeque<ClearSnapshot>()
     private var lastClearSnapshot: ClearSnapshot? = null
+    private var pendingBackspaceSnapshot: ClearSnapshot? = null
     private var undoGroupOpen = false
     private val undoGroupTimeout = Runnable { undoGroupOpen = false }
 
@@ -202,6 +203,10 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        if (key == Key.Backspace) {
+            pendingBackspaceSnapshot?.let(::pushUndoSnapshot)
+            pendingBackspaceSnapshot = null
+        }
         val composingBeforeKey = composing
         if (key != Key.Backspace && key != Key.Clear) {
             if (!undoGroupOpen) captureUndoSnapshot()
@@ -511,12 +516,13 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun onBackspaceDown() {
         backspaceComposing = composing
         beforeBackspace = null
-        captureUndoSnapshot()
+        pendingBackspaceSnapshot = readUndoSnapshot()
         closeUndoGroup()
     }
 
     /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
+        pendingBackspaceSnapshot = null
         val snapshot = undoHistory.removeLastOrNull() ?: lastClearSnapshot ?: return
         val connection = host.connection ?: return
         // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
@@ -542,7 +548,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
-        captureUndoSnapshot()
+        val pending = pendingBackspaceSnapshot
+        if (pending != null) pushUndoSnapshot(pending) else captureUndoSnapshot()
+        pendingBackspaceSnapshot = null
         closeUndoGroup()
         backspaceComposing = false
         beforeBackspace = null
@@ -739,13 +747,19 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /** 保存当前输入框完整内容与选区；相同快照不重复入栈，最多保留六步。 */
-    private fun captureUndoSnapshot() {
-        val connection = host.connection ?: return
-        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
+    private fun readUndoSnapshot(): ClearSnapshot? {
+        val connection = host.connection ?: return null
+        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return null
         val selected = connection.getSelectedText(0)?.toString().orEmpty()
-        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
-        val text = before + selected + after
-        val snapshot = ClearSnapshot(text, before.length, before.length + selected.length)
+        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return null
+        return ClearSnapshot(before + selected + after, before.length, before.length + selected.length)
+    }
+
+    private fun captureUndoSnapshot() {
+        readUndoSnapshot()?.let(::pushUndoSnapshot)
+    }
+
+    private fun pushUndoSnapshot(snapshot: ClearSnapshot) {
         if (undoHistory.lastOrNull() != snapshot) {
             undoHistory.addLast(snapshot)
             while (undoHistory.size > UNDO_HISTORY_LIMIT) undoHistory.removeFirst()
