@@ -221,6 +221,32 @@ class Engine(context: Context, private val onReady: () -> Unit) {
             }
             return result
         }
+        if (digits.startsWith("0") && digits.length in 10..12) {
+            val areaLength = if (digits.getOrNull(1) in '3'..'9') 4 else 3
+            if (raw.all(Char::isDigit)) {
+                val area = digits.take(areaLength)
+                val subscriber = digits.drop(areaLength)
+                return listOf(area) + subscriber.chunked(4)
+            }
+            val result = mutableListOf<String>()
+            var areaRemaining = areaLength
+            for (part in Regex("(\\d+|\\D+)").findAll(raw)) {
+                val value = part.value
+                if (!value.all(Char::isDigit)) {
+                    result += value
+                    continue
+                }
+                var digitsPart = value
+                if (areaRemaining > 0) {
+                    val take = minOf(areaRemaining, digitsPart.length)
+                    if (take > 0) result += digitsPart.take(take)
+                    digitsPart = digitsPart.drop(take)
+                    areaRemaining -= take
+                }
+                if (digitsPart.isNotEmpty()) result += digitsPart.chunked(4)
+            }
+            return result
+        }
         return nativeTextPieces(raw)
     }
 
