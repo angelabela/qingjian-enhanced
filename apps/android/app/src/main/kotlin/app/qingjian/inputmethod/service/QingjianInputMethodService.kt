@@ -17,6 +17,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputContentInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
@@ -617,21 +618,33 @@ class QingjianInputMethodService :
     }
 
     override fun openPanel(kind: PanelKind) {
-        val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT
+        val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT ||
+            kind == PanelKind.CONTEXT_TOOLS
         val info = currentInputEditorInfo
         val variation = info?.inputType?.and(android.text.InputType.TYPE_MASK_VARIATION) ?: 0
         val passwordField = variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
             variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
             variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
             variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-        // 不从密码、私密或直接输入框读取上下文；AI 面板仍允许用户自行粘贴内容。
-        val source = if (needsContext && !composer.privateInput && !composer.directInput && !passwordField) {
-            val before = currentInputConnection?.getTextBeforeCursor(2500, 0)?.toString().orEmpty()
-            val after = currentInputConnection?.getTextAfterCursor(1500, 0)?.toString().orEmpty()
-            (before + after).takeLast(4000)
+        // 不从密码、私密或直接输入框读取上下文。文字工具优先取用户明确选中的文字，
+        // 没有选区时只读取光标前最多 800 字；打开面板本身不会触发任何云端请求。
+        val safeToRead = needsContext && !composer.privateInput && !composer.directInput && !passwordField
+        val selected = if (safeToRead && kind == PanelKind.CONTEXT_TOOLS) {
+            currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
         } else ""
-        // AI 对话面板只展示回复，不接管输入连接；键盘继续输入到宿主应用。
-        panel?.open(kind, source)
+        val source = if (safeToRead) {
+            val input = currentInputConnection
+            if (kind == PanelKind.CONTEXT_TOOLS) {
+                selected.takeIf { it.isNotBlank() }
+                    ?: input?.getTextBeforeCursor(800, 0)?.toString().orEmpty().takeLast(800)
+            } else {
+                val before = input?.getTextBeforeCursor(2500, 0)?.toString().orEmpty()
+                val after = input?.getTextAfterCursor(1500, 0)?.toString().orEmpty()
+                (before + after).takeLast(4000)
+            }
+        } else ""
+        // 文字工具仅展示本地识别结果；只有用户点击具体 AI 操作时才会请求云端。
+        panel?.open(kind, source, selected.isNotBlank())
         showKeyboard()
     }
 
@@ -651,6 +664,25 @@ class QingjianInputMethodService :
     override fun commitText(text: String) {
         // AI 回复直接提交到宿主输入框。
         composer.commitPanelText(text)
+    }
+
+    override fun insertAtCursor(text: String) {
+        val ic = currentInputConnection ?: return
+        runCatching {
+            val selected = ic.getSelectedText(0)?.isNotEmpty() == true
+            if (selected) {
+                val extracted = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return
+                val end = maxOf(extracted.selectionStart, extracted.selectionEnd)
+                if (end >= 0) ic.setSelection(end, end) else return
+            }
+            ic.commitText(text, 1)
+        }.onFailure { toast("插入失败，当前输入框不支持此操作") }
+    }
+
+    override fun replaceSelectedText(text: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        if (ic.getSelectedText(0).isNullOrEmpty()) return false
+        return runCatching { ic.commitText(text, 1) }.getOrDefault(false)
     }
 
     override fun commitClipboardText(text: String) {
