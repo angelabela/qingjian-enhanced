@@ -1,4 +1,4 @@
-use qingjian_core::{ChoiceModel, sentence::SentenceScorer};
+use std::sync::Arc;\n\nuse qingjian_core::{ChoiceModel, sentence::SentenceScorer};
 
 use super::{CharScorer, P2c};
 
@@ -29,11 +29,16 @@ impl SentenceScorer for CharScorer {
 /// 冻结集 8322 句上比字级模型的重排高 0.69 个点（41.80% → 42.49%，配对 McNemar p=0.003），
 /// 延迟也低（中位 18.5 对 22.0 ms），而且同一个模型还能造词——所以整句重排换成它。
 /// 留出验证过 λ 没有过拟合：0.5 / 0.75 / 1.0 在两半上都赢，只有 0.25 会输。
-pub struct P2cScorer(pub CharScorer);
+pub struct P2cScorer(pub Arc<CharScorer>);
 
 impl P2cScorer {
     /// 字表里没有 `<sep>` 的不是 P2C 模型，建不出来。
     pub fn new(scorer: CharScorer) -> Option<Self> {
+        Self::new_shared(Arc::new(scorer))
+    }
+
+    /// 与候选上下文重排共享同一份模型权重，避免 Android 为两种用途重复加载模型。
+    pub fn new_shared(scorer: Arc<CharScorer>) -> Option<Self> {
         scorer.vocab().sep()?;
         Some(Self(scorer))
     }
