@@ -1,4 +1,6 @@
-use std::sync::Arc;\n\nuse qingjian_core::{ChoiceModel, sentence::SentenceScorer};
+use std::sync::Arc;
+
+use qingjian_core::{ChoiceModel, sentence::SentenceScorer};
 
 use super::{CharScorer, P2c};
 
