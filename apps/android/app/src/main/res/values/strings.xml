@@ -208,6 +208,7 @@
     <string name="haptic_standard">标准</string>
     <string name="haptic_strong">重</string>
     <string name="key_text_size_title">键面字号</string>
+    <string name="key_skin_title">按键主题</string>
     <string name="popup_title">按键气泡</string>
     <string name="popup_note">按下字母时在上面放大显示</string>
     <string name="keep_chinese_title">换语言时保留中文</string>
