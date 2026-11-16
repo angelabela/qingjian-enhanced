@@ -350,6 +350,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             }
         }
         if (key is Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
+        if (!composing && key != Key.Backspace && key != Key.Clear) refreshCompletions()
     }
 
     /** 上次用的语言与另一边（从设置里读回来）；引擎的模式在 [onEngineReady] 里补。 */
@@ -423,6 +424,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             refreshCompletions()
         } else {
             apply(engine.select(index))
+            if (!composing) refreshCompletions()
         }
     }
 
@@ -495,13 +497,19 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (composing || !engine.ready || directInput || plainPunctuation || privateInput) return
         val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
         val symbols = punctuationSuggestions(before)
-        if (!completing && '@' !in before && !before.contains("www.", ignoreCase = true) &&
-            before.lastOrNull()?.let(engine::mayEndCalculation) != true && symbols.isEmpty()
-        ) return
+        if (before.isEmpty()) {
+            completing = false
+            localCompletions = emptyList()
+            localCompletionStart = Int.MAX_VALUE
+            host.showComposition("", emptyList())
+            return
+        }
+        // 普通中文词句也请求 Core 的上下文补全；不能只在邮箱、网址或标点命中时才显示候选。
         val frame = engine.complete(before)
         localCompletionStart = frame.candidates.size
         localCompletions = symbols
-        val merged = frame.candidates + symbols.map { Candidate(text = it, senses = emptyList()) }
+        val merged = frame.candidates + symbols.filterNot { symbol -> frame.candidates.any { it.text == symbol } }
+            .map { Candidate(text = it, senses = emptyList()) }
         completing = merged.isNotEmpty()
         host.showComposition("", merged)
     }
@@ -533,9 +541,10 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
         pendingBackspaceSnapshot = null
-        val snapshot = undoHistory.lastOrNull() ?: lastClearSnapshot ?: return
+        val snapshot = undoHistory.lastOrNull() ?: pendingBackspaceSnapshot ?: lastClearSnapshot ?: return
         val connection = host.connection ?: return
-        if (undoHistory.isNotEmpty()) undoHistory.removeLast()
+        if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
+        pendingBackspaceSnapshot = null
         // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
         apply(engine.clear())
         connection.beginBatchEdit()
