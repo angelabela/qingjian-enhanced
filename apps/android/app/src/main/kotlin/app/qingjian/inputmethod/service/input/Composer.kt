@@ -27,7 +27,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     private var lastClearSnapshot: ClearSnapshot? = null
     private var pendingBackspaceSnapshot: ClearSnapshot? = null
     private var undoGroupOpen = false
-    private val undoGroupTimeout = Runnable { undoGroupOpen = false }
+    private val undoGroupTimeout = Runnable { if (!composing) undoGroupOpen = false }
 
     private val handler = Handler(Looper.getMainLooper())
 
