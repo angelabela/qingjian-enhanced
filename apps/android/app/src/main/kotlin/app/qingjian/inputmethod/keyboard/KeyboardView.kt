@@ -490,7 +490,6 @@ class KeyboardView(
             }
             else -> Settings.GestureAction.NONE
         }
-        if (key == Key.Backspace && upward) return null
         return when (action) {
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> null
             Settings.GestureAction.CLEAR_ALL -> "清空"
