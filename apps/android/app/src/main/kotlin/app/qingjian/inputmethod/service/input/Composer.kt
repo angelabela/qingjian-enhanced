@@ -745,7 +745,6 @@ class Composer(private val engine: Engine, private val host: Host) {
         val selected = connection.getSelectedText(0)?.toString().orEmpty()
         val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
         val text = before + selected + after
-        if (text.isEmpty()) return
         val snapshot = ClearSnapshot(text, before.length, before.length + selected.length)
         if (undoHistory.lastOrNull() != snapshot) {
             undoHistory.addLast(snapshot)
