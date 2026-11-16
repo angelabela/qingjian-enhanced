@@ -715,5 +715,6 @@ class AdvancedActivity : PageActivity() {
         const val RESTORE_ZIP = 3
         const val BACKUP_SETTINGS = 4
         const val RESTORE_SETTINGS = 5
+        const val RESTORE_ALL_PICK = 6
     }
 }
