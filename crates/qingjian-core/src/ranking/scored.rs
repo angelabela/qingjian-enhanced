@@ -40,14 +40,16 @@ pub struct Scored<'a> {
 /// 与 [`SortKey`] 的前几项同序，只是不拿文本做最后的平手项（预选边界上的平手谁留下无所谓）。
 pub type PreselectKey = u128;
 
-/// 排序键，越小越靠前。元组的顺序即排序规则，见模块文档；第五项是注音的声调代价，第六项是同输入串下的选择次数，
-/// 第七项是上下文得分（毫分，整数才能比较）。文本借自词库，键可以脱离 `Scored` 存放。
+/// 排序键，越小越靠前。保留读音结构优先级后，依次比较个人累计使用次数、当前输入串选择次数、词库静态词频，
+/// 最后才比较上下文分；这样高频词在同一读音结构档内稳定靠前。
 pub type SortKey<'a> = (
     Reverse<bool>,
     Reverse<usize>,
     usize,
     Reverse<bool>,
     u8,
+    Reverse<u32>,
+    Reverse<u32>,
     Reverse<u32>,
     Reverse<i64>,
     bool,
@@ -97,7 +99,9 @@ impl<'a> Scored<'a> {
             self.abbreviated,
             Reverse(self.full_last),
             self.tone_cost,
+            Reverse(self.weight),
             Reverse(choice),
+            Reverse(self.hit.frequency),
             Reverse((score * 1000.0).round() as i64),
             self.altered(),
             self.hit.text.chars().count(),
