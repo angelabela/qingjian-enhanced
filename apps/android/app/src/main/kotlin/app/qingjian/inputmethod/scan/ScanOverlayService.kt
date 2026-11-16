@@ -53,6 +53,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.theme.Palette
+import app.qingjian.inputmethod.panel.base.PanelIcons
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -74,7 +75,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var camera: Camera? = null
     private var torchEnabled = false
     private val themePalette by lazy { runCatching { Palette.of(this) }.getOrNull() }
-    private lateinit var torchButton: TextView
+    private lateinit var torchButton: ScanToolbarIconView
+    private var prefixEditor: EditText? = null
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
     // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
@@ -135,12 +137,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         root.addView(scanArea, FrameLayout.LayoutParams(-1, -1))
 
-        // 顶部控制区：第一行直接编辑扫码前缀并启停过滤；第二行只保留图标工具，不再显示悬浮窗标题文字。
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(5), dp(8), dp(4))
-            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
-        }
+        // 自适应紧凑标题栏：宽度足够时前缀、过滤开关和图标保持同一行；不足时才换成两行。
         val prefixRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -149,9 +146,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setSingleLine(true)
             textSize = 13f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            setHintTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt() and 0x88FFFFFF.toInt())
+            setHintTextColor((themePalette?.text ?: 0xFFFFFFFF.toInt()).let { (it and 0x00FFFFFF) or 0x88000000 })
             hint = "输入扫码前缀"
-            setPadding(dp(10), 0, dp(8), 0)
+            setPadding(dp(9), 0, dp(7), 0)
             background = GradientDrawable().apply {
                 setColor(themePalette?.surface ?: 0xFF101522.toInt())
                 cornerRadius = dp(7).toFloat()
@@ -161,23 +158,26 @@ class ScanOverlayService : Service(), LifecycleOwner {
             imeOptions = EditorInfo.IME_ACTION_DONE
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
+        prefixEditor = prefixInput
         prefixRow.addView(prefixInput, LinearLayout.LayoutParams(0, dp(36), 1f))
+
         val prefixSwitch = Switch(this).apply {
-            text = "前缀过滤"
+            text = "过滤"
             textSize = 11f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
             isChecked = ScanPreferences.prefixEnabled(this@ScanOverlayService)
             setOnCheckedChangeListener { _, enabled ->
+                finishPrefixEditing()
                 getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE).edit()
                     .putBoolean(ScanPreferences.KEY_PREFIX_ENABLED, enabled).apply()
             }
         }
-        prefixRow.addView(prefixSwitch, LinearLayout.LayoutParams(-2, dp(40)).apply { marginStart = dp(7) })
-        header.addView(prefixRow, LinearLayout.LayoutParams(-1, dp(40)))
+        prefixRow.addView(prefixSwitch, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(5) })
 
         prefixInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                // 每次输入即时保存，不依赖软键盘的完成/回车键。
                 getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE).edit()
                     .putString(ScanPreferences.KEY_PREFIX, s?.toString()?.trim().orEmpty()).apply()
             }
@@ -206,44 +206,54 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
-                prefixInput.clearFocus()
+                finishPrefixEditing()
                 true
             } else false
         }
 
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
-        toolbar.addView(TextView(this).apply {
-            text = "⠿"
-            textSize = 18f
-            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER_VERTICAL
-            contentDescription = "拖动悬浮窗"
-            setOnTouchListener { _, event -> moveWindow(event) }
-        }, LinearLayout.LayoutParams(0, dp(40), 1f))
-        torchButton = TextView(this).apply {
-            text = "🔦"
-            textSize = 20f
-            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            contentDescription = "打开手电筒"
-            setPadding(dp(8), 0, dp(8), 0)
-            setOnClickListener { toggleTorch() }
+        toolbar.addView(ScanToolbarIconView(this, PanelIcons.Icon.DRAG, "拖动悬浮窗").apply {
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) finishPrefixEditing()
+                moveWindow(event)
+            }
+        }, LinearLayout.LayoutParams(dp(36), dp(40)))
+        torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
+            setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
-        toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(44), dp(40)))
-        toolbar.addView(TextView(this).apply {
-            text = "×"
-            textSize = 25f
-            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            contentDescription = "关闭扫码窗口"
-            setPadding(dp(8), 0, dp(5), 0)
-            setOnClickListener { stopSelf() }
-        }, LinearLayout.LayoutParams(dp(42), dp(40)))
-        header.addView(toolbar, LinearLayout.LayoutParams(-1, dp(40)))
-        root.addView(header, FrameLayout.LayoutParams(-1, dp(88), Gravity.TOP))
+        toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        toolbar.addView(ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
+            setOnClickListener { finishPrefixEditing(); stopSelf() }
+        }, LinearLayout.LayoutParams(dp(36), dp(40)))
+
+        val header = object : LinearLayout(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
+                val compact = availableWidth < dp(330)
+                orientation = if (compact) VERTICAL else HORIZONTAL
+                prefixRow.layoutParams = if (compact) {
+                    LayoutParams(LayoutParams.MATCH_PARENT, dp(40))
+                } else {
+                    LayoutParams(0, dp(40), 1f)
+                }
+                toolbar.layoutParams = if (compact) {
+                    LayoutParams(LayoutParams.MATCH_PARENT, dp(40))
+                } else {
+                    LayoutParams(LayoutParams.WRAP_CONTENT, dp(40))
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }.apply {
+            setPadding(dp(7), dp(2), dp(7), dp(2))
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
+            addView(prefixRow)
+            addView(toolbar)
+        }
+        root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
         val resize = TextView(this).apply {
             text = "↘"
@@ -274,6 +284,46 @@ class ScanOverlayService : Service(), LifecycleOwner {
             y = dp(120)
         }
         windowManager.addView(root, windowParams)
+    }
+
+    private fun finishPrefixEditing() {
+        val editor = prefixEditor ?: return
+        if (!editor.hasFocus()) return
+        editor.clearFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.hideSoftInputFromWindow(editor.windowToken, 0)
+    }
+
+    /** 与青简 App 面板共用 PanelIcons 的 24dp 线框图标绘制风格。 */
+    private inner class ScanToolbarIconView(
+        context: Context,
+        private val icon: PanelIcons.Icon,
+        description: String,
+    ) : View(context) {
+        private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = themePalette?.text ?: 0xFFFFFFFF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.8f * resources.displayMetrics.density
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        init {
+            contentDescription = description
+            isClickable = true
+            isFocusable = true
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            iconPaint.color = if (isEnabled) {
+                themePalette?.text ?: 0xFFFFFFFF.toInt()
+            } else 0x66FFFFFF
+            PanelIcons.draw(
+                canvas, icon, width / 2f, height / 2f,
+                21f * resources.displayMetrics.density, iconPaint,
+            )
+        }
     }
 
     private var moveRawX = 0f
@@ -431,6 +481,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         torchEnabled = !torchEnabled
         activeCamera.cameraControl.enableTorch(torchEnabled)
         torchButton.contentDescription = if (torchEnabled) "关闭手电筒" else "打开手电筒"
+        torchButton.isSelected = torchEnabled
     }
 
     private fun deliverResult(value: String) {
