@@ -146,7 +146,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setSingleLine(true)
             textSize = 13f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
-            setHintTextColor((themePalette?.text ?: 0xFFFFFFFF.toInt()).let { (it and 0x00FFFFFF) or 0x88000000 })
+            setHintTextColor((themePalette?.text ?: 0xFFFFFFFF.toInt()).let { (it and 0x00FFFFFF) or 0x88000000.toInt() })
             hint = "输入扫码前缀"
             setPadding(dp(9), 0, dp(7), 0)
             background = GradientDrawable().apply {
