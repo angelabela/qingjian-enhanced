@@ -188,7 +188,7 @@ class InputEditHistory(
     private fun pushSnapshot(next: Snapshot) {
         val previous = undoStack.peekLast()
         if (next.parts.isEmpty() && next.operation == Operation.DELETE &&
-            previous?.parts.isNullOrEmpty() && previous?.operation == Operation.DELETE &&
+            previous != null && previous.parts.isEmpty() && previous.operation == Operation.DELETE &&
             previous.insertedBefore.isEmpty() && previous.insertedAfter.isEmpty() &&
             previous.deletedAfter.isEmpty() && next.deletedAfter.isEmpty() &&
             next.beforeState == previous.afterState &&
