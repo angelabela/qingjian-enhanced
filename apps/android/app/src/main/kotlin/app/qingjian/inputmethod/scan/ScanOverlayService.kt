@@ -159,7 +159,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         prefixEditor = prefixInput
-        prefixRow.addView(prefixInput, LinearLayout.LayoutParams(0, dp(36), 1f))
+        prefixRow.addView(prefixInput, LinearLayout.LayoutParams(dp(140), dp(36)))
 
         val prefixSwitch = Switch(this).apply {
             text = "过滤"
@@ -180,6 +180,27 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 // 每次输入即时保存，不依赖软键盘的完成/回车键。
                 getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE).edit()
                     .putString(ScanPreferences.KEY_PREFIX, s?.toString()?.trim().orEmpty()).apply()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+
+        // 前缀框按实际文字宽度伸缩，避免短前缀占满整行，也避免长前缀被挤得看不清。
+        fun resizePrefixEditor() {
+            val contentWidth = prefixInput.paint.measureText(prefixInput.text?.toString().orEmpty())
+            val hintWidth = prefixInput.paint.measureText(prefixInput.hint?.toString().orEmpty())
+            val target = (maxOf(contentWidth, hintWidth) + dp(24)).toInt().coerceIn(dp(104), dp(216))
+            val params = prefixInput.layoutParams as? LinearLayout.LayoutParams ?: return
+            if (params.width != target || params.weight != 0f) {
+                params.width = target
+                params.weight = 0f
+                prefixInput.layoutParams = params
+            }
+        }
+        prefixInput.post { resizePrefixEditor() }
+        prefixInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                resizePrefixEditor()
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
