@@ -26,6 +26,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     private val undoHistory = ArrayDeque<ClearSnapshot>()
     private var lastClearSnapshot: ClearSnapshot? = null
     private var pendingBackspaceSnapshot: ClearSnapshot? = null
+    /** 删除键手势开始时的快照；普通退格后仍保留，供同一次上滑清空使用。 */
+    private var clearGestureSnapshot: ClearSnapshot? = null
     private var undoGroupOpen = false
     private val undoGroupTimeout = Runnable { if (!composing) undoGroupOpen = false }
 
@@ -526,7 +528,9 @@ class Composer(private val engine: Engine, private val host: Host) {
             question.containsMatchIn(tail) -> listOf("？", "。", "！")
             excited.containsMatchIn(tail) -> listOf("！", "。", "？")
             connective.containsMatchIn(tail) -> listOf("，", "。", "；")
-            else -> listOf("。", "，", "！", "？")
+            // 没有明确的问句、感叹或承接语义时，不再用通用标点占满候选栏；
+            // 此时优先显示 Core 根据光标前文本给出的词语/短语补全。
+            else -> emptyList()
         }
     }
 
@@ -534,7 +538,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun onBackspaceDown() {
         backspaceComposing = composing
         beforeBackspace = null
-        pendingBackspaceSnapshot = readUndoSnapshot()
+        val snapshot = readUndoSnapshot()
+        pendingBackspaceSnapshot = snapshot
+        clearGestureSnapshot = snapshot
         closeUndoGroup()
     }
 
@@ -542,6 +548,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun restoreLastClear() {
         pendingBackspaceSnapshot = null
         val snapshot = undoHistory.lastOrNull() ?: pendingBackspaceSnapshot ?: lastClearSnapshot ?: return
+        clearGestureSnapshot = null
         val connection = host.connection ?: return
         if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
         pendingBackspaceSnapshot = null
@@ -569,8 +576,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
-        val pending = pendingBackspaceSnapshot
-        if (pending != null) pushUndoSnapshot(pending) else captureUndoSnapshot()
+        val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
+        if (snapshot != null) pushUndoSnapshot(snapshot)
+        clearGestureSnapshot = null
         pendingBackspaceSnapshot = null
         closeUndoGroup()
         backspaceComposing = false
