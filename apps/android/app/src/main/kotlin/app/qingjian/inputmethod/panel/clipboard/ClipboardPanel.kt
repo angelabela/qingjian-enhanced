@@ -387,9 +387,9 @@ class ClipboardPanel(
         x >= width - ink.dp(142f) && x <= width - ink.dp(6f)
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-        // 在 PanelView 的 GestureDetector 之前截获摘要栏触摸，避免其 onSingleTapUp
-        // 将点击解释成面板操作或返回键盘。热区直接使用绘制时的真实矩形。
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        // 必须在 View/PanelView 的触摸分发入口截获：仅覆盖 onTouchEvent 仍可能让
+        // 上层触摸监听器先收到 ACTION_UP，并把这次点击当成“关闭面板/返回键盘”。
         if (pasteSummaryTracking || (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
                 isPasteSummaryTouch(event.y))) {
             when (event.actionMasked) {
@@ -417,7 +417,7 @@ class ClipboardPanel(
             }
             return true
         }
-        return super.onTouchEvent(event)
+        return super.dispatchTouchEvent(event)
     }
 
     override fun onTap(x: Float, y: Float) {
