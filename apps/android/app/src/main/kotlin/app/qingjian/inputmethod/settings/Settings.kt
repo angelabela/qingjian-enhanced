@@ -99,6 +99,9 @@ data class Settings(
         ICE("冰川蓝", 0xFF168FD0.toInt(), 0xFF126FA8.toInt(), 0xFF39B9F5.toInt(), 0xFFFFFFFF.toInt(), 0xFFE5F7FF.toInt()),
         PURPLE("幻彩紫", 0xFF8050C8.toInt(), 0xFF6339A5.toInt(), 0xFFA77BE8.toInt(), 0xFFFFFFFF.toInt(), 0xFFF0E7FF.toInt()),
         AMBER("琥珀橙", 0xFFED8A22.toInt(), 0xFFC66B17.toInt(), 0xFFFFB14D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFF1DE.toInt()),
+        JADE("翡翠亮面", 0xFF20B653.toInt(), 0xFF128D3D.toInt(), 0xFF42D978.toInt(), 0xFFFFFFFF.toInt(), 0xFFE5FFEC.toInt()),
+        LIME("青柠果冻", 0xFF68C92D.toInt(), 0xFF399D20.toInt(), 0xFF9BEA55.toInt(), 0xFF12320A.toInt(), 0xFFF0FFE4.toInt()),
+        MINT("薄荷玻璃", 0xFF20BFA7.toInt(), 0xFF138F82.toInt(), 0xFF58E4D1.toInt(), 0xFF062E2A.toInt(), 0xFFE3FFFA.toInt()),
     }
 
     /** 自定义按键滑动动作；DEFAULT 沿用原手势，NONE 明确关闭该方向。 */
