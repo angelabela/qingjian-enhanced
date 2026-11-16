@@ -1,4 +1,4 @@
-# 构建 Android Debug APK；320 轮接入 PCM FFT 频谱与一键恢复事务回滚。
+# 构建 Android Debug APK；334 轮修复语音麦克风占用、语义标点联想与旧版备份恢复。
 name: android-debug
 
 on:
