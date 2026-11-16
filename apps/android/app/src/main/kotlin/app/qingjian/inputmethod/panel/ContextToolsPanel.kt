@@ -139,7 +139,7 @@ class ContextToolsPanel(
                 action("复制号码") { onCopy(phone); showStatus("已复制号码") }
                 action("格式化号码") {
                     val digits = phone.filter { it.isDigit() }
-                    val formatted = if (digits.length == 11) digits.chunked(3).joinToString(" ") else phone
+                    val formatted = if (digits.length == 11) "${digits.substring(0, 3)} ${digits.substring(3, 7)} ${digits.substring(7, 11)}" else phone
                     showResult(formatted)
                 }
             }
@@ -155,13 +155,6 @@ class ContextToolsPanel(
                 }
                 action("复制日期") { onCopy(date); showStatus("已复制日期") }
             }
-            money != null -> {
-                action("转换人民币大写") {
-                    val converted = moneyToChinese(money)
-                    if (converted == null) showStatus("金额格式不正确或超出转换范围") else showResult(converted)
-                }
-                action("复制金额") { onCopy(money); showStatus("已复制金额") }
-            }
             isAddress -> {
                 action("整理地址") {
                     val formatted = value.replace(Regex("[ \\t]+"), "")
@@ -170,6 +163,13 @@ class ContextToolsPanel(
                     showResult(formatted)
                 }
                 action("复制地址") { onCopy(value); showStatus("已复制地址") }
+            }
+            money != null -> {
+                action("转换人民币大写") {
+                    val converted = moneyToChinese(money)
+                    if (converted == null) showStatus("金额格式不正确或超出转换范围") else showResult(converted)
+                }
+                action("复制金额") { onCopy(money); showStatus("已复制金额") }
             }
             isCode -> {
                 action("整理代码缩进") { showResult(formatCode(value)) }
@@ -352,6 +352,6 @@ class ContextToolsPanel(
         val PHONE_REGEX = Regex("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)")
         val EMAIL_REGEX = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
         val DATE_REGEX = Regex("(?:\\d{4}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?)")
-        val MONEY_REGEX = Regex("(?:￥|¥)?\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*(?:元)?")
+        val MONEY_REGEX = Regex("(?:[￥¥]\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?|\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?\\s*(?:元|人民币)|\\d+\\.\\d{1,2})")
     }
 }
