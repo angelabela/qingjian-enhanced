@@ -38,6 +38,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     interface Host {
         val connection: InputConnection?
 
+        /** 当前宿主是否存在选区；选区替换不猜测原文，避免错误撤销。 */
+        val selectionActive: Boolean
+
         /** Shift 的状态；单次的出过一个大写字母后由这边熄掉。 */
         var shift: ShiftState
 
@@ -423,6 +426,10 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun commitExternalText(text: String, connection: InputConnection? = host.connection): Boolean {
         if (text.isEmpty()) return true
         val target = connection ?: return false
+        if (host.selectionActive) {
+            editHistory.clear()
+            return target.commitText(text, 1)
+        }
         val before = editHistory.capture(target)
         val committed = target.commitText(text, 1)
         if (committed) editHistory.record(before, editHistory.capture(target), insertedBefore = text)
@@ -439,6 +446,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             apply(engine.clear())
             return true
         }
+        if (host.selectionActive) return false
         val connection = host.connection ?: return false
         return when (editHistory.undo(connection)) {
             InputEditHistory.Result.SUCCESS -> {
@@ -454,7 +462,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun redo(): Boolean {
-        if (composing) return false
+        if (composing || host.selectionActive) return false
         val connection = host.connection ?: return false
         return when (editHistory.redo(connection)) {
             InputEditHistory.Result.SUCCESS -> {
@@ -789,6 +797,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         var editBefore: InputEditHistory.CursorState? = null
         var deletedBefore = ""
         var editSucceeded = true
+        if (host.selectionActive) editHistory.clear()
         // 一段组句开头：组合文字放进去之前读光标前后文，给云联想
         val surrounding = if (engine.predicting && preedit.isEmpty() && frame.preedit.isNotEmpty()) {
             (connection.getTextBeforeCursor(SURROUNDING_BEFORE, 0)?.toString().orEmpty()) to
@@ -863,6 +872,11 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (text.isEmpty()) return
         if (!undoGroupOpen) captureUndoSnapshot()
         val connection = host.connection ?: return
+        if (host.selectionActive) {
+            editHistory.clear()
+            connection.commitText(text, 1)
+            return
+        }
         val before = editHistory.capture(connection)
         if (connection.commitText(text, 1)) {
             editHistory.record(before, editHistory.capture(connection), insertedBefore = text)
@@ -946,6 +960,11 @@ class Composer(private val engine: Engine, private val host: Host) {
     private fun deleteBackward() {
         val pair = engine.pairBackspace()
         val connection = host.connection ?: run {
+            host.sendKey(KeyEvent.KEYCODE_DEL)
+            return
+        }
+        if (host.selectionActive) {
+            editHistory.clear()
             host.sendKey(KeyEvent.KEYCODE_DEL)
             return
         }
