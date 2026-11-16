@@ -219,7 +219,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 undoGroupOpen = true
                 handler.removeCallbacks(undoGroupTimeout)
                 handler.postDelayed(undoGroupTimeout, UNDO_GROUP_TIMEOUT_MS)
-            } else if (key == Key.Space || key is Key.Text || key is Key.Enter) {
+            } else if (key is Key.Space || key is Key.Text || key is Key.Enter) {
                 closeUndoGroup()
             }
         }
@@ -343,7 +343,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.onLanguageChanged()
             }
         }
-        if (key == Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
+        if (key is Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
     }
 
     /** 上次用的语言与另一边（从设置里读回来）；引擎的模式在 [onEngineReady] 里补。 */
