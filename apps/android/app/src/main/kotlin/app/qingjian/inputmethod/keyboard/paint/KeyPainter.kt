@@ -227,18 +227,41 @@ class KeyPainter(
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
             return
         }
-        val top = lighten(color, 1.22f)
-        val bottom = darken(color, 0.88f)
+        // 液态玻璃键帽：半透明主题色渐层、顶部宽高光、底部反射与细描边。
+        // 保留原 bounds 和圆角，不改变按键命中区域或键盘布局。
+        val top = withAlpha(lighten(color, 1.28f), 0xB8)
+        val bottom = withAlpha(darken(color, 0.86f), 0xE0)
         fill.shader = LinearGradient(bounds.left, bounds.top, bounds.left, bounds.bottom, top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
         fill.shader = null
-        // 顶部半透明高光同样裁在原按键圆角内，不扩张尺寸、不改变轮廓。
-        fill.color = 0x44FFFFFF
-        val inset = 1.5f * density
-        val shine = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.top + bounds.height() * 0.28f)
-        canvas.drawRoundRect(shine, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+
+        val inset = 1.2f * density
+        val innerRadius = (metrics.radius - inset).coerceAtLeast(1f)
+        // 顶部玻璃反光，透明度从上到下自然减弱。
+        fill.shader = LinearGradient(
+            bounds.left, bounds.top + inset, bounds.left, bounds.top + bounds.height() * 0.48f,
+            intArrayOf(0x72FFFFFF, 0x28FFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP,
+        )
+        val shine = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.top + bounds.height() * 0.48f)
+        canvas.drawRoundRect(shine, innerRadius, innerRadius, fill)
+        fill.shader = null
+
+        // 底部轻微反射与玻璃边缘高光，避免塑料感。
+        fill.shader = LinearGradient(bounds.left, bounds.bottom - bounds.height() * 0.24f, bounds.left, bounds.bottom,
+            0x00FFFFFF, 0x30FFFFFF, Shader.TileMode.CLAMP)
+        val reflection = RectF(bounds.left + inset, bounds.bottom - bounds.height() * 0.24f, bounds.right - inset, bounds.bottom - inset)
+        canvas.drawRoundRect(reflection, innerRadius, innerRadius, fill)
+        fill.shader = null
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = 0.8f * density
+        fill.color = 0x88FFFFFF.toInt()
+        canvas.drawRoundRect(bounds.left + inset / 2, bounds.top + inset / 2, bounds.right - inset / 2, bounds.bottom - inset / 2,
+            (metrics.radius - inset / 2).coerceAtLeast(1f), (metrics.radius - inset / 2).coerceAtLeast(1f), fill)
+        fill.style = Paint.Style.FILL
         fill.color = color
     }
+
+    private fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or ((alpha and 0xFF) shl 24)
 
     private fun lighten(color: Int, factor: Float): Int = tint(color, factor)
     private fun darken(color: Int, factor: Float): Int = tint(color, factor)
