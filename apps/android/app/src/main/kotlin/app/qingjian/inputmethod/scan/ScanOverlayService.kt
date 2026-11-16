@@ -167,11 +167,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setHintTextColor((themePalette?.text ?: 0xFFFFFFFF.toInt()).let { (it and 0x00FFFFFF) or 0x88000000.toInt() })
             hint = "输入扫码前缀"
             setPadding(dp(9), 0, dp(7), 0)
-            background = GradientDrawable().apply {
-                setColor(themePalette?.surface ?: 0xFF101522.toInt())
-                cornerRadius = dp(7).toFloat()
-                setStroke(dp(1), 0x44FFFFFF)
-            }
+            // 输入框与标题栏共用背景，不再单独绘制色块或边框。
+            setBackgroundColor(Color.TRANSPARENT)
             setText(ScanPreferences.prefix(this@ScanOverlayService))
             imeOptions = EditorInfo.IME_ACTION_DONE
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -283,13 +280,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
             visibility = if (ocrMode) View.VISIBLE else View.GONE
             isEnabled = ocrMode
             alpha = if (ocrMode) 1f else 0f
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xCC17212F.toInt())
+                setStroke(dp(2), 0xEEFFFFFF.toInt())
+            }
             setOnClickListener {
                 finishPrefixEditing()
                 if (ocrMode) capturePhotoForOcr()
-                else Toast.makeText(this@ScanOverlayService, "请先开启拍照识图", Toast.LENGTH_SHORT).show()
             }
         }
-        toolbar.addView(captureButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
             setOnClickListener { finishPrefixEditing(); stopSelf() }
         }
@@ -298,8 +298,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         attachHeaderDrag(prefixRow)
         attachHeaderDrag(toolbar)
         attachHeaderDrag(torchButton)
-        attachHeaderDrag(captureButton)
-        attachHeaderDrag(closeButton)
+         attachHeaderDrag(closeButton)
 
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -347,6 +346,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setOnTouchListener { _, event -> resizeWindow(event) }
         }
         root.addView(resize, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.RIGHT or Gravity.BOTTOM))
+        // 拍照按钮属于相机画面，采用常见相机底部中央快门布局。
+        root.addView(captureButton, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = dp(14)
+        })
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
@@ -376,12 +379,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
-            y = windowParams.y
-            // 不使用系统级 BLUR_BEHIND：部分系统会把整块屏幕（含相机预览）一起模糊。
+            y = (windowParams.y - headerView.measuredHeight).coerceAtLeast(0)
+            // 标题栏位于相机窗口上方，与相机预览完全分离。
             // 标题栏改用局部半透明渐变、柔和描边模拟磨砂玻璃，不影响标题栏以外画面。
         }
         windowManager.addView(root, windowParams)
         windowManager.addView(headerView, headerWindowParams)
+        headerView.post { updateOverlayPositions() }
     }
 
     /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
@@ -443,7 +447,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         runCatching { windowManager.updateViewLayout(root, windowParams) }
         if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
             headerWindowParams.x = windowParams.x
-            headerWindowParams.y = windowParams.y
+            // 标题栏始终贴在相机区域上方，不覆盖相机预览。
+            headerWindowParams.y = (windowParams.y - headerView.height).coerceAtLeast(0)
             headerWindowParams.width = windowParams.width
             runCatching { windowManager.updateViewLayout(headerView, headerWindowParams) }
         }
@@ -651,6 +656,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
             captureButton.isEnabled = enabled
             captureButton.alpha = if (enabled) 1f else 0f
+        }
+        if (::scanArea.isInitialized) {
+            // 拍照识图模式不显示扫码框；切回连续扫码时恢复。
+            scanArea.visibility = if (enabled) View.GONE else View.VISIBLE
+            scanArea.invalidate()
         }
     }
 
