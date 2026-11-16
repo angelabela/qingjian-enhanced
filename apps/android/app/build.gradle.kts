@@ -138,4 +138,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    // 剪贴板文字二维码生成（本机处理，不上传内容）。
+    implementation("com.google.zxing:core:3.5.3")
 }
