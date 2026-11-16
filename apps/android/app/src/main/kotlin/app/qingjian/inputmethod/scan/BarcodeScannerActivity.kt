@@ -258,7 +258,7 @@ class BarcodeScannerActivity : ComponentActivity() {
                                 codes.forEach { barcode ->
                                     val raw = barcode.rawValue?.trim().orEmpty()
                                     val box = barcode.boundingBox ?: return@forEach
-                                    if (raw.isBlank()) return@forEach
+                                    if (raw.isBlank() || !ScanPreferences.accepts(this@BarcodeScannerActivity, raw)) return@forEach
                                     // 把相机图像中的条码框转换为屏幕预览坐标，再判断是否落入可视扫描框。
                                     val mapped = RectF(box)
                                     coordinateTransform.mapRect(mapped)
