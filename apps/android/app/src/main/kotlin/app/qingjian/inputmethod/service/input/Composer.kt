@@ -547,10 +547,11 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
         pendingBackspaceSnapshot = null
-        val snapshot = undoHistory.lastOrNull() ?: pendingBackspaceSnapshot ?: lastClearSnapshot ?: return
+        // 优先使用上一次整框清空专用快照，不能让本次下滑按键产生的空快照抢先被恢复。
+        val snapshot = lastClearSnapshot ?: return
         clearGestureSnapshot = null
         val connection = host.connection ?: return
-        if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
+        if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast() else undoHistory.remove(snapshot)
         pendingBackspaceSnapshot = null
         // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
         apply(engine.clear())
@@ -568,7 +569,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
-        lastClearSnapshot = undoHistory.lastOrNull()
+        lastClearSnapshot = null
         closeUndoGroup()
         refreshCompletions()
     }
@@ -577,7 +578,11 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun clearAll() {
         val connection = host.connection ?: return
         val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
-        if (snapshot != null) pushUndoSnapshot(snapshot)
+        if (snapshot != null) {
+            pushUndoSnapshot(snapshot)
+            // 单独保存清空前文本；后续退格按下产生的快照不能覆盖它。
+            lastClearSnapshot = snapshot
+        }
         clearGestureSnapshot = null
         pendingBackspaceSnapshot = null
         closeUndoGroup()
@@ -794,7 +799,6 @@ class Composer(private val engine: Engine, private val host: Host) {
             undoHistory.addLast(snapshot)
             while (undoHistory.size > UNDO_HISTORY_LIMIT) undoHistory.removeFirst()
         }
-        lastClearSnapshot = snapshot
     }
 
     private fun closeUndoGroup() {
