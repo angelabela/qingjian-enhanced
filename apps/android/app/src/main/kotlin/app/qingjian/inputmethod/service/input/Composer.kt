@@ -611,6 +611,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun abandon() {
         undoHistory.clear()
         lastClearSnapshot = null
+        pendingBackspaceSnapshot = null
         closeUndoGroup()
         preedit = ""
         sentPreedits.clear()
