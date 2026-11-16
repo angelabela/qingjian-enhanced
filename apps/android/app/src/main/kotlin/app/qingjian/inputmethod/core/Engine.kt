@@ -381,7 +381,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
 
     companion object {
         private val STRUCTURED_TEXT = Regex(
-            """(?i)(?:https?://[^\s<>()]+|www\.[^\s<>()]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?<![A-Z0-9])(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[- ]?\d{7,8}(?!\d))"""
+            """(?i)(?:https?://[^\s<>()]+|www\.[^\s<>()]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?<![A-Z0-9])(?:\+?86[- ]?)?1[3-9]\d{2}[- ]?\d{4}[- ]?\d{4}(?!\d)|(?<!\d)0\d{2,3}[- ]?\d{7,8}(?!\d))"""
         )
         /** 进程里开着的引擎（输入法服务那一个；App 与输入法同进程）。只在主线程用。 */
         private val live = mutableSetOf<Engine>()
