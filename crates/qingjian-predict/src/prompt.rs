@@ -396,6 +396,7 @@ mod tests {
     #[test]
     fn sentence_can_add_contextual_chinese_punctuation_to_local_candidate() {
         let mut req = request("zhi'dao'ma", true);
+        req.syllables = 3;
         req.candidates = vec!["知道吗".into()];
         req.guess = "知道吗".into();
         let reply = parse_reply(
