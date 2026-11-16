@@ -86,7 +86,7 @@ class FunctionPanel(
 
     private fun cellWidth() = card.width() / columns
 
-    private fun cellHeight() = minOf(ink.dp(86f), card.height() / 2)
+    private fun cellHeight() = minOf(ink.dp(86f), card.height() / maxOf(2, (features.size + columns - 1) / columns))
 
     private fun drawFeatures(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
