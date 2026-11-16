@@ -3,7 +3,7 @@
 //! `data_dir` 是壳从 APK assets 解出来的随包数据目录（`.qj` 要 mmap，必须是真文件），
 //! `user_dir` 是应用私有目录下的学习数据目录。
 
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf};\nuse std::sync::Arc;
 use std::time::Instant;
 
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
@@ -71,16 +71,20 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     if neural_model.is_file() {
         let started = Instant::now();
         match CharScorer::load(&neural_model) {
-            Ok(scorer) => match P2cScorer::new(scorer) {
-                Some(scorer) => {
-                    tracing::info!(
-                        load_ms = started.elapsed().as_millis(),
-                        "本地整句生成模型已加载"
-                    );
-                    engine = engine.with_sentence_scorer(Box::new(scorer), None, None, None);
+            Ok(scorer) => {
+                let scorer = Arc::new(scorer);
+                match P2cScorer::new_shared(Arc::clone(&scorer)) {
+                    Some(p2c) => {
+                        tracing::info!(
+                            load_ms = started.elapsed().as_millis(),
+                            "本地整句生成与候选上下文重排模型已加载"
+                        );
+                        engine.set_choice_model(Some(scorer));
+                        engine = engine.with_sentence_scorer(Box::new(p2c), None, None, None);
+                    }
+                    None => tracing::warn!("本地模型缺少 P2C 分隔符，保留词图 + bigram"),
                 }
-                None => tracing::warn!("本地模型缺少 P2C 分隔符，保留词图 + bigram"),
-            },
+            }
             Err(error) => tracing::warn!(%error, "本地整句模型加载失败，保留词图 + bigram"),
         }
     }
