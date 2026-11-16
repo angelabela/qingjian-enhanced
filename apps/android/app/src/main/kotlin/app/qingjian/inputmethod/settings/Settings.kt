@@ -149,6 +149,7 @@ data class Settings(
         const val KEY_RECORD_CLIPBOARD = "record_clipboard"
         const val KEY_CLIPBOARD_LIMIT = "clipboard_limit"
         const val KEY_CODE_HIGHLIGHT = "code_highlight"
+        const val KEY_CLIPBOARD_PASTE_ENTER = "clipboard_paste_enter"
         const val KEY_FUZZY = "fuzzy"
         const val KEY_FULL_WIDTH = "full_width_punctuation"
         const val KEY_PAIR_PUNCTUATION = "pair_punctuation"
