@@ -80,7 +80,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var scanner: BarcodeScanner
     private lateinit var textRecognizer: TextRecognizer
     private var imageCapture: ImageCapture? = null
-    private var ocrMode = false
+    @Volatile private var ocrMode = false
     private lateinit var captureButton: ScanToolbarIconView
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
@@ -296,7 +296,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
-                val compact = availableWidth < dp(292)
+                val compact = availableWidth < dp(430)
                 orientation = if (compact) VERTICAL else HORIZONTAL
                 prefixRow.layoutParams = if (compact) {
                     LayoutParams(LayoutParams.MATCH_PARENT, dp(40))
