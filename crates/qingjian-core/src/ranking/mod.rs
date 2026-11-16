@@ -21,7 +21,7 @@ mod first_page;
 mod scored;
 mod single_chars;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub use first_page::{FIRST_SINGLE_CHAR_BY, keep_single_char_on_first_page};
 pub use scored::{PreselectKey, Scored, SortKey};
@@ -108,6 +108,26 @@ pub fn rank(
         })
         .collect();
     keyed.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    // 相同拼音的候选共享同一组展示位置，再按个人使用次数、当前串选择次数和词库词频排序。
+    // 只在相同拼音的槽位之间交换，不改变不同读音候选原有的整体位置；单字和词汇一视同仁。
+    let mut positions_by_pinyin: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (index, (_, item)) in keyed.iter().enumerate() {
+        if !item.hit.pinyin.is_empty() {
+            positions_by_pinyin.entry(item.hit.pinyin).or_default().push(index);
+        }
+    }
+    for positions in positions_by_pinyin.values_mut() {
+        if positions.len() < 2 {
+            continue;
+        }
+        let mut same_pinyin: Vec<_> = positions.iter().map(|&index| keyed[index]).collect();
+        same_pinyin.sort_unstable_by(|a, b| a.0.5.cmp(&b.0.5).then_with(|| a.0.cmp(&b.0)));
+        for (&position, candidate) in positions.iter().zip(same_pinyin) {
+            keyed[position] = candidate;
+        }
+    }
+
     let mut seen: HashSet<&str> = HashSet::with_capacity(limit.min(keyed.len()));
     items.extend(
         keyed
