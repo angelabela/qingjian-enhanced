@@ -103,10 +103,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     fun release(cancel: Boolean) {
         val panel = panel?.takeIf { it.holding } ?: return
         panel.holding = false
-        when {
-            cancel || panel.target == VoicePanel.Target.CANCEL -> onCancel()
-            else -> onFinish(act = panel.target == VoicePanel.Target.ACTION, hide = false)
-        }
+        if (cancel) onCancel() else onFinish(act = false, hide = false)
     }
 
     override fun onFinish(act: Boolean, hide: Boolean) {
