@@ -151,7 +151,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root = FrameLayout(this).apply {
             background = GradientDrawable().apply {
                 setColor(0x01000000)
-                cornerRadius = dp(18).toFloat()
+                // 相机区域顶部保持直边，与标题栏下边缘拼成一体；只圆润窗口底部。
+                cornerRadii = floatArrayOf(
+                    0f, 0f, 0f, 0f,
+                    dp(18).toFloat(), dp(18).toFloat(),
+                    dp(18).toFloat(), dp(18).toFloat(),
+                )
+                setStroke(dp(1), 0x66FFFFFF)
             }
             clipToOutline = true
             clipChildren = true
@@ -317,16 +323,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xA64A566A.toInt(), 0x99364358.toInt(), 0x8C2A3548.toInt()),
+                intArrayOf(0xB84A566A.toInt(), 0xAD364358.toInt(), 0xA62A3548.toInt()),
             ).apply {
-                cornerRadius = dp(16).toFloat()
+                // 标题栏底边与相机预览顶边贴合；只保留上方圆角，避免形成悬浮的双层圆角缝隙。
+                cornerRadii = floatArrayOf(
+                    dp(16).toFloat(), dp(16).toFloat(),
+                    dp(16).toFloat(), dp(16).toFloat(),
+                    0f, 0f, 0f, 0f,
+                )
                 setStroke(dp(1), 0x66FFFFFF)
             }
             addView(prefixRow)
             addView(toolbar)
         }
         attachHeaderDrag(header)
-        attachHeaderDrag(prefixSwitch)
+        // Switch 自身必须保留触摸序列；不能把它交给会消费事件的标题栏拖动监听。
         // 标题栏独立成一个小型悬浮窗口：BLUR_BEHIND 只覆盖标题栏范围，
         // 避免把整块相机预览也一起模糊。
         headerView = header
@@ -406,7 +417,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             show()
         }
-        headerView.post { updateOverlayPositions() }
+        headerView.post {
+            // Dialog 首次 show 前测量高度通常为 0；等标题栏真正完成布局后，
+            // 固定独立窗口的实际高度，并把它放到相机区域正上方，绝不压进预览画面。
+            val measuredHeaderHeight = headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight
+            if (measuredHeaderHeight > 0) {
+                headerWindowParams.height = measuredHeaderHeight
+                windowParams.y = windowParams.y.coerceAtLeast(measuredHeaderHeight)
+            }
+            updateOverlayPositions()
+        }
     }
 
     /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
@@ -462,9 +482,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private fun updateOverlayPositions() {
         runCatching { windowManager.updateViewLayout(root, windowParams) }
         if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
+            val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
+                .coerceAtLeast(0)
             headerWindowParams.x = windowParams.x
-            // 标题栏始终贴在相机区域上方，不覆盖相机预览。
-            headerWindowParams.y = (windowParams.y - headerView.height).coerceAtLeast(0)
+            // 标题栏窗口的底边与相机窗口顶边共用同一条坐标线；相机窗口不包含标题栏。
+            headerWindowParams.height = headerHeight.takeIf { it > 0 } ?: headerWindowParams.height
+            headerWindowParams.y = (windowParams.y - headerWindowParams.height).coerceAtLeast(0)
             headerWindowParams.width = windowParams.width
             runCatching { headerDialog?.window?.attributes = headerWindowParams }
         }
