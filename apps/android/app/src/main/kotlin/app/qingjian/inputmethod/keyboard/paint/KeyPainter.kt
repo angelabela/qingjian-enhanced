@@ -174,7 +174,7 @@ class KeyPainter(
             (bounds.right + grow).coerceAtMost(viewWidth - metrics.gapX),
             bounds.top - 4 * density,
         )
-        drawPlate(canvas, bubble, palette.surface)
+        drawPlate(canvas, bubble, if (keySkin == Settings.KeySkin.ORIGINAL) palette.surface else keySkin.base)
         text(canvas, text, 30f, if (keySkin == Settings.KeySkin.ORIGINAL) palette.text else keySkin.foreground, bubble.centerX(), bubble.centerY())
     }
 
