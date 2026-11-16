@@ -134,14 +134,14 @@ class QingjianInputMethodService :
             if (before.contains(value) || after.contains(value)) return
             connection.beginBatchEdit()
             try {
-                if (!connection.commitText(value, 1)) return
+                if (!composer.commitExternalText(value, connection)) return
                 // 扫码成功写入输入框后再更新系统剪贴板，剪贴板不参与拦截逻辑。
                 getSystemService(ClipboardManager::class.java)
                     .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
                 if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
                     // 优先直接提交换行字符，避免某些编辑器把 Enter 当成发送/搜索动作；
                     // 对不接受换行字符的编辑器再退回真实 Enter 按键事件。
-                    if (!connection.commitText("\n", 1)) {
+                    if (!composer.commitExternalText("\n", connection)) {
                         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
                         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
                     }
@@ -614,6 +614,8 @@ class QingjianInputMethodService :
         }
         if (currentInputConnection?.performContextMenuAction(actionId) != true) {
             toast("当前输入框暂不支持此操作")
+        } else if (action == KeyboardView.EditShortcut.CUT || action == KeyboardView.EditShortcut.PASTE) {
+            composer.invalidateEditHistory()
         }
     }
 
@@ -739,13 +741,17 @@ class QingjianInputMethodService :
                 val end = maxOf(extracted.selectionStart, extracted.selectionEnd)
                 if (end >= 0) ic.setSelection(end, end) else return
             }
-            ic.commitText(text, 1)
+            if (!composer.commitExternalText(text, ic)) {
+                toast("插入失败，当前输入框不支持此操作")
+            }
         }.onFailure { toast("插入失败，当前输入框不支持此操作") }
     }
 
     override fun replaceSelectedText(text: String): Boolean {
         val ic = currentInputConnection ?: return false
         if (ic.getSelectedText(0).isNullOrEmpty()) return false
+        // 选区替换暂不纳入普通撤销栈，避免在受限 InputConnection 上猜测被选中的原文。
+        composer.invalidateEditHistory()
         return runCatching { ic.commitText(text, 1) }.getOrDefault(false)
     }
 
@@ -762,6 +768,7 @@ class QingjianInputMethodService :
         val after = ic.getTextAfterCursor(10000, 0)?.toString() ?: return false
         val cursor = before.length
         aiReplacementUndo = (before + after) to cursor
+        composer.invalidateEditHistory()
         return runCatching {
             ic.beginBatchEdit()
             try {
