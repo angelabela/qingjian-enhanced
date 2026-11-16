@@ -38,6 +38,7 @@ class FunctionPanel(
     private val features = listOf(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
+        Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
         Feature(Icon.CAMERA, "扫码") { context.startActivity(Intent(context, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
         Feature(Icon.INFO, "验证码监测") { context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
         Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
