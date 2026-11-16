@@ -130,37 +130,7 @@ class AdvancedActivity : PageActivity() {
             pickBothBackups()
             return
         }
-        Engine.flushAll()
-        AlertDialog.Builder(this)
-            .setTitle(R.string.restore_all_title)
-            .setMessage(getString(R.string.restore_all_confirm, data.second, settings.second))
-            .setPositiveButton(R.string.restore_confirm) { _, _ ->
-                runBackground("qingjian-restore-all", {
-                    val liveUser = Engine.userDir(this)
-                    val snapshot = File(filesDir, "user-before-restore-${System.currentTimeMillis()}")
-                    snapshot.deleteRecursively()
-                    if (liveUser.exists()) liveUser.copyRecursively(snapshot, overwrite = true)
-                    try {
-                        val dataCount = restoreUserData(data.first)
-                        val settingsCount = restoreSettings(settings.first)
-                        snapshot.deleteRecursively()
-                        dataCount to settingsCount
-                    } catch (failure: Throwable) {
-                        if (snapshot.exists()) {
-                            if (!Engine.replaceUserData(this, snapshot)) {
-                                error("设置恢复失败，且原用户数据回滚失败；恢复前快照仍保留。原因：${failure.message}")
-                            }
-                        } else {
-                            snapshot.deleteRecursively()
-                        }
-                        throw failure
-                    }
-                }) { counts ->
-                    getString(R.string.restore_all_done, counts.first, counts.second)
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        restoreAllFromPair(data.first, settings.first, "${data.second} + ${settings.second}")
     }
 
     private fun pickTarget(request: Int) {
@@ -279,18 +249,18 @@ class AdvancedActivity : PageActivity() {
     @Deprecated("Activity 的老接口，这页没有别的结果要收")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        val target = data?.data
-        if (resultCode != RESULT_OK || target == null) return
+        if (resultCode != RESULT_OK) return
+        if (requestCode == RESTORE_ALL_PICK) {
+            val uris = buildList {
+                data?.clipData?.let { clip ->
+                    for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
+                } ?: data?.data?.let(::add)
+            }.distinct()
+            restoreAllFromUris(uris)
+            return
+        }
+        val target = data?.data ?: return
         when (requestCode) {
-            RESTORE_ALL_PICK -> {
-                val uris = buildList {
-                    data?.clipData?.let { clip ->
-                        for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
-                    } ?: target?.let(::add)
-                }.distinct()
-                restoreAllFromUris(uris)
-                return
-            }
             PACK_LOGS -> { packLogs(target); return }
             CREATE_ZIP -> {
                 Engine.flushAll()
