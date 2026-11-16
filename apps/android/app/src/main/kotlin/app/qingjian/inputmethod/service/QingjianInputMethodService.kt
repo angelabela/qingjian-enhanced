@@ -653,6 +653,13 @@ class QingjianInputMethodService :
         composer.commitPanelText(text)
     }
 
+    override fun commitClipboardText(text: String) {
+        composer.commitPanelText(text)
+        if (!Settings.preferences(this).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)) return
+        val connection = currentInputConnection ?: return
+        if (!connection.commitText("\n", 1)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+    }
+
     override fun replaceInputText(text: String): Boolean {
         val ic = currentInputConnection ?: return false
         val before = ic.getTextBeforeCursor(10000, 0)?.toString() ?: return false
