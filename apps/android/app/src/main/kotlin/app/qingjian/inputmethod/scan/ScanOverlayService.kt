@@ -421,8 +421,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (dragging) {
                         windowParams.x = (startX + event.rawX - downRawX).toInt()
                             .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                        val minCameraTop = headerView.height.coerceAtLeast(0)
                         windowParams.y = (startY + event.rawY - downRawY).toInt()
-                            .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
+                            .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
                         updateOverlayPositions()
                         true
                     } else {
@@ -511,8 +512,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             MotionEvent.ACTION_MOVE -> {
                 windowParams.x = (moveStartX + event.rawX - moveRawX).toInt()
                     .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                val minCameraTop = headerView.height.coerceAtLeast(0)
                 windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
-                    .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
+                    .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
                 updateOverlayPositions()
                 return true
             }
