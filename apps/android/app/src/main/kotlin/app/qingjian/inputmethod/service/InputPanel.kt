@@ -26,6 +26,7 @@ import app.qingjian.inputmethod.keyboard.KeyboardView
 import app.qingjian.inputmethod.panel.AiChatPanel
 import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
+import app.qingjian.inputmethod.panel.ContextToolsPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
 import app.qingjian.inputmethod.panel.PanelActions
@@ -125,7 +126,7 @@ class InputPanel(
         cloudSuggestions.showSmart(candidates, onSelect)
 
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
-    fun open(kind: PanelKind, text: String = "") {
+    fun open(kind: PanelKind, text: String = "", hasSelection: Boolean = false) {
         close()
         val header = bar.barHeight
         val panel = when (kind) {
@@ -137,6 +138,10 @@ class InputPanel(
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
             PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.CONTEXT_TOOLS -> ContextToolsPanel(
+                context, palette, header, text, hasSelection, aiChatGenerator,
+                actions::insertAtCursor, actions::replaceSelectedText, actions::copyToClipboard, actions::closePanel,
+            )
             PanelKind.AI_CHAT -> AiChatPanel(
                 context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
