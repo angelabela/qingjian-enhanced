@@ -119,10 +119,6 @@ class KeyPainter(
 
     /** 所有手势提示统一贴角：上滑在左上，下滑在右下，方向与动作一一对应。 */
     fun drawGestureHints(canvas: Canvas, slot: KeySlot, upLabel: String?, downLabel: String?) {
-        if (slot.key == Key.Backspace) {
-            drawBackspaceGestureHints(canvas, slot.bounds)
-            return
-        }
         if (upLabel == null && downLabel == null) return
         val b = slot.bounds
         val inset = 8f * density
@@ -151,21 +147,6 @@ class KeyPainter(
         ink.clearShadowLayer()
         canvas.drawText(label, textX, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
-    }
-
-    /** 删除键手势用方向图标提示：上滑清空、下滑撤销，不显示文字 tips。 */
-    private fun drawBackspaceGestureHints(canvas: Canvas, bounds: RectF) {
-        gestureHint.color = secondaryColor
-        val cx = bounds.centerX()
-        val top = bounds.top + 9f * density
-        val bottom = bounds.bottom - 10f * density
-        val half = 4f * density
-        canvas.drawLine(cx, top + 6f * density, cx, top, gestureHint)
-        canvas.drawLine(cx, top, cx - half, top + half, gestureHint)
-        canvas.drawLine(cx, top, cx + half, top + half, gestureHint)
-        canvas.drawLine(cx, bottom - 6f * density, cx, bottom, gestureHint)
-        canvas.drawLine(cx, bottom, cx - half, bottom - half, gestureHint)
-        canvas.drawLine(cx, bottom, cx + half, bottom - half, gestureHint)
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
