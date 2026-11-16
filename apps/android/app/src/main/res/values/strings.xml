@@ -287,9 +287,10 @@
     <string name="scan_mode_floating">悬浮窗口</string>
     <string name="scan_auto_enter_title">扫描结果输入后自动回车</string>
     <string name="scan_auto_enter_note">识别内容直接输入当前编辑框；开启后继续执行当前输入框的回车/发送动作</string>
+    <string name="scan_prefix_title">指定扫码前缀（留空扫描全部）</string>
     <string name="scan_vibrate_title">扫描成功时震动</string>
     <string name="scan_vibrate_note">关闭后识别成功仍会输入结果，但不触发震动</string>
-    <string name="scan_settings_note">悬浮窗口可按住标题栏拖动；扫描框仍可独立移动和调整大小。扫码结果也会保留在系统剪贴板中。</string>
+    <string name="scan_settings_note">设置指定前缀后，只接受以该字符串开头的二维码和条形码；留空则扫描全部。悬浮窗口可按住标题栏拖动；扫描框仍可独立移动和调整大小。扫码结果也会保留在系统剪贴板中。</string>
 
     <string name="page_voice">语音识别</string>
     <string name="voice_provider">识别服务</string>
