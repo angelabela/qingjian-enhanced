@@ -83,7 +83,12 @@ impl SentenceScorer for P2cScorer {
 /// 以光标前文的神经语言模型概率补充词频与 bigram，不改变候选的拼音匹配范围。
 impl ChoiceModel for CharScorer {
     fn align(&self, keys: &str, syllables: &[String]) -> Option<Vec<u32>> {
-        (!keys.is_empty() && !syllables.is_empty()).then(|| vec![0])
+        let typed_len = keys.chars().filter(|c| c.is_ascii_alphabetic()).count();
+        let covered_len: usize = syllables
+            .iter()
+            .map(|syllable| syllable.chars().filter(|c| c.is_ascii_alphabetic()).count())
+            .sum();
+        (typed_len > 0 && covered_len >= typed_len).then(|| vec![0])
     }
 
     fn letter_units(&self, _keys: &str) -> Vec<u32> {
