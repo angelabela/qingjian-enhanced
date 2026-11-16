@@ -20,7 +20,7 @@ import java.util.Locale
 
 /** 用户主动打开的上下文工具；本面板初始化和识别过程绝不发起云端请求。 */
 class ContextToolsPanel(
-    context: Context,
+    private val context: Context,
     private val palette: Palette,
     headerHeight: Float,
     private val source: String,
@@ -112,6 +112,7 @@ class ContextToolsPanel(
         val date = DATE_REGEX.find(value)?.value
         val money = MONEY_REGEX.find(value)?.value
         val isEnglish = value.any { it in 'A'..'Z' || it in 'a'..'z' }
+        val isAddress = listOf("省", "市", "区", "县", "镇", "乡", "街道", "路", "巷", "号", "栋", "单元", "室").any { value.contains(it) }
         val isCode = value.contains("{") || value.contains("}") || value.contains("fun ") ||
             value.contains("class ") || value.contains("=>") || value.contains("def ")
 
@@ -160,6 +161,15 @@ class ContextToolsPanel(
                 }
                 action("复制金额") { onCopy(money); showStatus("已复制金额") }
             }
+            isAddress -> {
+                action("整理地址") {
+                    val formatted = value.replace(Regex("[ \\t]+"), "")
+                        .replace(Regex("(省|市|区|县|镇|乡|街道|路|巷|号|栋|单元|室)"), "$1 ")
+                        .trim()
+                    showResult(formatted)
+                }
+                action("复制地址") { onCopy(value); showStatus("已复制地址") }
+            }
             isCode -> {
                 action("整理代码缩进") { showResult(formatCode(value)) }
                 action("复制代码") { onCopy(value); showStatus("已复制代码") }
@@ -188,10 +198,10 @@ class ContextToolsPanel(
     private fun requestAi(task: String) {
         if (source.isBlank()) return showStatus("没有可发送的文字")
         val request = ++requestId
-        generated = ""
+        val prompt = if (task == "continue" && generated.isNotBlank()) "$source\\n$generated" else source
         result.visibility = View.GONE
         showStatus("正在请求云端模型…（仅发送本次任务所需文字）")
-        generator.transform(task, if (task == "continue") source + generated else source) { response ->
+        generator.transform(task, prompt) { response ->
             if (request != requestId) return@transform
             response.onSuccess {
                 generated = it.trim()
