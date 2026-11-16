@@ -22,8 +22,11 @@ import kotlin.math.abs
 class Composer(private val engine: Engine, private val host: Host) {
     private data class ClearSnapshot(val text: String, val selectionStart: Int, val selectionEnd: Int)
 
-    /** 上滑清空前保存的完整输入框内容与选区；下滑恢复只消费这一份快照。 */
+    /** 最近六步输入前的编辑框快照；每个词/短句作为一组，撤销时逐步回退。 */
+    private val undoHistory = ArrayDeque<ClearSnapshot>()
     private var lastClearSnapshot: ClearSnapshot? = null
+    private var undoGroupOpen = false
+    private val undoGroupTimeout = Runnable { undoGroupOpen = false }
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -197,8 +200,18 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
-        // 清空后若用户开始新的输入，旧快照失效；退格按下本身不能提前清掉快照。
-        if (key != Key.Backspace) lastClearSnapshot = null
+        val composingBeforeKey = composing
+        if (key != Key.Backspace && key != Key.Clear) {
+            if (!undoGroupOpen) captureUndoSnapshot()
+            val continuesWord = composingBeforeKey || key is Key.Letter || key is Key.Zhuyin || key is Key.Digit
+            if (continuesWord) {
+                undoGroupOpen = true
+                handler.removeCallbacks(undoGroupTimeout)
+                handler.postDelayed(undoGroupTimeout, UNDO_GROUP_TIMEOUT_MS)
+            } else if (key == Key.Space || key is Key.Text || key is Key.Enter) {
+                closeUndoGroup()
+            }
+        }
         // 候选条上放着电话邮箱或「撤销」时，删除、重输先只收起它们，不动输入框里的字
         if ((key == Key.Backspace || key == Key.Clear) && !composing && completing && engine.hasOffer()) {
             apply(engine.clear())
@@ -319,6 +332,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.onLanguageChanged()
             }
         }
+        if (key == Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
     }
 
     /** 上次用的语言与另一边（从设置里读回来）；引擎的模式在 [onEngineReady] 里补。 */
@@ -462,20 +476,13 @@ class Composer(private val engine: Engine, private val host: Host) {
     fun onBackspaceDown() {
         backspaceComposing = composing
         beforeBackspace = null
-        val connection = host.connection ?: return
-        // 必须在 ACTION_DOWN 的第一次普通退格之前取快照，否则首字符已经被删掉。
-        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
-        val selected = connection.getSelectedText(0)?.toString().orEmpty()
-        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
-        val text = before + selected + after
-        if (text.isNotEmpty()) {
-            lastClearSnapshot = ClearSnapshot(text, before.length, before.length + selected.length)
-        }
+        captureUndoSnapshot()
+        closeUndoGroup()
     }
 
     /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
-        val snapshot = lastClearSnapshot ?: return
+        val snapshot = undoHistory.removeLastOrNull() ?: lastClearSnapshot ?: return
         val connection = host.connection ?: return
         // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
         apply(engine.clear())
@@ -493,12 +500,15 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
-        lastClearSnapshot = null
+        lastClearSnapshot = undoHistory.lastOrNull()
+        closeUndoGroup()
     }
 
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
+        captureUndoSnapshot()
+        closeUndoGroup()
         backspaceComposing = false
         beforeBackspace = null
         connection.beginBatchEdit()
@@ -556,6 +566,9 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 输入框换了或键盘收起：组句不带走。 */
     fun abandon() {
+        undoHistory.clear()
+        lastClearSnapshot = null
+        closeUndoGroup()
         preedit = ""
         sentPreedits.clear()
         composingLost = false
@@ -628,6 +641,7 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     private fun apply(frame: Frame) {
         val connection = host.connection ?: return
+        if (frame.commit.isNotEmpty() && !undoGroupOpen) captureUndoSnapshot()
         // 一段组句开头：组合文字放进去之前读光标前后文，给云联想
         val surrounding = if (engine.predicting && preedit.isEmpty() && frame.preedit.isNotEmpty()) {
             (connection.getTextBeforeCursor(SURROUNDING_BEFORE, 0)?.toString().orEmpty()) to
@@ -650,6 +664,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         connection.endBatchEdit()
         preedit = frame.preedit
+        if (frame.commit.isNotEmpty() && preedit.isEmpty()) closeUndoGroup()
         if (preedit.isEmpty()) {
             sentPreedits.clear()
         } else {
@@ -682,7 +697,29 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     private fun commit(text: String) {
+        if (text.isNotEmpty() && !undoGroupOpen) captureUndoSnapshot()
         host.connection?.commitText(text, 1)
+    }
+
+    /** 保存当前输入框完整内容与选区；相同快照不重复入栈，最多保留六步。 */
+    private fun captureUndoSnapshot() {
+        val connection = host.connection ?: return
+        val before = connection.getTextBeforeCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(MAX_SNAPSHOT, 0)?.toString() ?: return
+        val text = before + selected + after
+        if (text.isEmpty()) return
+        val snapshot = ClearSnapshot(text, before.length, before.length + selected.length)
+        if (undoHistory.lastOrNull() != snapshot) {
+            undoHistory.addLast(snapshot)
+            while (undoHistory.size > UNDO_HISTORY_LIMIT) undoHistory.removeFirst()
+        }
+        lastClearSnapshot = snapshot
+    }
+
+    private fun closeUndoGroup() {
+        undoGroupOpen = false
+        handler.removeCallbacks(undoGroupTimeout)
     }
 
     /**
@@ -761,6 +798,8 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         /** 撤销快照读取范围，与整框清空的最多删除量（100 轮）一致。 */
         const val MAX_SNAPSHOT = MAX_CLEAR * 100
+        const val UNDO_HISTORY_LIMIT = 6
+        const val UNDO_GROUP_TIMEOUT_MS = 900L
 
         /** 日语里当长音敲的键。 */
         val LONG_VOWEL = setOf("-", "ー")
