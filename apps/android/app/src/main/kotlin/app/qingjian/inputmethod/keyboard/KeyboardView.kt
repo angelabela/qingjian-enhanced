@@ -505,6 +505,8 @@ class KeyboardView(
             Settings.GestureAction.SWITCH_LANGUAGE -> "中英"
             Settings.GestureAction.BACKSPACE -> "删除"
             Settings.GestureAction.OPEN_SCANNER -> "扫码"
+            Settings.GestureAction.UNDO -> "撤销"
+            Settings.GestureAction.REDO -> "重做"
         }
     }
 
