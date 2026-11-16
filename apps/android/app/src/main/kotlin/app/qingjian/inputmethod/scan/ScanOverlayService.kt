@@ -385,9 +385,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                setBackgroundBlurRadius(dp(24))
-            }
+            // WindowManager.LayoutParams 不提供背景模糊 API；标题栏先使用半透明磨砂底色，
+            // 避免调用 Window#setBackgroundBlurRadius 导致 Kotlin 编译失败。
         }
         // 两个窗口都由 WindowManager 直接管理：不经过 Dialog decor/inset 二次偏移，
         // 标题栏始终是相机窗口上方的独立触摸层，不会被 Dialog 的默认窗口布局挤走。
