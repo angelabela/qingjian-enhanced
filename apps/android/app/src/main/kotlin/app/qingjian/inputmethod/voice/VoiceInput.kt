@@ -106,6 +106,24 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         if (cancel) onCancel() else onFinish(act = false, hide = false)
     }
 
+    override fun onClose() {
+        val activeRecognizer = recognizer ?: run {
+            host.closeVoicePanel()
+            return
+        }
+        after = After.NOTHING
+        panel?.listening = false
+        panel?.recognizing = false
+        panel = null
+        host.closeVoicePanel()
+        runCatching { activeRecognizer.finish() }
+            .onFailure {
+                android.util.Log.e("QingjianVoice", "Failed to finish voice input", it)
+                host.composeVoice("")
+                end()
+            }
+    }
+
     override fun onFinish(act: Boolean, hide: Boolean) {
         val recognizer = recognizer ?: return
         after = when {

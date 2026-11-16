@@ -21,6 +21,8 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.GestureDetector
+import android.view.ViewOutlineProvider
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
@@ -37,6 +39,8 @@ import androidx.camera.camera2.interop.Camera2Interop
 import android.hardware.camera2.CaptureRequest
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -51,6 +55,9 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.theme.Palette
 import app.qingjian.inputmethod.panel.base.PanelIcons
@@ -71,6 +78,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
     private lateinit var scanner: BarcodeScanner
+    private lateinit var textRecognizer: TextRecognizer
+    private var imageCapture: ImageCapture? = null
+    private var ocrMode = false
+    private lateinit var captureButton: ScanToolbarIconView
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var torchEnabled = false
@@ -95,6 +106,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         windowManager = getSystemService(WindowManager::class.java)
+        ocrMode = windowPrefs.getBoolean(KEY_OCR_MODE, false)
+        textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
         scanner = BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder().setBarcodeFormats(
                 Barcode.FORMAT_QR_CODE,
@@ -130,9 +143,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         scanArea = ScanAreaView(this)
         root = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            clipToOutline = false
-            clipChildren = false
+            background = GradientDrawable().apply {
+                setColor(0x01000000)
+                cornerRadius = dp(18).toFloat()
+            }
+            clipToOutline = true
+            clipChildren = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
         }
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         root.addView(scanArea, FrameLayout.LayoutParams(-1, -1))
@@ -204,7 +221,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        prefixInput.setOnTouchListener { _, event ->
+        attachHeaderDrag(prefixInput) { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN &&
                 (windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
@@ -232,10 +249,24 @@ class ScanOverlayService : Service(), LifecycleOwner {
             } else false
         }
 
+        val modeSwitch = Switch(this).apply {
+            text = "拍照识图"
+            textSize = 11f
+            setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
+            isChecked = ocrMode
+            setOnCheckedChangeListener { _, enabled ->
+                ocrMode = enabled
+                windowPrefs.edit().putBoolean(KEY_OCR_MODE, enabled).apply()
+                captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
+                contentDescription = if (enabled) "拍照识图已开启" else "扫码模式已开启"
+            }
+        }
+
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
+        toolbar.addView(modeSwitch, LinearLayout.LayoutParams(-2, dp(40)))
         toolbar.addView(ScanToolbarIconView(this, PanelIcons.Icon.DRAG, "拖动悬浮窗").apply {
             setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) finishPrefixEditing()
@@ -246,9 +277,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
         toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
-        toolbar.addView(ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
+        captureButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "拍照识别文字").apply {
+            visibility = if (ocrMode) View.VISIBLE else View.GONE
+            setOnClickListener { finishPrefixEditing(); if (ocrMode) capturePhotoForOcr() }
+        }
+        toolbar.addView(captureButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
             setOnClickListener { finishPrefixEditing(); stopSelf() }
-        }, LinearLayout.LayoutParams(dp(36), dp(40)))
+        }
+        toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
+        attachHeaderDrag(modeSwitch)
+        attachHeaderDrag(prefixRow)
+        attachHeaderDrag(toolbar)
+        attachHeaderDrag(torchButton)
+        attachHeaderDrag(captureButton)
+        attachHeaderDrag(closeButton)
 
         val header = object : LinearLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -270,10 +313,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }.apply {
             setPadding(dp(7), dp(2), dp(7), dp(2))
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(themePalette?.surface ?: 0xFF101522.toInt())
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xD93B4658.toInt(), 0xB9283448.toInt(), 0xA91C2638.toInt()),
+            ).apply {
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), 0x66FFFFFF)
+            }
             addView(prefixRow)
             addView(toolbar)
         }
+        attachHeaderDrag(header)
+        attachHeaderDrag(prefixSwitch)
         root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
         val resize = TextView(this).apply {
@@ -297,14 +348,54 @@ class ScanOverlayService : Service(), LifecycleOwner {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) WindowManager.LayoutParams.FLAG_BLUR_BEHIND else 0),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dp(16)
             y = dp(120)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) blurBehindRadius = dp(22)
         }
         windowManager.addView(root, windowParams)
+    }
+
+    /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
+    private fun attachHeaderDrag(view: View, delegate: ((View, MotionEvent) -> Boolean)? = null) {
+        var dragging = false
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(event: MotionEvent): Boolean {
+                moveRawX = event.rawX
+                moveRawY = event.rawY
+                moveStartX = windowParams.x
+                moveStartY = windowParams.y
+                return true
+            }
+
+            override fun onLongPress(event: MotionEvent) {
+                dragging = true
+                finishPrefixEditing()
+            }
+        })
+        view.isClickable = true
+        view.setOnTouchListener { target, event ->
+            detector.onTouchEvent(event)
+            if (dragging) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> {
+                        windowParams.x = (moveStartX + event.rawX - moveRawX).toInt()
+                            .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                        windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
+                            .coerceIn(0, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(0))
+                        runCatching { windowManager.updateViewLayout(root, windowParams) }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+                }
+                true
+            } else {
+                delegate?.invoke(target, event) ?: false
+            }
+        }
     }
 
     private fun finishPrefixEditing() {
@@ -452,9 +543,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
+            val capture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .setTargetResolution(Size(1920, 1080))
+                .build()
+            imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
                 val media = proxy.image
-                if (media == null || !processing.compareAndSet(false, true)) {
+                if (ocrMode || media == null || !processing.compareAndSet(false, true)) {
                     proxy.close()
                 } else {
                     scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
@@ -486,11 +582,57 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
             }
             provider.unbindAll()
-            camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
+            camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis, capture)
             torchButton.isEnabled = camera?.cameraInfo?.hasFlashUnit() == true
             torchButton.alpha = if (torchButton.isEnabled) 1f else 0.4f
             torchButton.contentDescription = if (torchButton.isEnabled) "打开手电筒" else "当前摄像头没有闪光灯"
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** 拍照识图仅在本机运行 ML Kit；识别完成后将整段文字写入当前输入框。 */
+    private fun capturePhotoForOcr() {
+        val capture = imageCapture ?: run {
+            Toast.makeText(this, "相机尚未准备好，请稍后再试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!processing.compareAndSet(false, true)) return
+        capture.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                val media = image.image
+                if (media == null) {
+                    image.close()
+                    processing.set(false)
+                    android.os.Handler(mainLooper).post {
+                        Toast.makeText(this@ScanOverlayService, "照片读取失败，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                    return
+                }
+                textRecognizer.process(InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees))
+                    .addOnSuccessListener { result ->
+                        val recognized = result.text.trim()
+                        if (recognized.isBlank()) {
+                            Toast.makeText(this@ScanOverlayService, "没有识别到文字，请调整角度后重拍", Toast.LENGTH_SHORT).show()
+                        } else {
+                            deliverResult(recognized)
+                            Toast.makeText(this@ScanOverlayService, "已识别文字并粘贴到输入框", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .addOnFailureListener {
+                        Toast.makeText(this@ScanOverlayService, "文字识别失败，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                    .addOnCompleteListener {
+                        image.close()
+                        processing.set(false)
+                    }
+            }
+
+            override fun onError(exception: ImageCaptureException) {
+                processing.set(false)
+                android.os.Handler(mainLooper).post {
+                    Toast.makeText(this@ScanOverlayService, "拍照失败：${exception.message ?: "请重试"}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
     }
 
     private fun toggleTorch() {
@@ -550,6 +692,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         cameraProvider?.unbindAll()
         if (::scanner.isInitialized) scanner.close()
+        if (::textRecognizer.isInitialized) textRecognizer.close()
         saveWindowSize()
         if (::root.isInitialized) runCatching { windowManager.removeView(root) }
         executor.shutdown()
@@ -692,6 +835,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val WINDOW_PREFS = "scan_overlay_window"
         private const val KEY_WIDTH_DP = "width_dp"
         private const val KEY_HEIGHT_DP = "height_dp"
+        private const val KEY_OCR_MODE = "ocr_mode"
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
     }
 }

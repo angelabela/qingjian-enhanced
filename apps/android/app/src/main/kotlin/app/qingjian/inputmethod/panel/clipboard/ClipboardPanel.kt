@@ -378,7 +378,9 @@ class ClipboardPanel(
                 pasteEnter = !pasteEnter
                 Settings.preferences(context).edit()
                     .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter).apply()
+                clearArmed = false
                 invalidate()
+                return
             }
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->

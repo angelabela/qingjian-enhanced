@@ -15,6 +15,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.TextView
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
@@ -33,6 +34,8 @@ class VoicePanel(
     interface Actions {
         fun onCancel()
         fun onFinish(act: Boolean, hide: Boolean)
+        /** Close the panel immediately while allowing the recognizer to finish its final result. */
+        fun onClose()
     }
 
     enum class Target { NONE, CANCEL, ACTION }
@@ -41,6 +44,7 @@ class VoicePanel(
     private val backdrop = ImageView(context)
     private val scrim = View(context)
     private val overlay = OverlayView(context)
+    private val finishButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
     private val smoothedBands = FloatArray(SAMPLE_COUNT)
     private var lastFrameNanos = 0L
@@ -93,6 +97,25 @@ class VoicePanel(
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        val density = resources.displayMetrics.density
+        finishButton.apply {
+            text = "结束"
+            textSize = 15f
+            setTextColor(palette.text)
+            gravity = android.view.Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setPadding((28f * density).toInt(), (10f * density).toInt(), (28f * density).toInt(), (10f * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor((palette.surface and 0x00FFFFFF) or 0xE6202938.toInt())
+                cornerRadius = 24f * density
+                setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
+            }
+            setOnClickListener { actions.onClose() }
+        }
+        addView(finishButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = (18f * density).toInt()
+        })
     }
 
     fun addSpectrum(bands: FloatArray) {
@@ -117,24 +140,7 @@ class VoicePanel(
         return if (kotlin.math.abs(x - width * 0.5f) <= width * 0.18f) Target.CANCEL else Target.NONE
     }
 
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        val x = event.x
-        val y = event.y
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> return true
-            MotionEvent.ACTION_UP -> {
-                touchTarget = Target.NONE
-                actions.onFinish(act = false, hide = false)
-                Haptics.tap(context)
-                return true
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                touchTarget = Target.NONE
-                return true
-            }
-        }
-        return true
-    }
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean = super.dispatchTouchEvent(event)
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
