@@ -409,14 +409,17 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /** 扫码等服务侧产生的单次上屏也进入统一历史。 */
-    fun commitExternalText(text: String, connection: InputConnection? = host.connection) {
-        if (text.isEmpty()) return
-        val target = connection ?: return
+    fun commitExternalText(text: String, connection: InputConnection? = host.connection): Boolean {
+        if (text.isEmpty()) return true
+        val target = connection ?: return false
         val before = editHistory.capture(target)
-        if (target.commitText(text, 1)) {
-            editHistory.record(before, editHistory.capture(target), insertedBefore = text)
-        }
+        val committed = target.commitText(text, 1)
+        if (committed) editHistory.record(before, editHistory.capture(target), insertedBefore = text)
+        return committed
     }
+
+    /** 宿主应用通过剪切、粘贴或整段替换改文后，废弃无法再安全验证的旧历史。 */
+    fun invalidateEditHistory() = editHistory.clear()
 
     /** 拼音仍在候选栏时，撤销优先取消组合；只有没有组合输入时才回退已上屏编辑。 */
     fun undo(): Boolean {
