@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, FLASHLIGHT, DRAG, CLOSE }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, FLASHLIGHT, DRAG, CLOSE }
 
     private val path = Path()
     private val oval = RectF()
@@ -53,6 +53,7 @@ object PanelIcons {
             Icon.LEFT_HAND -> leftHand()
             Icon.GAMEPAD -> gamepad()
             Icon.CAMERA -> camera()
+            Icon.QR_SCAN -> qrScan()
             Icon.FLASHLIGHT -> flashlight()
             Icon.DRAG -> drag()
             Icon.CLOSE -> { polyline(6f, 6f, 18f, 18f); polyline(18f, 6f, 6f, 18f) }
@@ -306,6 +307,18 @@ object PanelIcons {
         polyline(4.8f, 12.8f, 9.2f, 12.8f)
         circle(16.5f, 11.5f, 1f)
         circle(19f, 14.5f, 1f)
+    }
+
+    /** 二维码取景框图标，用于从拍照识图切回连续扫码。 */
+    private fun qrScan() {
+        polyline(4f, 9f, 4f, 4f, 9f, 4f)
+        polyline(15f, 4f, 20f, 4f, 20f, 9f)
+        polyline(4f, 15f, 4f, 20f, 9f, 20f)
+        polyline(15f, 20f, 20f, 20f, 20f, 15f)
+        polyline(8f, 8f, 10f, 8f, 10f, 10f, 8f, 10f, 8f, 8f)
+        polyline(14f, 8f, 16f, 8f, 16f, 10f, 14f, 10f, 14f, 8f)
+        polyline(8f, 14f, 10f, 14f, 10f, 16f, 8f, 16f, 8f, 14f)
+        polyline(14f, 14f, 16f, 14f, 16f, 16f, 14f, 16f, 14f, 14f)
     }
 
     private fun flashlight() {
