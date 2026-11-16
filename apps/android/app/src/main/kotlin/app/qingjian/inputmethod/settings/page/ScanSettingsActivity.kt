@@ -12,6 +12,14 @@ class ScanSettingsActivity : PageActivity() {
         val prefs = getSharedPreferences(ScanPreferences.PREFS, MODE_PRIVATE)
         val mode = prefs.getString(ScanPreferences.KEY_MODE, ScanPreferences.MODE_FULL)
         val rows = listOf(
+            ui.input(
+                "指定扫码前缀",
+                prefs.getString(ScanPreferences.KEY_PREFIX, "").orEmpty(),
+                "留空表示接受所有二维码和条形码",
+                secret = false,
+            ) { value ->
+                prefs.edit().putString(ScanPreferences.KEY_PREFIX, value.trim()).apply()
+            },
             ui.toggle(
                 "悬浮扫码",
                 "在当前应用上方显示可移动、可缩放的扫码窗口",
