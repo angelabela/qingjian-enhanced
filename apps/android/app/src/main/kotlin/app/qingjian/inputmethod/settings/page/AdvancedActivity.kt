@@ -13,6 +13,7 @@ import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
+import app.qingjian.inputmethod.cloud.SecretStore
 import app.qingjian.inputmethod.settings.Settings
 import java.io.BufferedInputStream
 import java.io.File
@@ -36,6 +37,7 @@ class AdvancedActivity : PageActivity() {
     /** 正在写压缩包（后台线程），行上显示「导出中…」。 */
     private var exporting = false
     private var restoring = false
+    private var restoredSecretsUnavailable = false
 
     override fun content(): List<View> = listOf(
         // 原有的独立数据/设置备份恢复入口继续保留。
@@ -123,7 +125,9 @@ class AdvancedActivity : PageActivity() {
         val data = findLatestDownloadBackup("qingjian-data")
         val settings = findLatestDownloadBackup("qingjian-settings")
         if (data == null || settings == null) {
-            Toast.makeText(this, R.string.backup_pair_missing, Toast.LENGTH_LONG).show()
+            // 重装后 MediaStore 对旧安装创建文件的可见性可能变化；不能只按本次安装的媒体索引判定备份不存在。
+            // 改用系统文件选择器，让用户从 Download 或其他目录同时选中旧的数据 ZIP 与设置 ZIP。
+            pickBothBackups()
             return
         }
         Engine.flushAll()
@@ -278,6 +282,15 @@ class AdvancedActivity : PageActivity() {
         val target = data?.data
         if (resultCode != RESULT_OK || target == null) return
         when (requestCode) {
+            RESTORE_ALL_PICK -> {
+                val uris = buildList {
+                    data?.clipData?.let { clip ->
+                        for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
+                    } ?: target?.let(::add)
+                }.distinct()
+                restoreAllFromUris(uris)
+                return
+            }
             PACK_LOGS -> { packLogs(target); return }
             CREATE_ZIP -> {
                 Engine.flushAll()
@@ -291,6 +304,86 @@ class AdvancedActivity : PageActivity() {
             RESTORE_ZIP -> confirmRestore(target, settings = false)
             RESTORE_SETTINGS -> confirmRestore(target, settings = true)
         }
+    }
+
+    /** 重装后旧安装创建的 Download 文件可能不在当前应用的 MediaStore 查询结果里，允许手动一次选中两份旧 ZIP。 */
+    private fun pickBothBackups() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/zip")
+            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        startActivityForResult(intent, RESTORE_ALL_PICK)
+    }
+
+    /** 依据压缩包清单识别类型，不依赖备份文件名或当前安装版本号。 */
+    private fun backupKind(uri: Uri): String? {
+        ZipInputStream(BufferedInputStream(contentResolver.openInputStream(uri) ?: return null)).use { zip ->
+            var entry = zip.nextEntry
+            var count = 0
+            while (entry != null && count++ < 1000) {
+                if (!entry.isDirectory && entry.name == "manifest.json") {
+                    val manifest = JSONObject(String(zip.readBytes(), Charsets.UTF_8))
+                    return manifest.optString("format").takeIf {
+                        it == "qingjian-user-data" || it == "qingjian-settings"
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        val name = uri.lastPathSegment.orEmpty()
+        return when {
+            name.contains("qingjian-data", ignoreCase = true) -> "qingjian-user-data"
+            name.contains("qingjian-settings", ignoreCase = true) -> "qingjian-settings"
+            else -> null
+        }
+    }
+
+    private fun restoreAllFromUris(uris: List<Uri>) {
+        if (uris.size != 2) {
+            Toast.makeText(this, "请同时选择一份 qingjian-data 数据备份和一份 qingjian-settings 设置备份", Toast.LENGTH_LONG).show()
+            return
+        }
+        val classified = uris.map { it to backupKind(it) }
+        val data = classified.firstOrNull { it.second == "qingjian-user-data" }?.first
+        val settings = classified.firstOrNull { it.second == "qingjian-settings" }?.first
+        if (data == null || settings == null) {
+            Toast.makeText(this, "无法识别这两份备份，请确认分别选择青简数据 ZIP 和设置 ZIP", Toast.LENGTH_LONG).show()
+            return
+        }
+        restoreAllFromPair(data, settings, "手动选择的旧版本备份")
+    }
+
+    private fun restoreAllFromPair(data: Uri, settings: Uri, label: String) {
+        Engine.flushAll()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.restore_all_title)
+            .setMessage(getString(R.string.restore_all_confirm, "数据备份", "设置备份") + "\\n\\n" + label)
+            .setPositiveButton(R.string.restore_confirm) { _, _ ->
+                runBackground("qingjian-restore-all", {
+                    restoredSecretsUnavailable = false
+                    val liveUser = Engine.userDir(this)
+                    val snapshot = File(filesDir, "user-before-restore-${System.currentTimeMillis()}")
+                    snapshot.deleteRecursively()
+                    if (liveUser.exists()) liveUser.copyRecursively(snapshot, overwrite = true)
+                    try {
+                        val dataCount = restoreUserData(data)
+                        val settingsCount = restoreSettings(settings)
+                        snapshot.deleteRecursively()
+                        dataCount to settingsCount
+                    } catch (failure: Throwable) {
+                        if (snapshot.exists() && !Engine.replaceUserData(this, snapshot)) {
+                            error("设置恢复失败，且原用户数据回滚失败；恢复前快照仍保留。原因：${failure.message}")
+                        }
+                        throw failure
+                    }
+                }) { counts ->
+                    getString(R.string.restore_all_done, counts.first, counts.second) +
+                        if (restoredSecretsUnavailable) "\\n云端大模型和语音识别 API Key 因 Android 安全密钥随卸载删除，需要重新填写。" else ""
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun confirmRestore(source: Uri, settings: Boolean, backupName: String? = null) {
@@ -586,7 +679,19 @@ class AdvancedActivity : PageActivity() {
             return values
         }
 
-        val decoded = backups.mapValues { decode(it.value) }
+        val decoded = backups.mapValues { (name, json) ->
+            decode(json).toMutableMap().apply {
+                // Android Keystore 的 AES 密钥会随卸载销毁；旧安装导出的密文在重装后不可解。
+                // 当前安装能解开的密钥照常恢复，解不开的密文必须清掉，避免界面误以为配置仍有效。
+                if (name == "cloud" || name == "voice") {
+                    val cipher = this["api_key_cipher"] as? String
+                    if (cipher != null && SecretStore.open(cipher) == null) {
+                        remove("api_key_cipher")
+                        restoredSecretsUnavailable = true
+                    }
+                }
+            }
+        }
         try {
             names.forEach { name -> writePreferences(name, decoded[name]) }
         } catch (failure: Throwable) {
