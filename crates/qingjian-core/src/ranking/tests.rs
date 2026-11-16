@@ -110,6 +110,55 @@ fn context_score_orders_within_the_same_structure() {
 }
 
 #[test]
+fn same_pinyin_words_and_single_chars_are_ordered_by_frequency() {
+    let mut items = vec![
+        Scored {
+            hit: hit("是", "shi", 100, true),
+            full_last: true,
+            coverage: 2,
+            abbreviated: 0,
+            weight: 0,
+            penalty: 0.0,
+            tone_cost: 0,
+            split: false,
+        },
+        Scored {
+            hit: hit("世事", "shi", 900, true),
+            full_last: true,
+            coverage: 4,
+            abbreviated: 0,
+            weight: 0,
+            penalty: 0.0,
+            tone_cost: 0,
+            split: false,
+        },
+        Scored {
+            hit: hit("时", "shi", 500, true),
+            full_last: true,
+            coverage: 2,
+            abbreviated: 0,
+            weight: 0,
+            penalty: 0.0,
+            tone_cost: 0,
+            split: false,
+        },
+        Scored {
+            hit: hit("事", "shi", 300, true),
+            full_last: true,
+            coverage: 2,
+            abbreviated: 0,
+            weight: 0,
+            penalty: 0.0,
+            tone_cost: 0,
+            split: false,
+        },
+    ];
+    rank(&mut items, usize::MAX, |_| (0, 0.0));
+    let texts: Vec<&str> = items.iter().map(|item| item.hit.text).collect();
+    assert_eq!(texts, ["世事", "时", "事", "是"]);
+}
+
+#[test]
 fn fewer_abbreviated_syllables_win_at_equal_coverage() {
     let mut items = vec![
         Scored {
