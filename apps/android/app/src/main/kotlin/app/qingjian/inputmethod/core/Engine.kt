@@ -159,6 +159,9 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     }
 
     private fun structuredPieces(raw: String): List<String> {
+        val core = raw.trimEnd { it in "，。！？；：、,.!?;:)" }
+        if (core.length < raw.length) return structuredPieces(core) + nativeTextPieces(raw.substring(core.length))
+
         // 邮箱：用户名、@、域名分开，方便单独选择或复制局部。
         if ('@' in raw && !raw.startsWith("http", ignoreCase = true) && !raw.startsWith("www.", ignoreCase = true)) {
             val at = raw.indexOf('@')
@@ -193,8 +196,12 @@ class Engine(context: Context, private val onReady: () -> Unit) {
 
         // 11 位手机号无分隔符时按 3-4-4 分组；已有空格/连字符则保留分隔符。
         val digits = raw.filter(Char::isDigit)
-        if (digits.length == 11 && digits.firstOrNull() == '1') {
-            if (raw.all(Char::isDigit)) return listOf(raw.substring(0, 3), raw.substring(3, 7), raw.substring(7))
+        val nationalDigits = if (digits.length == 13 && digits.startsWith("86")) digits.drop(2) else digits
+        if (nationalDigits.length == 11 && nationalDigits.firstOrNull() == '1') {
+            if (raw.all(Char::isDigit)) {
+                val prefix = if (digits.length == 13) listOf(digits.take(2)) else emptyList()
+                return prefix + listOf(nationalDigits.substring(0, 3), nationalDigits.substring(3, 7), nationalDigits.substring(7))
+            }
             val result = mutableListOf<String>()
             val chunks = Regex("(\\d+|\\D+)")
             for (part in chunks.findAll(raw)) {
