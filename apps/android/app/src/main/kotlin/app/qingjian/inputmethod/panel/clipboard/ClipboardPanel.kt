@@ -387,16 +387,15 @@ class ClipboardPanel(
         x >= width - ink.dp(142f) && x <= width - ink.dp(6f)
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-        // 整条摘要栏都由本面板接管触摸，避免点击开关时 GestureDetector 把事件交给外层面板。
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        // 在 GestureDetector 收到事件之前拦截摘要栏的整段触摸序列。
+        // 这样开关不会被父面板的单击手势解释成“关闭面板/返回键盘”。
         if (pasteSummaryTracking || isPasteSummaryTouch(event.y)) {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     pasteSummaryTracking = true
                     pasteToggleTracking = isPasteToggleTouch(event.x)
-                    return true
                 }
-                android.view.MotionEvent.ACTION_MOVE -> return true
                 android.view.MotionEvent.ACTION_UP -> {
                     val activate = pasteToggleTracking && isPasteToggleTouch(event.x)
                     pasteSummaryTracking = false
@@ -409,17 +408,15 @@ class ClipboardPanel(
                         Haptics.tap(context)
                         invalidate()
                     }
-                    return true
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
                     pasteSummaryTracking = false
                     pasteToggleTracking = false
-                    return true
                 }
             }
             return true
         }
-        return super.onTouchEvent(event)
+        return super.dispatchTouchEvent(event)
     }
 
     override fun onTap(x: Float, y: Float) {
