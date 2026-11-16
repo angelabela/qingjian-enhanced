@@ -94,7 +94,10 @@ class InputEditHistory(
 
     fun undo(connection: InputConnection): Result {
         val edit = undoStack.peekLast() ?: return Result.EMPTY
-        if (!matches(connection, edit.afterState)) return Result.MISMATCH
+        if (!matches(connection, edit.afterState)) {
+            undoStack.removeLast()
+            return Result.MISMATCH
+        }
         val applied = runCatching {
             connection.beginBatchEdit()
             try {
@@ -113,7 +116,10 @@ class InputEditHistory(
 
     fun redo(connection: InputConnection): Result {
         val edit = redoStack.peekLast() ?: return Result.EMPTY
-        if (!matches(connection, edit.beforeState)) return Result.MISMATCH
+        if (!matches(connection, edit.beforeState)) {
+            redoStack.removeLast()
+            return Result.MISMATCH
+        }
         val applied = runCatching {
             connection.beginBatchEdit()
             try {
