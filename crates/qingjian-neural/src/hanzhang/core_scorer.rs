@@ -1,4 +1,4 @@
-use qingjian_core::sentence::SentenceScorer;
+use qingjian_core::{ChoiceModel, sentence::SentenceScorer};
 
 use super::{CharScorer, P2c};
 
@@ -68,5 +68,31 @@ impl SentenceScorer for P2cScorer {
 
     fn generates(&self) -> bool {
         true
+    }
+}
+
+
+/// Android/轻量端也复用含章模型做候选上下文重排：只在 Core 已给出的拼音候选中比较，
+/// 以光标前文的神经语言模型概率补充词频与 bigram，不改变候选的拼音匹配范围。
+impl ChoiceModel for CharScorer {
+    fn align(&self, keys: &str, syllables: &[String]) -> Option<Vec<u32>> {
+        (!keys.is_empty() && !syllables.is_empty()).then(|| vec![0])
+    }
+
+    fn letter_units(&self, _keys: &str) -> Vec<u32> {
+        Vec::new()
+    }
+
+    fn score(&self, context: &str, _typed: &[u32], texts: &[&str]) -> Vec<f32> {
+        if !all_known(self, texts) {
+            return Vec::new();
+        }
+        match CharScorer::score(self, context, texts) {
+            Ok(scores) => scores.into_iter().map(|score| score as f32).collect(),
+            Err(error) => {
+                tracing::warn!(%error, "含章候选上下文重排失败，本次保留原排序");
+                Vec::new()
+            }
+        }
     }
 }
