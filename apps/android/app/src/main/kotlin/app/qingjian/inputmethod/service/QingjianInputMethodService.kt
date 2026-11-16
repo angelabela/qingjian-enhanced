@@ -517,7 +517,7 @@ class QingjianInputMethodService :
 
     private fun cancelPendingCandidateRerank() {
         candidateRerankSequence++
-        candidateRerankHandler.removeCallbacks(candidateRerankRunnable)
+        candidateRerankRunnable?.let(candidateRerankHandler::removeCallbacks)
         candidateRerankRunnable = null
     }
 
