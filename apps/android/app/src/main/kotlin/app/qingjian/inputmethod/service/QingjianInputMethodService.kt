@@ -746,7 +746,7 @@ class QingjianInputMethodService :
                 val end = maxOf(extracted.selectionStart, extracted.selectionEnd)
                 if (end >= 0) {
                     ic.setSelection(end, end)
-                    selectionActive = false
+                    hasActiveSelection = false
                 } else return
             }
             if (!composer.commitExternalText(text, ic)) {
@@ -761,7 +761,7 @@ class QingjianInputMethodService :
         // 选区替换暂不纳入普通撤销栈，避免在受限 InputConnection 上猜测被选中的原文。
         composer.invalidateEditHistory()
         val replaced = runCatching { ic.commitText(text, 1) }.getOrDefault(false)
-        if (replaced) selectionActive = false
+        if (replaced) hasActiveSelection = false
         return replaced
     }
 
