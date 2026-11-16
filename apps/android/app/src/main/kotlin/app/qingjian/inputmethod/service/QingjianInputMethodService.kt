@@ -585,6 +585,8 @@ class QingjianInputMethodService :
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> Unit
             Settings.GestureAction.CLEAR_ALL -> onClearAll()
             Settings.GestureAction.RESTORE_CLEAR -> onRestoreLastClear()
+            Settings.GestureAction.UNDO -> composer.undo()
+            Settings.GestureAction.REDO -> composer.redo()
             Settings.GestureAction.OPEN_CLIPBOARD -> onOpenClipboard()
             Settings.GestureAction.SELECT_ALL -> onEditShortcut(KeyboardView.EditShortcut.SELECT_ALL)
             Settings.GestureAction.CUT -> onEditShortcut(KeyboardView.EditShortcut.CUT)
