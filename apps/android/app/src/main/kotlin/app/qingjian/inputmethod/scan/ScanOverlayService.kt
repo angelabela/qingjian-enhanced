@@ -338,7 +338,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     (themePalette?.board ?: 0xFF252D39.toInt()).let { (it and 0x00FFFFFF) or (0xCC shl 24) },
                 ),
             ).apply {
-                // 标题栏底边与相机预览顶边贴合；只保留上方圆角，避免形成悬浮的双层圆角缝隙。
+                // 顶部保留两个圆角，底边保持直线并与预览重叠，避免透出底色形成缝隙。
                 cornerRadii = floatArrayOf(
                     dp(16).toFloat(), dp(16).toFloat(),
                     dp(16).toFloat(), dp(16).toFloat(),
@@ -346,6 +346,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 )
                 setStroke(dp(1), 0x66FFFFFF)
             }
+            // 强制按背景轮廓裁剪标题栏本身及其子控件，避免圆角外的矩形内容露出。
+            clipToOutline = true
+            clipChildren = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
             addView(prefixRow)
             addView(headerSpacer)
             addView(toolbar)
@@ -422,10 +426,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             show()
             window?.apply {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // Window API，而不是 LayoutParams API；仅模糊标题栏窗口后方。
-                    setBackgroundBlurRadius(dp(22))
-                }
+                // Window 级背景模糊是矩形区域，系统不会按子 View 圆角裁剪，
+                // 会让两个圆角外仍出现一块模糊矩形。这里关闭窗口级模糊，只保留标题栏自身的半透明圆角背景。
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setBackgroundBlurRadius(0)
+                decorView.setPadding(0, 0, 0, 0)
+                decorView.background = ColorDrawable(Color.TRANSPARENT)
                 attributes = headerWindowParams
             }
         }
@@ -499,7 +504,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             windowParams.y = windowParams.y.coerceAtLeast(headerHeight)
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            headerWindowParams.y = windowParams.y - headerHeight
+            // 向相机预览方向压住 1px，抵消两个独立 Window 在部分系统上的边缘取整误差。
+            headerWindowParams.y = windowParams.y - headerHeight + 1
             headerWindowParams.width = windowParams.width
             updateHeaderWindowLayout()
         }

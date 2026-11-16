@@ -24,6 +24,7 @@ import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.cloud.AiChatGenerator
+import app.qingjian.inputmethod.cloud.CandidateContextReranker
 import app.qingjian.inputmethod.cloud.CloudConfig
 import app.qingjian.inputmethod.cloud.AiExpressionGenerator
 import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
@@ -89,6 +90,13 @@ class QingjianInputMethodService :
     private lateinit var cloud: CloudServices
     private lateinit var aiExpression: AiExpressionGenerator
     private lateinit var aiChat: AiChatGenerator
+
+    private lateinit var candidateReranker: CandidateContextReranker
+    private val candidateRerankHandler = Handler(Looper.getMainLooper())
+    private var candidateRerankRunnable: Runnable? = null
+    private var candidateRerankSequence = 0
+    /** 显示顺序到 Rust 原始候选下标的映射，确保重排后点击仍选中正确候选。 */
+    private var candidateIndexMap: List<Int> = emptyList()
 
     /** 当前输入框的回车键文字，见 [enterLabel]。 */
     private var enterLabel: String? = null
@@ -216,6 +224,7 @@ class QingjianInputMethodService :
         cloud = CloudServices(this, engine)
         aiExpression = AiExpressionGenerator(this)
         aiChat = AiChatGenerator(this)
+        candidateReranker = CandidateContextReranker(this)
         composer = Composer(engine, this)
         quickTranslate = QuickTranslate(engine) { currentInputConnection }
         voice = VoiceInput(this, engine, this)
@@ -246,6 +255,8 @@ class QingjianInputMethodService :
         Settings.preferences(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
         runCatching { unregisterReceiver(smsCodeListener) }
         runCatching { unregisterReceiver(scanResultListener) }
+        candidateRerankHandler.removeCallbacksAndMessages(null)
+        candidateRerankSequence++
         cloud.stop()
         engine.close()
         super.onDestroy()
@@ -281,7 +292,7 @@ class QingjianInputMethodService :
             keyboardListener = this,
             actions = this,
             onBottomAction = ::onBottomAction,
-            onCloudSelect = { composer.select(it) },
+            onCloudSelect = { composer.select(originalCandidateIndex(it)) },
             onGenerateAiExpression = { source, callback -> aiExpression.generate(source, callback) },
             aiChatGenerator = aiChat,
             floating = target != null,
@@ -452,8 +463,18 @@ class QingjianInputMethodService :
     override fun performEditorAction(): Boolean = editor == null && sendDefaultEditorAction(true)
 
     override fun showComposition(preedit: String, candidates: List<Candidate>) {
+        candidateRerankSequence++
+        candidateRerankHandler.removeCallbacks(candidateRerankRunnable)
+        candidateRerankRunnable = null
         shownPreedit = preedit
         shownCandidates = candidates
+        candidateIndexMap = candidates.indices.toList()
+        renderShownComposition(preedit, candidates)
+        scheduleCandidateRerank(preedit, candidates)
+    }
+
+    /** 只重画显示层；candidateIndexMap 保证视觉重排不会改变引擎原始候选的选择下标。 */
+    private fun renderShownComposition(preedit: String, candidates: List<Candidate>) {
         panel?.bar?.show(preedit, candidates)
         panel?.showCloudSuggestions(candidates.mapIndexedNotNull { index, candidate ->
             if (candidate.cloud) index to candidate.text else null
@@ -463,12 +484,49 @@ class QingjianInputMethodService :
         }
     }
 
+    /**
+     * 停止输入 650ms 后才请求一次。私密输入、密码/直接输入、非中文输入不上传上下文。
+     * 模型只能把原候选中的一个提到首位，任何非候选输出都会被严格丢弃。
+     */
+    private fun scheduleCandidateRerank(preedit: String, candidates: List<Candidate>) {
+        if (candidates.size < 2 || preedit.isBlank() || composer.privateInput ||
+            composer.directInput || !composer.chinese || editor != null) return
+        val input = currentInputConnection ?: return
+        val before = runCatching { input.getTextBeforeCursor(20, 0)?.toString().orEmpty() }.getOrDefault("")
+        if (before.isBlank()) return
+        val candidateTexts = candidates.map { it.text }
+        val requestSequence = candidateRerankSequence
+        val task = Runnable {
+            candidateReranker.rerank(before, preedit, candidateTexts) { selected ->
+                if (selected == null || requestSequence != candidateRerankSequence ||
+                    shownPreedit != preedit || shownCandidates.map { it.text } != candidateTexts) return@rerank
+                val selectedIndex = candidateTexts.indexOf(selected)
+                if (selectedIndex <= 0) return@rerank
+                val order = listOf(selectedIndex) + candidateTexts.indices.filter { it != selectedIndex }
+                candidateIndexMap = order
+                shownCandidates = order.map(candidates::get)
+                renderShownComposition(preedit, shownCandidates)
+            }
+        }
+        candidateRerankRunnable = task
+        candidateRerankHandler.postDelayed(task, 650L)
+    }
+
+    private fun originalCandidateIndex(displayIndex: Int): Int =
+        candidateIndexMap.getOrNull(displayIndex) ?: displayIndex
+
+    private fun cancelPendingCandidateRerank() {
+        candidateRerankSequence++
+        candidateRerankHandler.removeCallbacks(candidateRerankRunnable)
+        candidateRerankRunnable = null
+    }
+
     override fun onExpand() {
         openPanel(PanelKind.CANDIDATES)
         panel?.showCandidates(shownPreedit, shownCandidates, composer.singleChars)
     }
 
-    override fun selectCandidate(index: Int) = composer.select(index)
+    override fun selectCandidate(index: Int) { cancelPendingCandidateRerank(); composer.select(originalCandidateIndex(index)) }
 
     override fun toggleSingleChars() = composer.toggleSingleChars()
 
@@ -576,7 +634,7 @@ class QingjianInputMethodService :
 
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
-    override fun onSelect(index: Int) = composer.select(index)
+    override fun onSelect(index: Int) { cancelPendingCandidateRerank(); composer.select(originalCandidateIndex(index)) }
 
     override fun onSmartAction(text: String, action: String) {
         val number = Regex("(?<!\\d)(?:\\+?86[- ]?)?(1[3-9]\\d{9})(?!\\d)")
@@ -591,9 +649,9 @@ class QingjianInputMethodService :
 
     override fun onMoveCaret(index: Int) = composer.moveCaret(index)
 
-    override fun onSelectTranslation(index: Int, sense: Int) = composer.selectTranslation(index, sense)
+    override fun onSelectTranslation(index: Int, sense: Int) { cancelPendingCandidateRerank(); composer.selectTranslation(originalCandidateIndex(index), sense) }
 
-    override fun onForget(index: Int) = composer.forget(index)
+    override fun onForget(index: Int) { cancelPendingCandidateRerank(); composer.forget(originalCandidateIndex(index)) }
 
     override fun showNotice(text: String) = toast(text)
 
