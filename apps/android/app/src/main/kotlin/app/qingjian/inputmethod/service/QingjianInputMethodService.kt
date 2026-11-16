@@ -191,7 +191,11 @@ class QingjianInputMethodService :
     }
 
     /** 设置页改了就重建键盘，开着键盘能马上看到。 */
-    private val settingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+    private val settingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        // 剪贴板面板内的开关也保存在 Settings.preferences 中，但它不是键盘布局设置。
+        // 若按通用设置变更逻辑重建 InputView，正在显示的面板会被销毁并退回键盘。
+        // 因此这类面板状态只持久化，不触发整套输入法视图重建。
+        if (key == Settings.KEY_CLIPBOARD_PASTE_ENTER) return@OnSharedPreferenceChangeListener
         contacts.sync()
         if (!writingSettings) setInputView(onCreateInputView())
     }
