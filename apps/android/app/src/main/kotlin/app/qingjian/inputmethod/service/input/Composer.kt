@@ -854,7 +854,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 撤销快照读取范围，与整框清空的最多删除量（100 轮）一致。 */
         const val MAX_SNAPSHOT = MAX_CLEAR * 100
         const val UNDO_HISTORY_LIMIT = 6
-        const val UNDO_GROUP_TIMEOUT_MS = 900L
+        const val UNDO_GROUP_TIMEOUT_MS = 1400L
 
         /** 日语里当长音敲的键。 */
         val LONG_VOWEL = setOf("-", "ー")
