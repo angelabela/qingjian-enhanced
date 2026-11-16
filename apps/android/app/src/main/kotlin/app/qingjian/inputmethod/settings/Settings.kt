@@ -195,7 +195,7 @@ data class Settings(
             return Settings(
                 layout = Layout.entries.firstOrNull { it.name == prefs.getString(KEY_LAYOUT, null) }
                     ?: Layout.QWERTY,
-                heightPercent = prefs.getInt(KEY_HEIGHT, 100).coerceIn(HEIGHT_MIN, HEIGHT_MAX),
+                heightPercent = prefs.getInt(KEY_HEIGHT, 112).coerceIn(HEIGHT_MIN, HEIGHT_MAX),
                 fullscreenAdapt = prefs.getBoolean(KEY_FULLSCREEN, true),
                 bottomLeft = BottomAction.of(prefs.getString(KEY_BOTTOM_LEFT, null), BottomAction.SWITCH_INPUT_METHOD),
                 bottomRight = BottomAction.of(prefs.getString(KEY_BOTTOM_RIGHT, null), BottomAction.VOICE),
