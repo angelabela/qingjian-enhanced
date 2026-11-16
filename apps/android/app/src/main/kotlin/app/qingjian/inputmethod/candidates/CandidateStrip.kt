@@ -21,6 +21,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         it.textAlign = Paint.Align.CENTER
     }
     private val fill = Paint()
+    private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = markColor
+        textSize = 20f * density * textScale
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
     private val src = Rect()
     private val dst = Rect()
 
@@ -40,7 +47,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     val candidatesTop: Int get() = image?.candidatesTop ?: 0
 
     /** 位图宽（像素），比视口宽时可以横向滚动。 */
-    val contentWidth: Float get() = image?.bitmap?.width?.toFloat() ?: 0f
+    val contentWidth: Float
+        get() {
+            val frame = image ?: return 0f
+            val extra = extraCandidates()
+            if (extra.isEmpty()) return frame.bitmap.width.toFloat()
+            return frame.bitmap.width + 12f * density + extra.size * 38f * density
+        }
 
     fun show(preedit: String, candidates: List<Candidate>) {
         this.preedit = preedit
@@ -52,7 +65,19 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         this.image = image
     }
 
-    fun indexAt(contentX: Float): Int = image?.candidateAt(contentX) ?: -1
+    fun indexAt(contentX: Float): Int {
+        val frame = image ?: return -1
+        frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
+        val extras = extraCandidates()
+        val start = frame.bitmap.width + 12f * density
+        if (contentX < start) return -1
+        return extras.getOrNull(((contentX - start) / (38f * density)).toInt()) ?: -1
+    }
+
+    private fun extraCandidates(): List<Int> {
+        val frame = image ?: return emptyList()
+        return candidates.indices.filter { frame.wordRect(it) == null }
+    }
 
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
     fun wordRect(index: Int): RectF? {
@@ -90,6 +115,19 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             src.set(0, 0, minOf(viewWidth, bitmap.width), top)
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
+        }
+        // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
+        val extras = extraCandidates()
+        val extraStart = bitmap.width + 12f * density
+        val extraCell = 38f * density
+        extras.forEachIndexed { slot, index ->
+            val left = extraStart + slot * extraCell
+            if (left + extraCell < scrollX || left > scrollX + viewWidth) return@forEachIndexed
+            val rect = RectF(left + 2f * density, 8f * density, left + extraCell - 2f * density, barHeight - 8f * density)
+            canvas.drawRoundRect(rect, 9f * density, 9f * density, extraFill)
+            val value = candidates.getOrNull(index)?.text ?: return@forEachIndexed
+            val baseline = rect.centerY() - (extraText.ascent() + extraText.descent()) / 2f
+            canvas.drawText(value, rect.centerX(), baseline, extraText)
         }
         for (index in image.emoji) {
             val word = image.wordRect(index) ?: continue
