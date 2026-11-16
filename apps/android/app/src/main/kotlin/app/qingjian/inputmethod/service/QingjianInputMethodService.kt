@@ -759,7 +759,7 @@ class QingjianInputMethodService :
         composer.commitPanelText(text)
         if (!Settings.preferences(this).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)) return
         val connection = currentInputConnection ?: return
-        if (!connection.commitText("\n", 1)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+        if (!composer.commitExternalText("\n", connection)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
     }
 
     override fun replaceInputText(text: String): Boolean {
