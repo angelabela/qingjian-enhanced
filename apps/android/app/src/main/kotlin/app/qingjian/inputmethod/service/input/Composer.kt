@@ -409,11 +409,12 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /** 扫码等服务侧产生的单次上屏也进入统一历史。 */
-    fun commitExternalText(text: String, connection: InputConnection = host.connection ?: return) {
+    fun commitExternalText(text: String, connection: InputConnection? = host.connection) {
         if (text.isEmpty()) return
-        val before = editHistory.capture(connection)
-        if (connection.commitText(text, 1)) {
-            editHistory.record(before, editHistory.capture(connection), insertedBefore = text)
+        val target = connection ?: return
+        val before = editHistory.capture(target)
+        if (target.commitText(text, 1)) {
+            editHistory.record(before, editHistory.capture(target), insertedBefore = text)
         }
     }
 
