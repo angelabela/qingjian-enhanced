@@ -297,7 +297,7 @@ class ContextToolsPanel(
 
     private fun moneyToChinese(raw: String): String? = runCatching {
         val amount = BigDecimal(raw.replace(",", "").replace("￥", "").replace("¥", "").replace("元", "").trim())
-        if (amount < BigDecimal.ZERO || amount > BigDecimal("999999999999.99")) return null
+        if (amount < BigDecimal.ZERO || amount > BigDecimal("999999999999.99")) throw IllegalArgumentException("金额超出范围")
         val cents = amount.setScale(2, java.math.RoundingMode.HALF_UP).movePointRight(2).longValueExact()
         val integer = cents / 100
         val fraction = (cents % 100).toInt()
