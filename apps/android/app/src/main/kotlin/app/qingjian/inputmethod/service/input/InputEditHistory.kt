@@ -26,6 +26,13 @@ class InputEditHistory(
     )
 
     /** 一次上屏/删除/替换。成对标点分别记录光标前、光标后的片段。 */
+    data class Part(
+        val insertedBefore: String,
+        val insertedAfter: String,
+        val deletedBefore: String,
+        val deletedAfter: String,
+    )
+
     data class Snapshot(
         val insertedBefore: String,
         val insertedAfter: String,
@@ -35,10 +42,52 @@ class InputEditHistory(
         val afterState: CursorState,
         val operation: Operation,
         val timestamp: Long,
+        /** 一次按键可能由多个连续 InputConnection 写入组成，撤销时按逆序回放。 */
+        val parts: List<Part> = emptyList(),
     )
 
     private val undoStack = ArrayDeque<Snapshot>()
     private val redoStack = ArrayDeque<Snapshot>()
+    private var groupDepth = 0
+    private val groupParts = mutableListOf<Part>()
+    private var groupBeforeState: CursorState? = null
+    private var groupAfterState: CursorState? = null
+    private var groupTimestamp = 0L
+
+    fun beginGroup() {
+        if (groupDepth++ == 0) {
+            groupParts.clear()
+            groupBeforeState = null
+            groupAfterState = null
+            groupTimestamp = SystemClock.uptimeMillis()
+        }
+    }
+
+    fun endGroup() {
+        if (groupDepth == 0) return
+        if (--groupDepth != 0) return
+        val before = groupBeforeState
+        val after = groupAfterState
+        val parts = groupParts.toList()
+        groupParts.clear()
+        groupBeforeState = null
+        groupAfterState = null
+        if (before == null || after == null || parts.isEmpty()) return
+        val hasDelete = parts.any { it.deletedBefore.isNotEmpty() || it.deletedAfter.isNotEmpty() }
+        val hasInsert = parts.any { it.insertedBefore.isNotEmpty() || it.insertedAfter.isNotEmpty() }
+        pushSnapshot(
+            Snapshot(
+                "", "", "", "", before, after,
+                when {
+                    hasDelete && hasInsert -> Operation.REPLACE
+                    hasDelete -> Operation.DELETE
+                    else -> Operation.INSERT
+                },
+                SystemClock.uptimeMillis(),
+                parts,
+            ),
+        )
+    }
 
     fun capture(connection: InputConnection): CursorState? = runCatching {
         val before = connection.getTextBeforeCursor(CONTEXT_UNITS, 0)?.toString() ?: return null
@@ -67,29 +116,20 @@ class InputEditHistory(
                 if (insertedBefore.isNotEmpty() || insertedAfter.isNotEmpty()) Operation.REPLACE else Operation.DELETE
             else -> Operation.INSERT
         }
-        val next = Snapshot(
-            insertedBefore, insertedAfter, deletedBefore, deletedAfter,
-            before, after, operation, timestamp,
-        )
-
-        val previous = undoStack.peekLast()
-        if (operation == Operation.DELETE && previous?.operation == Operation.DELETE &&
-            previous.insertedBefore.isEmpty() && previous.insertedAfter.isEmpty() &&
-            previous.deletedAfter.isEmpty() && deletedAfter.isEmpty() &&
-            before == previous.afterState && timestamp - previous.timestamp in 0L..deleteMergeWindowMs
-        ) {
-            undoStack.removeLast()
-            undoStack.addLast(
-                previous.copy(
-                    deletedBefore = deletedBefore + previous.deletedBefore,
-                    afterState = after,
-                    timestamp = timestamp,
-                ),
-            )
-        } else {
-            undoStack.addLast(next)
+        if (groupDepth > 0) {
+            redoStack.clear()
+            if (groupBeforeState == null) groupBeforeState = before
+            groupAfterState = after
+            groupParts += Part(insertedBefore, insertedAfter, deletedBefore, deletedAfter)
+            groupTimestamp = timestamp
+            return
         }
-        while (undoStack.size > limit) undoStack.removeFirst()
+        pushSnapshot(
+            Snapshot(
+                insertedBefore, insertedAfter, deletedBefore, deletedAfter,
+                before, after, operation, timestamp,
+            ),
+        )
     }
 
     fun undo(connection: InputConnection): Result {
@@ -139,6 +179,33 @@ class InputEditHistory(
     fun clear() {
         undoStack.clear()
         redoStack.clear()
+        groupDepth = 0
+        groupParts.clear()
+        groupBeforeState = null
+        groupAfterState = null
+    }
+
+    private fun pushSnapshot(next: Snapshot) {
+        val previous = undoStack.peekLast()
+        if (next.parts.isEmpty() && next.operation == Operation.DELETE &&
+            previous?.parts.isNullOrEmpty() && previous?.operation == Operation.DELETE &&
+            previous.insertedBefore.isEmpty() && previous.insertedAfter.isEmpty() &&
+            previous.deletedAfter.isEmpty() && next.deletedAfter.isEmpty() &&
+            next.beforeState == previous.afterState &&
+            next.timestamp - previous.timestamp in 0L..deleteMergeWindowMs
+        ) {
+            undoStack.removeLast()
+            undoStack.addLast(
+                previous.copy(
+                    deletedBefore = next.deletedBefore + previous.deletedBefore,
+                    afterState = next.afterState,
+                    timestamp = next.timestamp,
+                ),
+            )
+        } else {
+            undoStack.addLast(next)
+        }
+        while (undoStack.size > limit) undoStack.removeFirst()
     }
 
     private fun matches(connection: InputConnection, expected: CursorState): Boolean {
@@ -150,21 +217,31 @@ class InputEditHistory(
     }
 
     private fun applyInverse(connection: InputConnection, edit: Snapshot): Boolean {
-        if (edit.insertedBefore.isNotEmpty() || edit.insertedAfter.isNotEmpty()) {
-            if (!connection.deleteSurroundingText(edit.insertedBefore.length, edit.insertedAfter.length)) return false
+        val parts = edit.parts.ifEmpty {
+            listOf(Part(edit.insertedBefore, edit.insertedAfter, edit.deletedBefore, edit.deletedAfter))
         }
-        if (edit.deletedBefore.isNotEmpty() && !connection.commitText(edit.deletedBefore, 1)) return false
-        // newCursorPosition=0 将光标留在恢复的右侧片段之前（即原成对标点的中间）。
-        if (edit.deletedAfter.isNotEmpty() && !connection.commitText(edit.deletedAfter, 0)) return false
+        for (part in parts.asReversed()) {
+            if (part.insertedBefore.isNotEmpty() || part.insertedAfter.isNotEmpty()) {
+                if (!connection.deleteSurroundingText(part.insertedBefore.length, part.insertedAfter.length)) return false
+            }
+            if (part.deletedBefore.isNotEmpty() && !connection.commitText(part.deletedBefore, 1)) return false
+            // newCursorPosition=0 将光标留在恢复的右侧片段之前（即原成对标点的中间）。
+            if (part.deletedAfter.isNotEmpty() && !connection.commitText(part.deletedAfter, 0)) return false
+        }
         return true
     }
 
     private fun applyForward(connection: InputConnection, edit: Snapshot): Boolean {
-        if (edit.deletedBefore.isNotEmpty() || edit.deletedAfter.isNotEmpty()) {
-            if (!connection.deleteSurroundingText(edit.deletedBefore.length, edit.deletedAfter.length)) return false
+        val parts = edit.parts.ifEmpty {
+            listOf(Part(edit.insertedBefore, edit.insertedAfter, edit.deletedBefore, edit.deletedAfter))
         }
-        if (edit.insertedBefore.isNotEmpty() && !connection.commitText(edit.insertedBefore, 1)) return false
-        if (edit.insertedAfter.isNotEmpty() && !connection.commitText(edit.insertedAfter, 0)) return false
+        for (part in parts) {
+            if (part.deletedBefore.isNotEmpty() || part.deletedAfter.isNotEmpty()) {
+                if (!connection.deleteSurroundingText(part.deletedBefore.length, part.deletedAfter.length)) return false
+            }
+            if (part.insertedBefore.isNotEmpty() && !connection.commitText(part.insertedBefore, 1)) return false
+            if (part.insertedAfter.isNotEmpty() && !connection.commitText(part.insertedAfter, 0)) return false
+        }
         return true
     }
 
