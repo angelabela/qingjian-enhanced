@@ -43,14 +43,35 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
             }.getOrNull()
             if (record?.state != AudioRecord.STATE_INITIALIZED) {
                 record?.release()
-                main.post { fail("麦克风打不开") }
+                main.post { fail("麦克风无法启动，可能正被其他应用占用，请关闭其他录音或通话应用后重试") }
                 return@thread
             }
-            record.startRecording()
+            try {
+                record.startRecording()
+                if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    error("AudioRecord 未进入录音状态")
+                }
+            } catch (_: Throwable) {
+                record.release()
+                main.post {
+                    fail("麦克风正在被占用或暂不可用，请结束其他应用的录音、通话或语音输入后重试")
+                }
+                return@thread
+            }
             val buffer = ShortArray(CHUNK)
             while (recording) {
                 val read = record.read(buffer, 0, buffer.size)
-                if (read < 0) break
+                if (read < 0) {
+                    val message = when (read) {
+                        AudioRecord.ERROR_DEAD_OBJECT -> "麦克风连接已中断，请重新尝试语音输入"
+                        AudioRecord.ERROR_INVALID_OPERATION -> "麦克风当前不可用，可能正被其他应用占用，请关闭其他录音或通话应用后重试"
+                        AudioRecord.ERROR_BAD_VALUE -> "录音参数无效，请重新启动语音输入"
+                        AudioRecord.ERROR -> "麦克风读取失败，请检查麦克风权限或占用情况"
+                        else -> "麦克风录音失败（$read），请重试"
+                    }
+                    main.post { if (recording) fail(message) }
+                    break
+                }
                 if (read == 0) continue
                 val chunk = buffer.copyOf(read)
                 val spectrum = spectrum(chunk)
@@ -61,7 +82,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                     this.listener?.onSpectrum(spectrum)
                 }
             }
-            record.stop()
+            runCatching { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
             record.release()
         }
         main.postDelayed(poll, POLL_MS)
