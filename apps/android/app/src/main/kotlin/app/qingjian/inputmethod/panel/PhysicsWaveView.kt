@@ -133,7 +133,10 @@ class PhysicsWaveView @JvmOverloads constructor(
             Style.ELASTIC_STRING -> drawString(canvas)
             Style.GLOW_ORBS -> drawOrbs(canvas)
         }
-        val moving = listening || pos.indices.any { abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f }
+        val moving = listening || pos.indices.any {
+            if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
+            else abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f
+        }
         if (moving) postInvalidateOnAnimation() else lastFrame = 0L
     }
 
