@@ -816,28 +816,24 @@ class QingjianInputMethodService :
         val prefs = Settings.preferences(this)
         val connection = currentInputConnection
         AppLog.info("clipboard commit: editor=${currentInputEditorInfo?.packageName}, enter=${prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)}, nextCell=${prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false)}, panel=${panel?.openPanel}")
-        try {
-            composer.commitPanelText(text)
-            if (connection != null) {
-                when {
-                    prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) -> {
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB))
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB))
-                    }
-                    prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false) -> {
-                        if (!composer.commitExternalText("\n", connection)) {
-                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-                        }
+        // 点击项目只执行粘贴与可选的 Enter/Tab；绝不主动关闭剪贴板面板。
+        // 剪贴板面板保持当前状态，用户只有点击面板返回键才会回到键盘。
+        composer.commitPanelText(text)
+        if (connection != null) {
+            when {
+                prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) -> {
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB))
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB))
+                }
+                prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false) -> {
+                    if (!composer.commitExternalText("\n", connection)) {
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
                     }
                 }
             }
-        } finally {
-            // 不依赖宿主应用是否因 Enter/Tab 重建输入视图；每次点剪贴板条目都主动回到键盘。
-            clipboardPanelEditorPackage = null
-            panel?.close()
-            AppLog.info("clipboard panel closed after paste")
         }
+        AppLog.info("clipboard paste completed; panel remains open")
     }
 
     override fun replaceInputText(text: String): Boolean {
