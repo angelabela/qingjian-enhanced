@@ -22,6 +22,8 @@ jobs:
     env:
       NDK_VERSION: 29.0.13599879
       CARGO_TERM_COLOR: always
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
