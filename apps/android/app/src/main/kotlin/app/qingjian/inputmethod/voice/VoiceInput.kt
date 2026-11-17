@@ -52,8 +52,9 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     private var after = After.NOTHING
     /** 使输入框切换/取消后的迟到 AI 回复失效。 */
     private var generation = 0L
+    private var pendingCorrection = false
 
-    val active: Boolean get() = recognizer != null
+    val active: Boolean get() = recognizer != null || pendingCorrection
 
     /** 「语音识别」配好了就用 Rust 侧的识别方，否则是 [UnavailableRecognizer]。 */
     private fun pick(): VoiceRecognizer = when {
@@ -121,7 +122,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     override fun onClose() {
         val activeRecognizer = recognizer ?: run {
-            host.closeVoicePanel()
+            if (pendingCorrection) onCancel() else host.closeVoicePanel()
             return
         }
         after = After.NOTHING
@@ -153,8 +154,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     override fun onCancel() {
         generation += 1
         val activeRecognizer = recognizer
+        val hadPendingVoice = activeRecognizer != null || pendingCorrection
         activeRecognizer?.cancel()
-        host.composeVoice("")
+        pendingCorrection = false
+        if (hadPendingVoice) host.composeVoice("")
         end()
     }
 
@@ -176,8 +179,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         }
 
         // 保留当前 composing 文本，待纠错完成后只提交一次，避免撤销时出现两步记录。
+        pendingCorrection = true
         host.correctVoiceText(original) { result ->
             if (generation != requestGeneration) return@correctVoiceText
+            pendingCorrection = false
             val corrected = result.getOrNull()
                 ?.let(VoiceTextNormalizer::normalize)
                 ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
