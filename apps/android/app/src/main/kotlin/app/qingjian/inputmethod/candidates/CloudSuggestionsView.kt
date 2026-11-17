@@ -66,6 +66,7 @@ class CloudSuggestionsView(
     private var tipSide = 1
     private var tipYRatio = 0.35f
     private var hideInProgress = false
+    private var snapAnimator: ValueAnimator? = null
     private var tipsDetached = false
     private var anchorHeightBeforeFloat: Int? = null
     private var tipsAnchor: View? = null
@@ -201,6 +202,7 @@ class CloudSuggestionsView(
         val wasVisible = visibility == VISIBLE
         tipsContainer?.visibility = VISIBLE
         hideHandler.removeCallbacks(autoHideRunnable)
+        cancelHideAnimation()
         shatterAnimator?.cancel()
         shatterProgress = 0f
         flyingGlyphs = emptyList()
@@ -309,21 +311,7 @@ class CloudSuggestionsView(
         }
     }
 
-    private fun updateAnchorPosition() {
-        val dialog = tipsDialog ?: return
-        val anchor = tipsAnchor ?: return
-        if (!dialog.isShowing || tipsDetached) return
-        val location = IntArray(2)
-        anchor.getLocationOnScreen(location)
-        dialog.window?.let { window ->
-            val width = window.decorView.width.takeIf { it > 0 } ?: measuredWidth
-            window.attributes = window.attributes.apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = ((resources.displayMetrics.widthPixels - width) / 2).coerceAtLeast(0)
-                y = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
-            }
-        }
-    }
+    private fun updateAnchorPosition() = Unit
 
     private fun returnToAnchor() {
         val dialog = tipsDialog ?: return
@@ -353,81 +341,53 @@ class CloudSuggestionsView(
         hideHandler.postDelayed(autoHideRunnable, 4_000L)
     }
 
+    private fun cancelHideAnimation() {
+        if (!hideInProgress) return
+        val motion = tipsContainer ?: this
+        motion.animate().cancel()
+        hideInProgress = false
+        motion.alpha = 1f
+        motion.scaleX = 1f
+        motion.scaleY = 1f
+        visibility = VISIBLE
+        tipsContainer?.visibility = VISIBLE
+    }
+
+    private fun finishWindowHide() {
+        if (!hideInProgress) return
+        hideInProgress = false
+        visibility = GONE
+        tipsContainer?.visibility = GONE
+        val motion = tipsContainer ?: this
+        motion.alpha = 1f
+        motion.translationX = 0f
+        motion.translationY = 0f
+        motion.scaleX = 1f
+        motion.scaleY = 1f
+        returnToAnchor()
+    }
+
+    private fun animateWindowHide() {
+        if (visibility != VISIBLE || hideInProgress) return
+        stopAutoScroll()
+        val motion = tipsContainer ?: this
+        hideInProgress = true
+        motion.pivotX = if (tipSide == 0) 0f else motion.width.toFloat()
+        motion.pivotY = motion.height / 2f
+        motion.animate().cancel()
+        motion.animate()
+            .alpha(0f)
+            .scaleX(0.72f)
+            .scaleY(0.72f)
+            .setDuration(300L)
+            .setInterpolator(android.view.animation.AccelerateInterpolator(1.35f))
+            .withEndAction { finishWindowHide() }
+            .start()
+    }
+
     private fun shatterAndHide() {
         if (visibility != VISIBLE || draggingTips) return
-        stopAutoScroll()
-        val random = Random(System.nanoTime())
-        val hostLocation = IntArray(2)
-        getLocationOnScreen(hostLocation)
-        flyingGlyphs = buildList {
-            for (i in 0 until items.childCount) {
-                val row = items.getChildAt(i) as? ViewGroup ?: continue
-                for (j in 0 until row.childCount) {
-                    val label = row.getChildAt(j) as? TextView ?: continue
-                    val value = label.text?.toString().orEmpty()
-                    if (value.isEmpty()) continue
-                    val location = IntArray(2)
-                    label.getLocationOnScreen(location)
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        typeface = label.typeface
-                        textSize = label.textSize
-                    }
-                    var prefix = ""
-                    val codePoints = value.codePoints().toArray()
-                    codePoints.forEachIndexed { glyphIndex, codePoint ->
-                        val glyph = String(Character.toChars(codePoint))
-                        val glyphWidth = paint.measureText(glyph)
-                        val x = location[0] - hostLocation[0] + label.paddingLeft + paint.measureText(prefix) + glyphWidth / 2f
-                        val metrics = paint.fontMetrics
-                        val y = location[1] - hostLocation[1] + label.height / 2f - (metrics.ascent + metrics.descent) / 2f
-                        add(Glyph(
-                            glyph, x, y,
-                            (random.nextFloat() - 0.35f) * 110f * density,
-                            (-12f - random.nextFloat() * 100f) * density,
-                            (random.nextFloat() - 0.5f) * 70f,
-                            label.textSize,
-                            label.currentTextColor,
-                            (glyphIndex * 0.065f).coerceAtMost(0.72f),
-                        ))
-                        prefix += glyph
-                    }
-                    label.alpha = 0f
-                }
-            }
-        }
-        shards = emptyList()
-        shatterAnimator?.cancel()
-        val motionView = tipsContainer ?: this
-        shatterAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1_050L
-            addUpdateListener {
-                shatterProgress = it.animatedValue as Float
-                // Tips 玻璃底板与文字一起向上、向侧面漂移并缩小；字符则各自延迟散开。
-                motionView.alpha = 1f - shatterProgress
-                motionView.translationX = dragOffsetX + 12f * density * shatterProgress
-                motionView.translationY = dragOffsetY - 10f * density * shatterProgress
-                motionView.scaleX = 1f - 0.10f * shatterProgress
-                motionView.scaleY = 1f - 0.10f * shatterProgress
-                invalidate()
-            }
-            start()
-        }
-        postDelayed({
-            if (shatterProgress >= 0.99f) {
-                visibility = GONE
-                tipsContainer?.visibility = GONE
-                val motion = tipsContainer ?: this
-                motion.alpha = 1f
-                motion.translationX = dragOffsetX
-                motion.translationY = dragOffsetY
-                motion.scaleX = 1f
-                motion.scaleY = 1f
-                shatterProgress = 0f
-                shards = emptyList()
-                flyingGlyphs = emptyList()
-                returnToAnchor()
-            }
-        }, 1_080L)
+        animateWindowHide()
     }
 
     private fun hideTips() {
@@ -437,28 +397,43 @@ class CloudSuggestionsView(
         shards = emptyList()
         flyingGlyphs = emptyList()
         if (visibility != VISIBLE) return
-        stopAutoScroll()
-        val motion = tipsContainer ?: this
-        motion.animate().cancel()
-        // 沿着输入框所在的上方方向收拢，边移动边渐隐，避免突然消失。
-        motion.animate()
-            .alpha(0f)
-            .translationY(dragOffsetY - height.coerceAtLeast((38 * density).toInt()).toFloat())
-            .scaleX(0.92f)
-            .scaleY(0.88f)
-            .setDuration(360L)
-            .withEndAction {
-                visibility = GONE
-                tipsContainer?.visibility = GONE
-                val motion = tipsContainer ?: this
-                motion.alpha = 1f
-                motion.translationX = dragOffsetX
-                motion.translationY = dragOffsetY
-                motion.scaleX = 1f
-                motion.scaleY = 1f
-                returnToAnchor()
+        animateWindowHide()
+    }
+
+    /** 文字从吸附边整体弹入后，逐字渐显并轻微上浮。 */
+    private fun animateGlyphEntrance(label: TextView, value: String) {
+        val offsets = ArrayList<Int>()
+        var offset = 0
+        while (offset < value.length) {
+            offsets += offset
+            offset += Character.charCount(value.codePointAt(offset))
+        }
+        val baseColor = label.currentTextColor
+        fun spanAt(progress: Float): SpannableString {
+            val result = SpannableString(value)
+            val head = progress * (offsets.size + 5f)
+            offsets.forEachIndexed { index, start ->
+                val end = if (index + 1 < offsets.size) offsets[index + 1] else value.length
+                val alpha = (255f * (1f - (1f - ((head - index) / 5f).coerceIn(0f, 1f)).let { it * it * it })).toInt()
+                result.setSpan(
+                    ForegroundColorSpan((baseColor and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)),
+                    start, end, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
             }
-            .start()
+            return result
+        }
+        label.text = spanAt(0f)
+        label.translationY = 5f * density
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = (260L + offsets.size * 42L).coerceAtMost(1_150L)
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                val progress = it.animatedValue as Float
+                label.text = spanAt(progress)
+                label.translationY = 5f * density * (1f - progress)
+            }
+            start()
+        }
     }
 
     /**
