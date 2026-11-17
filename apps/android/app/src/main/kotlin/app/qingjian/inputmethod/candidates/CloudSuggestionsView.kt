@@ -3,6 +3,8 @@ package app.qingjian.inputmethod.candidates
 import android.content.Context
 import android.app.Dialog
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -60,6 +62,8 @@ class CloudSuggestionsView(
     private var anchorHeightBeforeFloat: Int? = null
     private var tipsAnchor: View? = null
     private var tipsDialog: Dialog? = null
+    private var tipsContainer: FrameLayout? = null
+    private val positionPrefs = context.getSharedPreferences("cloud_tips_position", Context.MODE_PRIVATE)
     /** 当前编辑器光标屏幕坐标；云 Tips 始终锚定在输入位置上方。 */
     private var editorAnchorX: Float? = null
     private var editorAnchorY: Float? = null
@@ -86,13 +90,8 @@ class CloudSuggestionsView(
         clipToOutline = true
         setPadding((18 * density).toInt(), 0, (18 * density).toInt(), 0)
         // 主题色磨砂玻璃：底色取当前主题 surface/board，弱化高光，采用微圆角。
-        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
-            (palette.surface and 0x00FFFFFF) or (0xF4 shl 24),
-            (palette.board and 0x00FFFFFF) or (0xEE shl 24),
-        )).apply {
-            cornerRadius = 8f * density
-            setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
-        }
+        // 上层内容透明；磨砂玻璃由 Dialog 内部的下层容器单独绘制。
+        background = ColorDrawable(Color.TRANSPARENT)
         elevation = 18f * density
         setLayerType(View.LAYER_TYPE_HARDWARE, null)
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
@@ -191,21 +190,23 @@ class CloudSuggestionsView(
                 .start()
         }
         val wasVisible = visibility == VISIBLE
+        tipsContainer?.visibility = VISIBLE
         hideHandler.removeCallbacks(autoHideRunnable)
         shatterAnimator?.cancel()
         shatterProgress = 0f
         flyingGlyphs = emptyList()
-        alpha = 1f
-        animate().cancel()
+        val motion = tipsContainer ?: this
+        motion.alpha = 1f
+        motion.animate().cancel()
         visibility = VISIBLE
         // 有悬浮窗权限时放入独立圆角 Window，使用系统背景模糊；输入法内只保留透明占位行。
         attachTipsDialogIfAllowed()
 
         if (!wasVisible) {
-            alpha = 0f
-            translationY = dragOffsetY - 8f * density
+            motion.alpha = 0f
+            motion.translationY = dragOffsetY - 8f * density
         }
-        animate().alpha(1f).translationY(dragOffsetY).setDuration(320L).start()
+        motion.animate().alpha(1f).translationY(dragOffsetY).setDuration(320L).start()
         scrollTo(0, 0)
         startAutoScroll()
         scheduleAutoHide()
@@ -226,10 +227,26 @@ class CloudSuggestionsView(
             anchor.layoutParams = params
         }
         oldParent.removeView(this)
-        tipsDetached = false
+        tipsDetached = positionPrefs.contains("x") && positionPrefs.contains("y")
+
+        val container = FrameLayout(context).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
+                (palette.surface and 0x00FFFFFF) or (0xF2 shl 24),
+                (palette.board and 0x00FFFFFF) or (0xEC shl 24),
+            )).apply {
+                cornerRadius = 9f * density
+                setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
+            }
+            clipToOutline = true
+            elevation = 18f * density
+            addView(this@CloudSuggestionsView, FrameLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER,
+            ))
+        }
+        tipsContainer = container
         val dialog = Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
         runCatching {
-            dialog.setContentView(this)
+            dialog.setContentView(container)
             dialog.setCancelable(false)
             dialog.window?.apply {
                 setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
@@ -240,47 +257,45 @@ class CloudSuggestionsView(
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
-                val glass = GradientDrawable().apply {
-                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
-                    cornerRadius = 8f * density
-                    setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
-                }
-                setBackgroundDrawable(glass)
+                // decor 与上层内容均透明；只有下层 container 绘制磨砂玻璃，避免双层底色叠加。
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             }
             dialog.show()
             dialog.window?.apply {
                 setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
-                // 同时给 Dialog decor 和内容 View 绘制实色主题玻璃底板，避免部分 ROM 只显示透明 decor。
-                decorView.background = GradientDrawable().apply {
-                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
-                    cornerRadius = 8f * density
-                    setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
-                }
-                (decorView as? ViewGroup)?.clipChildren = true
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     setBackgroundBlurRadius((26f * density).toInt())
                 }
-                decorView.clipToOutline = true
-                decorView.outlineProvider = object : android.view.ViewOutlineProvider() {
-                    override fun getOutline(view: View, outline: android.graphics.Outline) {
-                        outline.setRoundRect(0, 0, view.width, view.height, 8f * density)
-                    }
-                }
-                attributes = attributes.apply {
-                    gravity = Gravity.TOP or Gravity.START
-                    x = ((resources.displayMetrics.widthPixels - decorView.width) / 2).coerceAtLeast(0)
-                    // Tips 吸附在输入法窗口外边框上方，不再占据输入法内部空间。
-                    y = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
-                }
-                decorView.invalidateOutline()
+                decorView.setBackgroundColor(Color.TRANSPARENT)
+                (decorView as? ViewGroup)?.clipChildren = false
                 decorView.post {
-                    if (tipsDialog === dialog && !tipsDetached) updateAnchorPosition()
+                    if (tipsDialog !== dialog) return@post
+                    val viewWidth = decorView.width.takeIf { it > 0 } ?: container.measuredWidth
+                    val maxX = (resources.displayMetrics.widthPixels - viewWidth).coerceAtLeast(0)
+                    val maxY = (resources.displayMetrics.heightPixels - decorView.height).coerceAtLeast(0)
+                    val saved = positionPrefs.contains("x") && positionPrefs.contains("y")
+                    val x = if (saved) positionPrefs.getInt("x", 0).coerceIn(0, maxX)
+                        else ((resources.displayMetrics.widthPixels - viewWidth) / 2).coerceAtLeast(0)
+                    val y = if (saved) positionPrefs.getInt("y", 0).coerceIn(0, maxY)
+                        else (location[1] - (52f * density).toInt()).coerceAtLeast(0)
+                    window.attributes = window.attributes.apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        this.x = x
+                        this.y = y
+                    }
+                    updateAnchorPosition()
                 }
             }
             tipsDialog = dialog
         }.onFailure {
+            tipsContainer = null
+            tipsDetached = false
             runCatching { dialog.dismiss() }
             if (this.parent == null) {
+                background = GradientDrawable().apply {
+                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
+                    cornerRadius = 9f * density
+                }
                 oldParent.addView(
                     this,
                     FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
@@ -310,6 +325,7 @@ class CloudSuggestionsView(
         val anchor = tipsAnchor as? ViewGroup ?: return
         tipsDetached = false
         tipsDialog = null
+        tipsContainer = null
         runCatching { dialog.dismiss() }
         anchorHeightBeforeFloat?.let { originalHeight ->
             anchor.layoutParams?.let { params ->
@@ -319,6 +335,7 @@ class CloudSuggestionsView(
         }
         anchorHeightBeforeFloat = null
         if (parent == null) {
+            background = ColorDrawable(Color.TRANSPARENT)
             anchor.addView(
                 this,
                 FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
@@ -392,11 +409,13 @@ class CloudSuggestionsView(
         postDelayed({
             if (shatterProgress >= 0.99f) {
                 visibility = GONE
-                alpha = 1f
-                translationX = dragOffsetX
-                translationY = dragOffsetY
-                scaleX = 1f
-                scaleY = 1f
+                tipsContainer?.visibility = GONE
+                val motion = tipsContainer ?: this
+                motion.alpha = 1f
+                motion.translationX = dragOffsetX
+                motion.translationY = dragOffsetY
+                motion.scaleX = 1f
+                motion.scaleY = 1f
                 shatterProgress = 0f
                 shards = emptyList()
                 flyingGlyphs = emptyList()
@@ -413,9 +432,10 @@ class CloudSuggestionsView(
         flyingGlyphs = emptyList()
         if (visibility != VISIBLE) return
         stopAutoScroll()
-        animate().cancel()
+        val motion = tipsContainer ?: this
+        motion.animate().cancel()
         // 沿着输入框所在的上方方向收拢，边移动边渐隐，避免突然消失。
-        animate()
+        motion.animate()
             .alpha(0f)
             .translationY(dragOffsetY - height.coerceAtLeast((38 * density).toInt()).toFloat())
             .scaleX(0.92f)
@@ -423,11 +443,13 @@ class CloudSuggestionsView(
             .setDuration(360L)
             .withEndAction {
                 visibility = GONE
-                alpha = 1f
-                translationX = dragOffsetX
-                translationY = dragOffsetY
-                scaleX = 1f
-                scaleY = 1f
+                tipsContainer?.visibility = GONE
+                val motion = tipsContainer ?: this
+                motion.alpha = 1f
+                motion.translationX = dragOffsetX
+                motion.translationY = dragOffsetY
+                motion.scaleX = 1f
+                motion.scaleY = 1f
                 returnToAnchor()
             }
             .start()
@@ -459,8 +481,9 @@ class CloudSuggestionsView(
         }
         selectionAnimating = true
         // 点击时整块玻璃 Tips 也缓慢收拢，字符按顺序从卡片位置飞向输入框方向。
-        animate().cancel()
-        animate()
+        val motion = tipsContainer ?: this
+        motion.animate().cancel()
+        motion.animate()
             .alpha(0.24f)
             .scaleX(0.95f)
             .scaleY(0.90f)
@@ -575,6 +598,11 @@ class CloudSuggestionsView(
                     if (kotlin.math.abs(attrs.x - targetX) <= snap && kotlin.math.abs(attrs.y - targetY) <= snap) {
                         tipsDetached = false
                         window.attributes = attrs.apply { gravity = Gravity.TOP or Gravity.START; x = targetX; y = targetY }
+                    }
+                }
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    tipsDialog?.window?.attributes?.let { attrs ->
+                        positionPrefs.edit().putInt("x", attrs.x).putInt("y", attrs.y).apply()
                     }
                 }
                 floatingDragActive = false
