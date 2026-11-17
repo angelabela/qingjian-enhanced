@@ -12,6 +12,7 @@ on:
       - feature/workflow-471-scan-window-geometry-tips-glass-clipboard-tab
       - feature/workflow-472-floating-tips-camera-memory-clipboard-stay
       - feature/workflow-473-clipboard-tips-camera-fix
+      - feature/workflow-474-clipboard-tips-camera-fix
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
