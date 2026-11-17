@@ -99,8 +99,11 @@ class ClipboardPanel(
 
     /** 剪贴板粘贴后回车换行：全局开关，不按记录分别保存。 */
     private var pasteEnter = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
+    private var pasteNextCell = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false)
     private val pasteToggleRect = RectF()
+    private val pasteNextCellRect = RectF()
     private var pasteToggleTracking = false
+    private var pasteNextCellTracking = false
     private var pasteSummaryTracking = false
 
     /** 每张卡片在列表内容里的上下边（不含滚动），画与点共用。 */
@@ -131,13 +134,15 @@ class ClipboardPanel(
             ink.text(canvas, summary, 12.5f, palette.gloss, width / 2f, summaryCenterY)
         } else {
             // 独立的可视化开关与独立触摸热区，避免触发面板外层的点击/关闭逻辑。
-            val toggleWidth = ink.dp(132f)
-            val toggleHeight = ink.dp(24f)
             pasteToggleRect.set(pasteToggleBounds())
+            pasteNextCellRect.set(pasteNextCellBounds())
             ink.textStart(canvas, summary, 12.5f, palette.gloss, ink.dp(12f), summaryCenterY, pasteToggleRect.left - ink.dp(8f))
             ink.round(canvas, pasteToggleRect, 12f, if (pasteEnter) palette.brand else palette.surface)
-            ink.text(canvas, if (pasteEnter) "粘贴后回车  开" else "粘贴后回车  关", 11.5f,
+            ink.text(canvas, if (pasteEnter) "回车换行 ✓" else "回车换行", 11f,
                 if (pasteEnter) palette.onBrand else palette.text, pasteToggleRect.centerX(), pasteToggleRect.centerY(), bold = true)
+            ink.round(canvas, pasteNextCellRect, 12f, if (pasteNextCell) palette.brand else palette.surface)
+            ink.text(canvas, if (pasteNextCell) "跳到下格 ✓" else "跳到下格", 11f,
+                if (pasteNextCell) palette.onBrand else palette.text, pasteNextCellRect.centerX(), pasteNextCellRect.centerY(), bold = true)
         }
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, headerHeight + ink.dp(SUMMARY_DP), width.toFloat(), listBottom)
@@ -376,9 +381,16 @@ class ClipboardPanel(
     }
 
     private fun pasteToggleBounds(): RectF = RectF(
-        width - ink.dp(142f),
+        width - ink.dp(202f),
         headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
-        width - ink.dp(10f),
+        width - ink.dp(106f),
+        headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
+    )
+
+    private fun pasteNextCellBounds(): RectF = RectF(
+        width - ink.dp(100f),
+        headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
+        width - ink.dp(8f),
         headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
     )
 
@@ -396,16 +408,28 @@ class ClipboardPanel(
                     parent?.requestDisallowInterceptTouchEvent(true)
                     pasteSummaryTracking = true
                     pasteToggleTracking = pasteToggleBounds().contains(event.x, event.y)
+                    pasteNextCellTracking = pasteNextCellBounds().contains(event.x, event.y)
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    val activate = pasteToggleTracking && pasteToggleBounds().contains(event.x, event.y)
+                    val activateEnter = pasteToggleTracking && pasteToggleBounds().contains(event.x, event.y)
+                    val activateNext = pasteNextCellTracking && pasteNextCellBounds().contains(event.x, event.y)
                     pasteSummaryTracking = false
                     pasteToggleTracking = false
+                    pasteNextCellTracking = false
                     parent?.requestDisallowInterceptTouchEvent(false)
-                    if (activate) {
-                        pasteEnter = !pasteEnter
-                        Settings.preferences(context).edit()
-                            .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter).apply()
+                    if (activateEnter || activateNext) {
+                        val prefs = Settings.preferences(context)
+                        if (activateEnter) {
+                            pasteEnter = !pasteEnter
+                            if (pasteEnter) pasteNextCell = false
+                        } else {
+                            pasteNextCell = !pasteNextCell
+                            if (pasteNextCell) pasteEnter = false
+                        }
+                        prefs.edit()
+                            .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter)
+                            .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, pasteNextCell)
+                            .apply()
                         clearArmed = false
                         Haptics.tap(context)
                         invalidate()
@@ -414,6 +438,7 @@ class ClipboardPanel(
                 android.view.MotionEvent.ACTION_CANCEL -> {
                     pasteSummaryTracking = false
                     pasteToggleTracking = false
+                    pasteNextCellTracking = false
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
             }
