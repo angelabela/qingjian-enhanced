@@ -19,7 +19,7 @@ interface PanelActions {
     /** 只替换当前选区；没有选中文字时返回 false。 */
     fun replaceSelectedText(text: String): Boolean
 
-    /** 剪贴板记录上屏；按全局开关决定是否紧接着执行回车换行。 */
+    /** 剪贴板记录上屏；按全局动作开关决定是否发送回车或 Tab，面板保持打开。 */
     fun commitClipboardText(text: String)
 
     /** AI 回复整段替换当前输入框内容，并保留一次撤销快照。 */
