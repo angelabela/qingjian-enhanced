@@ -115,7 +115,11 @@ class VoicePanel(
                 cornerRadius = 22f * density
                 setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
             }
-            view.setOnClickListener { action() }
+            view.setOnClickListener {
+                // 交给 Android 系统触感反馈通道，遵循系统震动总开关与强度设置。
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                action()
+            }
         }
         styleActionButton(undoButton, "撤销", actions::onUndo)
         styleActionButton(finishButton, "完成", actions::onClose)
@@ -150,7 +154,10 @@ class VoicePanel(
         undoButton.alpha = if (undoButton.isSelected) 1f else 0.86f
         undoButton.scaleX = if (undoButton.isSelected) 1.06f else 1f
         undoButton.scaleY = if (undoButton.isSelected) 1.06f else 1f
-        if (next != Target.NONE) Haptics.tap(context)
+        if (next != Target.NONE) {
+            // 长按空格拖入撤销按钮时也遵循系统触感反馈设置。
+            undoButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        }
         overlay.invalidate()
     }
 
