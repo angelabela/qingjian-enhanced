@@ -20,6 +20,7 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.VelocityTracker
 import android.view.animation.OvershootInterpolator
+import java.util.function.Consumer
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
@@ -67,6 +68,7 @@ class CloudSuggestionsView(
     private var tipYRatio = 0.35f
     private var hideInProgress = false
     private var snapAnimator: ValueAnimator? = null
+    private var blurEnabledListener: Consumer<Boolean>? = null
     private var tipsDetached = false
     private var anchorHeightBeforeFloat: Int? = null
     private var tipsAnchor: View? = null
@@ -186,9 +188,15 @@ class CloudSuggestionsView(
                     if (smart != null) smart(suggestion) else onSelect(index)
                 }
                 flyIntoEditorDirection(label, suggestion) {
-                    // 先收起旧 Tips，再回调选择；若新候选立即到达，不会被旧动画误隐藏。
-                    hideTips()
+                    // 点击也算一次交互：恢复卡片状态、执行上屏，然后重新开始 4 秒计时。
+                    val motion = tipsContainer ?: this
+                    motion.animate().cancel()
+                    motion.alpha = 1f
+                    motion.scaleX = 1f
+                    motion.scaleY = 1f
+                    motion.translationY = dragOffsetY
                     select()
+                    scheduleAutoHide()
                 }
             }
             animateGlyphEntrance(label, suggestion)
@@ -243,11 +251,7 @@ class CloudSuggestionsView(
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val blurAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && wm.isCrossWindowBlurEnabled
         val container = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = 16f * density
-                setColor(if (blurAvailable) 0x80FFFFFF.toInt() else 0xE6FFFFFF.toInt())
-                setStroke((1f * density).toInt().coerceAtLeast(1), 0x66FFFFFF)
-            }
+            background = glassBackground(blurAvailable)
             clipToOutline = true
             elevation = 18f * density
             addView(this@CloudSuggestionsView, FrameLayout.LayoutParams(
@@ -298,6 +302,14 @@ class CloudSuggestionsView(
                 }
             }
             tipsDialog = dialog
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val listener = Consumer<Boolean> { enabled ->
+                    tipsContainer?.background = glassBackground(enabled)
+                    tipsDialog?.window?.setBackgroundBlurRadius(if (enabled) (40f * density).toInt() else 0)
+                }
+                blurEnabledListener = listener
+                wm.addCrossWindowBlurEnabledListener(context.mainExecutor, listener)
+            }
         }.onFailure {
             tipsContainer = null
             tipsDetached = false
@@ -319,6 +331,15 @@ class CloudSuggestionsView(
         tipsDetached = false
         tipsDialog = null
         tipsContainer = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            blurEnabledListener?.let { listener ->
+                runCatching {
+                    (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                        .removeCrossWindowBlurEnabledListener(listener)
+                }
+            }
+        }
+        blurEnabledListener = null
         runCatching { dialog.dismiss() }
         anchorHeightBeforeFloat?.let { originalHeight ->
             anchor.layoutParams?.let { params ->
@@ -334,6 +355,12 @@ class CloudSuggestionsView(
                 FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
             )
         }
+    }
+
+    private fun glassBackground(blurAvailable: Boolean) = GradientDrawable().apply {
+        cornerRadius = 16f * density
+        setColor(if (blurAvailable) 0x80FFFFFF.toInt() else 0xE6FFFFFF.toInt())
+        setStroke((1f * density).toInt().coerceAtLeast(1), 0x66FFFFFF)
     }
 
     private fun scheduleAutoHide() {
@@ -660,6 +687,15 @@ class CloudSuggestionsView(
 
     override fun onDetachedFromWindow() {
         stopAutoScroll()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            blurEnabledListener?.let { listener ->
+                runCatching {
+                    (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                        .removeCrossWindowBlurEnabledListener(listener)
+                }
+            }
+        }
+        blurEnabledListener = null
         if (tipsDialog?.isShowing == true) {
             val dialog = tipsDialog
             tipsDialog = null
