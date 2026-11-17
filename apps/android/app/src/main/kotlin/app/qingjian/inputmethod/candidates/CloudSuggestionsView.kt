@@ -189,6 +189,7 @@ class CloudSuggestionsView(
         hideHandler.removeCallbacks(autoHideRunnable)
         shatterAnimator?.cancel()
         shatterProgress = 0f
+        flyingGlyphs = emptyList()
         alpha = 1f
         animate().cancel()
         visibility = VISIBLE
@@ -385,6 +386,7 @@ class CloudSuggestionsView(
         shatterAnimator?.cancel()
         shatterProgress = 0f
         shards = emptyList()
+        flyingGlyphs = emptyList()
         if (visibility != VISIBLE) return
         stopAutoScroll()
         animate().cancel()
