@@ -48,7 +48,6 @@ class VoicePanel(
     private val overlay = OverlayView(context)
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
-    private val redoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
     private val smoothedBands = FloatArray(SAMPLE_COUNT)
     private var lastFrameNanos = 0L
@@ -103,7 +102,7 @@ class VoicePanel(
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         val density = resources.displayMetrics.density
         finishButton.apply {
-            text = "结束"
+            text = "完成"
             textSize = 15f
             setTextColor(palette.text)
             gravity = android.view.Gravity.CENTER
@@ -117,7 +116,8 @@ class VoicePanel(
             }
             setOnClickListener { actions.onClose() }
         }
-        addView(finishButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
+        addView(finishButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply {
+            rightMargin = (18f * density).toInt()
             bottomMargin = (18f * density).toInt()
         })
         fun makeHistoryButton(view: TextView, label: String, action: () -> Unit) {
@@ -136,13 +136,8 @@ class VoicePanel(
             view.setOnClickListener { action() }
         }
         makeHistoryButton(undoButton, "撤销", actions::onUndo)
-        makeHistoryButton(redoButton, "重做", actions::onRedo)
         addView(undoButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.START).apply {
             leftMargin = (18f * density).toInt()
-            bottomMargin = (18f * density).toInt()
-        })
-        addView(redoButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply {
-            rightMargin = (18f * density).toInt()
             bottomMargin = (18f * density).toInt()
         })
     }
@@ -160,13 +155,21 @@ class VoicePanel(
         val next = targetAt(screenX - location[0], screenY - location[1])
         if (next == target) return
         target = next
+        undoButton.isSelected = next == Target.CANCEL
+        undoButton.alpha = if (undoButton.isSelected) 1f else 0.86f
+        undoButton.scaleX = if (undoButton.isSelected) 1.06f else 1f
+        undoButton.scaleY = if (undoButton.isSelected) 1.06f else 1f
         if (next != Target.NONE) Haptics.tap(context)
         overlay.invalidate()
     }
 
     private fun targetAt(x: Float, y: Float): Target {
-        if (y < height * 0.77f || y > height * 0.96f) return Target.NONE
-        return if (kotlin.math.abs(x - width * 0.5f) <= width * 0.18f) Target.CANCEL else Target.NONE
+        // 长按空格时按住的手指不直接触摸面板；KeyboardView 将屏幕坐标交给 track，
+        // 这里按真实「撤销」按钮的边界命中，避免误把面板中央或「完成」区域当成撤销。
+        return if (
+            x >= undoButton.left && x <= undoButton.right &&
+            y >= undoButton.top && y <= undoButton.bottom
+        ) Target.CANCEL else Target.NONE
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean = super.dispatchTouchEvent(event)
