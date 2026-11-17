@@ -13,6 +13,7 @@ on:
       - feature/workflow-472-floating-tips-camera-memory-clipboard-stay
       - feature/workflow-473-clipboard-tips-camera-fix
       - feature/workflow-474-clipboard-tips-camera-fix
+      - feature/workflow-475-clipboard-tips-voice-animations
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
