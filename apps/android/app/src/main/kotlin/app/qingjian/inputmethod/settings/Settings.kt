@@ -79,6 +79,8 @@ data class Settings(
     val appearance: Appearance,
     /** 候选字号档。 */
     val textSize: TextSize,
+    /** 输入法键盘界面字体粗细；只影响文字笔画，不改变字号与按键尺寸。 */
+    val fontWeight: FontWeight,
     /** 工具栏中间那排放的工具，按勾的先后排（#777）。 */
     val toolbar: List<ToolbarTool>,
     val enterSwipeUp: GestureAction,
@@ -91,6 +93,22 @@ data class Settings(
     val symbolsSwipeDown: GestureAction,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
+
+    /** 键盘界面文字粗细。用系统 sans-serif 字族，兼容 Android 9 及以上。 */
+    enum class FontWeight(val label: String, val family: String, val style: Int) {
+        LIGHT("细", "sans-serif-light", android.graphics.Typeface.NORMAL),
+        NORMAL("标准", "sans-serif", android.graphics.Typeface.NORMAL),
+        MEDIUM("中等", "sans-serif-medium", android.graphics.Typeface.NORMAL),
+        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD);
+
+        val typeface: android.graphics.Typeface
+            get() = android.graphics.Typeface.create(family, style)
+
+        companion object {
+            fun of(value: String?): FontWeight =
+                entries.firstOrNull { it.name == value } ?: NORMAL
+        }
+    }
 
     /** 独立于整套配色的按键皮肤；颜色变化时键面文字与图标同步使用高对比色。 */
     enum class KeySkin(val label: String, val base: Int, val functional: Int, val pressed: Int, val foreground: Int, val secondary: Int) {
@@ -176,6 +194,7 @@ data class Settings(
         const val KEY_THEME = "theme"
         const val KEY_APPEARANCE = "appearance"
         const val KEY_TEXT_SIZE = "text_size"
+        const val KEY_FONT_WEIGHT = "font_weight"
         const val KEY_TOOLBAR = "toolbar"
         const val KEY_ENTER_SWIPE_UP = "gesture_enter_up"
         const val KEY_ENTER_SWIPE_DOWN = "gesture_enter_down"
@@ -270,6 +289,7 @@ data class Settings(
                 theme = prefs.getString(KEY_THEME, null) ?: DEFAULT_THEME,
                 appearance = Appearance.of(prefs.getString(KEY_APPEARANCE, null)),
                 textSize = TextSize.of(prefs.getString(KEY_TEXT_SIZE, null)),
+                fontWeight = FontWeight.of(prefs.getString(KEY_FONT_WEIGHT, null)),
                 toolbar = ToolbarTool.parse(prefs.getString(KEY_TOOLBAR, null)),
                 enterSwipeUp = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_UP, null)),
                 enterSwipeDown = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_DOWN, null)),
