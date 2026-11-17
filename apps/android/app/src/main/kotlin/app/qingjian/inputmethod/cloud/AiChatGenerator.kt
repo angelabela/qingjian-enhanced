@@ -99,7 +99,11 @@ class AiChatGenerator(private val context: Context) {
      * 不改变数字、专有名词和原意；只发送本次语音识别文本，不读取输入框上下文。
      */
     fun correctVoiceText(sourceText: String, callback: (Result<String>) -> Unit) {
-        val source = sourceText.trim().takeLast(3000)
+        val source = sourceText.trim()
+        if (source.length > 3000) {
+            callback(Result.failure(IllegalArgumentException("语音文本过长，已跳过 AI 校正并保留识别原文")))
+            return
+        }
         if (source.isBlank()) {
             callback(Result.failure(IllegalArgumentException("没有可校正的语音文本")))
             return
