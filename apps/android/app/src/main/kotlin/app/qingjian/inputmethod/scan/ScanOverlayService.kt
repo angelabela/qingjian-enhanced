@@ -334,8 +334,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(
-                    (themePalette?.surface ?: 0xFF303846.toInt()).let { (it and 0x00FFFFFF) or (0xCC shl 24) },
-                    (themePalette?.board ?: 0xFF252D39.toInt()).let { (it and 0x00FFFFFF) or (0xCC shl 24) },
+                    (themePalette?.surface ?: 0xFF303846.toInt()).let { (it and 0x00FFFFFF) or (0xB0 shl 24) },
+                    (themePalette?.board ?: 0xFF252D39.toInt()).let { (it and 0x00FFFFFF) or (0xB8 shl 24) },
                 ),
             ).apply {
                 // 顶部保留两个圆角，底边保持直线并与预览重叠，避免透出底色形成缝隙。
@@ -420,15 +420,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
-                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // 标题栏是独立 Dialog Window，模糊半径只覆盖这条标题栏，不影响下方相机预览。
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    setBackgroundBlurRadius(dp(26))
+                } else {
+                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                }
                 attributes = headerWindowParams
             }
             show()
             window?.apply {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
-                // Window 级背景模糊是矩形区域，系统不会按子 View 圆角裁剪，
-                // 会让两个圆角外仍出现一块模糊矩形。这里关闭窗口级模糊，只保留标题栏自身的半透明圆角背景。
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setBackgroundBlurRadius(0)
+                // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
                 decorView.background = ColorDrawable(Color.TRANSPARENT)
                 attributes = headerWindowParams
