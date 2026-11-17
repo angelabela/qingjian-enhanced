@@ -250,6 +250,13 @@ class CloudSuggestionsView(
             dialog.show()
             dialog.window?.apply {
                 setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
+                // 同时给 Dialog decor 和内容 View 绘制实色主题玻璃底板，避免部分 ROM 只显示透明 decor。
+                decorView.background = GradientDrawable().apply {
+                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
+                    cornerRadius = 8f * density
+                    setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
+                }
+                (decorView as? ViewGroup)?.clipChildren = true
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     setBackgroundBlurRadius((26f * density).toInt())
                 }
