@@ -24,6 +24,7 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewOutlineProvider
+import android.view.ViewGroup
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
@@ -453,7 +454,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
                 // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
                 decorView.clipToOutline = true
-                decorView.clipChildren = true
+                (decorView as? ViewGroup)?.clipChildren = true
                 decorView.outlineProvider = ViewOutlineProvider.BACKGROUND
                 attributes = headerWindowParams
             }
