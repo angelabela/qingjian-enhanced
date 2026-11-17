@@ -606,19 +606,23 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     val params = view.layoutParams as FrameLayout.LayoutParams
                     val centerX = params.leftMargin + view.width / 2f
                     val bottomDistance = root.height - (params.topMargin + view.height)
+                    var savedX = params.leftMargin.toFloat()
+                    var savedY = params.topMargin.toFloat()
                     if (kotlin.math.abs(centerX - root.width / 2f) <= root.width * 0.18f &&
                         bottomDistance <= root.height * 0.22f) {
                         params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                         params.leftMargin = 0
                         params.topMargin = 0
                         params.bottomMargin = (14f * resources.displayMetrics.density).toInt()
+                        savedX = (root.width - view.width) / 2f
+                        savedY = (root.height - view.height - params.bottomMargin).coerceAtLeast(0).toFloat()
                         view.layoutParams = params
                     }
                     val maxX = (root.width - view.width).coerceAtLeast(1)
                     val maxY = (root.height - view.height).coerceAtLeast(1)
                     windowPrefs.edit()
-                        .putFloat(KEY_CAPTURE_X_RATIO, view.x / maxX)
-                        .putFloat(KEY_CAPTURE_Y_RATIO, view.y / maxY)
+                        .putFloat(KEY_CAPTURE_X_RATIO, savedX / maxX)
+                        .putFloat(KEY_CAPTURE_Y_RATIO, savedY / maxY)
                         .apply()
                     dragging = false
                     view.isPressed = false
