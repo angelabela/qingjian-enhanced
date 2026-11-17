@@ -76,7 +76,7 @@ class KeyboardView(
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
-    private val painter = KeyPainter(palette, metrics, settings.keyTextSize.scale, settings.keySkin)
+    private val painter = KeyPainter(palette, metrics, settings.keyTextSize.scale, settings.keySkin, settings.fontWeight)
     private val side = SideColumn(metrics.density) { item ->
         tapFeedback()
         listener.onSideItem(item)
@@ -493,7 +493,7 @@ class KeyboardView(
         return when (action) {
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> null
             Settings.GestureAction.CLEAR_ALL -> "清空"
-            Settings.GestureAction.RESTORE_CLEAR -> "撤销"
+            Settings.GestureAction.RESTORE_CLEAR -> "恢复"
             Settings.GestureAction.OPEN_CLIPBOARD -> "剪贴板"
             Settings.GestureAction.SELECT_ALL -> "全选"
             Settings.GestureAction.CUT -> "剪切"
