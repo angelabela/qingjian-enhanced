@@ -407,11 +407,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = 0
         }
-        // 只给独立标题栏窗口启用背景模糊；相机预览 root 窗口不设置任何模糊标志。
-        // 标题栏 Dialog 的窗口边界就是模糊范围，不能把 FLAG_BLUR_BEHIND 加到 root。
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-        }
+        // 不启用系统级 BLUR_BEHIND：Android 会按矩形窗口边界模糊背景，
+        // 即使 View/Decor 使用圆角裁剪，圆角外仍可能出现模糊残影。
+        // 标题栏保留自身半透明玻璃渐层，窗口圆角外保持真正透明。
         windowManager.addView(root, windowParams)
         headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
             setContentView(headerView)
@@ -433,14 +431,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 系统模糊只属于标题栏 Dialog 的窗口范围；透明背景让下层相机画面成为磨砂底图。
-                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    setBackgroundBlurRadius((26f * resources.displayMetrics.density).toInt())
-                } else {
-                    // Android 11 及以下没有系统窗口背景模糊 API，保留半透明渐变作为兼容降级。
-                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                }
+                // 故意不设置 FLAG_BLUR_BEHIND / backgroundBlurRadius。
+                // 系统背景模糊是矩形窗口区域，无法可靠按圆角裁掉；改用标题栏自身玻璃渐层。
+                clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                 attributes = headerWindowParams
             }
             show()
@@ -545,9 +538,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val window = headerDialog?.window ?: return
         runCatching {
             window.attributes = headerWindowParams
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.setBackgroundBlurRadius((26f * resources.displayMetrics.density).toInt())
-            }
             window.setLayout(headerWindowParams.width, headerWindowParams.height)
         }
     }
