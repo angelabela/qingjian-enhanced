@@ -344,9 +344,9 @@ class QingjianInputMethodService :
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
-        super.onStartInput(attribute, restarting)
-        // 输入框切换时同时废弃尚未返回的语音 AI 校正，防止迟到结果写入新输入框。
+        // 在系统切换 InputConnection 前取消语音会话，防止迟到 AI 回复写入新输入框。
         voice.cancel()
+        super.onStartInput(attribute, restarting)
         hasActiveSelection = false
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
