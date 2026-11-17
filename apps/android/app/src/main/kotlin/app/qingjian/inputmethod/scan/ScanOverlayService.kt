@@ -286,6 +286,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         captureButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "拍照识别文字").apply {
+            setIconColor(0xFFFFFFFF.toInt())
             visibility = if (ocrMode) View.VISIBLE else View.GONE
             isEnabled = ocrMode
             alpha = if (ocrMode) 1f else 0f
@@ -605,6 +606,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var icon: PanelIcons.Icon,
         description: String,
     ) : View(context) {
+        private var iconColorOverride: Int? = null
         private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = themePalette?.text ?: 0xFFFFFFFF.toInt()
             style = Paint.Style.STROKE
@@ -625,9 +627,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
             invalidate()
         }
 
+        fun setIconColor(color: Int?) {
+            iconColorOverride = color
+            invalidate()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            iconPaint.color = if (isEnabled) {
+            iconPaint.color = iconColorOverride ?: if (isEnabled) {
                 themePalette?.text ?: 0xFFFFFFFF.toInt()
             } else 0x66FFFFFF
             PanelIcons.draw(
