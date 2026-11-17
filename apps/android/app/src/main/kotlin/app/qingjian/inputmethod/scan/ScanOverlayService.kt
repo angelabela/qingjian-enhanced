@@ -417,7 +417,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setCancelable(false)
             window?.apply {
                 setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                // Dialog 窗口自身也必须使用带透明圆角的遮罩；只裁剪 headerView 不够，
+                // 系统 BLUR_BEHIND 仍会按矩形 Window bounds 模糊圆角外区域。
+                val roundedWindowMask = GradientDrawable().apply {
+                    setColor(0x01000000)
+                    val radius = 16f * resources.displayMetrics.density
+                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                }
+                setBackgroundDrawable(roundedWindowMask)
                 addFlags(
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -439,7 +446,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
-                decorView.background = ColorDrawable(Color.TRANSPARENT)
+                decorView.background = GradientDrawable().apply {
+                    setColor(0x01000000)
+                    val radius = 16f * resources.displayMetrics.density
+                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                }
+                // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
+                decorView.clipToOutline = true
+                decorView.clipChildren = true
+                decorView.outlineProvider = ViewOutlineProvider.BACKGROUND
                 attributes = headerWindowParams
             }
         }
