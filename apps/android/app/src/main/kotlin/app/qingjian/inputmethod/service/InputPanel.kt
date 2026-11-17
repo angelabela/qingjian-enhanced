@@ -68,11 +68,12 @@ class InputPanel(
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
     private val cloudTipsSlot = FrameLayout(context).apply {
         setBackgroundColor(Color.TRANSPARENT)
+        visibility = View.INVISIBLE
         addView(
             cloudSuggestions,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
                 Gravity.CENTER,
             ),
         )
@@ -119,7 +120,7 @@ class InputPanel(
             cloudTipsSlot,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (46f * context.resources.displayMetrics.density).toInt(),
+                0,
             ).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             },
@@ -138,7 +139,7 @@ class InputPanel(
 
     /** 云联想以浮动 Tips 显示；没有候选时连输入法顶部的占位行也一并隐藏。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) {
-        cloudTipsSlot.visibility = if (candidates.isEmpty()) View.GONE else View.VISIBLE
+        // Tips 在独立悬浮窗口中显示；输入法布局里不再保留 46dp 占位行。
         cloudSuggestions.show(candidates)
     }
 
@@ -148,7 +149,6 @@ class InputPanel(
 
     /** 实时设备信息 / 定位天气候选，点击后由服务决定上屏或申请权限。 */
     fun showSmartSuggestions(candidates: List<String>, onSelect: (String) -> Unit) {
-        cloudTipsSlot.visibility = if (candidates.isEmpty()) View.GONE else View.VISIBLE
         cloudSuggestions.showSmart(candidates, onSelect)
     }
 
