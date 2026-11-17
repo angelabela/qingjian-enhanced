@@ -109,6 +109,10 @@
     <string name="sync_unpair">解除配对</string>
     <string name="sync_unpair_title">解除和 %1$s 的配对？</string>
     <string name="record_clipboard_title">记录剪贴板</string>
+    <string name="clipboard_paste_enter_title">粘贴后回车换行</string>
+    <string name="clipboard_paste_enter_note">粘贴一条剪贴板记录后发送回车换行</string>
+    <string name="clipboard_paste_next_cell_title">粘贴后跳到下一个单元格</string>
+    <string name="clipboard_paste_next_cell_note">粘贴后发送 Tab，适合 WPS、Excel 等表格；剪贴板面板保持打开</string>
     <string name="record_clipboard_note">复制过的文字和图片在工具栏的剪贴板里能再用，只存在手机上</string>
     <string name="clipboard_limit">最多保存</string>
     <string name="code_highlight_title">代码高亮</string>
