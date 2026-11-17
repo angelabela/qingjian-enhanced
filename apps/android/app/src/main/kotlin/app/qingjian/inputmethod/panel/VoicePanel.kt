@@ -50,7 +50,16 @@ class VoicePanel(
     private val backdrop = ImageView(context)
     private val scrim = View(context)
     private val overlay = PhysicsWaveView(context).apply {
-        style = PhysicsWaveView.Style.entries.getOrElse(animationStyle) { PhysicsWaveView.Style.SPRING_BARS }
+        style = when (animationStyle) {
+            0 -> PhysicsWaveView.Style.SPECTRUM_BARS
+            1 -> PhysicsWaveView.Style.RING_SPECTRUM
+            2 -> PhysicsWaveView.Style.SPRING_BARS
+            3 -> PhysicsWaveView.Style.GRAVITY_BALLS
+            4 -> PhysicsWaveView.Style.PEAK_HOLD
+            5 -> PhysicsWaveView.Style.ELASTIC_STRING
+            6 -> PhysicsWaveView.Style.GLOW_ORBS
+            else -> PhysicsWaveView.Style.SPECTRUM_BARS
+        }
         color = palette.brand
     }
     private val finishButton = TextView(context)
@@ -154,6 +163,7 @@ class VoicePanel(
             for (i in start until end) total += spectrumBands[i]
             total / (end - start).coerceAtLeast(1)
         }
+        overlay.updateSpectrum(spectrumBands)
         overlay.update(fiveBands)
     }
 
@@ -202,12 +212,12 @@ class VoicePanel(
     companion object {
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
-        val ANIMATION_STYLE_LABELS = listOf("弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "每次启动随机")
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, 0)
-            return if (selected == -1) kotlin.random.Random.nextInt(5) else selected.coerceIn(0, 4)
+            return if (selected == -1) kotlin.random.Random.nextInt(7) else selected.coerceIn(0, 6)
         }
     }
 }
