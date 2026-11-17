@@ -19,7 +19,13 @@ thread_local! {
 }
 
 /// 主题 `id` 在 `dark` 外观、`text_scale` 字号档下的候选条样子；`scale` 是 dp → 像素的倍数。字体加载失败或画不出时为 `None`。
-pub fn preview(id: &str, dark: bool, scale: f32, text_scale: f32, candidate_weight: u16) -> Option<Pixmap> {
+pub fn preview(
+    id: &str,
+    dark: bool,
+    scale: f32,
+    text_scale: f32,
+    candidate_weight: u16,
+) -> Option<Pixmap> {
     RENDERER.with_borrow_mut(|slot| render(slot, id, dark, scale, text_scale, candidate_weight))
 }
 
