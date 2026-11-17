@@ -261,6 +261,7 @@ class PhysicsWaveView @JvmOverloads constructor(
     }
 
     private fun drawBalls(canvas: Canvas) {
+        paint.style = Paint.Style.FILL
         val cw = width.toFloat() / count
         val r = cw * 0.26f
         val travel = height - r * 2.6f
@@ -302,6 +303,11 @@ class PhysicsWaveView @JvmOverloads constructor(
         path.lineTo(x.last(), lower.last())
         for (i in x.lastIndex - 1 downTo 0) path.quadTo(x[i + 1], lower[i + 1], x[i], lower[i])
         path.close()
+        paint.shader = android.graphics.LinearGradient(
+            0f, 0f, w, 0f,
+            intArrayOf(physicalColor(0), physicalColor(1), physicalColor(2), physicalColor(3), physicalColor(4)),
+            null, android.graphics.Shader.TileMode.CLAMP,
+        )
         paint.color = color
         paint.alpha = 55
         paint.style = Paint.Style.STROKE
@@ -312,10 +318,12 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
         paint.alpha = 195
         canvas.drawPath(path, paint)
+        paint.shader = null
         paint.alpha = 255
     }
 
     private fun drawOrbs(canvas: Canvas) {
+        paint.style = Paint.Style.FILL
         val cw = width.toFloat() / count
         val cy = height / 2f
         for (i in 0 until count) {
@@ -340,6 +348,7 @@ class PhysicsWaveView @JvmOverloads constructor(
     }
 
     private fun drawPhysicalGlow(canvas: Canvas, cx: Float, cy: Float, rx: Float, ry: Float, index: Int) {
+        paint.style = Paint.Style.FILL
         paint.color = physicalColor(index)
         paint.alpha = 45
         paint.maskFilter = BlurMaskFilter(7f * density, BlurMaskFilter.Blur.NORMAL)
