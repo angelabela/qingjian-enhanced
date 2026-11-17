@@ -323,7 +323,26 @@ class CloudSuggestionsView(
         }
     }
 
-    private fun updateAnchorPosition() = Unit
+    private fun updateAnchorPosition() {
+        val dialog = tipsDialog ?: return
+        if (!dialog.isShowing || draggingTips) return
+        val window = dialog.window ?: return
+        val width = window.decorView.width.takeIf { it > 0 } ?: measuredWidth
+        val height = window.decorView.height.takeIf { it > 0 } ?: measuredHeight
+        if (width <= 0 || height <= 0) return
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        val margin = (12f * density).toInt()
+        val minY = (40f * density).toInt()
+        val maxY = (screenH - height - 80f * density).toInt().coerceAtLeast(minY)
+        val x = if (tipSide == 0) margin else (screenW - width - margin).coerceAtLeast(0)
+        val y = (minY + (maxY - minY) * tipYRatio).toInt().coerceIn(minY, maxY)
+        window.attributes = window.attributes.apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x
+            this.y = y
+        }
+    }
 
     private fun returnToAnchor() {
         val dialog = tipsDialog ?: return
