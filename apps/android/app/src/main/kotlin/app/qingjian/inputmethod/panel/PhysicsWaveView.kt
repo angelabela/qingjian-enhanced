@@ -34,7 +34,7 @@ class PhysicsWaveView @JvmOverloads constructor(
     var color: Int = 0xFF3B82F6.toInt()
         set(value) { field = value; invalidate() }
 
-    private val count = 5
+    private val count = 24
     private val levels = FloatArray(count)
     private val pos = FloatArray(count)
     private val velocity = FloatArray(count)
@@ -237,24 +237,29 @@ class PhysicsWaveView @JvmOverloads constructor(
         Color.HSVToColor(floatArrayOf((hueSeed + shift + index * spread) % 360f, 0.78f, 1f))
 
     private fun drawBars(canvas: Canvas, centered: Boolean, caps: Boolean) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val barW = w / 11f
-        val maxH = h * 0.92f
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val cell = w / count
+        val barW = (cell * 0.34f).coerceAtLeast(1.25f * density)
+        val maxH = h * 0.78f
         paint.style = Paint.Style.FILL
         for (i in 0 until count) {
-            val value = pos[i].coerceIn(0.04f, 1.1f)
-            val bh = value * maxH
-            val left = barW * (1 + i * 2)
+            val value = pos[i].coerceIn(0.025f, 1.05f)
+            val bh = (value * maxH).coerceAtLeast(2.2f * density)
+            val left = cell * i + (cell - barW) / 2f
             val top = if (centered) (h - bh) / 2f else h - bh
             val bottom = if (centered) (h + bh) / 2f else h
-            drawPhysicalGlow(canvas, left + barW / 2f, (top + bottom) / 2f, barW * 0.42f, bh * 0.5f, i)
+            val cx = left + barW / 2f
+            drawPhysicalGlow(canvas, cx, (top + bottom) / 2f, barW * 0.85f, bh * 0.48f, i)
             paint.color = physicalColor(i)
-            paint.alpha = (150 + 105 * pos[i].coerceIn(0f, 1f)).toInt()
+            paint.alpha = (155 + 100 * value.coerceIn(0f, 1f)).toInt()
             canvas.drawRoundRect(left, top, left + barW, bottom, barW / 2f, barW / 2f, paint)
             if (caps) {
-                val capY = h - peaks[i].coerceIn(0.04f, 1.1f) * maxH - barW * 0.9f
-                paint.alpha = 255
-                canvas.drawRoundRect(left, capY - barW * 0.35f, left + barW, capY + barW * 0.35f, barW / 4f, barW / 4f, paint)
+                val capY = h - peaks[i].coerceIn(0.025f, 1.05f) * maxH - 2.2f * density
+                paint.alpha = 220
+                canvas.drawRoundRect(left - cell * 0.06f, capY - 1.1f * density,
+                    left + barW + cell * 0.06f, capY + 1.1f * density,
+                    1.1f * density, 1.1f * density, paint)
             }
         }
         paint.alpha = 255
@@ -262,61 +267,59 @@ class PhysicsWaveView @JvmOverloads constructor(
 
     private fun drawBalls(canvas: Canvas) {
         paint.style = Paint.Style.FILL
-        val cw = width.toFloat() / count
-        val r = cw * 0.26f
-        val travel = height - r * 2.6f
+        val cell = width.toFloat() / count
+        val radius = (cell * 0.105f).coerceIn(1.7f * density, 3.6f * density)
+        val travel = (height - radius * 3f).coerceAtLeast(0f)
         for (i in 0 until count) {
-            val cx = cw * (i + 0.5f)
-            val cy = height - r * 1.3f - pos[i].coerceIn(0f, 1.2f) * travel
-            val stretch = 1f + min(abs(velocity[i]) * 0.07f, 0.4f)
+            val cx = cell * (i + 0.5f)
+            val energy = pos[i].coerceIn(0f, 1.05f)
+            val cy = height - radius * 1.5f - energy * travel
+            val stretch = 1f + min(abs(velocity[i]) * 0.025f, 0.18f)
             paint.color = physicalColor(i)
-            paint.alpha = 48
-            canvas.drawCircle(cx, cy, r * 1.9f, paint)
-            paint.alpha = 85
-            canvas.drawCircle(cx, cy, r * 1.4f, paint)
+            paint.alpha = 30
+            canvas.drawCircle(cx, cy, radius * 2.1f, paint)
             paint.alpha = 70
-            rect.set(cx - r, height - r * 0.5f, cx + r, height - r * 0.1f)
-            canvas.drawOval(rect, paint)
-            paint.alpha = 255
-            rect.set(cx - r / stretch, cy - r * stretch, cx + r / stretch, cy + r * stretch)
-            canvas.drawOval(rect, paint)
+            canvas.drawCircle(cx, cy, radius * 1.45f, paint)
+            paint.alpha = 245
+            canvas.drawOval(cx - radius / stretch, cy - radius * stretch,
+                cx + radius / stretch, cy + radius * stretch, paint)
         }
+        paint.alpha = 255
     }
 
     private fun drawString(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val mid = h / 2f
-        val maxH = h * 0.92f
-        val x = FloatArray(count + 2)
-        val upper = FloatArray(count + 2)
-        val lower = FloatArray(count + 2)
-        for (j in 0 until count + 2) {
-            val v = if (j == 0 || j == count + 1) 0.03f else pos[j - 1].coerceIn(0.03f, 1.1f)
-            x[j] = if (j == 0) 0f else if (j == count + 1) w else w / count * (j - 0.5f)
-            val half = v * maxH / 2f
-            upper[j] = mid - half
-            lower[j] = mid + half
-        }
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val cell = w / count
+        val mid = h * 0.5f
+        val points = count + 1
         path.rewind()
-        path.moveTo(x[0], upper[0])
-        for (i in 1 until x.size) path.quadTo(x[i - 1], upper[i - 1], x[i], upper[i])
-        path.lineTo(x.last(), lower.last())
-        for (i in x.lastIndex - 1 downTo 0) path.quadTo(x[i + 1], lower[i + 1], x[i], lower[i])
-        path.close()
+        for (j in 0..count) {
+            val energy = if (j == count) pos[count - 1] else pos[j]
+            val x = j * cell
+            val y = mid - energy.coerceIn(0.02f, 1.05f) * h * 0.34f
+            if (j == 0) path.moveTo(x, y) else {
+                val previousX = (j - 1) * cell
+                val previousEnergy = pos[j - 1].coerceIn(0.02f, 1.05f)
+                val previousY = mid - previousEnergy * h * 0.34f
+                path.quadTo((previousX + x) / 2f, (previousY + y) / 2f, x, y)
+            }
+        }
         paint.shader = android.graphics.LinearGradient(
             0f, 0f, w, 0f,
-            intArrayOf(physicalColor(0), physicalColor(1), physicalColor(2), physicalColor(3), physicalColor(4)),
+            intArrayOf(physicalColor(0), physicalColor(6), physicalColor(12), physicalColor(18), physicalColor(23)),
             null, android.graphics.Shader.TileMode.CLAMP,
         )
-        paint.color = color
-        paint.alpha = 55
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 13f * density
-        paint.maskFilter = BlurMaskFilter(9f * density, BlurMaskFilter.Blur.NORMAL)
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.strokeWidth = 6.5f * density
+        paint.alpha = 45
+        paint.maskFilter = BlurMaskFilter(7f * density, BlurMaskFilter.Blur.NORMAL)
         canvas.drawPath(path, paint)
         paint.maskFilter = null
-        paint.style = Paint.Style.FILL
-        paint.alpha = 195
+        paint.strokeWidth = 1.8f * density
+        paint.alpha = 225
         canvas.drawPath(path, paint)
         paint.shader = null
         paint.alpha = 255
@@ -324,22 +327,22 @@ class PhysicsWaveView @JvmOverloads constructor(
 
     private fun drawOrbs(canvas: Canvas) {
         paint.style = Paint.Style.FILL
-        val cw = width.toFloat() / count
-        val cy = height / 2f
+        val cell = width.toFloat() / count
+        val mid = height * 0.5f
         for (i in 0 until count) {
-            val cx = cw * (i + 0.5f)
-            val radius = cw * (0.10f + 0.24f * pos[i].coerceIn(0f, 1.15f))
+            val energy = pos[i].coerceIn(0f, 1.05f)
+            val cx = cell * (i + 0.5f)
+            val radius = (cell * (0.075f + energy * 0.045f)).coerceIn(1.35f * density, 3.1f * density)
+            val cy = mid + sin(time * 1.7f + i * 0.38f) * height * 0.16f * energy
             paint.color = physicalColor(i)
-            paint.alpha = 28
-            canvas.drawCircle(cx, cy, radius * 2.15f, paint)
-            paint.alpha = 58
-            canvas.drawCircle(cx, cy, radius * 1.65f, paint)
-            paint.alpha = 105
-            canvas.drawCircle(cx, cy, radius * 1.28f, paint)
-            paint.alpha = 245
+            paint.alpha = 24
+            canvas.drawCircle(cx, cy, radius * 2.5f, paint)
+            paint.alpha = 48
+            canvas.drawCircle(cx, cy, radius * 1.7f, paint)
+            paint.alpha = 230
             canvas.drawCircle(cx, cy, radius, paint)
-            paint.alpha = 255
         }
+        paint.alpha = 255
     }
 
     private fun physicalColor(index: Int): Int {
