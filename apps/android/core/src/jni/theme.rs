@@ -4,7 +4,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use ::jni::JNIEnv;
 use ::jni::objects::{JObject, JString};
-use ::jni::sys::{JNI_TRUE, jboolean, jbyteArray, jfloat, jlong, jstring};
+use ::jni::sys::{JNI_TRUE, jboolean, jbyteArray, jfloat, jint, jlong, jstring};
 
 use crate::appearance;
 use crate::handle::Handle;
@@ -74,6 +74,7 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_setAppearance<'
     handle: jlong,
     theme: JString<'local>,
     text_scale: jfloat,
+    candidate_weight: jint,
 ) {
     if handle == 0 {
         return;
@@ -85,7 +86,7 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_setAppearance<'
     let handle = unsafe { &mut *(handle as *mut Handle) };
     if let Some(strip) = &mut handle.strip {
         let _ = catch_unwind(AssertUnwindSafe(|| {
-            strip.set_appearance(&theme, text_scale)
+            strip.set_appearance(&theme, text_scale, candidate_weight.clamp(100, 1000) as u16)
         }));
     }
 }
