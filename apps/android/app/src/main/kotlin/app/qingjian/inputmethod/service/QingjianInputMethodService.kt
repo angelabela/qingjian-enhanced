@@ -345,6 +345,8 @@ class QingjianInputMethodService :
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        // 输入框切换时同时废弃尚未返回的语音 AI 校正，防止迟到结果写入新输入框。
+        voice.cancel()
         hasActiveSelection = false
         composer.directInput = attribute.wantsDirectInput()
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
@@ -1120,6 +1122,20 @@ class QingjianInputMethodService :
 
     override fun closeVoicePanel() {
         panel?.close()
+    }
+
+    override fun canStartVoice(): Boolean {
+        val info = currentInputEditorInfo ?: return false
+        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
+        val passwordField = variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        return !passwordField && !composer.privateInput && !composer.directInput
+    }
+
+    override fun correctVoiceText(text: String, callback: (Result<String>) -> Unit) {
+        aiChat.correctVoiceText(text, callback)
     }
 
     override fun prepareVoice() = composer.prepareVoice()
