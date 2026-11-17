@@ -18,6 +18,7 @@ on:
       - feature/workflow-477-physics-wave-floating-tips
       - feature/workflow-478-voice-effects-7styles
       - feature/workflow-479-voice-panel-touch-spectrum-polish
+      - feature/workflow-480-voice-effect-header-center-spectrum
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
