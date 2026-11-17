@@ -12,6 +12,7 @@ import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
+import app.qingjian.inputmethod.panel.VoicePanel
 
 /**
  * 点工具栏 logo 进的功能面板：「常用功能」是图标宫格，「键盘设置」是就地改的开关；
@@ -52,6 +53,7 @@ class FunctionPanel(
         },
         Feature(Icon.RESIZE, "键盘高度") { startResize() },
         Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
+        Feature(Icon.WAVEFORM, "语音动效") { VoicePanel.showAnimationPicker(context) },
         Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
         Feature(Icon.SETTINGS, "设置") { openSettings() },
     ) + listOfNotNull(
