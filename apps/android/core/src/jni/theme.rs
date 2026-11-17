@@ -54,7 +54,15 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_themePreview<'l
     let Ok(theme) = env.get_string(&theme).map(String::from) else {
         return std::ptr::null_mut();
     };
-    let painted = catch_unwind(|| appearance::preview(&theme, dark == JNI_TRUE, scale, text_scale, candidate_weight.clamp(100, 1000) as u16));
+    let painted = catch_unwind(|| {
+        appearance::preview(
+            &theme,
+            dark == JNI_TRUE,
+            scale,
+            text_scale,
+            candidate_weight.clamp(100, 1000) as u16,
+        )
+    });
     let Ok(Some(pixmap)) = painted else {
         return std::ptr::null_mut();
     };
