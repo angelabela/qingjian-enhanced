@@ -570,6 +570,7 @@ class CloudSuggestionsView(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 hideHandler.removeCallbacks(autoHideRunnable)
+                snapAnimator?.cancel()
                 cancelHideAnimation()
                 floatingVelocityTracker?.recycle()
                 floatingVelocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
