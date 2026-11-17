@@ -381,7 +381,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(captureButton, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             bottomMargin = dp(14)
         })
-        restoreCaptureButtonPosition()
         attachCaptureButtonDrag()
         setOcrMode(ocrMode)
 
@@ -420,6 +419,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
         // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
         windowManager.addView(root, windowParams)
+        // 预览根视图加入 Window 后再恢复快门坐标，避免首次 post 时尚未测量导致回退到默认位置。
+        restoreCaptureButtonPosition()
         headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
             setContentView(headerView)
             setCancelable(false)
@@ -544,19 +545,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 恢复拍照按钮在预览区域内的位置；比例坐标可适配窗口尺寸变化。 */
     private fun restoreCaptureButtonPosition() {
-        if (!::root.isInitialized || !::captureButton.isInitialized) return
-        val prefs = windowPrefs
-        if (!prefs.contains(KEY_CAPTURE_X_RATIO) || !prefs.contains(KEY_CAPTURE_Y_RATIO)) return
+        if (!::root.isInitialized || !::captureButton.isInitialized ||
+            captureButton.visibility != View.VISIBLE ||
+            !windowPrefs.contains(KEY_CAPTURE_X_RATIO) || !windowPrefs.contains(KEY_CAPTURE_Y_RATIO)) return
         root.post {
+            if (root.width <= 0 || root.height <= 0 || captureButton.width <= 0 || captureButton.height <= 0) {
+                // 首次布局或从扫码模式切到拍照模式时，等预览与快门完成测量再恢复。
+                root.post { restoreCaptureButtonPosition() }
+                return@post
+            }
             val maxX = (root.width - captureButton.width).coerceAtLeast(0)
             val maxY = (root.height - captureButton.height).coerceAtLeast(0)
-            if (maxX <= 0 || maxY <= 0) return@post
-            val x = (prefs.getFloat(KEY_CAPTURE_X_RATIO, 0.5f) * maxX).toInt().coerceIn(0, maxX)
-            val y = (prefs.getFloat(KEY_CAPTURE_Y_RATIO, 1f) * maxY).toInt().coerceIn(0, maxY)
+            val x = (windowPrefs.getFloat(KEY_CAPTURE_X_RATIO, 0.5f) * maxX).toInt().coerceIn(0, maxX)
+            val y = (windowPrefs.getFloat(KEY_CAPTURE_Y_RATIO, 1f) * maxY).toInt().coerceIn(0, maxY)
             (captureButton.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = Gravity.TOP or Gravity.START
                 params.leftMargin = x
                 params.topMargin = y
+                params.rightMargin = 0
+                params.bottomMargin = 0
                 captureButton.layoutParams = params
             }
         }
@@ -578,7 +585,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     startX = view.x
                     startY = view.y
                     dragging = false
-                    false
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downRawX
@@ -586,7 +594,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (!dragging && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
                         dragging = true
                         view.isPressed = false
-                        view.parent?.requestDisallowInterceptTouchEvent(true)
                     }
                     if (dragging) {
                         val maxX = (root.width - view.width).coerceAtLeast(0)
@@ -597,12 +604,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         params.gravity = Gravity.TOP or Gravity.START
                         params.leftMargin = x
                         params.topMargin = y
+                        params.rightMargin = 0
+                        params.bottomMargin = 0
                         view.layoutParams = params
-                        true
-                    } else false
+                    }
+                    true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!dragging) return@setOnTouchListener false
+                    if (!dragging) {
+                        view.parent?.requestDisallowInterceptTouchEvent(false)
+                        view.performClick()
+                        return@setOnTouchListener true
+                    }
                     val params = view.layoutParams as FrameLayout.LayoutParams
                     val centerX = params.leftMargin + view.width / 2f
                     val bottomDistance = root.height - (params.topMargin + view.height)
@@ -613,6 +626,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                         params.leftMargin = 0
                         params.topMargin = 0
+                        params.rightMargin = 0
                         params.bottomMargin = (14f * resources.displayMetrics.density).toInt()
                         savedX = (root.width - view.width) / 2f
                         savedY = (root.height - view.height - params.bottomMargin).coerceAtLeast(0).toFloat()
@@ -635,7 +649,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     view.parent?.requestDisallowInterceptTouchEvent(false)
                     true
                 }
-                else -> dragging
+                else -> true
             }
         }
     }
