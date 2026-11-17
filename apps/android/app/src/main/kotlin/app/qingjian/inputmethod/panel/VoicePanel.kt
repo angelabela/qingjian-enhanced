@@ -159,13 +159,14 @@ class VoicePanel(
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        // 新增的五种物理效果使用24个窄频段单元，保留低中高频的细节变化。
-        // 每个单元聚合相邻两段 FFT，减少跳动同时不把48段频谱压缩成5个大图形。
-        val physicsBands = FloatArray(24) { band ->
-            val start = band * 2
-            val a = spectrumBands[start]
-            val b = spectrumBands[start + 1]
-            (a * 0.58f + b * 0.42f).coerceIn(0f, 1f)
+        // 五种物理动效使用18个均匀频带：适度精简单元，避免中部窄区域显得拥挤。
+        // 按48段FFT的实际区间求均值，低、中、高频仍保持连续响应。
+        val physicsBands = FloatArray(18) { band ->
+            val start = band * SAMPLE_COUNT / 18
+            val end = (band + 1) * SAMPLE_COUNT / 18
+            var sum = 0f
+            for (i in start until end) sum += spectrumBands[i]
+            (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
         }
         overlay.updateSpectrum(spectrumBands)
         overlay.update(physicsBands)
