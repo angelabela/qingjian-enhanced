@@ -79,6 +79,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                     } else null
                 }.getOrNull()
             } catch (_: Throwable) {
+                runCatching { platformNoiseSuppressor?.release() }
                 record.release()
                 main.post {
                     fail("麦克风正在被占用或暂不可用，请结束其他应用的录音、通话或语音输入后重试")
