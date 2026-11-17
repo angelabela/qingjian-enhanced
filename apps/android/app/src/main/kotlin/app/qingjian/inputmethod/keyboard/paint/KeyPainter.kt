@@ -187,7 +187,7 @@ class KeyPainter(
 
     /** 空格键剪贴板手势只显示文字，不再绘制剪贴板和箭头图标。 */
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
-        ink.typeface = Typeface.DEFAULT
+        ink.typeface = fontTypeface
         ink.textSize = 8f * density
         ink.color = secondaryColor
         ink.clearShadowLayer()
