@@ -14,6 +14,7 @@ import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.PanelIcons
 import app.qingjian.inputmethod.popup.ChoicePopup
 import app.qingjian.inputmethod.settings.ToolbarTool
+import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
 
 /**
@@ -30,6 +31,7 @@ class CandidateBarView(
     /** 工具栏中间那排放的工具（用户定制的）。 */
     tools: List<ToolbarTool>,
     private val listener: Listener,
+    fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
 ) : View(context) {
     interface Listener {
         fun onSelect(index: Int)
@@ -65,7 +67,7 @@ class CandidateBarView(
     private val density = resources.displayMetrics.density
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 64f * density * maxOf(1f, textScale)
-    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss)
+    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight)
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
