@@ -50,7 +50,10 @@ class VoicePanel(
     private val ink = Ink(palette, resources.displayMetrics.density)
     private val backdrop = ImageView(context)
     private val scrim = View(context)
-    private val overlay = OverlayView(context)
+    private val overlay = PhysicsWaveView(context).apply {
+        style = PhysicsWaveView.Style.entries.getOrElse(animationStyle) { PhysicsWaveView.Style.SPRING_BARS }
+        color = palette.brand
+    }
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
@@ -69,6 +72,7 @@ class VoicePanel(
     var listening = false
         set(value) {
             field = value
+            overlay.listening = value
             overlay.invalidate()
         }
 
@@ -146,7 +150,14 @@ class VoicePanel(
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        overlay.postInvalidateOnAnimation()
+        val fiveBands = FloatArray(5) { band ->
+            val start = band * SAMPLE_COUNT / 5
+            val end = (band + 1) * SAMPLE_COUNT / 5
+            var total = 0f
+            for (i in start until end) total += spectrumBands[i]
+            total / (end - start).coerceAtLeast(1)
+        }
+        overlay.update(fiveBands)
     }
 
     fun track(screenX: Float, screenY: Float) {
@@ -357,7 +368,7 @@ class VoicePanel(
     companion object {
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱（当前）", "柔性双声波", "环形频谱", "流光双波", "每次启动随机")
+        val ANIMATION_STYLE_LABELS = listOf("弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "每次启动随机")
 
         /** 输入法 Service 不是 Activity，不能直接挂 AlertDialog；交给独立 Activity 显示设置页。 */
         fun showAnimationPicker(context: Context) {
@@ -370,7 +381,7 @@ class VoicePanel(
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, 0)
-            return if (selected == -1) kotlin.random.Random.nextInt(4) else selected.coerceIn(0, 3)
+            return if (selected == -1) kotlin.random.Random.nextInt(5) else selected.coerceIn(0, 4)
         }
     }
 }
