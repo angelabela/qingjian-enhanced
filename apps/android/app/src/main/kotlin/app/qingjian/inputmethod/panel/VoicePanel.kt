@@ -101,43 +101,34 @@ class VoicePanel(
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         val density = resources.displayMetrics.density
-        finishButton.apply {
-            text = "完成"
-            textSize = 15f
-            setTextColor(palette.text)
-            gravity = android.view.Gravity.CENTER
-            isClickable = true
-            isFocusable = true
-            setPadding((28f * density).toInt(), (10f * density).toInt(), (28f * density).toInt(), (10f * density).toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor((palette.surface and 0x00FFFFFF) or 0xE6202938.toInt())
-                cornerRadius = 24f * density
-                setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
-            }
-            setOnClickListener { actions.onClose() }
-        }
-        addView(finishButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply {
-            rightMargin = (18f * density).toInt()
-            bottomMargin = (18f * density).toInt()
-        })
-        fun makeHistoryButton(view: TextView, label: String, action: () -> Unit) {
+        fun styleActionButton(view: TextView, label: String, action: () -> Unit) {
             view.text = label
-            view.textSize = 13f
+            view.textSize = 14f
             view.setTextColor(palette.text)
             view.gravity = android.view.Gravity.CENTER
             view.isClickable = true
             view.isFocusable = true
-            view.setPadding((18f * density).toInt(), (9f * density).toInt(), (18f * density).toInt(), (9f * density).toInt())
+            view.includeFontPadding = false
+            view.setPadding(0, 0, 0, 0)
             view.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor((palette.surface and 0x00FFFFFF) or 0xD8202938.toInt())
-                cornerRadius = 20f * density
+                setColor((palette.surface and 0x00FFFFFF) or 0xE0202938.toInt())
+                cornerRadius = 22f * density
                 setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
             }
             view.setOnClickListener { action() }
         }
-        makeHistoryButton(undoButton, "撤销", actions::onUndo)
-        addView(undoButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.START).apply {
-            leftMargin = (18f * density).toInt()
+        styleActionButton(undoButton, "撤销", actions::onUndo)
+        styleActionButton(finishButton, "完成", actions::onClose)
+        // 两个按钮使用相同的固定尺寸与间距，成组居中，避免分别贴在屏幕两侧。
+        val actionRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            addView(undoButton, android.widget.LinearLayout.LayoutParams((104f * density).toInt(), (44f * density).toInt()))
+            addView(finishButton, android.widget.LinearLayout.LayoutParams((104f * density).toInt(), (44f * density).toInt()).apply {
+                marginStart = (14f * density).toInt()
+            })
+        }
+        addView(actionRow, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
             bottomMargin = (18f * density).toInt()
         })
     }
