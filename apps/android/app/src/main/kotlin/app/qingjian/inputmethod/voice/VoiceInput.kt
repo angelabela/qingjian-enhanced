@@ -122,11 +122,16 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     /** 按着空格的手指抬起：松在「撤回输入」上撤回，松在右边那块上上屏并执行回车动作，别处只是说完。[cancel] 是手指被系统收走。 */
     fun release(cancel: Boolean) {
         val activePanel = panel?.takeIf { it.holding } ?: return
-        val cancelVoice = cancel || activePanel.target == VoicePanel.Target.CANCEL
+        val target = activePanel.target
         activePanel.holding = false
-        if (cancelVoice) {
+        if (cancel || target == VoicePanel.Target.CANCEL) {
             // 长按空格期间滑到「撤销」再松手：丢弃本次语音临时内容，不触碰此前已输入的文字。
             onCancel()
+            return
+        }
+        if (target == VoicePanel.Target.ACTION) {
+            // 滑到「完成」并松手，执行与点击完成按钮相同的收尾逻辑。
+            onClose()
             return
         }
         // 空格按住期间的面板只在按压生命周期内存在：抬手立即关闭界面并停止采集，
