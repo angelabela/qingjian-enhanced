@@ -5,7 +5,6 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
-import android.graphics.Typeface
 import app.qingjian.inputmethod.keyboard.ShiftState
 import app.qingjian.inputmethod.keyboard.SideColumn
 import app.qingjian.inputmethod.keyboard.layout.Key
@@ -148,7 +147,7 @@ class KeyPainter(
         ink.textSize = 9f * density
         // 所有按键统一只显示文字：无手势图标、无粗体、无阴影。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
-        ink.typeface = Typeface.DEFAULT
+        ink.typeface = fontTypeface
         ink.clearShadowLayer()
         canvas.drawText(label, textX, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
