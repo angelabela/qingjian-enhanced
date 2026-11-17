@@ -50,6 +50,13 @@ class CloudSuggestionsView(
     private var dragStartTranslationY = 0f
     private var dragOffsetX = 0f
     private var dragOffsetY = 0f
+    private var floatingDragArmed = false
+    private var floatingDragActive = false
+    private var floatingDownRawX = 0f
+    private var floatingDownRawY = 0f
+    private var floatingStartX = 0
+    private var floatingStartY = 0
+    private var tipsDetached = false
     private var tipsAnchor: View? = null
     private var tipsDialog: Dialog? = null
     /** 当前编辑器光标屏幕坐标；云 Tips 始终锚定在输入位置上方。 */
@@ -237,11 +244,14 @@ class CloudSuggestionsView(
                     }
                 }
                 attributes = attributes.apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    x = 0
+                    gravity = Gravity.TOP or Gravity.START
+                    x = ((resources.displayMetrics.widthPixels - decorView.width) / 2).coerceAtLeast(0)
                     y = location[1]
                 }
                 decorView.invalidateOutline()
+                decorView.post {
+                    if (tipsDialog === dialog && !tipsDetached) updateAnchorPosition()
+                }
             }
             tipsDialog = dialog
         }.onFailure {
@@ -258,13 +268,14 @@ class CloudSuggestionsView(
     private fun updateAnchorPosition() {
         val dialog = tipsDialog ?: return
         val anchor = tipsAnchor ?: return
-        if (!dialog.isShowing) return
+        if (!dialog.isShowing || tipsDetached) return
         val location = IntArray(2)
         anchor.getLocationOnScreen(location)
         dialog.window?.let { window ->
+            val width = window.decorView.width.takeIf { it > 0 } ?: measuredWidth
             window.attributes = window.attributes.apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                x = 0
+                gravity = Gravity.TOP or Gravity.START
+                x = ((resources.displayMetrics.widthPixels - width) / 2).coerceAtLeast(0)
                 y = location[1]
             }
         }
@@ -398,10 +409,76 @@ class CloudSuggestionsView(
             .start()
     }
 
-    // Tips 固定在输入法面板顶部，不再响应拖动手势。
-    override fun onInterceptTouchEvent(event: MotionEvent): Boolean = super.onInterceptTouchEvent(event)
+    // 垂直/自由拖动整个 Tips 浮窗；吸附到键盘顶部附近时自动回到锚点。
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        if (tipsDialog?.isShowing != true) return super.onInterceptTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                floatingDragArmed = true
+                floatingDragActive = false
+                floatingDownRawX = event.rawX
+                floatingDownRawY = event.rawY
+                val attrs = tipsDialog?.window?.attributes
+                floatingStartX = attrs?.x ?: 0
+                floatingStartY = attrs?.y ?: 0
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (floatingDragArmed && !floatingDragActive) {
+                    val dx = event.rawX - floatingDownRawX
+                    val dy = event.rawY - floatingDownRawY
+                    if (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop) {
+                        floatingDragActive = true
+                        draggingTips = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                floatingDragArmed = false
+            }
+        }
+        return if (floatingDragActive) true else super.onInterceptTouchEvent(event)
+    }
 
-    override fun onTouchEvent(event: MotionEvent): Boolean = super.onTouchEvent(event)
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!floatingDragActive) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                val window = tipsDialog?.window
+                if (window != null) {
+                    val maxX = (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
+                    val maxY = (resources.displayMetrics.heightPixels - height).coerceAtLeast(0)
+                    window.attributes = window.attributes.apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        x = (floatingStartX + event.rawX - floatingDownRawX).toInt().coerceIn(0, maxX)
+                        y = (floatingStartY + event.rawY - floatingDownRawY).toInt().coerceIn(0, maxY)
+                    }
+                    tipsDetached = true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val anchor = tipsAnchor
+                val window = tipsDialog?.window
+                if (anchor != null && window != null) {
+                    val location = IntArray(2)
+                    anchor.getLocationOnScreen(location)
+                    val targetX = ((resources.displayMetrics.widthPixels - window.decorView.width) / 2).coerceAtLeast(0)
+                    val attrs = window.attributes
+                    val snap = (48f * density).toInt()
+                    if (kotlin.math.abs(attrs.x - targetX) <= snap && kotlin.math.abs(attrs.y - location[1]) <= snap) {
+                        tipsDetached = false
+                        window.attributes = attrs.apply { gravity = Gravity.TOP or Gravity.START; x = targetX; y = location[1] }
+                    }
+                }
+                floatingDragActive = false
+                floatingDragArmed = false
+                draggingTips = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        return true
+    }
 
     /** 内容过长时自动往返滚动。 */
     private fun startAutoScroll() {
