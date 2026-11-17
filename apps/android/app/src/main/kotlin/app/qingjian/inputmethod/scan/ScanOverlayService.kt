@@ -538,7 +538,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
         windowPrefs.edit()
             .putInt(KEY_WINDOW_X_DP, (windowParams.x / density).toInt())
-            .putInt(KEY_WINDOW_TOP_DP, (overlayTopY / density).toInt())
+            .putInt(KEY_WINDOW_TOP_DP, (windowParams.y / density).toInt())
             .apply()
     }
 
