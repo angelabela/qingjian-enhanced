@@ -255,7 +255,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     private fun isStructuredTokenChar(char: Char): Boolean =
-        char.code < 128 && (char.isLetterOrDigit() || char in "!#\$%&*+-./:@_~")
+        char.code in 33..126
 
     /** 混合大小写、数字或符号出现后，后续编码按原样落字，不交给中文候选改写。 */
     private fun isStructuredTokenMode(): Boolean =
