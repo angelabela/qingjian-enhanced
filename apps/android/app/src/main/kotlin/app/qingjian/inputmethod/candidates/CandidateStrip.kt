@@ -21,6 +21,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         it.textSize = 19f * density * textScale
         it.textAlign = Paint.Align.CENTER
         it.typeface = fontWeight.typeface
+        it.isFakeBoldText = fontWeight.weight >= 600
     }
     private val fill = Paint()
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -28,9 +29,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         textSize = 20f * density * textScale
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
+        isFakeBoldText = fontWeight.weight >= 600
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
-    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface }
+    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface; isFakeBoldText = fontWeight.weight >= 600 }
     private val fallbackRects = ArrayList<RectF>()
     private val src = Rect()
     private val dst = Rect()
