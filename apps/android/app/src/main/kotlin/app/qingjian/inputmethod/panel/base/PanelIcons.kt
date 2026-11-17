@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, FLASHLIGHT, DRAG, CLOSE }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, FLASHLIGHT, DRAG, WAVEFORM, CLOSE }
 
     private val path = Path()
     private val oval = RectF()
@@ -56,6 +56,7 @@ object PanelIcons {
             Icon.QR_SCAN -> qrScan()
             Icon.FLASHLIGHT -> flashlight()
             Icon.DRAG -> drag()
+            Icon.WAVEFORM -> waveform()
             Icon.CLOSE -> { polyline(6f, 6f, 18f, 18f); polyline(18f, 6f, 6f, 18f) }
         }
         val scale = size / 24f
@@ -330,6 +331,11 @@ object PanelIcons {
         for (x in listOf(7f, 12f, 17f)) {
             for (y in listOf(7f, 12f, 17f)) circle(x, y, 0.85f)
         }
+    }
+
+    /** 语音动效设置：高低起伏的声波。 */
+    private fun waveform() {
+        polyline(3f, 12f, 6f, 12f, 8f, 6f, 10f, 18f, 12f, 9f, 14f, 16f, 16f, 8f, 18f, 12f, 21f, 12f)
     }
 
     private fun camera() {
