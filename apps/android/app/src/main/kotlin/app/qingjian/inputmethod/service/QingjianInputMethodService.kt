@@ -800,10 +800,17 @@ class QingjianInputMethodService :
         val prefs = Settings.preferences(this)
         val connection = currentInputConnection ?: return
         when {
-            prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) ->
-                sendDownUpKeyEvents(KeyEvent.KEYCODE_TAB)
+            prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) -> {
+                // 直接把 Tab 发给宿主编辑器，避免 InputMethodService 的按键分发
+                // 把剪贴板面板当作键盘按键流程处理而切回主键盘。
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB))
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB))
+            }
             prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false) -> {
-                if (!composer.commitExternalText("\n", connection)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+                if (!composer.commitExternalText("\n", connection)) {
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                    connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+                }
             }
         }
     }
