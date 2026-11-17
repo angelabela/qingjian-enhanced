@@ -583,7 +583,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downRawX
                     val dy = event.rawY - downRawY
-                    if (!dragging && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) dragging = true
+                    if (!dragging && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
+                        dragging = true
+                        view.isPressed = false
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
                     if (dragging) {
                         val maxX = (root.width - view.width).coerceAtLeast(0)
                         val maxY = (root.height - view.height).coerceAtLeast(0)
@@ -617,10 +621,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         .putFloat(KEY_CAPTURE_Y_RATIO, view.y / maxY)
                         .apply()
                     dragging = false
+                    view.isPressed = false
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     dragging = false
+                    view.isPressed = false
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
                     true
                 }
                 else -> dragging
