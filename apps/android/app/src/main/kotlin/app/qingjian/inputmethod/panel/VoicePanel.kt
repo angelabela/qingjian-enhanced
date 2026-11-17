@@ -36,6 +36,8 @@ class VoicePanel(
         fun onFinish(act: Boolean, hide: Boolean)
         /** Close the panel immediately while allowing the recognizer to finish its final result. */
         fun onClose()
+        fun onUndo()
+        fun onRedo()
     }
 
     enum class Target { NONE, CANCEL, ACTION }
@@ -45,6 +47,8 @@ class VoicePanel(
     private val scrim = View(context)
     private val overlay = OverlayView(context)
     private val finishButton = TextView(context)
+    private val undoButton = TextView(context)
+    private val redoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
     private val smoothedBands = FloatArray(SAMPLE_COUNT)
     private var lastFrameNanos = 0L
@@ -114,6 +118,31 @@ class VoicePanel(
             setOnClickListener { actions.onClose() }
         }
         addView(finishButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = (18f * density).toInt()
+        })
+        fun makeHistoryButton(view: TextView, label: String, action: () -> Unit) {
+            view.text = label
+            view.textSize = 13f
+            view.setTextColor(palette.text)
+            view.gravity = android.view.Gravity.CENTER
+            view.isClickable = true
+            view.isFocusable = true
+            view.setPadding((18f * density).toInt(), (9f * density).toInt(), (18f * density).toInt(), (9f * density).toInt())
+            view.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor((palette.surface and 0x00FFFFFF) or 0xD8202938.toInt())
+                cornerRadius = 20f * density
+                setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
+            }
+            view.setOnClickListener { action() }
+        }
+        makeHistoryButton(undoButton, "撤销", actions::onUndo)
+        makeHistoryButton(redoButton, "重做", actions::onRedo)
+        addView(undoButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.START).apply {
+            leftMargin = (18f * density).toInt()
+            bottomMargin = (18f * density).toInt()
+        })
+        addView(redoButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply {
+            rightMargin = (18f * density).toInt()
             bottomMargin = (18f * density).toInt()
         })
     }
