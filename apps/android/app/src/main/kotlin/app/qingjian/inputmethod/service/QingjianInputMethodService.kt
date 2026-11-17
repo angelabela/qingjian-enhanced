@@ -16,6 +16,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputContentInfo
@@ -374,6 +375,8 @@ class QingjianInputMethodService :
         contacts.retryIfEmpty()
         // 键盘弹出时按设置补录剪贴板历史，不显示临时提示。
         clipboardWatcher.capture()
+        // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
+        runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
         ClipboardSync.apply(this)
         ClipboardSync.changed()
@@ -405,6 +408,15 @@ class QingjianInputMethodService :
         closeEditor()
         panel?.close()
         composer.abandon()
+    }
+
+    override fun onUpdateCursorAnchorInfo(cursorAnchorInfo: CursorAnchorInfo) {
+        super.onUpdateCursorAnchorInfo(cursorAnchorInfo)
+        val x = cursorAnchorInfo.insertionMarkerHorizontal
+        val y = cursorAnchorInfo.insertionMarkerTop
+        if (x.isFinite() && y.isFinite() && y >= 0f) {
+            panel?.updateCloudTipsAnchor(x, y)
+        }
     }
 
     override fun onUpdateSelection(
