@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -20,7 +19,6 @@ import android.view.ViewConfiguration
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -198,8 +196,6 @@ class CloudSuggestionsView(
 
     /** 保留宿主接口兼容；Tips 不再跟随编辑器光标，始终固定在输入法面板顶部。 */
     fun updateEditorAnchor(screenX: Float, screenY: Float) = Unit
-
-    private fun updateAnchorPosition() = Unit
 
     private fun attachTipsDialogIfAllowed() {
         if (tipsDialog?.isShowing == true || !Settings.canDrawOverlays(context)) return
