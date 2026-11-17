@@ -10,6 +10,7 @@ on:
       - feature/workflow-469-scan-rounded-outline-voice-drag-structured-tokens
       - feature/workflow-470-scan-window-clipping-clipboard-next-cell
       - feature/workflow-471-scan-window-geometry-tips-glass-clipboard-tab
+      - feature/workflow-472-floating-tips-camera-memory-clipboard-stay
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
