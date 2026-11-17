@@ -12,7 +12,6 @@ import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
-import app.qingjian.inputmethod.panel.VoicePanel
 
 /**
  * 点工具栏 logo 进的功能面板：「常用功能」是图标宫格，「键盘设置」是就地改的开关；
@@ -36,6 +35,9 @@ class FunctionPanel(
 
     private class Toggle(val key: String, val label: String, val note: String, val on: Boolean)
 
+    private var voiceEffectPage = false
+    private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
+
     private val features = listOf(
         Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
         Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
@@ -53,7 +55,7 @@ class FunctionPanel(
         },
         Feature(Icon.RESIZE, "键盘高度") { startResize() },
         Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
-        Feature(Icon.WAVEFORM, "语音动效") { VoicePanel.showAnimationPicker(context) },
+        Feature(Icon.WAVEFORM, "语音动效") { voiceEffectPage = true; invalidate() },
         Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
         Feature(Icon.SETTINGS, "设置") { openSettings() },
     ) + listOfNotNull(
@@ -83,12 +85,33 @@ class FunctionPanel(
         drawHeader(canvas, tabs, Icon.SETTINGS)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
-        if (tabs.selected == 0) drawFeatures(canvas) else drawToggles(canvas)
+        if (tabs.selected == 0) { if (voiceEffectPage) drawVoiceEffectSettings(canvas) else drawFeatures(canvas) } else drawToggles(canvas)
     }
 
     private fun cellWidth() = card.width() / columns
 
     private fun cellHeight() = minOf(ink.dp(86f), card.height() / maxOf(2, (features.size + columns - 1) / columns))
+
+    private fun drawVoiceEffectSettings(canvas: Canvas) {
+        val top = card.top + ink.dp(8f)
+        ink.icon(canvas, Icon.BACK, card.left + ink.dp(22f), top + ink.dp(22f), 22f, palette.text)
+        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(27f))
+        ink.textStart(canvas, "选择语音输入时显示的实时物理声波效果", 11f, palette.gloss, card.left + ink.dp(16f), top + ink.dp(57f))
+        val labels = VoicePanel.ANIMATION_STYLE_LABELS
+        val rowTop = top + ink.dp(76f)
+        val rowHeight = (card.height() - ink.dp(90f)) / labels.size
+        labels.forEachIndexed { index, label ->
+            val y = rowTop + rowHeight * index
+            val selected = (if (selectedVoiceStyle == -1) 5 else selectedVoiceStyle) == index
+            if (selected) {
+                val rect = RectF(card.left + ink.dp(8f), y + ink.dp(3f), card.right - ink.dp(8f), y + rowHeight - ink.dp(3f))
+                ink.round(canvas, rect, 10f, palette.functionalKey)
+            }
+            ink.textStart(canvas, label, 14f, if (selected) palette.brand else palette.text, card.left + ink.dp(18f), y + rowHeight / 2f + ink.dp(5f))
+            if (selected) ink.icon(canvas, Icon.CHECK, card.right - ink.dp(24f), y + rowHeight / 2f, 20f, palette.brand)
+            if (index < labels.lastIndex) ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
+        }
+    }
 
     private fun drawFeatures(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
@@ -146,9 +169,25 @@ class FunctionPanel(
             y < headerHeight -> tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
+                voiceEffectPage = false
             }
 
             !card.contains(x, y) -> Unit
+            tabs.selected == 0 && voiceEffectPage -> {
+                val top = card.top + ink.dp(8f)
+                if (y < top + ink.dp(70f) && x < card.left + ink.dp(42f)) {
+                    voiceEffectPage = false
+                } else {
+                    val rowTop = top + ink.dp(76f)
+                    val rowHeight = (card.height() - ink.dp(90f)) / VoicePanel.ANIMATION_STYLE_LABELS.size
+                    val index = ((y - rowTop) / rowHeight).toInt()
+                    if (index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
+                        selectedVoiceStyle = if (index == 5) -1 else index
+                        context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
+                            .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
+                    }
+                }
+            }
             tabs.selected == 0 -> {
                 val row = ((y - card.top - ink.dp(8f)) / cellHeight()).toInt()
                 val column = ((x - card.left) / cellWidth()).toInt()
