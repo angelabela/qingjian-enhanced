@@ -270,6 +270,7 @@ class CloudSuggestionsView(
                 (decorView as? ViewGroup)?.clipChildren = false
                 decorView.post {
                     if (tipsDialog !== dialog) return@post
+                    val activeWindow = dialog.window ?: return@post
                     val viewWidth = decorView.width.takeIf { it > 0 } ?: container.measuredWidth
                     val maxX = (resources.displayMetrics.widthPixels - viewWidth).coerceAtLeast(0)
                     val maxY = (resources.displayMetrics.heightPixels - decorView.height).coerceAtLeast(0)
@@ -278,7 +279,7 @@ class CloudSuggestionsView(
                         else ((resources.displayMetrics.widthPixels - viewWidth) / 2).coerceAtLeast(0)
                     val y = if (saved) positionPrefs.getInt("y", 0).coerceIn(0, maxY)
                         else (location[1] - (52f * density).toInt()).coerceAtLeast(0)
-                    window.attributes = window.attributes.apply {
+                    activeWindow.attributes = activeWindow.attributes.apply {
                         gravity = Gravity.TOP or Gravity.START
                         this.x = x
                         this.y = y
@@ -391,17 +392,17 @@ class CloudSuggestionsView(
         }
         shards = emptyList()
         shatterAnimator?.cancel()
+        val motionView = tipsContainer ?: this
         shatterAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1_050L
             addUpdateListener {
                 shatterProgress = it.animatedValue as Float
                 // Tips 玻璃底板与文字一起向上、向侧面漂移并缩小；字符则各自延迟散开。
-                val motion = tipsContainer ?: this
-                motion.alpha = 1f - shatterProgress
-                motion.translationX = dragOffsetX + 12f * density * shatterProgress
-                motion.translationY = dragOffsetY - 10f * density * shatterProgress
-                motion.scaleX = 1f - 0.10f * shatterProgress
-                motion.scaleY = 1f - 0.10f * shatterProgress
+                motionView.alpha = 1f - shatterProgress
+                motionView.translationX = dragOffsetX + 12f * density * shatterProgress
+                motionView.translationY = dragOffsetY - 10f * density * shatterProgress
+                motionView.scaleX = 1f - 0.10f * shatterProgress
+                motionView.scaleY = 1f - 0.10f * shatterProgress
                 invalidate()
             }
             start()
