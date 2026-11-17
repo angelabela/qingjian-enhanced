@@ -1138,6 +1138,13 @@ class QingjianInputMethodService :
         aiChat.correctVoiceText(text, callback)
     }
 
+    override fun refineCommittedVoice(original: String, corrected: String): Boolean =
+        composer.refineCommittedVoice(original, corrected)
+
+    override fun undoVoice(): Boolean = composer.undo()
+
+    override fun redoVoice(): Boolean = composer.redo()
+
     override fun prepareVoice() = composer.prepareVoice()
 
     // 走 [connection]：快捷翻译、常用语编辑条开着时字进编辑条
