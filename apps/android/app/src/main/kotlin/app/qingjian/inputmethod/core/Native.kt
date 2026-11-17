@@ -96,7 +96,7 @@ internal object Native {
     external fun renderStrip(handle: Long, highlighted: Int, scale: Float, dark: Boolean, visibleWidth: Int): String?
 
     /** 候选条换主题（内置主题 id）与字号档（[textScale] 是候选字与译文一起的倍数）。 */
-    external fun setAppearance(handle: Long, theme: String, textScale: Float)
+    external fun setAppearance(handle: Long, theme: String, textScale: Float, candidateWeight: Int)
 
     /** 内置主题列表的 JSON（`[{id, name}]`），按 PC 设置程序的顺序。 */
     external fun themes(): String?
