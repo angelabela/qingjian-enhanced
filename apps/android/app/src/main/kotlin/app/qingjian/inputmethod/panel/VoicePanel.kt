@@ -2,7 +2,7 @@ package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -356,22 +356,15 @@ class VoicePanel(
 
     companion object {
         const val SAMPLE_COUNT = 48
-        private const val PREF_STYLE = "voice_animation_style"
-        private val STYLE_LABELS = arrayOf("频谱柱（当前）", "柔性双声波", "环形频谱", "流光双波", "每次启动随机")
+        const val PREF_STYLE = "voice_animation_style"
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱（当前）", "柔性双声波", "环形频谱", "流光双波", "每次启动随机")
 
-        /** 由常用功能面板调用；0-3 为固定样式，-1 表示每次启动随机。 */
+        /** 输入法 Service 不是 Activity，不能直接挂 AlertDialog；交给独立 Activity 显示设置页。 */
         fun showAnimationPicker(context: Context) {
-            val prefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
-            val current = prefs.getInt(PREF_STYLE, 0).coerceIn(-1, 3)
-            val checked = if (current == -1) 4 else current
-            AlertDialog.Builder(context)
-                .setTitle("语音面板动效")
-                .setSingleChoiceItems(STYLE_LABELS, checked) { dialog, which ->
-                    prefs.edit().putInt(PREF_STYLE, if (which == 4) -1 else which).apply()
-                    dialog.dismiss()
-                }
-                .setNegativeButton("取消", null)
-                .show()
+            context.startActivity(
+                Intent(context, VoiceAnimationSettingsActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
 
         fun resolveAnimationStyle(context: Context): Int {
