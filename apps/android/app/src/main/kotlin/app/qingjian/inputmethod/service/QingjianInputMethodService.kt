@@ -116,6 +116,8 @@ class QingjianInputMethodService :
 
     /** 就地改设置会重建键盘，重建完重新打开这个面板。 */
     private var reopenPanel: PanelKind? = null
+    /** 记录剪贴板面板所属编辑器；同一应用短暂结束输入视图时仍保留面板。 */
+    private var clipboardPanelEditorPackage: String? = null
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
 
@@ -292,6 +294,9 @@ class QingjianInputMethodService :
         cloud.sync(settings)
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
         composer.applyScheme()
+        val panelToRestore = reopenPanel ?: this.panel?.openPanel?.takeIf {
+            it == PanelKind.CLIPBOARD || it == PanelKind.PHRASES
+        }
         val panel = InputPanel(
             this, settings, this,
             stripSource = { highlighted, dark, visibleWidth -> engine.renderStrip(highlighted, dark, visibleWidth) },
@@ -306,7 +311,7 @@ class QingjianInputMethodService :
         this.panel = panel
         showKeyboard()
         showSideItems(emptyList())
-        reopenPanel?.let(panel::open)
+        panelToRestore?.let(panel::open)
         reopenPanel = null
         game.wrap(target, settings, gameSettings, panel.view)?.let { frame ->
             neon = null
@@ -350,6 +355,10 @@ class QingjianInputMethodService :
         // 在系统切换 InputConnection 前取消语音会话，防止迟到 AI 回复写入新输入框。
         voice.cancel()
         super.onStartInput(attribute, restarting)
+        if (clipboardPanelEditorPackage != null && clipboardPanelEditorPackage != attribute.packageName) {
+            if (panel?.openPanel == PanelKind.CLIPBOARD || panel?.openPanel == PanelKind.PHRASES) panel?.close()
+            clipboardPanelEditorPackage = null
+        }
         hasActiveSelection = false
         val passwordSuggestions = attribute.wantsPasswordSuggestions()
         // 密码框保留本地拼音组句/候选，但绝不学习或上传；邮箱等其他直输框行为不变。
@@ -411,12 +420,11 @@ class QingjianInputMethodService :
         super.onFinishInputView(finishingInput)
         voice.cancel()
         closeEditor()
-        // 临时隐藏输入视图（finishingInput=false）时保留当前功能面板。
-        // 某些办公编辑器在提交剪贴板内容后会短暂结束输入视图；无条件 close()
-        // 会把剪贴板页销毁，下一次显示时只剩键盘。真正结束当前输入目标时再清理。
-        if (finishingInput) {
-            panel?.close()
-        }
+        // 部分编辑器（尤其表格单元格）在提交文本后会以 finishingInput=true
+        // 结束当前输入视图，但焦点仍属于同一个编辑器。剪贴板面板需要跨过这次
+        // 生命周期抖动；切换到另一个应用时再由 onStartInput 按 package 清理。
+        val keepClipboard = panel?.openPanel == PanelKind.CLIPBOARD || panel?.openPanel == PanelKind.PHRASES
+        if (finishingInput && !keepClipboard) panel?.close()
         composer.finishStructuredToken()
         composer.abandon()
     }
@@ -725,6 +733,9 @@ class QingjianInputMethodService :
     }
 
     override fun openPanel(kind: PanelKind) {
+        if (kind == PanelKind.CLIPBOARD || kind == PanelKind.PHRASES) {
+            clipboardPanelEditorPackage = currentInputEditorInfo?.packageName
+        }
         val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT ||
             kind == PanelKind.CONTEXT_TOOLS
         val info = currentInputEditorInfo
