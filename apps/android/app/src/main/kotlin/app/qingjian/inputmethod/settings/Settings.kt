@@ -104,7 +104,7 @@ data class Settings(
         /** API 28+ 使用明确字重；旧系统用粗体字族回退，避免 MEDIUM 与 NORMAL 几乎看不出区别。 */
         val typeface: android.graphics.Typeface
             get() = if (android.os.Build.VERSION.SDK_INT >= 28) {
-                android.graphics.Typeface.create("sans-serif", weight, false)
+                android.graphics.Typeface.create(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL), weight, false)
             } else {
                 android.graphics.Typeface.create(family, style)
             }
