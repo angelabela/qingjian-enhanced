@@ -68,7 +68,7 @@ class CloudSuggestionsView(
     private var shatterAnimator: ValueAnimator? = null
     private var shatterProgress = 0f
     private data class Shard(val x: Float, val y: Float, val size: Float, val angle: Float, val dx: Float, val dy: Float, val color: Int)
-    private data class Glyph(val value: String, val x: Float, val y: Float, val dx: Float, val dy: Float, val rotation: Float, val size: Float, val color: Int)
+    private data class Glyph(val value: String, val x: Float, val y: Float, val dx: Float, val dy: Float, val rotation: Float, val size: Float, val color: Int, val delay: Float)
     private var flyingGlyphs: List<Glyph> = emptyList()
     private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var shards: List<Shard> = emptyList()
@@ -87,8 +87,8 @@ class CloudSuggestionsView(
         setPadding((18 * density).toInt(), 0, (18 * density).toInt(), 0)
         // 主题色磨砂玻璃：底色取当前主题 surface/board，弱化高光，采用微圆角。
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
-            (palette.surface and 0x00FFFFFF) or (0xE8 shl 24),
-            (palette.board and 0x00FFFFFF) or (0xE0 shl 24),
+            (palette.surface and 0x00FFFFFF) or (0xF4 shl 24),
+            (palette.board and 0x00FFFFFF) or (0xEE shl 24),
         )).apply {
             cornerRadius = 8f * density
             setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
@@ -241,7 +241,7 @@ class CloudSuggestionsView(
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
                 val glass = GradientDrawable().apply {
-                    setColor((palette.surface and 0x00FFFFFF) or (0xD8 shl 24))
+                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
                     cornerRadius = 8f * density
                     setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
                 }
@@ -344,8 +344,9 @@ class CloudSuggestionsView(
                         textSize = label.textSize
                     }
                     var prefix = ""
-                    value.forEach { character ->
-                        val glyph = character.toString()
+                    val codePoints = value.codePoints().toArray()
+                    codePoints.forEachIndexed { glyphIndex, codePoint ->
+                        val glyph = String(Character.toChars(codePoint))
                         val glyphWidth = paint.measureText(glyph)
                         val x = location[0] - hostLocation[0] + label.paddingLeft + paint.measureText(prefix) + glyphWidth / 2f
                         val metrics = paint.fontMetrics
@@ -357,8 +358,9 @@ class CloudSuggestionsView(
                             (random.nextFloat() - 0.5f) * 70f,
                             label.textSize,
                             label.currentTextColor,
+                            (glyphIndex * 0.065f).coerceAtMost(0.72f),
                         ))
-                        prefix += character
+                        prefix += glyph
                     }
                     label.alpha = 0f
                 }
@@ -370,7 +372,12 @@ class CloudSuggestionsView(
             duration = 1_050L
             addUpdateListener {
                 shatterProgress = it.animatedValue as Float
+                // Tips 玻璃底板与文字一起向上、向侧面漂移并缩小；字符则各自延迟散开。
                 alpha = 1f - shatterProgress
+                translationX = dragOffsetX + 12f * density * shatterProgress
+                translationY = dragOffsetY - 10f * density * shatterProgress
+                scaleX = 1f - 0.10f * shatterProgress
+                scaleY = 1f - 0.10f * shatterProgress
                 invalidate()
             }
             start()
@@ -379,6 +386,10 @@ class CloudSuggestionsView(
             if (shatterProgress >= 0.99f) {
                 visibility = GONE
                 alpha = 1f
+                translationX = dragOffsetX
+                translationY = dragOffsetY
+                scaleX = 1f
+                scaleY = 1f
                 shatterProgress = 0f
                 shards = emptyList()
                 flyingGlyphs = emptyList()
@@ -406,6 +417,7 @@ class CloudSuggestionsView(
             .withEndAction {
                 visibility = GONE
                 alpha = 1f
+                translationX = dragOffsetX
                 translationY = dragOffsetY
                 scaleX = 1f
                 scaleY = 1f
@@ -439,6 +451,15 @@ class CloudSuggestionsView(
             return
         }
         selectionAnimating = true
+        // 点击时整块玻璃 Tips 也缓慢收拢，字符按顺序从卡片位置飞向输入框方向。
+        animate().cancel()
+        animate()
+            .alpha(0.24f)
+            .scaleX(0.95f)
+            .scaleY(0.90f)
+            .translationY(dragOffsetY - 7f * density)
+            .setDuration(1_450L)
+            .start()
         var cursorX = sourceLocation[0] - hostLocation[0] + source.width / 2f -
             paint.measureText(value) / 2f
         val startY = sourceLocation[1] - hostLocation[1] + source.height / 2f
@@ -471,8 +492,8 @@ class CloudSuggestionsView(
                 .alpha(0.08f)
                 .scaleX(0.9f)
                 .scaleY(0.9f)
-                .setStartDelay(index * 105L)
-                .setDuration(820L)
+                .setStartDelay(index * 125L)
+                .setDuration(950L)
                 .withEndAction {
                     host.overlay.remove(flyer)
                     remaining--
@@ -600,7 +621,8 @@ class CloudSuggestionsView(
         super.dispatchDraw(canvas)
         if (shatterProgress > 0f && flyingGlyphs.isNotEmpty()) {
             flyingGlyphs.forEach { glyph ->
-                val progress = shatterProgress
+                val progress = ((shatterProgress - glyph.delay) / (1f - glyph.delay)).coerceIn(0f, 1f)
+                if (progress <= 0f) return@forEach
                 canvas.save()
                 val x = glyph.x + glyph.dx * progress
                 val y = glyph.y + glyph.dy * progress
@@ -637,10 +659,18 @@ class CloudSuggestionsView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val height = (46 * density).toInt()
-        val parentWidth = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast((120 * density).toInt())
-        val maxWidth = minOf(parentWidth, (resources.displayMetrics.widthPixels * 0.82f).toInt())
+        val maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
+            .coerceAtLeast((120 * density).toInt())
+        // 先按内容自然宽度测量，再限制到屏幕宽度；短联想短显示，长联想才启用横向滚动。
+        items.measure(
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
+        )
+        val desiredWidth = (items.measuredWidth + paddingLeft + paddingRight)
+            .coerceAtLeast((76 * density).toInt())
+            .coerceAtMost(maxWidth)
         super.onMeasure(
-            MeasureSpec.makeMeasureSpec(maxWidth, MeasureSpec.AT_MOST),
+            MeasureSpec.makeMeasureSpec(desiredWidth, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
         )
     }
