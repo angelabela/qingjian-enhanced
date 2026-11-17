@@ -40,6 +40,12 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         /** 语音识别文本的云端保守校正；失败时调用方回退到原始识别文本。 */
         fun correctVoiceText(text: String, callback: (Result<String>) -> Unit)
 
+        /** 将异步校正应用到刚提交的语音事务；若光标上下文已变化则安全放弃。 */
+        fun refineCommittedVoice(original: String, corrected: String): Boolean
+
+        fun undoVoice(): Boolean
+        fun redoVoice(): Boolean
+
         /** 还没选识别服务：提示去「语音识别」页配。 */
         fun voiceNeedsSetup()
     }
@@ -120,6 +126,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         if (cancel) onCancel() else onFinish(act = false, hide = false)
     }
 
+    override fun onUndo() { host.undoVoice() }
+
+    override fun onRedo() { host.redoVoice() }
+
     override fun onClose() {
         val activeRecognizer = recognizer ?: run {
             if (pendingCorrection) onCancel() else host.closeVoicePanel()
@@ -171,29 +181,38 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     override fun onFinal(text: String) {
         val then = after
         val requestGeneration = generation
-        end()
+        val completedPanel = panel
+        recognizer = null
+        after = After.NOTHING
+        panel = completedPanel
         val original = VoiceTextNormalizer.normalize(text)
         if (original.isBlank()) {
             host.composeVoice("")
             return
         }
 
-        // 保留当前 composing 文本，待纠错完成后只提交一次，避免撤销时出现两步记录。
-        pendingCorrection = true
+        // 先立即提交 ASR 原文，避免用户等待整段云端校正；校正随后尝试原位修订同一条撤销记录。
+        // 若用户已移动光标、继续输入或切换输入框，宿主会因上下文不匹配而安全放弃修订。
+        pendingCorrection = false
+        host.commitVoice(original)
+        if (then == After.ACTION) host.performVoiceAction()
+        if (then == After.HIDE) host.hideKeyboard()
+
         host.correctVoiceText(original) { result ->
             if (generation != requestGeneration) return@correctVoiceText
-            pendingCorrection = false
             val corrected = result.getOrNull()
                 ?.let(VoiceTextNormalizer::normalize)
                 ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
                 ?: original
             if (result.isFailure) {
-                android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; using ASR text")
+                android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; keeping immediate ASR text")
+            } else if (corrected != original) {
+                host.refineCommittedVoice(original, corrected)
             }
-            host.commitVoice(corrected)
-            if (then == After.ACTION) host.performVoiceAction()
-            if (then == After.HIDE) host.hideKeyboard()
         }
+        // 识别结束后保留面板，让用户能立即撤销/重做刚提交的整段语音。
+        panel?.listening = false
+        panel?.recognizing = false
     }
 
     override fun onError(message: String) {
