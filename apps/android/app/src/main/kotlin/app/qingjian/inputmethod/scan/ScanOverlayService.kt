@@ -406,10 +406,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+            }
         }
-        // 不启用系统级 BLUR_BEHIND：Android 会按矩形窗口边界模糊背景，
-        // 即使 View/Decor 使用圆角裁剪，圆角外仍可能出现模糊残影。
-        // 标题栏保留自身半透明玻璃渐层，窗口圆角外保持真正透明。
+        // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
+        // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
         windowManager.addView(root, windowParams)
         headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
             setContentView(headerView)
@@ -431,10 +433,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                // 故意不设置 FLAG_BLUR_BEHIND / backgroundBlurRadius。
-                // 系统背景模糊是矩形窗口区域，无法可靠按圆角裁掉；改用标题栏自身玻璃渐层。
-                clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                attributes = headerWindowParams
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // 真实模糊标题栏后方内容；模糊半径只属于这个独立标题栏窗口。
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    attributes = headerWindowParams
+                    setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
+                } else {
+                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    attributes = headerWindowParams
+                }
             }
             show()
             window?.apply {
@@ -522,7 +529,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             windowParams.y = windowParams.y.coerceAtLeast(headerHeight)
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            headerWindowParams.y = windowParams.y - headerHeight + 1
+            // 两个窗口边缘严格相接，不重叠；避免相机 Surface 在上移时压住标题栏。
+            headerWindowParams.y = windowParams.y - headerHeight
             headerWindowParams.width = windowParams.width
         }
         // 同一 TYPE_APPLICATION_OVERLAY 下，最后更新的窗口可能被系统提升到更高 Z 序。
@@ -538,6 +546,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val window = headerDialog?.window ?: return
         runCatching {
             window.attributes = headerWindowParams
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window.setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
+            }
             window.setLayout(headerWindowParams.width, headerWindowParams.height)
         }
     }
