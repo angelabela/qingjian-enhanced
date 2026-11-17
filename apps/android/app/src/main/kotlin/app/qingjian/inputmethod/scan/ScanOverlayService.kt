@@ -406,6 +406,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = 0
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // 模糊标志与半径保存在 LayoutParams 中，后续拖动/焦点切换更新窗口时不会丢失。
+            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+            headerWindowParams.blurBehindRadius = dp(26)
+        }
         // 相机预览仍由 WindowManager 单独管理；标题栏使用独立 Dialog Window，
         // 背景模糊半径只作用于标题栏窗口，不会扩散到整块相机预览。
         windowManager.addView(root, windowParams)
