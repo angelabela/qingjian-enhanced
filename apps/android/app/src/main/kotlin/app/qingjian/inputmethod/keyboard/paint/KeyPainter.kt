@@ -28,6 +28,8 @@ class KeyPainter(
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = fontTypeface
+        // 对中粗、粗体再叠加轻微合成加粗，低端字体没有可变字重时也能明显区分。
+        isFakeBoldText = fontWeight.weight >= 600
     }
     private val bubble = RectF()
     private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
