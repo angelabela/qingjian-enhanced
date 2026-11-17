@@ -95,21 +95,84 @@ class FunctionPanel(
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
         ink.icon(canvas, Icon.BACK, card.left + ink.dp(22f), top + ink.dp(22f), 22f, palette.text)
-        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(27f), card.right - ink.dp(12f))
-        ink.textStart(canvas, "选择语音输入时显示的实时物理声波效果", 11f, palette.gloss, card.left + ink.dp(16f), top + ink.dp(57f), card.right - ink.dp(12f))
+        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(25f), card.right - ink.dp(12f))
+        ink.textStart(canvas, "跟随当前主题 · 选择实时音频可视化样式", 11f, palette.gloss,
+            card.left + ink.dp(16f), top + ink.dp(53f), card.right - ink.dp(12f))
+
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
-        val rowTop = top + ink.dp(76f)
-        val rowHeight = (card.height() - ink.dp(90f)) / labels.size
+        val rows = (labels.size + 1) / 2
+        val rowTop = top + ink.dp(66f)
+        val rowHeight = (card.height() - ink.dp(76f)) / rows
+        val gapX = ink.dp(7f)
+        val gapY = ink.dp(5f)
+        val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+
         labels.forEachIndexed { index, label ->
-            val y = rowTop + rowHeight * index
+            val column = index % 2
+            val row = index / 2
+            val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
+            val y = rowTop + row * rowHeight
+            val bounds = RectF(left, y + gapY / 2f, left + cardWidth, y + rowHeight - gapY / 2f)
             val selected = (if (selectedVoiceStyle == -1) 7 else selectedVoiceStyle) == index
+
+            ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.35f else 0.65f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(11f), ink.dp(11f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+
+            drawVoiceStylePreview(canvas, bounds, index, selected)
+            val textColor = if (selected) palette.brand else palette.text
+            ink.textStart(canvas, label, 12.5f, textColor, bounds.left + ink.dp(43f),
+                bounds.centerY() - ink.dp(1f), bounds.right - ink.dp(7f))
             if (selected) {
-                val rect = RectF(card.left + ink.dp(8f), y + ink.dp(3f), card.right - ink.dp(8f), y + rowHeight - ink.dp(3f))
-                ink.round(canvas, rect, 10f, palette.functionalKey)
+                ink.fill.color = palette.brand
+                canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
             }
-            ink.textStart(canvas, label, 14f, if (selected) palette.brand else palette.text, card.left + ink.dp(18f), y + rowHeight / 2f + ink.dp(5f), card.right - ink.dp(48f))
-            if (selected) ink.icon(canvas, Icon.CHECK, card.right - ink.dp(24f), y + rowHeight / 2f, 20f, palette.brand)
-            if (index < labels.lastIndex) ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
+        }
+    }
+
+    /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
+    private fun drawVoiceStylePreview(canvas: Canvas, bounds: RectF, index: Int, selected: Boolean) {
+        val cx = bounds.left + ink.dp(22f)
+        val cy = bounds.centerY()
+        val accent = if (selected) palette.brand else palette.gloss
+        val secondary = if (selected) palette.accent else palette.faint
+        ink.fill.style = android.graphics.Paint.Style.FILL
+        if (index == 1) {
+            ink.fill.color = accent
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(1.4f)
+            canvas.drawCircle(cx, cy, ink.dp(5.5f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            for (i in 0 until 8) {
+                val angle = Math.PI * 2.0 * i / 8.0
+                val x1 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(7f)
+                val y1 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(7f)
+                val x2 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(10f)
+                val y2 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(10f)
+                ink.fill.color = secondary
+                ink.fill.strokeWidth = ink.dp(1.1f)
+                canvas.drawLine(x1, y1, x2, y2, ink.fill)
+            }
+            return
+        }
+        val heights = when (index) {
+            0 -> floatArrayOf(5f, 9f, 13f, 8f, 5f)
+            2 -> floatArrayOf(4f, 10f, 14f, 9f, 4f)
+            3 -> floatArrayOf(3f, 7f, 11f, 7f, 3f)
+            4 -> floatArrayOf(7f, 12f, 9f, 12f, 7f)
+            5 -> floatArrayOf(5f, 10f, 13f, 10f, 5f)
+            6 -> floatArrayOf(4f, 8f, 11f, 8f, 4f)
+            else -> floatArrayOf(5f, 11f, 6f, 13f, 8f)
+        }
+        for (i in heights.indices) {
+            val x = cx + (i - 2) * ink.dp(4.2f)
+            val half = ink.dp(heights[i] * 0.5f)
+            ink.fill.color = if (i % 2 == 0) secondary else accent
+            canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
+                ink.dp(1f), ink.dp(1f), ink.fill)
         }
     }
 
@@ -175,13 +238,18 @@ class FunctionPanel(
             !card.contains(x, y) -> Unit
             tabs.selected == 0 && voiceEffectPage -> {
                 val top = card.top + ink.dp(8f)
-                if (y < top + ink.dp(70f) && x < card.left + ink.dp(42f)) {
+                if (y < top + ink.dp(62f) && x < card.left + ink.dp(42f)) {
                     voiceEffectPage = false
                 } else {
-                    val rowTop = top + ink.dp(76f)
-                    val rowHeight = (card.height() - ink.dp(90f)) / VoicePanel.ANIMATION_STYLE_LABELS.size
-                    val index = ((y - rowTop) / rowHeight).toInt()
-                    if (index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
+                    val rows = (VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2
+                    val rowTop = top + ink.dp(66f)
+                    val rowHeight = (card.height() - ink.dp(76f)) / rows
+                    val gapX = ink.dp(7f)
+                    val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+                    val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
+                    val row = ((y - rowTop) / rowHeight).toInt()
+                    val index = row * 2 + column
+                    if (row in 0 until rows && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
                         selectedVoiceStyle = if (index == 7) -1 else index
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
