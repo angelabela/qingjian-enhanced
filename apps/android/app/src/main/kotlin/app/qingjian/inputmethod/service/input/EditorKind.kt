@@ -26,6 +26,20 @@ fun EditorInfo.wantsDirectInput(): Boolean {
 }
 
 /**
+ * 文本密码框允许本地拼音候选联想，但必须作为私密输入处理：
+ * 不上传云端、不学习、不记录词频。数字密码仍使用数字直输。
+ */
+fun EditorInfo.wantsPasswordSuggestions(): Boolean {
+    if (inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+    return when (inputType and InputType.TYPE_MASK_VARIATION) {
+        InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD -> true
+        else -> false
+    }
+}
+
+/**
  * 网址框：标点原样上屏不转全角，组句中敲标点先原样落下敲的字母（`github.` 不换成候选再接句号）。
  */
 fun EditorInfo.wantsPlainPunctuation(): Boolean =
