@@ -180,8 +180,8 @@ class CloudSuggestionsView(
         alpha = 1f
         animate().cancel()
         visibility = VISIBLE
-        attachAsScreenOverlayIfAllowed()
-        post { updateAnchorPosition() }
+        // 固定留在输入法 Stack 顶部（候选栏下沿、键盘上沿），不再脱离输入法窗口追随光标。
+
         if (!wasVisible) {
             alpha = 0f
             translationY = dragOffsetY - 8f * density
@@ -192,41 +192,10 @@ class CloudSuggestionsView(
         scheduleAutoHide()
     }
 
-    /** 接收 InputMethodService 的 CursorAnchorInfo，随光标移动动态调整 Tips 位置。 */
-    fun updateEditorAnchor(screenX: Float, screenY: Float) {
-        if (!screenX.isFinite() || !screenY.isFinite() || screenY < 0f) return
-        editorAnchorX = screenX
-        editorAnchorY = screenY
-        post { updateAnchorPosition() }
-    }
+    /** 保留宿主接口兼容；Tips 不再跟随编辑器光标，始终固定在输入法面板顶部。 */
+    fun updateEditorAnchor(screenX: Float, screenY: Float) = Unit
 
-    private fun updateAnchorPosition() {
-        val anchorX = editorAnchorX ?: return
-        val anchorY = editorAnchorY ?: return
-        if (width <= 0 || height <= 0) return
-        val screenWidth = resources.displayMetrics.widthPixels
-        val sideInset = (8f * density).toInt()
-        val targetX = (anchorX - width / 2f).toInt().coerceIn(sideInset, (screenWidth - width - sideInset).coerceAtLeast(sideInset))
-        val targetY = (anchorY - height - 12f * density).toInt().coerceAtLeast((8f * density).toInt())
-
-        val params = overlayParams
-        if (overlayAttached && params != null) {
-            params.x = targetX
-            params.y = targetY
-            runCatching { windowManager.updateViewLayout(this, params) }
-            return
-        }
-
-        // 无悬浮窗权限时仍在键盘 Stack 内显示，但按光标的屏幕坐标定位到输入框上方。
-        val host = parent as? View ?: return
-        val hostLocation = IntArray(2)
-        host.getLocationOnScreen(hostLocation)
-        val lp = layoutParams as? FrameLayout.LayoutParams ?: return
-        lp.gravity = Gravity.TOP or Gravity.START
-        lp.leftMargin = (targetX - hostLocation[0]).coerceAtLeast(0)
-        lp.topMargin = (targetY - hostLocation[1]).coerceAtLeast(0)
-        layoutParams = lp
-    }
+    private fun updateAnchorPosition() = Unit
 
     private fun attachAsScreenOverlayIfAllowed() {
         if (overlayAttached || !Settings.canDrawOverlays(context) || !isAttachedToWindow) return
@@ -371,62 +340,10 @@ class CloudSuggestionsView(
             .start()
     }
 
-    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                dragCandidate = true
-                draggingTips = false
-                dragStartRawX = event.rawX
-                dragStartRawY = event.rawY
-                dragStartTranslationX = translationX
-                dragStartTranslationY = translationY
-                overlayParams?.let {
-                    dragStartWindowX = it.x
-                    dragStartWindowY = it.y
-                }
-            }
-            MotionEvent.ACTION_MOVE -> if (dragCandidate && !draggingTips) {
-                val dx = event.rawX - dragStartRawX
-                val dy = event.rawY - dragStartRawY
-                if (kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
-                    draggingTips = true
-                    hideHandler.removeCallbacks(autoHideRunnable)
-                    parent?.requestDisallowInterceptTouchEvent(true)
-                    return true
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragCandidate = false
-        }
-        return draggingTips || super.onInterceptTouchEvent(event)
-    }
+    // Tips 固定在输入法面板顶部，不再响应拖动手势。
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean = super.onInterceptTouchEvent(event)
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!draggingTips) return super.onTouchEvent(event)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> {
-                val maxX = (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
-                val maxY = (resources.displayMetrics.heightPixels - height).coerceAtLeast(0)
-                val params = overlayParams
-                if (overlayAttached && params != null) {
-                    params.x = (dragStartWindowX + event.rawX - dragStartRawX).toInt().coerceIn(0, maxX)
-                    params.y = (dragStartWindowY + event.rawY - dragStartRawY).toInt().coerceIn(0, maxY)
-                    runCatching { windowManager.updateViewLayout(this, params) }
-                } else {
-                    dragOffsetX = (dragStartTranslationX + event.rawX - dragStartRawX).coerceIn(-left.toFloat(), (maxX - left).toFloat())
-                    dragOffsetY = (dragStartTranslationY + event.rawY - dragStartRawY).coerceIn(-top.toFloat(), (maxY - top).toFloat())
-                    translationX = dragOffsetX
-                    translationY = dragOffsetY
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                draggingTips = false
-                dragCandidate = false
-                parent?.requestDisallowInterceptTouchEvent(false)
-                scheduleAutoHide()
-            }
-        }
-        return true
-    }
+    override fun onTouchEvent(event: MotionEvent): Boolean = super.onTouchEvent(event)
 
     /** 内容过长时自动往返滚动。 */
     private fun startAutoScroll() {
