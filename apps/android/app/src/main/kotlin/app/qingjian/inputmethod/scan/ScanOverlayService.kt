@@ -507,7 +507,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (dragging) {
                         windowParams.x = (startX + event.rawX - downRawX).toInt()
                             .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                        val minCameraTop = headerView.height.coerceAtLeast(0)
+                        val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerWindowParams.height).coerceAtLeast(0)
+                        val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                        val minCameraTop = (headerHeight - seamOverlap).coerceAtLeast(0)
                         windowParams.y = (startY + event.rawY - downRawY).toInt()
                             .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
                         updateOverlayPositions()
