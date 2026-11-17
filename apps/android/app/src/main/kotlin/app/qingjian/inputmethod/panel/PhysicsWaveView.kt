@@ -214,7 +214,7 @@ class PhysicsWaveView @JvmOverloads constructor(
             val y1 = cy + sin(angle) * inner
             val x2 = cx + cos(angle) * outer
             val y2 = cy + sin(angle) * outer
-            paint.color = spectrumColor(i, hueShift)
+            paint.color = spectrumColor(i, hueShift, 3.4f)
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeWidth = 2.4f * density
@@ -228,8 +228,8 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.alpha = 255
     }
 
-    private fun spectrumColor(index: Int, shift: Float): Int =
-        Color.HSVToColor(floatArrayOf((hueSeed + shift + index * 2.8f) % 360f, 0.78f, 1f))
+    private fun spectrumColor(index: Int, shift: Float, spread: Float = 2.8f): Int =
+        Color.HSVToColor(floatArrayOf((hueSeed + shift + index * spread) % 360f, 0.78f, 1f))
 
     private fun drawBars(canvas: Canvas, centered: Boolean, caps: Boolean) {
         val w = width.toFloat(); val h = height.toFloat()
