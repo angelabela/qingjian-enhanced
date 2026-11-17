@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.candidates
 
 import android.content.Context
+import android.app.Dialog
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -19,6 +20,7 @@ import android.view.ViewConfiguration
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -50,11 +52,8 @@ class CloudSuggestionsView(
     private var dragStartTranslationY = 0f
     private var dragOffsetX = 0f
     private var dragOffsetY = 0f
-    private val windowManager = context.getSystemService(WindowManager::class.java)
-    private var overlayParams: WindowManager.LayoutParams? = null
-    private var overlayAttached = false
-    private var dragStartWindowX = 0
-    private var dragStartWindowY = 0
+    private var tipsAnchor: View? = null
+    private var tipsDialog: Dialog? = null
     /** 当前编辑器光标屏幕坐标；云 Tips 始终锚定在输入位置上方。 */
     private var editorAnchorX: Float? = null
     private var editorAnchorY: Float? = null
@@ -89,6 +88,10 @@ class CloudSuggestionsView(
         setLayerType(View.LAYER_TYPE_HARDWARE, null)
         addView(items, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
         visibility = GONE
+    }
+
+    fun setAnchorView(anchor: View) {
+        tipsAnchor = anchor
     }
 
     fun showSmart(candidates: List<String>, onSelect: (String) -> Unit) {
@@ -180,7 +183,8 @@ class CloudSuggestionsView(
         alpha = 1f
         animate().cancel()
         visibility = VISIBLE
-        // 固定留在输入法 Stack 顶部（候选栏下沿、键盘上沿），不再脱离输入法窗口追随光标。
+        // 有悬浮窗权限时放入独立圆角 Window，使用系统背景模糊；输入法内只保留透明占位行。
+        attachTipsDialogIfAllowed()
 
         if (!wasVisible) {
             alpha = 0f
@@ -197,33 +201,89 @@ class CloudSuggestionsView(
 
     private fun updateAnchorPosition() = Unit
 
-    private fun attachAsScreenOverlayIfAllowed() {
-        if (overlayAttached || !Settings.canDrawOverlays(context) || !isAttachedToWindow) return
-        val position = IntArray(2)
-        getLocationOnScreen(position)
+    private fun attachTipsDialogIfAllowed() {
+        if (tipsDialog?.isShowing == true || !Settings.canDrawOverlays(context)) return
+        val anchor = tipsAnchor ?: return
         val oldParent = parent as? ViewGroup ?: return
+        val location = IntArray(2)
+        anchor.getLocationOnScreen(location)
         oldParent.removeView(this)
-        val params = WindowManager.LayoutParams(
-            LayoutParams.WRAP_CONTENT,
-            LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = position[0]
-            y = position[1]
-            // 只渲染 Tips 自身的液态玻璃外观，不对后方整个屏幕施加系统模糊。
-        }
+        val dialog = Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
         runCatching {
-            windowManager.addView(this, params)
-            overlayParams = params
-            overlayAttached = true
+            dialog.setContentView(this)
+            dialog.setCancelable(false)
+            dialog.window?.apply {
+                setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                addFlags(
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                )
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                setDimAmount(0f)
+                val glass = GradientDrawable().apply {
+                    setColor(0xB3222D3D.toInt())
+                    cornerRadius = 22f * density
+                    setStroke((1f * density).toInt().coerceAtLeast(1), 0x99FFFFFF.toInt())
+                }
+                setBackgroundDrawable(glass)
+            }
+            dialog.show()
+            dialog.window?.apply {
+                setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setBackgroundBlurRadius((26f * density).toInt())
+                }
+                decorView.clipToOutline = true
+                decorView.outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, 22f * density)
+                    }
+                }
+                attributes = attributes.apply {
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    x = 0
+                    y = location[1]
+                }
+                decorView.invalidateOutline()
+            }
+            tipsDialog = dialog
         }.onFailure {
-            // 系统拒绝悬浮窗时保留原有键盘内显示，不影响基本联想。
-            oldParent.addView(this)
+            runCatching { dialog.dismiss() }
+            if (this.parent == null) {
+                oldParent.addView(
+                    this,
+                    FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
+                )
+            }
+        }
+    }
+
+    private fun updateAnchorPosition() {
+        val dialog = tipsDialog ?: return
+        val anchor = tipsAnchor ?: return
+        if (!dialog.isShowing) return
+        val location = IntArray(2)
+        anchor.getLocationOnScreen(location)
+        dialog.window?.let { window ->
+            window.attributes = window.attributes.apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                x = 0
+                y = location[1]
+            }
+        }
+    }
+
+    private fun returnToAnchor() {
+        val dialog = tipsDialog ?: return
+        val anchor = tipsAnchor as? ViewGroup ?: return
+        tipsDialog = null
+        runCatching { dialog.dismiss() }
+        if (parent == null) {
+            anchor.addView(
+                this,
+                FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
+            )
         }
     }
 
@@ -261,6 +321,7 @@ class CloudSuggestionsView(
                 alpha = 1f
                 shatterProgress = 0f
                 shards = emptyList()
+                returnToAnchor()
             }
         }, 740L)
     }
@@ -286,6 +347,7 @@ class CloudSuggestionsView(
                 translationY = dragOffsetY
                 scaleX = 1f
                 scaleY = 1f
+                returnToAnchor()
             }
             .start()
     }
@@ -369,6 +431,11 @@ class CloudSuggestionsView(
 
     override fun onDetachedFromWindow() {
         stopAutoScroll()
+        if (tipsDialog?.isShowing == true) {
+            val dialog = tipsDialog
+            tipsDialog = null
+            runCatching { dialog?.dismiss() }
+        }
         super.onDetachedFromWindow()
     }
 
