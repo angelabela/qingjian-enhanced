@@ -145,8 +145,6 @@ class VoicePanel(
     }
 
     fun track(screenX: Float, screenY: Float) {
-        val location = IntArray(2)
-        getLocationOnScreen(location)
         val next = targetAt(screenX, screenY)
         if (next == target) return
         target = next
