@@ -183,6 +183,43 @@ class InputEditHistory(
         return Result.SUCCESS
     }
 
+    /**
+     * 在没有后续编辑的前提下，将最近一条单纯插入记录的文本原位替换。
+     * 撤销/重做仍指向同一条历史事务；上下文或光标不再匹配时不触碰宿主文本。
+     */
+    fun amendLastInsertion(connection: InputConnection, original: String, corrected: String): Boolean {
+        if (original.isBlank() || corrected.isBlank() || original == corrected) return false
+        val edit = undoStack.peekLast() ?: return false
+        if (edit.operation != Operation.INSERT || edit.parts.isNotEmpty() ||
+            edit.insertedBefore != original || edit.insertedAfter.isNotEmpty() ||
+            edit.deletedBefore.isNotEmpty() || edit.deletedAfter.isNotEmpty()
+        ) return false
+        if (!matches(connection, edit.afterState)) return false
+        val currentBefore = runCatching {
+            connection.getTextBeforeCursor(original.length, 0)?.toString()
+        }.getOrNull() ?: return false
+        if (currentBefore != original) return false
+
+        val applied = runCatching {
+            connection.beginBatchEdit()
+            try {
+                if (!connection.deleteSurroundingText(original.length, 0)) return@runCatching false
+                if (!connection.commitText(corrected, 1)) {
+                    connection.commitText(original, 1)
+                    return@runCatching false
+                }
+                true
+            } finally {
+                connection.endBatchEdit()
+            }
+        }.getOrDefault(false)
+        if (!applied) return false
+        val after = capture(connection) ?: run { clear(); return false }
+        undoStack.removeLast()
+        undoStack.addLast(edit.copy(insertedBefore = corrected, afterState = after))
+        return true
+    }
+
     fun clear() {
         undoStack.clear()
         redoStack.clear()
