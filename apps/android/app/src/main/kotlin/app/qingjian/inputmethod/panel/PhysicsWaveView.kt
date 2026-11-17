@@ -52,6 +52,11 @@ class PhysicsWaveView @JvmOverloads constructor(
     private var time = 0f
     private val gravity = 14f
 
+    init {
+        // BlurMaskFilter 用于复刻 53 号的柔和外发光；软件图层避免硬件画布忽略模糊。
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+    }
+
     fun update(values: FloatArray) {
         for (i in 0 until count) levels[i] = values.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         postInvalidateOnAnimation()
@@ -138,8 +143,8 @@ class PhysicsWaveView @JvmOverloads constructor(
         val dt = if (lastFrame == 0L) 0f else ((now - lastFrame) / 1e9f).coerceAtMost(1f / 30f)
         lastFrame = now
         time += dt
-        val attack = (1f - kotlin.math.exp(-dt / 0.045f))
-        val release = (1f - kotlin.math.exp(-dt / 0.19f))
+        val attack = (1.0 - kotlin.math.exp((-dt / 0.045f).toDouble())).toFloat()
+        val release = (1.0 - kotlin.math.exp((-dt / 0.19f).toDouble())).toFloat()
         for (i in smoothFft.indices) {
             val blend = if (fft[i] > smoothFft[i]) attack else release
             smoothFft[i] += (fft[i] - smoothFft[i]) * blend
