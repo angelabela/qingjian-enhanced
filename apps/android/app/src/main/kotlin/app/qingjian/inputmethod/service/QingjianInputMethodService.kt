@@ -116,8 +116,19 @@ class QingjianInputMethodService :
 
     /** 就地改设置会重建键盘，重建完重新打开这个面板。 */
     private var reopenPanel: PanelKind? = null
-    /** 记录剪贴板面板所属编辑器；同一应用短暂结束输入视图时仍保留面板。 */
+    /** 当前由用户选择并应保持显示的面板；系统输入连接重启不能擅自清除此状态。 */
+    private var activePanelState: PanelKind? = null
+    /** 剪贴板面板所属编辑器；同一应用的 InputConnection 重启 / 表格单元格更新仍视为同一场景。 */
     private var clipboardPanelEditorPackage: String? = null
+    private var clipboardPanelOwnerFieldId: Int? = null
+
+    private fun isClipboardPanel(kind: PanelKind? = activePanelState): Boolean =
+        kind == PanelKind.CLIPBOARD || kind == PanelKind.PHRASES
+
+    private fun shouldKeepClipboardPanel(info: EditorInfo, restarting: Boolean): Boolean =
+        isClipboardPanel() &&
+            clipboardPanelEditorPackage == info.packageName &&
+            (restarting || clipboardPanelOwnerFieldId == info.fieldId)
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
 
@@ -294,9 +305,8 @@ class QingjianInputMethodService :
         cloud.sync(settings)
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
         composer.applyScheme()
-        val panelToRestore = reopenPanel ?: this.panel?.openPanel?.takeIf {
-            it == PanelKind.CLIPBOARD || it == PanelKind.PHRASES
-        }
+        val panelToRestore = reopenPanel ?: activePanelState?.takeIf(::isClipboardPanel)
+            ?: this.panel?.openPanel?.takeIf(::isClipboardPanel)
         val panel = InputPanel(
             this, settings, this,
             stripSource = { highlighted, dark, visibleWidth -> engine.renderStrip(highlighted, dark, visibleWidth) },
@@ -355,9 +365,18 @@ class QingjianInputMethodService :
         // 在系统切换 InputConnection 前取消语音会话，防止迟到 AI 回复写入新输入框。
         voice.cancel()
         super.onStartInput(attribute, restarting)
-        if (clipboardPanelEditorPackage != null && clipboardPanelEditorPackage != attribute.packageName) {
-            if (panel?.openPanel == PanelKind.CLIPBOARD || panel?.openPanel == PanelKind.PHRASES) panel?.close()
+        val keepClipboard = shouldKeepClipboardPanel(attribute, restarting)
+        if (isClipboardPanel() && !keepClipboard) {
+            AppLog.info(
+                "clipboard panel released: owner=$clipboardPanelEditorPackage/$clipboardPanelOwnerFieldId, " +
+                    "next=${attribute.packageName}/${attribute.fieldId}, restarting=$restarting",
+            )
+            activePanelState = null
             clipboardPanelEditorPackage = null
+            clipboardPanelOwnerFieldId = null
+            panel?.close()
+        } else if (keepClipboard) {
+            AppLog.info("clipboard panel retained for ${attribute.packageName}/${attribute.fieldId}, restarting=$restarting")
         }
         hasActiveSelection = false
         val passwordSuggestions = attribute.wantsPasswordSuggestions()
@@ -378,6 +397,13 @@ class QingjianInputMethodService :
                 "imeOptions 0x${Integer.toHexString(info.imeOptions)}, restarting $restarting",
         )
         game.rememberLandscapeApp(info.packageName)
+        val keepClipboard = shouldKeepClipboardPanel(info, restarting)
+        if (keepClipboard && panel?.openPanel != activePanelState) {
+            // Excel 等表格会在粘贴后重启输入视图；若视图对象被系统替换，按用户选择恢复剪贴板页。
+            activePanelState?.let { panel?.open(it) }
+            showKeyboard()
+            AppLog.info("restored clipboard panel after input view restart")
+        }
         if (panel?.stale() == true || game.target() != game.packageName) {
             setInputView(onCreateInputView())
             updateFullscreenMode()
@@ -423,10 +449,22 @@ class QingjianInputMethodService :
         // 部分编辑器（尤其表格单元格）在提交文本后会以 finishingInput=true
         // 结束当前输入视图，但焦点仍属于同一个编辑器。剪贴板面板需要跨过这次
         // 生命周期抖动；切换到另一个应用时再由 onStartInput 按 package 清理。
-        val keepClipboard = panel?.openPanel == PanelKind.CLIPBOARD || panel?.openPanel == PanelKind.PHRASES
-        if (finishingInput && !keepClipboard) panel?.close()
+        val keepClipboard = isClipboardPanel()
+        if (finishingInput && !keepClipboard) {
+            activePanelState = null
+            panel?.close()
+        } else if (keepClipboard) {
+            AppLog.info("keeping clipboard panel through finishInputView; finishingInput=$finishingInput")
+        }
         composer.finishStructuredToken()
         composer.abandon()
+    }
+
+    override fun onFinishInput() {
+        AppLog.info("finish input: editor=${currentInputEditorInfo?.packageName}, panelState=$activePanelState")
+        super.onFinishInput()
+        // 不在这里清理剪贴板状态：Excel 会先结束 InputConnection，再用同一应用重新启动。
+        // 真正切换应用时由下一次 onStartInput 按 packageName / fieldId 判断并清理。
     }
 
     override fun onUpdateCursorAnchorInfo(cursorAnchorInfo: CursorAnchorInfo) {
@@ -447,6 +485,8 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。
+        if (isClipboardPanel()) return
         if (editor != null) return
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
@@ -733,8 +773,13 @@ class QingjianInputMethodService :
     }
 
     override fun openPanel(kind: PanelKind) {
-        if (kind == PanelKind.CLIPBOARD || kind == PanelKind.PHRASES) {
+        activePanelState = kind
+        if (isClipboardPanel(kind)) {
             clipboardPanelEditorPackage = currentInputEditorInfo?.packageName
+            clipboardPanelOwnerFieldId = currentInputEditorInfo?.fieldId
+        } else {
+            clipboardPanelEditorPackage = null
+            clipboardPanelOwnerFieldId = null
         }
         val needsContext = kind == PanelKind.AI_EXPRESSION || kind == PanelKind.AI_CHAT ||
             kind == PanelKind.CONTEXT_TOOLS
@@ -773,6 +818,9 @@ class QingjianInputMethodService :
             return
         }
         val candidates = panel?.openPanel == PanelKind.CANDIDATES
+        activePanelState = null
+        clipboardPanelEditorPackage = null
+        clipboardPanelOwnerFieldId = null
         panel?.close()
         showKeyboard()
         // 单字是展开面板里的筛选：收起就回到全部候选
