@@ -523,6 +523,10 @@ class CloudSuggestionsView(
         if (tipsDialog?.isShowing != true) return super.onInterceptTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                hideHandler.removeCallbacks(autoHideRunnable)
+                cancelHideAnimation()
+                floatingVelocityTracker?.recycle()
+                floatingVelocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
                 floatingDragArmed = true
                 floatingDragActive = false
                 floatingDownRawX = event.rawX
@@ -532,6 +536,7 @@ class CloudSuggestionsView(
                 floatingStartY = attrs?.y ?: 0
             }
             MotionEvent.ACTION_MOVE -> {
+                floatingVelocityTracker?.addMovement(event)
                 if (floatingDragArmed && !floatingDragActive) {
                     val dx = event.rawX - floatingDownRawX
                     val dy = event.rawY - floatingDownRawY
@@ -544,6 +549,12 @@ class CloudSuggestionsView(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                floatingVelocityTracker?.addMovement(event)
+                if (!floatingDragActive) {
+                    scheduleAutoHide()
+                    floatingVelocityTracker?.recycle()
+                    floatingVelocityTracker = null
+                }
                 floatingDragArmed = false
             }
         }
@@ -552,6 +563,7 @@ class CloudSuggestionsView(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!floatingDragActive) return super.onTouchEvent(event)
+        floatingVelocityTracker?.addMovement(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 val window = tipsDialog?.window
@@ -567,25 +579,54 @@ class CloudSuggestionsView(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                val anchor = tipsAnchor
                 val window = tipsDialog?.window
-                if (anchor != null && window != null) {
-                    val location = IntArray(2)
-                    anchor.getLocationOnScreen(location)
-                    val targetX = ((resources.displayMetrics.widthPixels - window.decorView.width) / 2).coerceAtLeast(0)
-                    val targetY = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
+                val tracker = floatingVelocityTracker
+                tracker?.computeCurrentVelocity(1000)
+                val vx = tracker?.xVelocity ?: 0f
+                val vy = tracker?.yVelocity ?: 0f
+                if (window != null) {
                     val attrs = window.attributes
-                    val snap = (48f * density).toInt()
-                    if (kotlin.math.abs(attrs.x - targetX) <= snap && kotlin.math.abs(attrs.y - targetY) <= snap) {
-                        tipsDetached = false
-                        window.attributes = attrs.apply { gravity = Gravity.TOP or Gravity.START; x = targetX; y = targetY }
+                    val screenW = resources.displayMetrics.widthPixels
+                    val screenH = resources.displayMetrics.heightPixels
+                    val viewW = window.decorView.width.coerceAtLeast(width)
+                    val viewH = window.decorView.height.coerceAtLeast(height)
+                    val margin = (12f * density).toInt()
+                    val minY = (40f * density).toInt()
+                    val maxY = (screenH - viewH - 80f * density).toInt().coerceAtLeast(minY)
+                    // 以松手速度外推 0.12 秒，决定吸附到哪一侧及最终纵向位置。
+                    val projectedX = attrs.x + vx * 0.12f
+                    tipSide = if (projectedX + viewW / 2f < screenW / 2f) 0 else 1
+                    val targetX = if (tipSide == 0) margin else (screenW - viewW - margin).coerceAtLeast(0)
+                    val targetY = (attrs.y + vy * 0.12f).toInt().coerceIn(minY, maxY)
+                    val startX = attrs.x
+                    val startY = attrs.y
+                    snapAnimator?.cancel()
+                    snapAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 380L
+                        interpolator = OvershootInterpolator(0.9f)
+                        addUpdateListener {
+                            val fraction = it.animatedValue as Float
+                            window.attributes = window.attributes.apply {
+                                gravity = Gravity.TOP or Gravity.START
+                                x = (startX + (targetX - startX) * fraction).toInt()
+                                y = (startY + (targetY - startY) * fraction).toInt()
+                            }
+                        }
+                        addListener(object : android.animation.AnimatorListenerAdapter() {
+                            override fun onAnimationEnd(animation: android.animation.Animator) {
+                                val range = (maxY - minY).coerceAtLeast(1)
+                                tipYRatio = ((targetY - minY).toFloat() / range).coerceIn(0f, 1f)
+                                positionPrefs.edit().putInt("side", tipSide).putFloat("yRatio", tipYRatio).apply()
+                                scheduleAutoHide()
+                            }
+                        })
+                        start()
                     }
+                } else {
+                    scheduleAutoHide()
                 }
-                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    tipsDialog?.window?.attributes?.let { attrs ->
-                        positionPrefs.edit().putInt("x", attrs.x).putInt("y", attrs.y).apply()
-                    }
-                }
+                tracker?.recycle()
+                floatingVelocityTracker = null
                 floatingDragActive = false
                 floatingDragArmed = false
                 draggingTips = false
