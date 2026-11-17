@@ -715,13 +715,21 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 有就放在候选条上，选中走 [select]。只显示、不写输入框，所以不会再触发光标变化。
      */
     fun refreshCompletions() {
-        if (composing || !engine.ready || directInput || plainPunctuation || privateInput) return
+        if (composing) return
+        if (!engine.ready || directInput || plainPunctuation || privateInput) {
+            structuredCompletions = emptyList()
+            structuredCompletionStart = Int.MAX_VALUE
+            return
+        }
         val before = host.connection?.getTextBeforeCursor(COMPLETION_CONTEXT, 0)?.toString().orEmpty()
         val symbols = punctuationSuggestions(before)
         if (before.isEmpty()) {
             completing = false
             localCompletions = emptyList()
             localCompletionStart = Int.MAX_VALUE
+            structuredCompletions = emptyList()
+            structuredCompletionStart = Int.MAX_VALUE
+            candidates = emptyList()
             host.showComposition("", emptyList())
             return
         }
@@ -729,8 +737,17 @@ class Composer(private val engine: Engine, private val host: Host) {
         val frame = engine.complete(before)
         localCompletionStart = frame.candidates.size
         localCompletions = symbols
-        val merged = frame.candidates + symbols.filterNot { symbol -> frame.candidates.any { it.text == symbol } }
+        val base = frame.candidates + symbols.filterNot { symbol -> frame.candidates.any { it.text == symbol } }
             .map { Candidate(text = it, senses = emptyList()) }
+        val prefix = structuredTokenBuffer.toString()
+        structuredCompletions = if (prefix.length >= 2) {
+            host.structuredTokenSuggestions(prefix).filter { it != prefix }.take(5)
+        } else {
+            emptyList()
+        }
+        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else base.size
+        val merged = base + structuredCompletions.map { Candidate(text = it, senses = emptyList()) }
+        candidates = merged
         completing = merged.isNotEmpty()
         host.showComposition("", merged)
     }
