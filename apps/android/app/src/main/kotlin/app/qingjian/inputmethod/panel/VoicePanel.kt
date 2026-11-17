@@ -116,8 +116,8 @@ class VoicePanel(
                 setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
             }
             view.setOnClickListener {
-                // 交给 Android 系统触感反馈通道，遵循系统震动总开关与强度设置。
-                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                // 语音面板与键盘按键共用 App 内「按键震动」开关和强度档位。
+                Haptics.tap(context)
                 action()
             }
         }
@@ -151,23 +151,32 @@ class VoicePanel(
         if (next == target) return
         target = next
         undoButton.isSelected = next == Target.CANCEL
+        finishButton.isSelected = next == Target.ACTION
         undoButton.alpha = if (undoButton.isSelected) 1f else 0.86f
+        finishButton.alpha = if (finishButton.isSelected) 1f else 0.86f
         undoButton.scaleX = if (undoButton.isSelected) 1.06f else 1f
         undoButton.scaleY = if (undoButton.isSelected) 1.06f else 1f
-        if (next != Target.NONE) {
-            // 长按空格拖入撤销按钮时也遵循系统触感反馈设置。
-            undoButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-        }
+        finishButton.scaleX = if (finishButton.isSelected) 1.06f else 1f
+        finishButton.scaleY = if (finishButton.isSelected) 1.06f else 1f
+        if (next != Target.NONE) Haptics.tap(context)
         overlay.invalidate()
     }
 
-    private fun targetAt(x: Float, y: Float): Target {
-        // 长按空格时按住的手指不直接触摸面板；KeyboardView 将屏幕坐标交给 track，
-        // 这里按真实「撤销」按钮的边界命中，避免误把面板中央或「完成」区域当成撤销。
-        return if (
-            x >= undoButton.left && x <= undoButton.right &&
-            y >= undoButton.top && y <= undoButton.bottom
-        ) Target.CANCEL else Target.NONE
+    private fun targetAt(screenX: Float, screenY: Float): Target {
+        // 按钮的 left/top 是 actionRow 局部坐标，不能直接与面板局部坐标比较。
+        // 分别换算成屏幕坐标后命中，覆盖撤销与完成两个按钮的真实区域。
+        fun contains(view: View): Boolean {
+            if (view.width <= 0 || view.height <= 0) return false
+            val location = IntArray(2)
+            view.getLocationOnScreen(location)
+            return screenX >= location[0] && screenX < location[0] + view.width &&
+                screenY >= location[1] && screenY < location[1] + view.height
+        }
+        return when {
+            contains(undoButton) -> Target.CANCEL
+            contains(finishButton) -> Target.ACTION
+            else -> Target.NONE
+        }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean = super.dispatchTouchEvent(event)
