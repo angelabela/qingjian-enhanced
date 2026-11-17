@@ -95,8 +95,8 @@ class FunctionPanel(
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
         ink.icon(canvas, Icon.BACK, card.left + ink.dp(22f), top + ink.dp(22f), 22f, palette.text)
-        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(27f))
-        ink.textStart(canvas, "选择语音输入时显示的实时物理声波效果", 11f, palette.gloss, card.left + ink.dp(16f), top + ink.dp(57f))
+        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(27f), card.right - ink.dp(12f))
+        ink.textStart(canvas, "选择语音输入时显示的实时物理声波效果", 11f, palette.gloss, card.left + ink.dp(16f), top + ink.dp(57f), card.right - ink.dp(12f))
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rowTop = top + ink.dp(76f)
         val rowHeight = (card.height() - ink.dp(90f)) / labels.size
@@ -107,7 +107,7 @@ class FunctionPanel(
                 val rect = RectF(card.left + ink.dp(8f), y + ink.dp(3f), card.right - ink.dp(8f), y + rowHeight - ink.dp(3f))
                 ink.round(canvas, rect, 10f, palette.functionalKey)
             }
-            ink.textStart(canvas, label, 14f, if (selected) palette.brand else palette.text, card.left + ink.dp(18f), y + rowHeight / 2f + ink.dp(5f))
+            ink.textStart(canvas, label, 14f, if (selected) palette.brand else palette.text, card.left + ink.dp(18f), y + rowHeight / 2f + ink.dp(5f), card.right - ink.dp(48f))
             if (selected) ink.icon(canvas, Icon.CHECK, card.right - ink.dp(24f), y + rowHeight / 2f, 20f, palette.brand)
             if (index < labels.lastIndex) ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
         }
