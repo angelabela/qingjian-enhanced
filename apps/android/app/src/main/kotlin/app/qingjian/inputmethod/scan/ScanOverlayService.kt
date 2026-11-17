@@ -421,7 +421,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 // Dialog 窗口自身也必须使用带透明圆角的遮罩；只裁剪 headerView 不够，
                 // 系统 BLUR_BEHIND 仍会按矩形 Window bounds 模糊圆角外区域。
                 val roundedWindowMask = GradientDrawable().apply {
-                    setColor(0x01000000)
+                    // 透明度必须为 0；alpha=1 仍会在部分系统的模糊窗口圆角外留下淡色残影。
+                    setColor(Color.TRANSPARENT)
                     val radius = 16f * resources.displayMetrics.density
                     cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
                 }
@@ -448,7 +449,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
                 decorView.background = GradientDrawable().apply {
-                    setColor(0x01000000)
+                    setColor(Color.TRANSPARENT)
                     val radius = 16f * resources.displayMetrics.density
                     cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
                 }
