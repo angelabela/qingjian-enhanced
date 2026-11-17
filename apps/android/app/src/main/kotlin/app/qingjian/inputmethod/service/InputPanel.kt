@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.service
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Typeface
 import android.graphics.Canvas
 import android.os.Build
 import android.view.View
@@ -169,6 +170,7 @@ class InputPanel(
             }
         }.getOrNull()
         return VoicePanel(context, palette, actionLabel, actions, backdrop).also { voice ->
+            applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             openPanel = PanelKind.VOICE
@@ -178,6 +180,7 @@ class InputPanel(
     }
 
     private fun cover(kind: PanelKind, panel: View) {
+        applyFontWeight(panel)
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
@@ -206,7 +209,10 @@ class InputPanel(
     /** 编辑条（常用语编辑框、快捷翻译）摆在最上面（键盘照常可打）；[editor] 为 null 收起。 */
     fun showEditor(editor: View?) {
         root.getChildAt(0)?.takeIf { it is FloatingEditor }?.let(root::removeView)
-        editor?.let { root.addView(it, 0) }
+        editor?.let {
+            applyFontWeight(it)
+            root.addView(it, 0)
+        }
     }
 
     /** 刷新剪贴板管理面板；临时预览由 ClipboardWatcher 单独更新。 */
@@ -217,6 +223,20 @@ class InputPanel(
     /** 候选展开开着时换上这一帧的拼音与候选。 */
     fun showCandidates(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
         (panelView as? CandidateGrid)?.show(preedit, candidates, singleChars)
+    }
+
+    /**
+     * 将字体粗细统一应用到面板内所有 TextView/EditText/Button，递归覆盖各功能面板的文本控件。
+     * 保留控件原有的粗体语义；键盘键面与候选条由各自绘制器使用同一设置。
+     */
+    private fun applyFontWeight(view: View) {
+        val selected = settings.fontWeight.typeface
+        if (view is TextView) {
+            view.typeface = Typeface.create(selected, if (view.typeface?.isBold == true) Typeface.BOLD else Typeface.NORMAL)
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) applyFontWeight(view.getChildAt(index))
+        }
     }
 
     /** 回到键盘；没开面板时什么都不做。 */
