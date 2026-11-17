@@ -437,6 +437,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 decorView.setPadding(0, 0, 0, 0)
                 decorView.background = ColorDrawable(Color.TRANSPARENT)
                 attributes = headerWindowParams
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // 再次应用 attributes 后补回模糊标志与半径，避免 attributes 覆盖前面的窗口标志。
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    setBackgroundBlurRadius(dp(26))
+                }
             }
         }
         headerView.post {
