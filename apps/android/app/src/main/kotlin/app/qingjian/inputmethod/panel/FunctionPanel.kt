@@ -102,7 +102,7 @@ class FunctionPanel(
         val rowHeight = (card.height() - ink.dp(90f)) / labels.size
         labels.forEachIndexed { index, label ->
             val y = rowTop + rowHeight * index
-            val selected = (if (selectedVoiceStyle == -1) 5 else selectedVoiceStyle) == index
+            val selected = (if (selectedVoiceStyle == -1) 7 else selectedVoiceStyle) == index
             if (selected) {
                 val rect = RectF(card.left + ink.dp(8f), y + ink.dp(3f), card.right - ink.dp(8f), y + rowHeight - ink.dp(3f))
                 ink.round(canvas, rect, 10f, palette.functionalKey)
@@ -182,7 +182,7 @@ class FunctionPanel(
                     val rowHeight = (card.height() - ink.dp(90f)) / VoicePanel.ANIMATION_STYLE_LABELS.size
                     val index = ((y - rowTop) / rowHeight).toInt()
                     if (index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
-                        selectedVoiceStyle = if (index == 5) -1 else index
+                        selectedVoiceStyle = if (index == 7) -1 else index
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
                     }
