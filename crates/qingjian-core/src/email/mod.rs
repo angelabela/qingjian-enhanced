@@ -115,3 +115,103 @@ mod tests {
         assert!(domains("").is_empty());
     }
 }
+
+/// 一条网址主机名补全。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UrlCompletion {
+    pub domain: String,
+    pub insert: String,
+}
+
+/// 常见网址主机名（不含 www.，按常用程度排列）。
+const URL_HOSTS: &[&str] = &[
+    "baidu.com",
+    "google.com",
+    "bing.com",
+    "github.com",
+    "youtube.com",
+    "wikipedia.org",
+    "qq.com",
+    "163.com",
+    "taobao.com",
+    "jd.com",
+    "bilibili.com",
+    "zhihu.com",
+    "douyin.com",
+    "xiaohongshu.com",
+    "microsoft.com",
+    "apple.com",
+    "amazon.com",
+    "cloudflare.com",
+];
+
+/// 中英文输入状态下都可用：根据光标前最后一个网址片段补全主机名。
+/// 例如 www.b → www.baidu.com、https://g → https://google.com、github.c → github.com。
+pub fn url_completions(before: &str) -> Vec<UrlCompletion> {
+    if before.chars().last().is_some_and(char::is_whitespace) {
+        return Vec::new();
+    }
+    let token = before.split_whitespace().last().unwrap_or("");
+    let (scheme, host) = if let Some(rest) = token.strip_prefix("https://") {
+        ("https://", rest)
+    } else if let Some(rest) = token.strip_prefix("http://") {
+        ("http://", rest)
+    } else {
+        ("", token)
+    };
+    let www = host.starts_with("www.");
+    let typed = host.strip_prefix("www.").unwrap_or(host);
+    if typed.is_empty() && !www && scheme.is_empty()
+        || host.contains('/')
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        || !(www || !scheme.is_empty() || host.contains('.'))
+    {
+        return Vec::new();
+    }
+    let typed = typed.to_ascii_lowercase();
+    URL_HOSTS
+        .iter()
+        .filter(|candidate| candidate.len() > typed.len() && candidate.starts_with(&typed))
+        .map(|&candidate| UrlCompletion {
+            domain: format!("{scheme}{}{candidate}", if www { "www." } else { "" }),
+            insert: candidate[typed.len()..].to_owned(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::*;
+
+    #[test]
+    fn completes_www_https_and_partial_domains() {
+        let www = url_completions("www.b");
+        assert_eq!(www[0].domain, "www.baidu.com");
+        assert_eq!(www[0].insert, "aidu.com");
+
+        let https = url_completions("https://g");
+        assert!(
+            https
+                .iter()
+                .any(|item| item.domain == "https://google.com" && item.insert == "oogle.com")
+        );
+
+        let partial = url_completions("请访问 github.c");
+        assert!(
+            partial
+                .iter()
+                .any(|item| item.domain == "github.com" && item.insert == "om")
+        );
+    }
+
+    #[test]
+    fn does_not_suggest_inside_a_path_or_for_plain_words() {
+        assert!(url_completions("hello world").is_empty());
+        assert!(url_completions("https://github.com/user").is_empty());
+        assert!(url_completions("").is_empty());
+        assert!(url_completions("刚才说过 ").is_empty());
+        assert!(!url_completions("https://").is_empty());
+    }
+}

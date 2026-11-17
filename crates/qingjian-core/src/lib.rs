@@ -51,7 +51,7 @@ pub use code_scheme::CodeScheme;
 pub use composition::Composition;
 pub use contacts::{Contact, ContactBook};
 pub use correction::Correction;
-pub use email::{EmailCompletion, email_completions};
+pub use email::{EmailCompletion, UrlCompletion, email_completions, url_completions};
 pub use emoji::{EmojiTable, skin_tone_variants};
 pub use engine::{
     AnnotationReport, AuxSegment, BOOKS, Book, CharTable, ChoiceModel, ChoiceNote, ChoiceScore,

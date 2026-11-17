@@ -34,6 +34,10 @@ impl Session {
             labels.push(completion.domain.to_owned());
             self.completions.push((0, completion.insert));
         }
+        for completion in qingjian_core::url_completions(before_cursor) {
+            labels.push(completion.domain.to_owned());
+            self.completions.push((0, completion.insert));
+        }
         for completion in qingjian_core::calculation_completions(before_cursor) {
             labels.push(completion.label);
             self.completions

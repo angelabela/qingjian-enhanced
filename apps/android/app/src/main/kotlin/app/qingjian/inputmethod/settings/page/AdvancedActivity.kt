@@ -298,13 +298,20 @@ class AdvancedActivity : PageActivity() {
                 zip.closeEntry()
                 written++
             }
+            // 常用短语独立保存在 user/phrases.json，不属于 SharedPreferences。
+            val phrases = File(Engine.userDir(this), "phrases.json")
+            zip.putNextEntry(ZipEntry("user/phrases.json"))
+            if (phrases.isFile) phrases.inputStream().use { it.copyTo(zip) } else zip.write("[]".toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            written++
         }
         return written
     }
 
-    /** 恢复设置前先完整解析备份；只接受 prefs/ 下的 JSON，不执行压缩包里的路径。 */
+    /** 恢复设置前先完整解析备份；常用短语先校验，再写入用户数据目录。 */
     private fun restoreSettings(source: Uri): Int {
         val backups = linkedMapOf<String, JSONObject>()
+        var phraseData: ByteArray? = null
         val input = contentResolver.openInputStream(source) ?: error("无法读取设置备份")
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             var entry = zip.nextEntry
@@ -317,12 +324,17 @@ class AdvancedActivity : PageActivity() {
                     val bytes = zip.readBytes()
                     if (bytes.size > 2 * 1024 * 1024) error("设置备份文件过大")
                     backups[name] = JSONObject(String(bytes, Charsets.UTF_8))
+                } else if (!entry.isDirectory && entry.name == "user/phrases.json") {
+                    val bytes = zip.readBytes()
+                    if (bytes.size > 2 * 1024 * 1024) error("常用短语备份过大")
+                    JSONArray(String(bytes, Charsets.UTF_8)) // 校验完整 JSON 数组，避免损坏数据覆盖现有短语
+                    phraseData = bytes
                 }
                 zip.closeEntry()
                 entry = zip.nextEntry
             }
         }
-        if (backups.isEmpty()) error("备份里没有设置")
+        if (backups.isEmpty() && phraseData == null) error("备份里没有设置或常用短语")
         val current = File(applicationInfo.dataDir, "shared_prefs").listFiles()
             ?.filter { it.isFile && it.name.endsWith(".xml") }
             ?.map { it.name.removeSuffix(".xml") }.orEmpty()
@@ -348,8 +360,14 @@ class AdvancedActivity : PageActivity() {
             }
             if (!editor.commit()) error("写入设置失败")
         }
+        phraseData?.let { bytes ->
+            val phraseFile = File(Engine.userDir(this), "phrases.json")
+            phraseFile.parentFile?.mkdirs()
+            phraseFile.writeBytes(bytes)
+            Engine.reloadPhrasesAll(this)
+        }
         Settings.preferences(this).edit().putLong(Settings.KEY_DICTIONARIES_STAMP, System.currentTimeMillis()).apply()
-        return backups.size
+        return backups.size + if (phraseData != null) 1 else 0
     }
 
     /** 第一次：勾清哪几样（缺省全勾）；第二次：确认不能恢复。 */
