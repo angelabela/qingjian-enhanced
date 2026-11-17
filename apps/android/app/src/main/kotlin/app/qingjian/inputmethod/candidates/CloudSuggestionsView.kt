@@ -67,6 +67,9 @@ class CloudSuggestionsView(
     private var shatterAnimator: ValueAnimator? = null
     private var shatterProgress = 0f
     private data class Shard(val x: Float, val y: Float, val size: Float, val angle: Float, val dx: Float, val dy: Float, val color: Int)
+    private data class Glyph(val value: String, val x: Float, val y: Float, val dx: Float, val dy: Float, val rotation: Float, val size: Float, val color: Int)
+    private var flyingGlyphs: List<Glyph> = emptyList()
+    private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var shards: List<Shard> = emptyList()
     private val shardPath = Path()
     private val shardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -303,15 +306,43 @@ class CloudSuggestionsView(
         if (visibility != VISIBLE || draggingTips) return
         stopAutoScroll()
         val random = Random(System.nanoTime())
-        shards = List(18) {
-            val x = random.nextFloat() * width
-            val y = random.nextFloat() * height
-            Shard(x, y, (5f + random.nextFloat() * 12f) * density,
-                random.nextFloat() * 6.28f,
-                (random.nextFloat() - 0.5f) * 90f * density,
-                (-18f - random.nextFloat() * 80f) * density,
-                if (it % 2 == 0) palette.cloud else 0xFFEAF7FF.toInt())
+        val hostLocation = IntArray(2)
+        getLocationOnScreen(hostLocation)
+        flyingGlyphs = buildList {
+            for (i in 0 until items.childCount) {
+                val row = items.getChildAt(i) as? ViewGroup ?: continue
+                for (j in 0 until row.childCount) {
+                    val label = row.getChildAt(j) as? TextView ?: continue
+                    val value = label.text?.toString().orEmpty()
+                    if (value.isEmpty()) continue
+                    val location = IntArray(2)
+                    label.getLocationOnScreen(location)
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        typeface = label.typeface
+                        textSize = label.textSize
+                    }
+                    var prefix = ""
+                    value.forEach { character ->
+                        val glyph = character.toString()
+                        val glyphWidth = paint.measureText(glyph)
+                        val x = location[0] - hostLocation[0] + label.paddingLeft + paint.measureText(prefix) + glyphWidth / 2f
+                        val metrics = paint.fontMetrics
+                        val y = location[1] - hostLocation[1] + label.height / 2f - (metrics.ascent + metrics.descent) / 2f
+                        add(Glyph(
+                            glyph, x, y,
+                            (random.nextFloat() - 0.35f) * 110f * density,
+                            (-12f - random.nextFloat() * 100f) * density,
+                            (random.nextFloat() - 0.5f) * 70f,
+                            label.textSize,
+                            label.currentTextColor,
+                        ))
+                        prefix += character
+                    }
+                    label.alpha = 0f
+                }
+            }
         }
+        shards = emptyList()
         shatterAnimator?.cancel()
         shatterAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 720L
@@ -328,6 +359,7 @@ class CloudSuggestionsView(
                 alpha = 1f
                 shatterProgress = 0f
                 shards = emptyList()
+                flyingGlyphs = emptyList()
                 returnToAnchor()
             }
         }, 740L)
@@ -520,6 +552,21 @@ class CloudSuggestionsView(
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
+        if (shatterProgress > 0f && flyingGlyphs.isNotEmpty()) {
+            flyingGlyphs.forEach { glyph ->
+                val progress = shatterProgress
+                canvas.save()
+                val x = glyph.x + glyph.dx * progress
+                val y = glyph.y + glyph.dy * progress
+                canvas.rotate(glyph.rotation * progress, x, y)
+                glyphPaint.textSize = glyph.size
+                glyphPaint.color = glyph.color
+                glyphPaint.alpha = ((1f - progress) * 255f).toInt().coerceIn(0, 255)
+                glyphPaint.style = Paint.Style.FILL
+                canvas.drawText(glyph.value, x, y, glyphPaint)
+                canvas.restore()
+            }
+        }
         if (shatterProgress > 0f && shards.isNotEmpty()) {
             shards.forEach { shard ->
                 val travel = shatterProgress
