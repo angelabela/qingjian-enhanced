@@ -416,7 +416,7 @@ class QingjianInputMethodService :
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        AppLog.info("finish input view: finishingInput=$finishingInput, panel=${panel?.openPanel}")
+        AppLog.info("finish input view: finishingInput=$finishingInput, editor=${currentInputEditorInfo?.packageName}, panel=${panel?.openPanel}, clipboardOwner=$clipboardPanelEditorPackage")
         super.onFinishInputView(finishingInput)
         voice.cancel()
         closeEditor()
@@ -813,8 +813,9 @@ class QingjianInputMethodService :
     }
 
     override fun commitClipboardText(text: String) {
-        composer.commitPanelText(text)
         val prefs = Settings.preferences(this)
+        AppLog.info("clipboard commit: editor=${currentInputEditorInfo?.packageName}, enter=${prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)}, nextCell=${prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false)}, panel=${panel?.openPanel}")
+        composer.commitPanelText(text)
         val connection = currentInputConnection ?: return
         when {
             prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) -> {
