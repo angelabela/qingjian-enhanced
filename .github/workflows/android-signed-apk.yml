@@ -7,6 +7,7 @@ on:
       - feature/workflow-466-fixed-signature-voice-tips
       - feature/workflow-467-polish-scan-tips-voice
       - feature/workflow-468-scan-glass-password-suggestions-system-haptics
+      - feature/workflow-469-scan-rounded-outline-voice-drag-structured-tokens
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
