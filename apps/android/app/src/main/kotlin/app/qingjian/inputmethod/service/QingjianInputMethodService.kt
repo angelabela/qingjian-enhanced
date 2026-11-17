@@ -61,6 +61,7 @@ import app.qingjian.inputmethod.service.input.wantsDirectInput
 import app.qingjian.inputmethod.service.input.wantsPlainPunctuation
 import app.qingjian.inputmethod.service.input.wantsNumbers
 import app.qingjian.inputmethod.service.input.wantsPrivacy
+import app.qingjian.inputmethod.service.input.wantsPasswordSuggestions
 import app.qingjian.inputmethod.settings.BottomAction
 import app.qingjian.inputmethod.settings.GameKeyboard
 import app.qingjian.inputmethod.settings.Settings
@@ -349,9 +350,11 @@ class QingjianInputMethodService :
         voice.cancel()
         super.onStartInput(attribute, restarting)
         hasActiveSelection = false
-        composer.directInput = attribute.wantsDirectInput()
+        val passwordSuggestions = attribute.wantsPasswordSuggestions()
+        // 密码框保留本地拼音组句/候选，但绝不学习或上传；邮箱等其他直输框行为不变。
+        composer.directInput = attribute.wantsDirectInput() && !passwordSuggestions
         composer.plainPunctuation = attribute.wantsPlainPunctuation()
-        composer.privateInput = attribute.wantsPrivacy()
+        composer.privateInput = attribute.wantsPrivacy() || passwordSuggestions
         enterLabel = attribute.enterLabel()
         panel?.keyboard?.enterLabel = enterLabel
         if (!(restarting && composer.resume())) composer.abandon()
