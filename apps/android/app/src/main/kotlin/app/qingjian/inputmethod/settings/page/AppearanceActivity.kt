@@ -60,6 +60,18 @@ class AppearanceActivity : PageActivity() {
                 },
                 footer = R.string.text_size_note,
             ),
+            ui.group(
+                null,
+                ui.segmentedRow(
+                    R.string.section_font_weight,
+                    Settings.FontWeight.entries.map { it.label },
+                    settings.fontWeight.ordinal,
+                ) { index ->
+                    prefs.edit().putString(Settings.KEY_FONT_WEIGHT, Settings.FontWeight.entries[index].name).apply()
+                    rebuild()
+                },
+                footer = R.string.font_weight_note,
+            ),
         )
     }
 
