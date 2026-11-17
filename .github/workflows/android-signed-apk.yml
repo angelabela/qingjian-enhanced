@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/scan-tips-space-voice-font-460
+      - feature/workflow-466-fixed-signature-voice-tips
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
