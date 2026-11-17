@@ -597,7 +597,8 @@ class Composer(private val engine: Engine, private val host: Host) {
             val deleted = if (committedPrefixLength > 0) {
                 connection.getTextBeforeCursor(committedPrefixLength, 0)?.toString().orEmpty()
             } else ""
-            if (deleted.length != committedPrefixLength) {
+            val expectedCommittedPrefix = typedPrefix.dropLast(activePreeditLength.coerceIn(0, typedPrefix.length))
+            if (deleted != expectedCommittedPrefix) {
                 host.showNotice("无法替换当前编码")
                 structuredTokenBuffer.clear()
                 return
@@ -606,7 +607,15 @@ class Composer(private val engine: Engine, private val host: Host) {
             val replaced = try {
                 val removed = committedPrefixLength == 0 ||
                     connection.deleteSurroundingText(committedPrefixLength, 0)
-                removed && connection.commitText(structured, 1)
+                if (!removed) {
+                    false
+                } else if (connection.commitText(structured, 1)) {
+                    true
+                } else {
+                    // 替换失败时恢复刚才清掉的原始编码，避免只剩半截输入。
+                    connection.commitText(typedPrefix, 1)
+                    false
+                }
             } finally {
                 connection.endBatchEdit()
             }
