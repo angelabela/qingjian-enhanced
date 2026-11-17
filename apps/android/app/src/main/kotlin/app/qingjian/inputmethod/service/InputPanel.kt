@@ -122,6 +122,10 @@ class InputPanel(
     /** 云联想以浮动 Tips 显示；传入原候选下标，点击后仍由引擎选择原候选。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) = cloudSuggestions.show(candidates)
 
+    /** 将云 Tips 锚定到当前编辑器光标上方。 */
+    fun updateCloudTipsAnchor(screenX: Float, screenY: Float) =
+        cloudSuggestions.updateEditorAnchor(screenX, screenY)
+
     /** 实时设备信息 / 定位天气候选，点击后由服务决定上屏或申请权限。 */
     fun showSmartSuggestions(candidates: List<String>, onSelect: (String) -> Unit) =
         cloudSuggestions.showSmart(candidates, onSelect)
