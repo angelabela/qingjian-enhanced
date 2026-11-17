@@ -24,6 +24,22 @@ class ClipboardSettingsActivity : PageActivity() {
                 prefs.edit().putBoolean(Settings.KEY_CODE_HIGHLIGHT, it).apply()
             }
         }
+        val pasteEnter = prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
+        val pasteNextCell = prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false)
+        rows += ui.toggle(R.string.clipboard_paste_enter_title, R.string.clipboard_paste_enter_note, pasteEnter) {
+            prefs.edit()
+                .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, it)
+                .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false)
+                .apply()
+            rebuild()
+        }
+        rows += ui.toggle(R.string.clipboard_paste_next_cell_title, R.string.clipboard_paste_next_cell_note, pasteNextCell) {
+            prefs.edit()
+                .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, it)
+                .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
+                .apply()
+            rebuild()
+        }
         return listOf(
             ui.group(null, rows, getString(R.string.record_clipboard_note)),
             ui.group(
