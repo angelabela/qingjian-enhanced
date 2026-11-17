@@ -15,6 +15,7 @@ on:
       - feature/workflow-474-clipboard-tips-camera-fix
       - feature/workflow-475-clipboard-tips-voice-animations
       - feature/workflow-476-voice-picker-clipboard-state
+      - feature/workflow-477-physics-wave-floating-tips
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
