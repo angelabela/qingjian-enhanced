@@ -62,6 +62,8 @@
     <string name="appearance_note">键盘与本 App 都按它；有的主题只有浅色</string>
     <string name="section_theme">主题</string>
     <string name="section_text_size">候选字号</string>
+    <string name="section_font_weight">输入法界面字体粗细</string>
+    <string name="font_weight_note">调整键盘按键文字、候选文字和手势提示的笔画粗细，不改变字号和按键尺寸</string>
     <string name="text_size_small">小</string>
     <string name="text_size_standard">标准</string>
     <string name="text_size_large">大</string>
