@@ -409,9 +409,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-            }
+            // 不启用 FLAG_BLUR_BEHIND：它会按窗口矩形扩散模糊，越过顶部圆角。
+            // 只使用 Window.setBackgroundBlurRadius，由圆角 Window 背景限定模糊范围。
         }
         // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
         // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
@@ -437,8 +436,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 真实模糊标题栏后方内容；模糊半径只属于这个独立标题栏窗口。
-                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    // 只启用窗口背景模糊，不启用矩形范围的 BLUR_BEHIND；
+                    // Android 会按 roundedWindowMask 的圆角边界裁剪模糊区域。
+                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                     attributes = headerWindowParams
                     setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
                 } else {
@@ -484,6 +484,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         var downRawY = 0f
         var startX = 0
         var startY = 0
+        val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         view.isClickable = true
         view.setOnTouchListener { _, event ->
@@ -529,15 +530,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 .coerceAtLeast(0)
             val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
             // 相机窗口不得越过标题栏；顶部拖动时标题栏贴近屏幕顶端，相机窗口从标题栏下沿开始。
-            windowParams.y = windowParams.y.coerceAtLeast(headerHeight)
+            val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            val cameraTopMin = (headerHeight - seamOverlap).coerceAtLeast(0)
+            windowParams.y = windowParams.y.coerceAtLeast(cameraTopMin)
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            // 两个窗口边缘严格相接，不重叠；避免相机 Surface 在上移时压住标题栏。
-            headerWindowParams.y = windowParams.y - headerHeight
+            // 标题栏与预览重叠 1-2px，标题栏窗口最后更新并保持更高层级，消除抗锯齿缝隙。
+            headerWindowParams.y = (windowParams.y - headerHeight + seamOverlap).coerceAtLeast(0)
             headerWindowParams.width = windowParams.width
         }
-        // 同一 TYPE_APPLICATION_OVERLAY 下，最后更新的窗口可能被系统提升到更高 Z 序。
-        // 先更新相机窗口，再更新标题栏 Dialog，确保预览永远不会压到标题栏上面。
+        // 先更新预览，再更新标题栏；标题栏始终最后提交，保持在预览之上。
         runCatching { windowManager.updateViewLayout(root, windowParams) }
         if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
             updateHeaderWindowLayout()
