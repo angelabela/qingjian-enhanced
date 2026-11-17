@@ -1,0 +1,87 @@
+name: android-signed-apk
+
+on:
+  push:
+    branches:
+      - feature/scan-tips-space-voice-font-460
+    paths:
+      - '.github/workflows/android-signed-apk.yml'
+      - 'apps/android/**'
+      - 'core/**'
+      - 'crates/**'
+      - 'assets/**'
+      - 'tools/release/data-fetch.sh'
+      - 'tools/release/data.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    env:
+      NDK_VERSION: 29.0.13599879
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Use JDK 21
+        run: |
+          if [[ ! -d "${JAVA_HOME_21_X64:-}" ]]; then
+            echo "runner 上没有 JDK 21（JAVA_HOME_21_X64）" >&2
+            ls /usr/lib/jvm >&2
+            exit 1
+          fi
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - name: Install NDK and cargo-ndk
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "platforms;android-36" > /dev/null
+          cargo install cargo-ndk --version 4.1.2 --locked
+          echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
+
+      - name: Fetch product data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/release/data-fetch.sh
+
+      - name: Build APK with the persistent release key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE }}
+          QINGJIAN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE_PASSWORD }}
+          QINGJIAN_ANDROID_KEY_ALIAS: ${{ secrets.QINGJIAN_ANDROID_KEY_ALIAS }}
+          QINGJIAN_ANDROID_KEY_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$QINGJIAN_ANDROID_KEYSTORE_PASSWORD" || -z "$QINGJIAN_ANDROID_KEY_ALIAS" || -z "$QINGJIAN_ANDROID_KEY_PASSWORD" ]]; then
+            echo "Android 持久签名 Secrets 不完整。请在仓库 Settings > Secrets and variables > Actions 中配置 release.yml 使用的四个 QINGJIAN_ANDROID_* 值。" >&2
+            exit 1
+          fi
+          export QINGJIAN_ANDROID_KEYSTORE="$RUNNER_TEMP/qingjian-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$QINGJIAN_ANDROID_KEYSTORE"
+          (cd apps/android && ./gradlew assembleRelease --no-daemon --console=plain)
+          mkdir -p target/android-package
+          cp apps/android/app/build/outputs/apk/release/app-release.apk target/android-package/qingjian-android-signed.apk
+          rm -f "$QINGJIAN_ANDROID_KEYSTORE"
+
+      - name: Verify APK signature
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --verbose --print-certs target/android-package/qingjian-android-signed.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qingjian-android-signed
+          path: target/android-package/qingjian-android-signed.apk
+          if-no-files-found: error
+          retention-days: 30
