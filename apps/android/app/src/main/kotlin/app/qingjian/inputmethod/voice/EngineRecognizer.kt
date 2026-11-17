@@ -29,6 +29,13 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     @Volatile
     private var recording = false
 
+    /** 取消或重启后使已排队的旧音频回调失效；finish 则保留当前会话的队列顺序。 */
+    @Volatile
+    private var sessionId = 0L
+
+    @Volatile
+    private var cancelled = false
+
     override val available: Boolean get() = engine.voiceAvailable
 
     override val needsMicrophone = true
@@ -37,8 +44,11 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     @SuppressLint("MissingPermission")
     override fun start(listener: VoiceRecognizer.Listener) {
         this.listener = listener
+        sessionId += 1
+        cancelled = false
         engine.voiceStart(SAMPLE_RATE)
         recording = true
+        val currentSession = sessionId
         thread(name = "qingjian-voice-record") {
             val size = maxOf(AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING), CHUNK * 2)
             val record = runCatching {
@@ -80,7 +90,9 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 val spectrum = spectrum(chunk)
                 // 句柄只在主线程用；说完之后晚到的那截不再交
                 main.post {
-                    if (!recording) return@post
+                    // finish() 只停止继续采集，不丢弃 finish 前已经读到并排队的音频块。
+                    // cancel()/新会话则通过 sessionId 使旧回调失效。
+                    if (sessionId != currentSession || cancelled) return@post
                     engine.voiceFeed(chunk)
                     this.listener?.onSpectrum(spectrum)
                 }
@@ -94,10 +106,16 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     override fun finish() {
         if (!recording) return
         recording = false
-        engine.voiceFinish()
+        val currentSession = sessionId
+        // Handler 按投递顺序执行：已排队的 voiceFeed 会先于 voiceFinish 完成。
+        main.post {
+            if (sessionId == currentSession && !cancelled) engine.voiceFinish()
+        }
     }
 
     override fun cancel() {
+        cancelled = true
+        sessionId += 1
         engine.voiceCancel()
         stop()
     }
@@ -130,6 +148,8 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     /** 收尾：录音线程跟着停（出错、服务端先结束时也得停，不然麦克风一直开着）。 */
     private fun stop() {
         recording = false
+        cancelled = true
+        sessionId += 1
         main.removeCallbacks(poll)
         listener = null
     }
