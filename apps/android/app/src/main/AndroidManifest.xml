@@ -61,6 +61,7 @@
 
         <activity android:name=".service.SmartActionActivity" android:exported="false" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
+        <activity android:name=".panel.VoiceAnimationSettingsActivity" android:exported="false" />
         <service
             android:name=".scan.ScanOverlayService"
             android:exported="false"
