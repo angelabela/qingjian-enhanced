@@ -91,6 +91,9 @@ class VoicePanel(
     init {
         clipChildren = true
         clipToPadding = true
+        // 语音面板是覆盖层：空白背景也必须消费触摸，绝不能把事件交回底层键盘。
+        isClickable = true
+        isFocusable = true
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
         blurredKeyboard?.let(backdrop::setImageBitmap)
         // 降低模糊半径，保留更多键盘细节；背景遮罩稍加深，减弱过透的感觉。
@@ -156,15 +159,16 @@ class VoicePanel(
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        val fiveBands = FloatArray(5) { band ->
-            val start = band * SAMPLE_COUNT / 5
-            val end = (band + 1) * SAMPLE_COUNT / 5
-            var total = 0f
-            for (i in start until end) total += spectrumBands[i]
-            total / (end - start).coerceAtLeast(1)
+        // 新增的五种物理效果使用24个窄频段单元，保留低中高频的细节变化。
+        // 每个单元聚合相邻两段 FFT，减少跳动同时不把48段频谱压缩成5个大图形。
+        val physicsBands = FloatArray(24) { band ->
+            val start = band * 2
+            val a = spectrumBands[start]
+            val b = spectrumBands[start + 1]
+            (a * 0.58f + b * 0.42f).coerceIn(0f, 1f)
         }
         overlay.updateSpectrum(spectrumBands)
-        overlay.update(fiveBands)
+        overlay.update(physicsBands)
     }
 
     fun track(screenX: Float, screenY: Float) {
@@ -200,7 +204,12 @@ class VoicePanel(
         }
     }
 
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean = super.dispatchTouchEvent(event)
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // 先让按钮等子控件处理；若没有子控件命中，父面板仍消费事件，阻断键盘穿透。
+        return super.dispatchTouchEvent(event) || true
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean = true
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
