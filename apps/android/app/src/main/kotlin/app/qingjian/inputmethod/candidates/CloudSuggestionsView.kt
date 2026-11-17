@@ -178,8 +178,9 @@ class CloudSuggestionsView(
                     if (smart != null) smart(suggestion) else onSelect(index)
                 }
                 flyIntoEditorDirection(label, suggestion) {
-                    select()
+                    // 先收起旧 Tips，再回调选择；若新候选立即到达，不会被旧动画误隐藏。
                     hideTips()
+                    select()
                 }
             }
             result.animate()
