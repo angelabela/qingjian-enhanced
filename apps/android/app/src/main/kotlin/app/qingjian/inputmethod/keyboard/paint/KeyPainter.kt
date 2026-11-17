@@ -21,10 +21,15 @@ class KeyPainter(
     /** 键面字号档的倍数（键盘设置「键面字号」），键上的主字与气泡一起缩放。 */
     private val textScale: Float,
     private val keySkin: Settings.KeySkin = Settings.KeySkin.ORIGINAL,
+    private val fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val fontTypeface = fontWeight.typeface
+    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = fontTypeface
+    }
     private val bubble = RectF()
     private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -139,7 +144,7 @@ class KeyPainter(
         val baseline = y + 3f * density
         val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
-        ink.typeface = Typeface.DEFAULT
+        ink.typeface = fontTypeface
         ink.textSize = 9f * density
         // 所有按键统一只显示文字：无手势图标、无粗体、无阴影。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
