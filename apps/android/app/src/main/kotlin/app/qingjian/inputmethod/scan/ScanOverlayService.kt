@@ -10,6 +10,8 @@ import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Outline
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
@@ -347,10 +349,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 )
                 setStroke(dp(1), 0x66FFFFFF)
             }
-            // 强制按背景轮廓裁剪标题栏本身及其子控件，避免圆角外的矩形内容露出。
+            // 使用显式凸轮廓裁剪，而不是依赖透明背景 drawable 自动生成 Outline。
+            // 全透明 drawable 在部分 Android 窗口实现中没有有效 outline，移动窗口时会露出矩形角。
             clipToOutline = true
             clipChildren = true
-            outlineProvider = ViewOutlineProvider.BACKGROUND
+            outlineProvider = topRoundedOutlineProvider(dp(16).toFloat())
             addView(prefixRow)
             addView(headerSpacer)
             addView(toolbar)
@@ -456,7 +459,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
                 decorView.clipToOutline = true
                 (decorView as? ViewGroup)?.clipChildren = true
-                decorView.outlineProvider = ViewOutlineProvider.BACKGROUND
+                decorView.outlineProvider = topRoundedOutlineProvider(16f * resources.displayMetrics.density)
                 attributes = headerWindowParams
             }
         }
@@ -550,8 +553,43 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 window.setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
             }
             window.setLayout(headerWindowParams.width, headerWindowParams.height)
+            // 窗口移动/缩放会重新布局 decor；主动刷新自定义裁剪轮廓，避免圆角外的矩形残留。
+            window.decorView.invalidateOutline()
+            headerView.invalidateOutline()
         }
     }
+
+    /**
+     * 标题栏窗口背景完全透明时，系统的 BACKGROUND outline 可能为空，clipToOutline 实际不会裁剪。
+     * 这里显式提供只有顶部圆角、底边为直线的凸路径；不改变窗口透明度，也不靠半透明遮挡。
+     */
+    private fun topRoundedOutlineProvider(radiusPx: Float): ViewOutlineProvider =
+        object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                val width = view.width
+                val height = view.height
+                if (width <= 0 || height <= 0) {
+                    outline.setEmpty()
+                    return
+                }
+                val radius = radiusPx.coerceAtMost(minOf(width, height) / 2f)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val path = Path().apply {
+                        moveTo(0f, radius)
+                        quadTo(0f, 0f, radius, 0f)
+                        lineTo(width - radius, 0f)
+                        quadTo(width.toFloat(), 0f, width.toFloat(), radius)
+                        lineTo(width.toFloat(), height.toFloat())
+                        lineTo(0f, height.toFloat())
+                        close()
+                    }
+                    outline.setPath(path)
+                } else {
+                    outline.setRoundRect(0, 0, width, height, radius)
+                }
+                outline.alpha = 1f
+            }
+        }
 
     private fun finishPrefixEditing() {
         val editor = prefixEditor ?: return
