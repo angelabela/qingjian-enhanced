@@ -255,7 +255,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     private fun isStructuredTokenChar(char: Char): Boolean =
-        char.code < 128 && (char.isLetterOrDigit() || char in "!#\\$%&*+-./:@_~")
+        char.code < 128 && (char.isLetterOrDigit() || char in "!#\$%&*+-./:@_~")
 
     private fun flushStructuredToken() {
         val token = structuredTokenBuffer.toString()
