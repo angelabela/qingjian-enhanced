@@ -487,6 +487,12 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (engine.ready && !directInput) apply(engine.commitVoice(text)) else commit(text)
     }
 
+    /** 异步语音校正只修订紧邻光标、且仍是最近一条编辑的语音文本。 */
+    fun refineCommittedVoice(original: String, corrected: String): Boolean {
+        val connection = host.connection ?: return false
+        return editHistory.amendLastInsertion(connection, original, corrected)
+    }
+
     fun select(index: Int) {
         val localIndex = index - localCompletionStart
         val local = localCompletions.getOrNull(localIndex)
