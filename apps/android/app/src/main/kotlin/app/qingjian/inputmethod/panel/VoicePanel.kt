@@ -2,7 +2,6 @@ package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -369,14 +368,6 @@ class VoicePanel(
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
         val ANIMATION_STYLE_LABELS = listOf("弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "每次启动随机")
-
-        /** 输入法 Service 不是 Activity，不能直接挂 AlertDialog；交给独立 Activity 显示设置页。 */
-        fun showAnimationPicker(context: Context) {
-            context.startActivity(
-                Intent(context, VoiceAnimationSettingsActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
