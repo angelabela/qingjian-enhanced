@@ -286,8 +286,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         } else {
             emptyList()
         }
-        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else base.size
-        candidates = base + structuredCompletions.map { Candidate(text = it, senses = emptyList()) }
+        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else 0
+        candidates = structuredCompletions.map { Candidate(text = it, senses = emptyList()) } + base
         host.showComposition(preedit, candidates)
     }
 
@@ -633,10 +633,12 @@ class Composer(private val engine: Engine, private val host: Host) {
             refreshCompletions()
             return
         }
+        val structuredCount = structuredCompletions.size
         structuredTokenBuffer.clear()
         structuredCompletions = emptyList()
         structuredCompletionStart = Int.MAX_VALUE
-        val localIndex = index - localCompletionStart
+        val nativeIndex = index - structuredCount
+        val localIndex = nativeIndex - localCompletionStart
         val local = localCompletions.getOrNull(localIndex)
         if (local != null) {
             localCompletions = emptyList()
@@ -644,7 +646,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             commit(local)
             refreshCompletions()
         } else {
-            apply(engine.select(index))
+            apply(engine.select(nativeIndex))
             if (!composing) refreshCompletions()
         }
     }
@@ -745,8 +747,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         } else {
             emptyList()
         }
-        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else base.size
-        val merged = base + structuredCompletions.map { Candidate(text = it, senses = emptyList()) }
+        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else 0
+        val merged = structuredCompletions.map { Candidate(text = it, senses = emptyList()) } + base
         candidates = merged
         completing = merged.isNotEmpty()
         host.showComposition("", merged)
