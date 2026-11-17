@@ -85,13 +85,13 @@ class CloudSuggestionsView(
         clipToPadding = false
         clipToOutline = true
         setPadding((18 * density).toInt(), 0, (18 * density).toInt(), 0)
-        // 液态玻璃：多层半透明渐变、细亮边与高光；有悬浮窗权限时再启用系统背景模糊。
+        // 主题色磨砂玻璃：底色取当前主题 surface/board，弱化高光，采用微圆角。
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
-            0x66F7FBFF, (palette.surface and 0x00FFFFFF) or 0x99000000.toInt(),
-            (palette.surface and 0x00FFFFFF) or 0x88000000.toInt(),
+            (palette.surface and 0x00FFFFFF) or (0xE8 shl 24),
+            (palette.board and 0x00FFFFFF) or (0xE0 shl 24),
         )).apply {
-            cornerRadius = 22f * density
-            setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
+            cornerRadius = 8f * density
+            setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
         }
         elevation = 18f * density
         setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -236,9 +236,9 @@ class CloudSuggestionsView(
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
                 val glass = GradientDrawable().apply {
-                    setColor(0xB3222D3D.toInt())
-                    cornerRadius = 22f * density
-                    setStroke((1f * density).toInt().coerceAtLeast(1), 0x99FFFFFF.toInt())
+                    setColor((palette.surface and 0x00FFFFFF) or (0xD8 shl 24))
+                    cornerRadius = 8f * density
+                    setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
                 }
                 setBackgroundDrawable(glass)
             }
@@ -251,13 +251,14 @@ class CloudSuggestionsView(
                 decorView.clipToOutline = true
                 decorView.outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) {
-                        outline.setRoundRect(0, 0, view.width, view.height, 22f * density)
+                        outline.setRoundRect(0, 0, view.width, view.height, 8f * density)
                     }
                 }
                 attributes = attributes.apply {
                     gravity = Gravity.TOP or Gravity.START
                     x = ((resources.displayMetrics.widthPixels - decorView.width) / 2).coerceAtLeast(0)
-                    y = location[1]
+                    // Tips 吸附在输入法窗口外边框上方，不再占据输入法内部空间。
+                    y = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
                 }
                 decorView.invalidateOutline()
                 decorView.post {
@@ -287,7 +288,7 @@ class CloudSuggestionsView(
             window.attributes = window.attributes.apply {
                 gravity = Gravity.TOP or Gravity.START
                 x = ((resources.displayMetrics.widthPixels - width) / 2).coerceAtLeast(0)
-                y = location[1]
+                y = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
             }
         }
     }
@@ -315,7 +316,7 @@ class CloudSuggestionsView(
 
     private fun scheduleAutoHide() {
         hideHandler.removeCallbacks(autoHideRunnable)
-        hideHandler.postDelayed(autoHideRunnable, 5_000L)
+        hideHandler.postDelayed(autoHideRunnable, 4_000L)
     }
 
     private fun shatterAndHide() {
@@ -361,7 +362,7 @@ class CloudSuggestionsView(
         shards = emptyList()
         shatterAnimator?.cancel()
         shatterAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 720L
+            duration = 1_050L
             addUpdateListener {
                 shatterProgress = it.animatedValue as Float
                 alpha = 1f - shatterProgress
@@ -378,7 +379,7 @@ class CloudSuggestionsView(
                 flyingGlyphs = emptyList()
                 returnToAnchor()
             }
-        }, 740L)
+        }, 1_080L)
     }
 
     private fun hideTips() {
@@ -423,39 +424,61 @@ class CloudSuggestionsView(
         val hostLocation = IntArray(2)
         source.getLocationOnScreen(sourceLocation)
         host.getLocationOnScreen(hostLocation)
-        val flyer = TextView(context).apply {
-            text = value
-            textSize = source.textSize / resources.displayMetrics.scaledDensity
-            setTextColor(palette.text)
-            includeFontPadding = false
-            gravity = Gravity.CENTER
-            maxLines = 1
-            elevation = 12f * density
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = source.typeface
+            textSize = source.textSize
         }
-        flyer.measure(
-            MeasureSpec.makeMeasureSpec(host.width, MeasureSpec.AT_MOST),
-            MeasureSpec.makeMeasureSpec(host.height, MeasureSpec.AT_MOST),
-        )
-        val width = flyer.measuredWidth.coerceAtLeast((24 * density).toInt())
-        val height = flyer.measuredHeight.coerceAtLeast((20 * density).toInt())
-        val startX = sourceLocation[0] - hostLocation[0] + source.width / 2 - width / 2
-        val startY = sourceLocation[1] - hostLocation[1] + source.height / 2 - height / 2
-        flyer.layout(startX, startY, startX + width, startY + height)
+        val glyphs = value.codePoints().toArray().map { String(Character.toChars(it)) }
+        if (glyphs.isEmpty()) {
+            onFinished()
+            return
+        }
         selectionAnimating = true
-        host.overlay.add(flyer)
-        flyer.animate()
-            .translationX((host.width / 2f) - (startX + width / 2f))
-            .translationY(-height.toFloat() - startY)
-            .alpha(0.12f)
-            .scaleX(0.92f)
-            .scaleY(0.92f)
-            .setDuration(220L)
-            .withEndAction {
-                host.overlay.remove(flyer)
-                selectionAnimating = false
-                if (isAttachedToWindow) onFinished()
+        var cursorX = sourceLocation[0] - hostLocation[0] + source.width / 2f -
+            paint.measureText(value) / 2f
+        val startY = sourceLocation[1] - hostLocation[1] + source.height / 2f
+        var remaining = glyphs.size
+        glyphs.forEachIndexed { index, glyph ->
+            val glyphWidth = paint.measureText(glyph).coerceAtLeast(8f * density)
+            val flyer = TextView(context).apply {
+                text = glyph
+                textSize = source.textSize / resources.displayMetrics.scaledDensity
+                setTextColor(palette.text)
+                includeFontPadding = false
+                gravity = Gravity.CENTER
+                maxLines = 1
+                elevation = 12f * density
             }
-            .start()
+            flyer.measure(
+                MeasureSpec.makeMeasureSpec(host.width, MeasureSpec.AT_MOST),
+                MeasureSpec.makeMeasureSpec(host.height, MeasureSpec.AT_MOST),
+            )
+            val w = flyer.measuredWidth.coerceAtLeast(glyphWidth.toInt())
+            val h = flyer.measuredHeight.coerceAtLeast((20 * density).toInt())
+            val left = cursorX + (glyphWidth - w) / 2f
+            val top = startY - h / 2f
+            flyer.layout(left.toInt(), top.toInt(), left.toInt() + w, top.toInt() + h)
+            host.overlay.add(flyer)
+            val targetX = host.width / 2f + (index - (glyphs.size - 1) / 2f) * glyphWidth * 0.72f
+            flyer.animate()
+                .translationX(targetX - left)
+                .translationY(-startY - h * 0.8f)
+                .alpha(0.08f)
+                .scaleX(0.9f)
+                .scaleY(0.9f)
+                .setStartDelay(index * 105L)
+                .setDuration(820L)
+                .withEndAction {
+                    host.overlay.remove(flyer)
+                    remaining--
+                    if (remaining == 0) {
+                        selectionAnimating = false
+                        if (isAttachedToWindow) onFinished()
+                    }
+                }
+                .start()
+            cursorX += glyphWidth
+        }
     }
 
     // 垂直/自由拖动整个 Tips 浮窗；吸附到键盘顶部附近时自动回到锚点。
