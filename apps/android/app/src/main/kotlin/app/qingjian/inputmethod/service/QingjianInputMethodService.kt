@@ -209,7 +209,7 @@ class QingjianInputMethodService :
         // 剪贴板面板内的开关也保存在 Settings.preferences 中，但它不是键盘布局设置。
         // 若按通用设置变更逻辑重建 InputView，正在显示的面板会被销毁并退回键盘。
         // 因此这类面板状态只持久化，不触发整套输入法视图重建。
-        if (key == Settings.KEY_CLIPBOARD_PASTE_ENTER) return@OnSharedPreferenceChangeListener
+        if (key == Settings.KEY_CLIPBOARD_PASTE_ENTER || key == Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL) return@OnSharedPreferenceChangeListener
         contacts.sync()
         if (!writingSettings) setInputView(onCreateInputView())
     }
@@ -797,9 +797,15 @@ class QingjianInputMethodService :
 
     override fun commitClipboardText(text: String) {
         composer.commitPanelText(text)
-        if (!Settings.preferences(this).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)) return
+        val prefs = Settings.preferences(this)
         val connection = currentInputConnection ?: return
-        if (!composer.commitExternalText("\n", connection)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+        when {
+            prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, false) ->
+                sendDownUpKeyEvents(KeyEvent.KEYCODE_TAB)
+            prefs.getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false) -> {
+                if (!composer.commitExternalText("\n", connection)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+            }
+        }
     }
 
     override fun replaceInputText(text: String): Boolean {
