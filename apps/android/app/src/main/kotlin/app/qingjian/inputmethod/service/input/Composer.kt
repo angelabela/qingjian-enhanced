@@ -220,6 +220,71 @@ class Composer(private val engine: Engine, private val host: Host) {
         consumeShift()
     }
 
+    /** 将本次混合编码按原样暂存；空格/普通标点等边界到来时再落入本机词库。 */
+    private fun trackStructuredTokenInput(key: Key) {
+        if (privateInput || directInput) {
+            structuredTokenBuffer.clear()
+            structuredCompletions = emptyList()
+            structuredCompletionStart = Int.MAX_VALUE
+            return
+        }
+        when (key) {
+            is Key.Letter -> {
+                val char = if (host.shift.on) key.char.uppercaseChar() else key.char
+                structuredTokenBuffer.append(char)
+            }
+            is Key.Digit -> if (key.digit != SEPARATOR_DIGIT) structuredTokenBuffer.append(key.digit)
+            is Key.Text -> {
+                if (key.text.isNotEmpty() && key.text.all(::isStructuredTokenChar)) {
+                    structuredTokenBuffer.append(key.text)
+                } else {
+                    flushStructuredToken()
+                }
+            }
+            is Key.Space, is Key.Enter -> flushStructuredToken()
+            Key.Backspace -> if (structuredTokenBuffer.isNotEmpty()) {
+                structuredTokenBuffer.deleteCharAt(structuredTokenBuffer.length - 1)
+            }
+            Key.Clear -> {
+                structuredTokenBuffer.clear()
+                structuredCompletions = emptyList()
+                structuredCompletionStart = Int.MAX_VALUE
+            }
+            else -> Unit
+        }
+    }
+
+    private fun isStructuredTokenChar(char: Char): Boolean =
+        char.code < 128 && (char.isLetterOrDigit() || char in "!#\\$%&*+-./:@_~")
+
+    private fun flushStructuredToken() {
+        val token = structuredTokenBuffer.toString()
+        val hasLetter = token.any { it.isLetter() }
+        val hasDigit = token.any { it.isDigit() }
+        val hasSymbol = token.any { !it.isLetterOrDigit() }
+        if (token.length in 4..64 && hasLetter && (hasDigit || hasSymbol)) {
+            host.rememberStructuredToken(token)
+        }
+        structuredTokenBuffer.clear()
+        structuredCompletions = emptyList()
+        structuredCompletionStart = Int.MAX_VALUE
+    }
+
+    /** 组句时把本机混合编码候选追加到 Core 候选末尾，选择后替换当前 preedit。 */
+    private fun showCandidatesWithStructured(base: List<Candidate>) {
+        val prefix = structuredTokenBuffer.toString()
+        structuredCompletions = if (
+            composing && !privateInput && !directInput && prefix.length >= 2
+        ) {
+            host.structuredTokenSuggestions(prefix).filter { it != prefix }.take(5)
+        } else {
+            emptyList()
+        }
+        structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else base.size
+        candidates = base + structuredCompletions.map { Candidate(text = it, senses = emptyList()) }
+        host.showComposition(preedit, candidates)
+    }
+
     fun onKey(key: Key) {
         trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
