@@ -51,11 +51,12 @@ impl StripPainter {
     }
 
     /// 换主题（内置主题 id，没有的退回缺省）与字号档；下一帧起生效。
-    pub fn set_appearance(&mut self, theme: &str, text_scale: f32) {
+    pub fn set_appearance(&mut self, theme: &str, text_scale: f32, candidate_weight: u16) {
         let sized = |dark: bool| {
             let theme = appearance::theme(theme, dark);
             theme
                 .with_text_sizes(appearance::text_sizes(&theme, text_scale))
+                .with_candidate_weight(Some(candidate_weight))
                 .with_animations(false)
         };
         self.light = sized(false);
