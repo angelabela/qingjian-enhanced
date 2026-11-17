@@ -122,8 +122,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     /** 按着空格的手指抬起：松在「撤回输入」上撤回，松在右边那块上上屏并执行回车动作，别处只是说完。[cancel] 是手指被系统收走。 */
     fun release(cancel: Boolean) {
         val activePanel = panel?.takeIf { it.holding } ?: return
+        val cancelVoice = cancel || activePanel.target == VoicePanel.Target.CANCEL
         activePanel.holding = false
-        if (cancel) {
+        if (cancelVoice) {
+            // 长按空格期间滑到「撤销」再松手：丢弃本次语音临时内容，不触碰此前已输入的文字。
             onCancel()
             return
         }
@@ -136,7 +138,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         onFinish(act = false, hide = false)
     }
 
-    override fun onUndo() { host.undoVoice() }
+    override fun onUndo() {
+        // 录音/实时转写尚未完成时，撤销整段本次语音；识别完成后才撤销上一条语音事务。
+        if (recognizer != null || panel?.holding == true) onCancel() else host.undoVoice()
+    }
 
     override fun onRedo() { host.redoVoice() }
 
