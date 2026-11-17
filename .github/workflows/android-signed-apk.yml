@@ -51,6 +51,11 @@ jobs:
           cargo install cargo-ndk --version 4.1.2 --locked
           echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
 
+      # 与 android-debug.yml 保持一致：workspace package set 清理后先解析并刷新 Cargo.lock。
+      # 该步骤已在同一提交的 Debug 工作流中通过，避免后续 --locked 构建因锁文件过期而失败。
+      - name: Resolve Rust workspace lockfile
+        run: cargo test -p qingjian-android
+
       - name: Fetch product data
         env:
           GH_TOKEN: ${{ github.token }}
