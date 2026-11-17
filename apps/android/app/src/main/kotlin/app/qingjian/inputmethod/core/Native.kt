@@ -105,7 +105,7 @@ internal object Native {
     external fun keyboardPalette(theme: String, dark: Boolean): String?
 
     /** 主题预览：前 8 字节是宽、高（大端），后面是预乘 RGBA；画不出为 null。渲染器不能跨线程，固定在一条线程上调。 */
-    external fun themePreview(theme: String, dark: Boolean, scale: Float, textScale: Float): ByteArray?
+    external fun themePreview(theme: String, dark: Boolean, scale: Float, textScale: Float, candidateWeight: Int): ByteArray?
 
     /** 把上次 [renderStrip] 的像素（预乘 RGBA）拷进直接缓冲区；缓冲区不够大返回 false。 */
     external fun copyStrip(handle: Long, buffer: java.nio.ByteBuffer): Boolean
