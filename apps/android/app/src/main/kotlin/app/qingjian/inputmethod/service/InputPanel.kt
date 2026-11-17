@@ -195,7 +195,7 @@ class InputPanel(
                 main.draw(Canvas(bitmap))
             }
         }.getOrNull()
-        return VoicePanel(context, palette, actionLabel, actions, backdrop).also { voice ->
+        return VoicePanel(context, palette, actionLabel, actions, backdrop, VoicePanel.resolveAnimationStyle(context)).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
