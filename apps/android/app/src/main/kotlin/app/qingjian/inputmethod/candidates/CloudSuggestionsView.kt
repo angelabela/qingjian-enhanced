@@ -172,11 +172,15 @@ class CloudSuggestionsView(
             )
             result.setOnClickListener {
                 if (selectionAnimating) return@setOnClickListener
+                hideHandler.removeCallbacks(autoHideRunnable)
                 val select = {
                     val smart = smartSelection
                     if (smart != null) smart(suggestion) else onSelect(index)
                 }
-                flyIntoEditorDirection(label, suggestion, select)
+                flyIntoEditorDirection(label, suggestion) {
+                    select()
+                    hideTips()
+                }
             }
             result.animate()
                 .alpha(1f)
@@ -536,11 +540,12 @@ class CloudSuggestionsView(
                     val location = IntArray(2)
                     anchor.getLocationOnScreen(location)
                     val targetX = ((resources.displayMetrics.widthPixels - window.decorView.width) / 2).coerceAtLeast(0)
+                    val targetY = (location[1] - (52f * density).toInt()).coerceAtLeast(0)
                     val attrs = window.attributes
                     val snap = (48f * density).toInt()
-                    if (kotlin.math.abs(attrs.x - targetX) <= snap && kotlin.math.abs(attrs.y - location[1]) <= snap) {
+                    if (kotlin.math.abs(attrs.x - targetX) <= snap && kotlin.math.abs(attrs.y - targetY) <= snap) {
                         tipsDetached = false
-                        window.attributes = attrs.apply { gravity = Gravity.TOP or Gravity.START; x = targetX; y = location[1] }
+                        window.attributes = attrs.apply { gravity = Gravity.TOP or Gravity.START; x = targetX; y = targetY }
                     }
                 }
                 floatingDragActive = false
