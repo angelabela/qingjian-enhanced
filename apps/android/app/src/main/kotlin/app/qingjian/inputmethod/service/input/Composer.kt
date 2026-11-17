@@ -257,6 +257,10 @@ class Composer(private val engine: Engine, private val host: Host) {
     private fun isStructuredTokenChar(char: Char): Boolean =
         char.code < 128 && (char.isLetterOrDigit() || char in "!#\$%&*+-./:@_~")
 
+    /** 混合大小写、数字或符号出现后，后续编码按原样落字，不交给中文候选改写。 */
+    private fun isStructuredTokenMode(): Boolean =
+        structuredTokenBuffer.any { it.isUpperCase() || it.isDigit() || !it.isLetterOrDigit() }
+
     fun finishStructuredToken() = flushStructuredToken()
 
     private fun flushStructuredToken() {
@@ -318,7 +322,9 @@ class Composer(private val engine: Engine, private val host: Host) {
             is Key.Letter -> when {
                 // 中文拼音页开启大写（单次或锁定）时，字母键改为直接上屏大写字母，不再送入拼音缓冲区。
                 chinese && host.shift.on -> {
-                    if (composing) selectFirst()
+                    if (composing) {
+                        if (isStructuredTokenMode()) apply(engine.commitRaw()) else selectFirst()
+                    }
                     commit(key.char.uppercaseChar().toString())
                     consumeShift()
                 }
@@ -347,6 +353,10 @@ class Composer(private val engine: Engine, private val host: Host) {
 
             is Key.Digit -> when {
                 !engine.ready -> Unit
+                key.digit != SEPARATOR_DIGIT && structuredTokenBuffer.any { it.isLetter() } -> {
+                    if (composing) apply(engine.commitRaw())
+                    commit(key.digit.toString())
+                }
                 key.digit != SEPARATOR_DIGIT -> apply(engine.push(key.digit.code))
                 // 分词键只在组句中有意义
                 composing -> apply(engine.push('\''.code))
@@ -367,7 +377,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                     // 敲邮箱：@ 前的字母是用户名，原样落下，不顶首选
                     key.text == "@" && !zhuyin -> apply(engine.commitRaw())
                     // 英文同空格：数字、标点前落下敲的字母，不换成候选（验证码、型号这类串不是词）
-                    english || plainPunctuation -> apply(engine.commitRaw())
+                    english || plainPunctuation || isStructuredTokenMode() -> apply(engine.commitRaw())
                     else -> selectFirst()
                 }
                 // 中文标点键：Core 按设置转全角（引号成对、数字后的点保持半角）或原样
@@ -572,11 +582,45 @@ class Composer(private val engine: Engine, private val host: Host) {
         val structuredIndex = index - structuredCompletionStart
         val structured = structuredCompletions.getOrNull(structuredIndex)
         if (structured != null) {
+            val typedPrefix = structuredTokenBuffer.toString()
+            val activePreeditLength = preedit.length
+            val connection = host.connection
+            val beforeState = connection?.let(editHistory::capture)
             structuredCompletions = emptyList()
             structuredCompletionStart = Int.MAX_VALUE
-            structuredTokenBuffer.clear()
             if (composing) apply(engine.clear())
-            commit(structured)
+            val committedPrefixLength = (typedPrefix.length - activePreeditLength).coerceAtLeast(0)
+            if (connection == null) {
+                structuredTokenBuffer.clear()
+                return
+            }
+            val deleted = if (committedPrefixLength > 0) {
+                connection.getTextBeforeCursor(committedPrefixLength, 0)?.toString().orEmpty()
+            } else ""
+            if (deleted.length != committedPrefixLength) {
+                host.showNotice("无法替换当前编码")
+                structuredTokenBuffer.clear()
+                return
+            }
+            connection.beginBatchEdit()
+            val replaced = try {
+                val removed = committedPrefixLength == 0 ||
+                    connection.deleteSurroundingText(committedPrefixLength, 0)
+                removed && connection.commitText(structured, 1)
+            } finally {
+                connection.endBatchEdit()
+            }
+            if (replaced) {
+                editHistory.record(
+                    beforeState,
+                    editHistory.capture(connection),
+                    deletedBefore = typedPrefix,
+                    insertedBefore = structured,
+                )
+            } else {
+                host.showNotice("无法替换当前编码")
+            }
+            structuredTokenBuffer.clear()
             refreshCompletions()
             return
         }
