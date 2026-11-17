@@ -578,6 +578,9 @@ class Composer(private val engine: Engine, private val host: Host) {
             refreshCompletions()
             return
         }
+        structuredTokenBuffer.clear()
+        structuredCompletions = emptyList()
+        structuredCompletionStart = Int.MAX_VALUE
         val localIndex = index - localCompletionStart
         val local = localCompletions.getOrNull(localIndex)
         if (local != null) {
