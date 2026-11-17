@@ -185,7 +185,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         for (i in smoothFft.indices) {
             val x = cx - halfWidth + i * (barWidth + gap) + barWidth / 2f
             val energy = smoothFft[i].coerceIn(0f, 1f)
-            val barHeight = (2.2f * density + energy * height * 0.23f).coerceAtLeast(2f * density)
+            val barHeight = (2.2f * density + energy * 54f * density).coerceAtLeast(2f * density)
             val c = spectrumColor(i, hueShift)
             paint.shader = null
             paint.color = c
