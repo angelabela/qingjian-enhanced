@@ -34,6 +34,12 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
         fun toast(message: String)
 
+        /** 密码、私密或直接输入框禁止将音频发送到云端。 */
+        fun canStartVoice(): Boolean
+
+        /** 语音识别文本的云端保守校正；失败时调用方回退到原始识别文本。 */
+        fun correctVoiceText(text: String, callback: (Result<String>) -> Unit)
+
         /** 还没选识别服务：提示去「语音识别」页配。 */
         fun voiceNeedsSetup()
     }
@@ -44,6 +50,8 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     private var recognizer: VoiceRecognizer? = null
     private var panel: VoicePanel? = null
     private var after = After.NOTHING
+    /** 使输入框切换/取消后的迟到 AI 回复失效。 */
+    private var generation = 0L
 
     val active: Boolean get() = recognizer != null
 
@@ -56,6 +64,11 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     /** 开始说话；[holding] 是按着空格说。返回开没开起来：不能用、要先申请权限都是 false。 */
     fun start(holding: Boolean): Boolean {
         if (active) return true
+        if (!host.canStartVoice()) {
+            host.toast("当前输入框属于密码、私密或直接输入模式，已禁止云端语音输入")
+            return false
+        }
+        generation += 1
         val picked = pick()
         if (!picked.available) {
             host.voiceNeedsSetup()
@@ -138,8 +151,9 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     /** 不要这一段（撤回、返回键、换输入框、收起键盘）：编辑中的字撤掉。 */
     override fun onCancel() {
-        val recognizer = recognizer ?: return
-        recognizer.cancel()
+        generation += 1
+        val activeRecognizer = recognizer
+        activeRecognizer?.cancel()
         host.composeVoice("")
         end()
     }
@@ -153,15 +167,28 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     override fun onFinal(text: String) {
         val then = after
+        val requestGeneration = generation
         end()
-        val cleaned = VoiceTextNormalizer.normalize(text)
-        if (cleaned.isBlank()) {
+        val original = VoiceTextNormalizer.normalize(text)
+        if (original.isBlank()) {
             host.composeVoice("")
-        } else {
-            host.commitVoice(cleaned)
-            if (then == After.ACTION) host.performVoiceAction()
+            return
         }
-        if (then == After.HIDE) host.hideKeyboard()
+
+        // 保留当前 composing 文本，待纠错完成后只提交一次，避免撤销时出现两步记录。
+        host.correctVoiceText(original) { result ->
+            if (generation != requestGeneration) return@correctVoiceText
+            val corrected = result.getOrNull()
+                ?.let(VoiceTextNormalizer::normalize)
+                ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
+                ?: original
+            if (result.isFailure) {
+                android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; using ASR text")
+            }
+            host.commitVoice(corrected)
+            if (then == After.ACTION) host.performVoiceAction()
+            if (then == After.HIDE) host.hideKeyboard()
+        }
     }
 
     override fun onError(message: String) {
