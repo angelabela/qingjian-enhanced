@@ -41,6 +41,7 @@ import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.store.ClipboardStore
+import app.qingjian.inputmethod.core.store.StructuredTokenStore
 import app.qingjian.inputmethod.core.store.PhraseItem
 import app.qingjian.inputmethod.core.store.PhraseRules
 import app.qingjian.inputmethod.core.store.Shuangpin
@@ -625,6 +626,17 @@ class QingjianInputMethodService :
 
     /** 用户确认上屏后，把连续两词及以上的短语缩写写入本机常用语词库。 */
     override fun onPhraseCommitted(text: String) = rememberPhraseShortcuts(text)
+
+    override fun rememberStructuredToken(token: String) {
+        if (::composer.isInitialized && !composer.privateInput && !composer.directInput) {
+            StructuredTokenStore.remember(this, token)
+        }
+    }
+
+    override fun structuredTokenSuggestions(prefix: String): List<String> {
+        if (!::composer.isInitialized || composer.privateInput || composer.directInput) return emptyList()
+        return StructuredTokenStore.suggest(this, prefix)
+    }
 
     /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
     override fun onEditShortcut(action: KeyboardView.EditShortcut) {
