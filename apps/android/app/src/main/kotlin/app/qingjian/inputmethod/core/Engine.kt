@@ -42,7 +42,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     private var stripBitmap: Bitmap? = null
 
     /** 候选条的主题与字号档；引擎（重新）装好时照这份交过去。 */
-    private var appearance: Pair<String, Float>? = null
+    private var appearance: Triple<String, Float, Int>? = null
 
     val ready: Boolean get() = handle != 0L
 
@@ -67,7 +67,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
                     cloudSignature = 0
                     cloudConnected = false
                     predicting = false
-                    appearance?.let { (theme, scale) -> if (ready) Native.setAppearance(handle, theme, scale) }
+                    appearance?.let { (theme, scale, weight) -> if (ready) Native.setAppearance(handle, theme, scale, weight) }
                     if (ready) onReady()
                 }
             }
@@ -357,9 +357,9 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     }
 
     /** 候选条换主题与字号档（[textScale] 是候选字与译文一起的倍数）；没装好时记着，装好再交。 */
-    fun setAppearance(theme: String, textScale: Float) {
-        appearance = theme to textScale
-        if (ready) Native.setAppearance(handle, theme, textScale)
+    fun setAppearance(theme: String, textScale: Float, candidateWeight: Int = 400) {
+        appearance = Triple(theme, textScale, candidateWeight.coerceIn(100, 1000))
+        if (ready) Native.setAppearance(handle, theme, textScale, candidateWeight.coerceIn(100, 1000))
     }
 
     /** 识别出的一段文字上屏：Core 转繁体、记输入历史与统计。 */
