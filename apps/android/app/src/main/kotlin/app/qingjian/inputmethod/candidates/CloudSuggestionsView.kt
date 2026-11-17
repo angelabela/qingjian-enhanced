@@ -205,7 +205,7 @@ class CloudSuggestionsView(
         val anchorY = editorAnchorY ?: return
         if (width <= 0 || height <= 0) return
         val screenWidth = resources.displayMetrics.widthPixels
-        val targetX = (anchorX - width / 2f).toInt().coerceIn(8 * density.toInt(), (screenWidth - width - 8 * density).toInt().coerceAtLeast(0))
+        val sideInset = (8f * density).toInt()\n        val targetX = (anchorX - width / 2f).toInt().coerceIn(sideInset, (screenWidth - width - sideInset).coerceAtLeast(sideInset))
         val targetY = (anchorY - height - 12f * density).toInt().coerceAtLeast((8f * density).toInt())
 
         val params = overlayParams
