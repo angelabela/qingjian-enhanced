@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.NoiseSuppressor
 import android.os.Handler
 import android.os.Looper
 import app.qingjian.inputmethod.core.Engine
@@ -24,6 +25,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
 
     /** 每个频带独立估计环境底噪；语音峰值只慢速抬高估计，低能量段较快回落。 */
     private val noiseFloorDb = DoubleArray(SPECTRUM_BANDS) { -58.0 }
+    private val pcmNoiseSuppressor = PcmNoiseSuppressor()
 
     /** 录音线程看它停；主线程写。 */
     @Volatile
@@ -46,6 +48,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     @SuppressLint("MissingPermission")
     override fun start(listener: VoiceRecognizer.Listener) {
         this.listener = listener
+        pcmNoiseSuppressor.reset()
         engine.voiceStart(SAMPLE_RATE)
         val currentSession = synchronized(feedLock) {
             sessionId += 1
@@ -63,11 +66,18 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 main.post { fail("麦克风无法启动，可能正被其他应用占用，请关闭其他录音或通话应用后重试") }
                 return@thread
             }
+            var platformNoiseSuppressor: NoiseSuppressor? = null
             try {
                 record.startRecording()
                 if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                     error("AudioRecord 未进入录音状态")
                 }
+                // 先启用 Android 音频链路的硬件/系统降噪；不可用时仍执行下方 PCM 软件处理。
+                platformNoiseSuppressor = runCatching {
+                    if (NoiseSuppressor.isAvailable()) {
+                        NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true }
+                    } else null
+                }.getOrNull()
             } catch (_: Throwable) {
                 record.release()
                 main.post {
@@ -90,7 +100,9 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                     break
                 }
                 if (read == 0) continue
-                val chunk = buffer.copyOf(read)
+                val captured = buffer.copyOf(read)
+                // 对实际送入 ASR 的 PCM 做自适应降噪，频谱动画也显示处理后的音频。
+                val chunk = pcmNoiseSuppressor.process(captured)
                 val spectrum = spectrum(chunk)
                 // 句柄只在主线程用；说完之后晚到的那截不再交
                 synchronized(feedLock) {
@@ -105,6 +117,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 }
             }
             runCatching { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
+            runCatching { platformNoiseSuppressor?.release() }
             record.release()
         }
         main.postDelayed(poll, POLL_MS)
