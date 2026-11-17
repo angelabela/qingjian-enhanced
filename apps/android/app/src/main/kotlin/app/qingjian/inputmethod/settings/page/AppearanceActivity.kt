@@ -78,7 +78,7 @@ class AppearanceActivity : PageActivity() {
     /** 当前主题、外观与字号下的候选条和键盘，候选条按实际大小画。 */
     private fun preview(settings: Settings, dark: Boolean): View {
         val density = resources.displayMetrics.density
-        val strip = Themes.preview(settings.theme, dark, density, settings.textSize.scale)
+        val strip = Themes.preview(settings.theme, dark, density, settings.textSize.scale, settings.fontWeight.weight)
         return framed(ThemePreview(this, strip, Palette.of(settings.theme, dark), aspect = 0.42f, keyRadiusDp = 6f), selected = false)
     }
 
