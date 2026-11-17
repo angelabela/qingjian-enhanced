@@ -214,6 +214,7 @@ class CloudSuggestionsView(
         val location = IntArray(2)
         anchor.getLocationOnScreen(location)
         oldParent.removeView(this)
+        tipsDetached = false
         val dialog = Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
         runCatching {
             dialog.setContentView(this)
@@ -287,6 +288,7 @@ class CloudSuggestionsView(
     private fun returnToAnchor() {
         val dialog = tipsDialog ?: return
         val anchor = tipsAnchor as? ViewGroup ?: return
+        tipsDetached = false
         tipsDialog = null
         runCatching { dialog.dismiss() }
         if (parent == null) {
