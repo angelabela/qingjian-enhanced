@@ -5,6 +5,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.text.TextPaint
+import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.strip.StripImage
 import app.qingjian.inputmethod.panel.base.PanelIcons
@@ -14,21 +15,22 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
         it.textSize = 19f * density * textScale
         it.textAlign = Paint.Align.CENTER
+        it.typeface = fontWeight.typeface
     }
     private val fill = Paint()
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
         textSize = 20f * density * textScale
         textAlign = Paint.Align.CENTER
-        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        typeface = fontWeight.typeface
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
-    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER }
+    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface }
     private val fallbackRects = ArrayList<RectF>()
     private val src = Rect()
     private val dst = Rect()
