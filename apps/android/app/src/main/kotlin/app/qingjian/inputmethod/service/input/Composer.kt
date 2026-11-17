@@ -67,6 +67,10 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         /** 用户确认上屏的内容：供 Android 壳保存个人短语缩写。 */
         fun onPhraseCommitted(text: String)
+
+        /** 保存/查询本机的混合字母、数字与符号词条；私密输入时 Composer 不会调用。 */
+        fun rememberStructuredToken(token: String)
+        fun structuredTokenSuggestions(prefix: String): List<String>
     }
 
     /** 上一帧的 preedit，非空即在组句。 */
@@ -187,6 +191,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     private var candidates: List<Candidate> = emptyList()
     private var localCompletionStart = Int.MAX_VALUE
     private var localCompletions: List<String> = emptyList()
+    private val structuredTokenBuffer = StringBuilder()
+    private var structuredCompletionStart = Int.MAX_VALUE
+    private var structuredCompletions: List<String> = emptyList()
 
     /**
      * 滑完一笔（[input] 是轨迹与键位的 JSON）：同点字母，组句时解出的字母进组句，
@@ -214,6 +221,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
         if (groupedEdit) editHistory.beginGroup()
         try {
@@ -494,6 +502,17 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun select(index: Int) {
+        val structuredIndex = index - structuredCompletionStart
+        val structured = structuredCompletions.getOrNull(structuredIndex)
+        if (structured != null) {
+            structuredCompletions = emptyList()
+            structuredCompletionStart = Int.MAX_VALUE
+            structuredTokenBuffer.clear()
+            if (composing) apply(engine.clear())
+            commit(structured)
+            refreshCompletions()
+            return
+        }
         val localIndex = index - localCompletionStart
         val local = localCompletions.getOrNull(localIndex)
         if (local != null) {
@@ -853,13 +872,12 @@ class Composer(private val engine: Engine, private val host: Host) {
         pinyinChoices = frame.pinyinChoices
         expression = frame.expression
         singleChars = frame.singleChars
-        candidates = frame.candidates
         localCompletions = emptyList()
         localCompletionStart = Int.MAX_VALUE
         // 不在组句却带着候选：上屏通讯录名字后接着给的电话、邮箱，光标再动时要问 Core 还留不留
         completing = frame.preedit.isEmpty() && frame.candidates.isNotEmpty()
         host.showSideItems(pinyinChoices)
-        host.showComposition(frame.preedit, frame.candidates)
+        showCandidatesWithStructured(frame.candidates)
         if (frame.notice.isNotEmpty()) host.showNotice(frame.notice)
         surrounding?.let { (before, after) -> engine.setSurrounding(before, after) }
         handler.removeCallbacks(pollPrediction)
@@ -871,8 +889,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (!composing) return@Runnable
         val frame = engine.pollPrediction()
         if (frame != null && frame.preedit == preedit) {
-            candidates = frame.candidates
-            host.showComposition(frame.preedit, frame.candidates)
+            showCandidatesWithStructured(frame.candidates)
         }
         if (engine.predicting) handler.postDelayed(pollPrediction, PREDICTION_POLL_MS)
     }
