@@ -407,10 +407,16 @@ class QingjianInputMethodService :
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        AppLog.info("finish input view: finishingInput=$finishingInput, panel=${panel?.openPanel}")
         super.onFinishInputView(finishingInput)
         voice.cancel()
         closeEditor()
-        panel?.close()
+        // 临时隐藏输入视图（finishingInput=false）时保留当前功能面板。
+        // 某些办公编辑器在提交剪贴板内容后会短暂结束输入视图；无条件 close()
+        // 会把剪贴板页销毁，下一次显示时只剩键盘。真正结束当前输入目标时再清理。
+        if (finishingInput) {
+            panel?.close()
+        }
         composer.finishStructuredToken()
         composer.abandon()
     }
