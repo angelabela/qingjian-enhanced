@@ -411,6 +411,7 @@ class QingjianInputMethodService :
         voice.cancel()
         closeEditor()
         panel?.close()
+        composer.finishStructuredToken()
         composer.abandon()
     }
 
