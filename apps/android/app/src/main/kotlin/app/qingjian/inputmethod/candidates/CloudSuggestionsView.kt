@@ -21,6 +21,7 @@ import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -54,6 +55,9 @@ class CloudSuggestionsView(
     private var overlayAttached = false
     private var dragStartWindowX = 0
     private var dragStartWindowY = 0
+    /** 当前编辑器光标屏幕坐标；云 Tips 始终锚定在输入位置上方。 */
+    private var editorAnchorX: Float? = null
+    private var editorAnchorY: Float? = null
     private val hideHandler = Handler(Looper.getMainLooper())
     private val autoHideRunnable = Runnable { shatterAndHide() }
     private var shatterAnimator: ValueAnimator? = null
@@ -177,6 +181,7 @@ class CloudSuggestionsView(
         animate().cancel()
         visibility = VISIBLE
         attachAsScreenOverlayIfAllowed()
+        post { updateAnchorPosition() }
         if (!wasVisible) {
             alpha = 0f
             translationY = dragOffsetY - 8f * density
@@ -185,6 +190,41 @@ class CloudSuggestionsView(
         scrollTo(0, 0)
         startAutoScroll()
         scheduleAutoHide()
+    }
+
+    /** 接收 InputMethodService 的 CursorAnchorInfo，随光标移动动态调整 Tips 位置。 */
+    fun updateEditorAnchor(screenX: Float, screenY: Float) {
+        if (!screenX.isFinite() || !screenY.isFinite() || screenY < 0f) return
+        editorAnchorX = screenX
+        editorAnchorY = screenY
+        post { updateAnchorPosition() }
+    }
+
+    private fun updateAnchorPosition() {
+        val anchorX = editorAnchorX ?: return
+        val anchorY = editorAnchorY ?: return
+        if (width <= 0 || height <= 0) return
+        val screenWidth = resources.displayMetrics.widthPixels
+        val targetX = (anchorX - width / 2f).toInt().coerceIn(8 * density.toInt(), (screenWidth - width - 8 * density).toInt().coerceAtLeast(0))
+        val targetY = (anchorY - height - 12f * density).toInt().coerceAtLeast((8f * density).toInt())
+
+        val params = overlayParams
+        if (overlayAttached && params != null) {
+            params.x = targetX
+            params.y = targetY
+            runCatching { windowManager.updateViewLayout(this, params) }
+            return
+        }
+
+        // 无悬浮窗权限时仍在键盘 Stack 内显示，但按光标的屏幕坐标定位到输入框上方。
+        val host = parent as? View ?: return
+        val hostLocation = IntArray(2)
+        host.getLocationOnScreen(hostLocation)
+        val lp = layoutParams as? FrameLayout.LayoutParams ?: return
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.leftMargin = (targetX - hostLocation[0]).coerceAtLeast(0)
+        lp.topMargin = (targetY - hostLocation[1]).coerceAtLeast(0)
+        layoutParams = lp
     }
 
     private fun attachAsScreenOverlayIfAllowed() {
