@@ -82,7 +82,10 @@ class FunctionPanel(
     private val columns = 5
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, tabs, Icon.SETTINGS)
+        drawHeader(canvas, if (voiceEffectPage) null else tabs, Icon.SETTINGS)
+        if (voiceEffectPage) {
+            ink.text(canvas, "语音面板动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        }
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
         if (tabs.selected == 0) { if (voiceEffectPage) drawVoiceEffectSettings(canvas) else drawFeatures(canvas) } else drawToggles(canvas)
@@ -94,15 +97,13 @@ class FunctionPanel(
 
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
-        ink.icon(canvas, Icon.BACK, card.left + ink.dp(22f), top + ink.dp(22f), 22f, palette.text)
-        ink.textStart(canvas, "语音面板动效", 16f, palette.text, card.left + ink.dp(44f), top + ink.dp(25f), card.right - ink.dp(12f))
         ink.textStart(canvas, "跟随当前主题 · 选择实时音频可视化样式", 11f, palette.gloss,
-            card.left + ink.dp(16f), top + ink.dp(53f), card.right - ink.dp(12f))
+            card.left + ink.dp(16f), top + ink.dp(22f), card.right - ink.dp(12f))
 
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
-        val rowTop = top + ink.dp(66f)
-        val rowHeight = (card.height() - ink.dp(76f)) / rows
+        val rowTop = top + ink.dp(34f)
+        val rowHeight = (card.height() - ink.dp(44f)) / rows
         val gapX = ink.dp(7f)
         val gapY = ink.dp(5f)
         val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
@@ -229,7 +230,7 @@ class FunctionPanel(
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
-            y < headerHeight -> tabs.indexAt(x)?.let {
+            y < headerHeight -> if (!voiceEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
                 voiceEffectPage = false
@@ -238,12 +239,10 @@ class FunctionPanel(
             !card.contains(x, y) -> Unit
             tabs.selected == 0 && voiceEffectPage -> {
                 val top = card.top + ink.dp(8f)
-                if (y < top + ink.dp(62f) && x < card.left + ink.dp(42f)) {
-                    voiceEffectPage = false
-                } else {
-                    val rows = (VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2
-                    val rowTop = top + ink.dp(66f)
-                    val rowHeight = (card.height() - ink.dp(76f)) / rows
+                val rows = (VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2
+                val rowTop = top + ink.dp(34f)
+                val rowHeight = (card.height() - ink.dp(44f)) / rows
+                if (y >= rowTop) {
                     val gapX = ink.dp(7f)
                     val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
@@ -265,6 +264,15 @@ class FunctionPanel(
             else -> toggles.getOrNull(((y - card.top) / rowHeight()).toInt())?.let {
                 actions.setToggle(it.key, !it.on)
             }
+        }
+    }
+
+    override fun onBack() {
+        if (voiceEffectPage) {
+            voiceEffectPage = false
+            invalidate()
+        } else {
+            super.onBack()
         }
     }
 
