@@ -95,11 +95,11 @@ data class Settings(
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
 
     /** 键盘界面文字粗细。用系统 sans-serif 字族，兼容 Android 9 及以上。 */
-    enum class FontWeight(val label: String, val family: String, val style: Int) {
-        LIGHT("细", "sans-serif-light", android.graphics.Typeface.NORMAL),
-        NORMAL("标准", "sans-serif", android.graphics.Typeface.NORMAL),
-        MEDIUM("中等", "sans-serif-medium", android.graphics.Typeface.NORMAL),
-        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD);
+    enum class FontWeight(val label: String, val family: String, val style: Int, val weight: Int) {
+        LIGHT("细", "sans-serif-light", android.graphics.Typeface.NORMAL, 300),
+        NORMAL("标准", "sans-serif", android.graphics.Typeface.NORMAL, 400),
+        MEDIUM("中等", "sans-serif-medium", android.graphics.Typeface.NORMAL, 500),
+        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD, 700);
 
         val typeface: android.graphics.Typeface
             get() = android.graphics.Typeface.create(family, style)
