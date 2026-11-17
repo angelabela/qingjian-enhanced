@@ -372,6 +372,8 @@ class KeyboardView(
                         return true
                     }
                 }
+                // 松手事件的坐标可能比最后一帧 MOVE 更新；释放前再做一次按钮命中检测。
+                if (pointer == spacePointer && voiceMode) trackVoice(event)
                 val slot = pressed.remove(pointer)
                 val choosing = pointer == longPressPointer && choicePopup.showing
                 val movedCursor = pointer == spacePointer && cursorMode
