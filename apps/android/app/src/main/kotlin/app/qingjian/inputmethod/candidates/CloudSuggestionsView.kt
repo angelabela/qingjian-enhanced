@@ -291,16 +291,15 @@ class CloudSuggestionsView(
             tipsContainer = null
             tipsDetached = false
             runCatching { dialog.dismiss() }
-            if (this.parent == null) {
-                background = GradientDrawable().apply {
-                    setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
-                    cornerRadius = 9f * density
-                }
-                oldParent.addView(
-                    this,
-                    FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
-                )
+            (this.parent as? ViewGroup)?.removeView(this)
+            background = GradientDrawable().apply {
+                setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
+                cornerRadius = 9f * density
             }
+            oldParent.addView(
+                this,
+                FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
+            )
         }
     }
 
@@ -397,11 +396,12 @@ class CloudSuggestionsView(
             addUpdateListener {
                 shatterProgress = it.animatedValue as Float
                 // Tips 玻璃底板与文字一起向上、向侧面漂移并缩小；字符则各自延迟散开。
-                alpha = 1f - shatterProgress
-                translationX = dragOffsetX + 12f * density * shatterProgress
-                translationY = dragOffsetY - 10f * density * shatterProgress
-                scaleX = 1f - 0.10f * shatterProgress
-                scaleY = 1f - 0.10f * shatterProgress
+                val motion = tipsContainer ?: this
+                motion.alpha = 1f - shatterProgress
+                motion.translationX = dragOffsetX + 12f * density * shatterProgress
+                motion.translationY = dragOffsetY - 10f * density * shatterProgress
+                motion.scaleX = 1f - 0.10f * shatterProgress
+                motion.scaleY = 1f - 0.10f * shatterProgress
                 invalidate()
             }
             start()
