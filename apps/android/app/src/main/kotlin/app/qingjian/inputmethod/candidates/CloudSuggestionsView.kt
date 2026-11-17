@@ -18,9 +18,13 @@ import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.view.VelocityTracker
+import android.view.animation.OvershootInterpolator
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
 import android.graphics.drawable.GradientDrawable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -58,6 +62,10 @@ class CloudSuggestionsView(
     private var floatingDownRawY = 0f
     private var floatingStartX = 0
     private var floatingStartY = 0
+    private var floatingVelocityTracker: VelocityTracker? = null
+    private var tipSide = 1
+    private var tipYRatio = 0.35f
+    private var hideInProgress = false
     private var tipsDetached = false
     private var anchorHeightBeforeFloat: Int? = null
     private var tipsAnchor: View? = null
@@ -89,7 +97,7 @@ class CloudSuggestionsView(
         clipToPadding = false
         clipToOutline = true
         setPadding((18 * density).toInt(), 0, (18 * density).toInt(), 0)
-        // 主题色磨砂玻璃：底色取当前主题 surface/board，弱化高光，采用微圆角。
+        // 主题色磨砂玻璃：独立窗口负责绘制底板，内容层保持透明。
         // 上层内容透明；磨砂玻璃由 Dialog 内部的下层容器单独绘制。
         background = ColorDrawable(Color.TRANSPARENT)
         elevation = 18f * density
@@ -182,6 +190,7 @@ class CloudSuggestionsView(
                     select()
                 }
             }
+            animateGlyphEntrance(label, suggestion)
             result.animate()
                 .alpha(1f)
                 .translationX(0f)
@@ -204,9 +213,14 @@ class CloudSuggestionsView(
 
         if (!wasVisible) {
             motion.alpha = 0f
-            motion.translationY = dragOffsetY - 8f * density
+            motion.translationY = dragOffsetY
+            motion.scaleX = 0.72f
+            motion.scaleY = 0.72f
+            motion.pivotX = if (tipSide == 0) 0f else motion.width.toFloat()
+            motion.pivotY = motion.height / 2f
         }
-        motion.animate().alpha(1f).translationY(dragOffsetY).setDuration(320L).start()
+        motion.animate().alpha(1f).translationY(dragOffsetY).scaleX(1f).scaleY(1f)
+            .setDuration(420L).setInterpolator(OvershootInterpolator(1.15f)).start()
         scrollTo(0, 0)
         startAutoScroll()
         scheduleAutoHide()
@@ -219,23 +233,18 @@ class CloudSuggestionsView(
         if (tipsDialog?.isShowing == true || !Settings.canDrawOverlays(context)) return
         val anchor = tipsAnchor ?: return
         val oldParent = parent as? ViewGroup ?: return
-        val location = IntArray(2)
-        anchor.getLocationOnScreen(location)
         anchorHeightBeforeFloat = anchor.layoutParams?.height
-        anchor.layoutParams?.let { params ->
-            params.height = 0
-            anchor.layoutParams = params
-        }
+        anchor.layoutParams?.let { params -> params.height = 0; anchor.layoutParams = params }
         oldParent.removeView(this)
-        tipsDetached = positionPrefs.contains("x") && positionPrefs.contains("y")
+        tipsDetached = true
 
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val blurAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && wm.isCrossWindowBlurEnabled
         val container = FrameLayout(context).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
-                (palette.surface and 0x00FFFFFF) or (0xF2 shl 24),
-                (palette.board and 0x00FFFFFF) or (0xEC shl 24),
-            )).apply {
-                cornerRadius = 9f * density
-                setStroke((1f * density).toInt().coerceAtLeast(1), (palette.brand and 0x00FFFFFF) or (0x66 shl 24))
+            background = GradientDrawable().apply {
+                cornerRadius = 16f * density
+                setColor(if (blurAvailable) 0x80FFFFFF.toInt() else 0xE6FFFFFF.toInt())
+                setStroke((1f * density).toInt().coerceAtLeast(1), 0x66FFFFFF)
             }
             clipToOutline = true
             elevation = 18f * density
@@ -257,34 +266,33 @@ class CloudSuggestionsView(
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
-                // decor 与上层内容均透明；只有下层 container 绘制磨砂玻璃，避免双层底色叠加。
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             }
             dialog.show()
             dialog.window?.apply {
                 setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    setBackgroundBlurRadius((26f * density).toInt())
-                }
+                if (blurAvailable) setBackgroundBlurRadius((40f * density).toInt())
                 decorView.setBackgroundColor(Color.TRANSPARENT)
                 (decorView as? ViewGroup)?.clipChildren = false
                 decorView.post {
                     if (tipsDialog !== dialog) return@post
-                    val activeWindow = dialog.window ?: return@post
+                    val window = dialog.window ?: return@post
                     val viewWidth = decorView.width.takeIf { it > 0 } ?: container.measuredWidth
-                    val maxX = (resources.displayMetrics.widthPixels - viewWidth).coerceAtLeast(0)
-                    val maxY = (resources.displayMetrics.heightPixels - decorView.height).coerceAtLeast(0)
-                    val saved = positionPrefs.contains("x") && positionPrefs.contains("y")
-                    val x = if (saved) positionPrefs.getInt("x", 0).coerceIn(0, maxX)
-                        else ((resources.displayMetrics.widthPixels - viewWidth) / 2).coerceAtLeast(0)
-                    val y = if (saved) positionPrefs.getInt("y", 0).coerceIn(0, maxY)
-                        else (location[1] - (52f * density).toInt()).coerceAtLeast(0)
-                    activeWindow.attributes = activeWindow.attributes.apply {
+                    val viewHeight = decorView.height.takeIf { it > 0 } ?: container.measuredHeight
+                    val screenW = resources.displayMetrics.widthPixels
+                    val screenH = resources.displayMetrics.heightPixels
+                    val margin = (12f * density).toInt()
+                    val minY = (40f * density).toInt()
+                    val maxY = (screenH - viewHeight - 80f * density).toInt().coerceAtLeast(minY)
+                    tipSide = positionPrefs.getInt("side", 1).coerceIn(0, 1)
+                    tipYRatio = positionPrefs.getFloat("yRatio", 0.35f).coerceIn(0f, 1f)
+                    val x = if (tipSide == 0) margin else (screenW - viewWidth - margin).coerceAtLeast(0)
+                    val y = (minY + (maxY - minY) * tipYRatio).toInt().coerceIn(minY, maxY)
+                    window.attributes = window.attributes.apply {
                         gravity = Gravity.TOP or Gravity.START
                         this.x = x
                         this.y = y
                     }
-                    updateAnchorPosition()
                 }
             }
             tipsDialog = dialog
@@ -293,10 +301,7 @@ class CloudSuggestionsView(
             tipsDetached = false
             runCatching { dialog.dismiss() }
             (this.parent as? ViewGroup)?.removeView(this)
-            background = GradientDrawable().apply {
-                setColor((palette.surface and 0x00FFFFFF) or (0xF2 shl 24))
-                cornerRadius = 9f * density
-            }
+            background = ColorDrawable(Color.TRANSPARENT)
             oldParent.addView(
                 this,
                 FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
