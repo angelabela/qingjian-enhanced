@@ -381,6 +381,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(captureButton, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             bottomMargin = dp(14)
         })
+        restoreCaptureButtonPosition()
+        attachCaptureButtonDrag()
         setOcrMode(ocrMode)
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
@@ -397,8 +399,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dp(16)
-            y = dp(120)
+            x = dp(windowPrefs.getInt(KEY_WINDOW_X_DP, 16))
+            y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
         }
         headerWindowParams = WindowManager.LayoutParams(
             windowParams.width,
@@ -522,10 +524,106 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) saveWindowPosition()
                     dragging = false
                     true
                 }
                 else -> true
+            }
+        }
+    }
+
+    private fun saveWindowPosition() {
+        if (!::windowParams.isInitialized) return
+        val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
+        windowPrefs.edit()
+            .putInt(KEY_WINDOW_X_DP, (windowParams.x / density).toInt())
+            .putInt(KEY_WINDOW_TOP_DP, (overlayTopY / density).toInt())
+            .apply()
+    }
+
+    /** 恢复拍照按钮在预览区域内的位置；比例坐标可适配窗口尺寸变化。 */
+    private fun restoreCaptureButtonPosition() {
+        if (!::root.isInitialized || !::captureButton.isInitialized) return
+        val prefs = windowPrefs
+        if (!prefs.contains(KEY_CAPTURE_X_RATIO) || !prefs.contains(KEY_CAPTURE_Y_RATIO)) return
+        root.post {
+            val maxX = (root.width - captureButton.width).coerceAtLeast(0)
+            val maxY = (root.height - captureButton.height).coerceAtLeast(0)
+            if (maxX <= 0 || maxY <= 0) return@post
+            val x = (prefs.getFloat(KEY_CAPTURE_X_RATIO, 0.5f) * maxX).toInt().coerceIn(0, maxX)
+            val y = (prefs.getFloat(KEY_CAPTURE_Y_RATIO, 1f) * maxY).toInt().coerceIn(0, maxY)
+            (captureButton.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.gravity = Gravity.TOP or Gravity.START
+                params.leftMargin = x
+                params.topMargin = y
+                captureButton.layoutParams = params
+            }
+        }
+    }
+
+    /** 拍照按钮可在预览区拖动；靠近底部中央时吸附回标准快门位置。 */
+    private fun attachCaptureButtonDrag() {
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0f
+        var startY = 0f
+        var dragging = false
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        captureButton.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = view.x
+                    startY = view.y
+                    dragging = false
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downRawX
+                    val dy = event.rawY - downRawY
+                    if (!dragging && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) dragging = true
+                    if (dragging) {
+                        val maxX = (root.width - view.width).coerceAtLeast(0)
+                        val maxY = (root.height - view.height).coerceAtLeast(0)
+                        val x = (startX + dx).toInt().coerceIn(0, maxX)
+                        val y = (startY + dy).toInt().coerceIn(0, maxY)
+                        val params = view.layoutParams as FrameLayout.LayoutParams
+                        params.gravity = Gravity.TOP or Gravity.START
+                        params.leftMargin = x
+                        params.topMargin = y
+                        view.layoutParams = params
+                        true
+                    } else false
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!dragging) return@setOnTouchListener false
+                    val params = view.layoutParams as FrameLayout.LayoutParams
+                    val centerX = params.leftMargin + view.width / 2f
+                    val bottomDistance = root.height - (params.topMargin + view.height)
+                    if (kotlin.math.abs(centerX - root.width / 2f) <= root.width * 0.18f &&
+                        bottomDistance <= root.height * 0.22f) {
+                        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                        params.leftMargin = 0
+                        params.topMargin = 0
+                        params.bottomMargin = (14f * resources.displayMetrics.density).toInt()
+                        view.layoutParams = params
+                    }
+                    val maxX = (root.width - view.width).coerceAtLeast(1)
+                    val maxY = (root.height - view.height).coerceAtLeast(1)
+                    windowPrefs.edit()
+                        .putFloat(KEY_CAPTURE_X_RATIO, view.x / maxX)
+                        .putFloat(KEY_CAPTURE_Y_RATIO, view.y / maxY)
+                        .apply()
+                    dragging = false
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    true
+                }
+                else -> dragging
             }
         }
     }
@@ -1084,6 +1182,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val WINDOW_PREFS = "scan_overlay_window"
         private const val KEY_WIDTH_DP = "width_dp"
         private const val KEY_HEIGHT_DP = "height_dp"
+        private const val KEY_WINDOW_X_DP = "window_x_dp"
+        private const val KEY_WINDOW_TOP_DP = "window_top_dp"
+        private const val KEY_CAPTURE_X_RATIO = "capture_x_ratio"
+        private const val KEY_CAPTURE_Y_RATIO = "capture_y_ratio"
         private const val KEY_OCR_MODE = "ocr_mode"
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
     }
