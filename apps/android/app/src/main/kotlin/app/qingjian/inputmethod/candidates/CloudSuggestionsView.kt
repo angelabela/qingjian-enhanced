@@ -150,7 +150,7 @@ class CloudSuggestionsView(
             val label = TextView(context).apply {
                 text = suggestion
                 textSize = 14f
-                setTextColor(palette.text)
+                setTextColor(0xFF1F2937.toInt())
                 gravity = Gravity.CENTER_VERTICAL
                 includeFontPadding = false
                 isSingleLine = true
@@ -526,7 +526,7 @@ class CloudSuggestionsView(
             val flyer = TextView(context).apply {
                 text = glyph
                 textSize = source.textSize / resources.displayMetrics.scaledDensity
-                setTextColor(palette.text)
+                setTextColor(0xFF1F2937.toInt())
                 includeFontPadding = false
                 gravity = Gravity.CENTER
                 maxLines = 1
