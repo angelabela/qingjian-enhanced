@@ -90,13 +90,6 @@ class InputPanel(
         clipChildren = false
         clipToPadding = false
         addView(main)
-        addView(
-            cloudSuggestions,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
-                topMargin = (bar.barHeight + 6f * context.resources.displayMetrics.density).toInt()
-                marginEnd = (10f * context.resources.displayMetrics.density).toInt()
-            },
-        )
     }
 
     /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
@@ -107,6 +100,14 @@ class InputPanel(
         setBackgroundColor(palette.board)
         clipChildren = false
         clipToPadding = false
+        // 云联想 Tips 独立占据输入法窗口最上方一行，位于候选栏与键盘主体之外；
+        // 不再叠放在候选栏/键盘 Stack 内，避免看起来嵌在输入法面板里面。
+        addView(
+            cloudSuggestions,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.END
+            },
+        )
         addView(stack)
         val inset = bottomInset
         if (floating) return@apply
