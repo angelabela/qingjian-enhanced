@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.panel
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -20,6 +21,9 @@ import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.exp
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 
 /** 语音面板：较轻的磨砂背景、随机渐变双声波与真实音量响应光晕。 */
 @SuppressLint("ViewConstructor")
@@ -29,6 +33,7 @@ class VoicePanel(
     private val actionLabel: String,
     private val actions: Actions,
     private val blurredKeyboard: Bitmap? = null,
+    private val animationStyle: Int = 0,
 ) : FrameLayout(context) {
 
     interface Actions {
@@ -208,6 +213,83 @@ class VoicePanel(
             return intArrayOf(alpha(colors[0], 0), alpha(colors[1], 238), alpha(colors[2], 220), alpha(colors[0], 0))
         }
 
+        private fun drawWaveLine(canvas: Canvas, cx: Float, cy: Float, hueShift: Float, maxAmplitude: Float) {
+            fun drawLine(offset: Float, hue: Float, alpha: Int, blur: Float) {
+                path.reset()
+                for (i in smoothedBands.indices) {
+                    val x = width * 0.08f + width * 0.84f * i / (smoothedBands.size - 1).coerceAtLeast(1)
+                    val energy = smoothedBands[i].coerceIn(0f, 1f)
+                    val y = cy + offset * d + (energy - 0.22f) * maxAmplitude * 1.55f
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                paint.style = Paint.Style.STROKE
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeJoin = Paint.Join.ROUND
+                paint.strokeWidth = if (blur > 0f) 5f * d else 2.2f * d
+                paint.color = Color.HSVToColor(floatArrayOf((hue + hueShift) % 360f, 0.78f, 1f))
+                paint.alpha = alpha
+                paint.maskFilter = if (blur > 0f) BlurMaskFilter(blur * d, BlurMaskFilter.Blur.NORMAL) else null
+                canvas.drawPath(path, paint)
+                paint.maskFilter = null
+            }
+            drawLine(-13f, hueSeed, 90, 7f)
+            drawLine(-13f, hueSeed, 245, 0f)
+            drawLine(13f, lowerHueSeed, 75, 7f)
+            drawLine(13f, lowerHueSeed, 220, 0f)
+        }
+
+        private fun drawCircularSpectrum(canvas: Canvas, cx: Float, cy: Float, hueShift: Float) {
+            val radius = minOf(width, height) * 0.19f
+            val barCount = smoothedBands.size
+            val step = (2.0 * PI / barCount).toFloat()
+            for (i in 0 until barCount) {
+                val angle = -PI.toFloat() / 2f + i * step
+                val energy = smoothedBands[i].coerceIn(0f, 1f)
+                val inner = radius
+                val outer = inner + 4f * d + energy * 42f * d
+                val x1 = cx + cos(angle.toDouble()).toFloat() * inner
+                val y1 = cy + sin(angle.toDouble()).toFloat() * inner
+                val x2 = cx + cos(angle.toDouble()).toFloat() * outer
+                val y2 = cy + sin(angle.toDouble()).toFloat() * outer
+                val color = Color.HSVToColor(floatArrayOf((hueSeed + hueShift + i * 3.4f) % 360f, 0.76f, 1f))
+                paint.color = color
+                paint.style = Paint.Style.STROKE
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeWidth = 2.4f * d
+                paint.alpha = 70
+                paint.maskFilter = BlurMaskFilter(5f * d, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawLine(x1, y1, x2, y2, paint)
+                paint.maskFilter = null
+                paint.alpha = 245
+                canvas.drawLine(x1, y1, x2, y2, paint)
+            }
+        }
+
+        private fun drawTwinRibbon(canvas: Canvas, cx: Float, cy: Float, hueShift: Float, maxAmplitude: Float) {
+            for (lineIndex in 0..1) {
+                path.reset()
+                for (i in smoothedBands.indices) {
+                    val x = width * 0.09f + width * 0.82f * i / (smoothedBands.size - 1).coerceAtLeast(1)
+                    val energy = smoothedBands[i].coerceIn(0f, 1f)
+                    val direction = if (lineIndex == 0) -1f else 1f
+                    val y = cy + direction * (10f * d + energy * maxAmplitude * 0.72f)
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                val hue = if (lineIndex == 0) hueSeed else lowerHueSeed
+                paint.color = Color.HSVToColor(floatArrayOf((hue + hueShift) % 360f, 0.8f, 1f))
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 8f * d
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.alpha = 65
+                paint.maskFilter = BlurMaskFilter(8f * d, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawPath(path, paint)
+                paint.maskFilter = null
+                paint.strokeWidth = 2.6f * d
+                paint.alpha = 235
+                canvas.drawPath(path, paint)
+            }
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             if (width <= 0 || height <= 0) return
@@ -240,23 +322,30 @@ class VoicePanel(
             val gap = 3.2f * d
             val barWidth = ((halfWidth * 2f) - gap * (barCount - 1)) / barCount
             val hueShift = (now * 32.0).toFloat() % 360f
-            for (i in 0 until barCount) {
-                val x = cx - halfWidth + i * (barWidth + gap)
-                val bandEnergy = smoothedBands[i].coerceIn(0f, 1f)
-                val heightBand = (2.2f * d + bandEnergy * maxAmplitude).coerceAtLeast(2f * d)
-                val color = Color.HSVToColor(floatArrayOf((hueSeed + hueShift + i * 2.8f) % 360f, 0.78f, 1f))
-                paint.shader = null
-                paint.color = color
-                paint.style = Paint.Style.STROKE
-                paint.strokeCap = Paint.Cap.ROUND
-                paint.strokeWidth = barWidth.coerceAtLeast(1.2f * d)
-                paint.alpha = 75
-                paint.maskFilter = BlurMaskFilter(5f * d, BlurMaskFilter.Blur.NORMAL)
-                canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
-                paint.maskFilter = null
-                paint.alpha = 245
-                paint.strokeWidth = (barWidth * 0.72f).coerceAtLeast(1.1f * d)
-                canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
+            when (animationStyle) {
+                1 -> drawWaveLine(canvas, cx, cy, hueShift, maxAmplitude)
+                2 -> drawCircularSpectrum(canvas, cx, cy, hueShift)
+                3 -> drawTwinRibbon(canvas, cx, cy, hueShift, maxAmplitude)
+                else -> {
+                    for (i in 0 until barCount) {
+                        val x = cx - halfWidth + i * (barWidth + gap)
+                        val bandEnergy = smoothedBands[i].coerceIn(0f, 1f)
+                        val heightBand = (2.2f * d + bandEnergy * maxAmplitude).coerceAtLeast(2f * d)
+                        val color = Color.HSVToColor(floatArrayOf((hueSeed + hueShift + i * 2.8f) % 360f, 0.78f, 1f))
+                        paint.shader = null
+                        paint.color = color
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeCap = Paint.Cap.ROUND
+                        paint.strokeWidth = barWidth.coerceAtLeast(1.2f * d)
+                        paint.alpha = 75
+                        paint.maskFilter = BlurMaskFilter(5f * d, BlurMaskFilter.Blur.NORMAL)
+                        canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
+                        paint.maskFilter = null
+                        paint.alpha = 245
+                        paint.strokeWidth = (barWidth * 0.72f).coerceAtLeast(1.1f * d)
+                        canvas.drawLine(x + barWidth / 2f, cy - heightBand, x + barWidth / 2f, cy + heightBand, paint)
+                    }
+                }
             }
             paint.alpha = 255
 
@@ -265,7 +354,30 @@ class VoicePanel(
         }
     }
 
-    private companion object {
+    companion object {
         const val SAMPLE_COUNT = 48
+        private const val PREF_STYLE = "voice_animation_style"
+        private val STYLE_LABELS = arrayOf("频谱柱（当前）", "柔性双声波", "环形频谱", "流光双波", "每次启动随机")
+
+        /** 由常用功能面板调用；0-3 为固定样式，-1 表示每次启动随机。 */
+        fun showAnimationPicker(context: Context) {
+            val prefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            val current = prefs.getInt(PREF_STYLE, 0).coerceIn(-1, 3)
+            val checked = if (current == -1) 4 else current
+            AlertDialog.Builder(context)
+                .setTitle("语音面板动效")
+                .setSingleChoiceItems(STYLE_LABELS, checked) { dialog, which ->
+                    prefs.edit().putInt(PREF_STYLE, if (which == 4) -1 else which).apply()
+                    dialog.dismiss()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
+        fun resolveAnimationStyle(context: Context): Int {
+            val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+                .getInt(PREF_STYLE, 0)
+            return if (selected == -1) kotlin.random.Random.nextInt(4) else selected.coerceIn(0, 3)
+        }
     }
 }
