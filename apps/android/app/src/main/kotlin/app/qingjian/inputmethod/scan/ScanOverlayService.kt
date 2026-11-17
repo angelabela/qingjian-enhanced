@@ -948,6 +948,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             captureButton.visibility = if (enabled) View.VISIBLE else View.GONE
             captureButton.isEnabled = enabled
             captureButton.alpha = if (enabled) 1f else 0f
+            if (enabled) {
+                // 按钮从 GONE 切为 VISIBLE 后才有真实尺寸；等布局完成再按已保存比例恢复。
+                captureButton.post { restoreCaptureButtonPosition() }
+            }
         }
         if (::scanArea.isInitialized) {
             // 拍照识图模式不显示扫码框；切回连续扫码时恢复。
