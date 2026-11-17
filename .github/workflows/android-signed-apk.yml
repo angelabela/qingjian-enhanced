@@ -5,6 +5,7 @@ on:
     branches:
       - feature/scan-tips-space-voice-font-460
       - feature/workflow-466-fixed-signature-voice-tips
+      - feature/workflow-467-polish-scan-tips-voice
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
