@@ -492,21 +492,8 @@ class KeyboardView(
         }
         return when (action) {
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> null
-            Settings.GestureAction.CLEAR_ALL -> "清空"
-            Settings.GestureAction.RESTORE_CLEAR -> "恢复"
-            Settings.GestureAction.OPEN_CLIPBOARD -> "剪贴板"
-            Settings.GestureAction.SELECT_ALL -> "全选"
-            Settings.GestureAction.CUT -> "剪切"
-            Settings.GestureAction.COPY -> "复制"
-            Settings.GestureAction.PASTE -> "粘贴"
-            Settings.GestureAction.OPEN_SYMBOLS -> "符号"
-            Settings.GestureAction.OPEN_THEME_PICKER -> "皮肤"
-            Settings.GestureAction.ENTER -> "回车"
-            Settings.GestureAction.SWITCH_LANGUAGE -> "中英"
-            Settings.GestureAction.BACKSPACE -> "删除"
-            Settings.GestureAction.OPEN_SCANNER -> "扫码"
-            Settings.GestureAction.UNDO -> "撤销"
-            Settings.GestureAction.REDO -> "重做"
+            // 直接复用设置项完整名称，避免提示文案与实际执行动作不一致。
+            else -> action.label
         }
     }
 

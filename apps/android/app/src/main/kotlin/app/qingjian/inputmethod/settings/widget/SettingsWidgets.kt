@@ -23,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import app.qingjian.inputmethod.panel.base.PanelIcons
+import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.theme.AppColors
 
@@ -39,7 +40,8 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         text = value
         setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         setTextColor(color)
-        if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val selectedTypeface = Settings.load(context).fontWeight.typeface
+        typeface = if (bold) Typeface.create(selectedTypeface, Typeface.BOLD) else selectedTypeface
         includeFontPadding = false
     }
 

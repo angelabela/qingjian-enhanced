@@ -406,11 +406,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = 0
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // 模糊标志与半径保存在 LayoutParams 中，后续拖动/焦点切换更新窗口时不会丢失。
-            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-            headerWindowParams.blurBehindRadius = dp(26)
-        }
+        // 不使用 BLUR_BEHIND：部分 Android 系统会把模糊扩散到整个底层窗口。
+        // 标题栏保留半透明渐变、描边和圆角，做局部磨砂观感，但不模糊相机预览或屏幕其他区域。
+        headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
         // 相机预览仍由 WindowManager 单独管理；标题栏使用独立 Dialog Window，
         // 背景模糊半径只作用于标题栏窗口，不会扩散到整块相机预览。
         windowManager.addView(root, windowParams)
@@ -426,13 +424,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 标题栏是独立 Dialog Window，模糊半径只覆盖这条标题栏，不影响下方相机预览。
-                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    setBackgroundBlurRadius(dp(26))
-                } else {
-                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                }
+                // 禁用系统窗口级背景模糊，避免某些 ROM 将模糊扩散到整屏。
+                clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                 attributes = headerWindowParams
             }
             show()
@@ -442,11 +435,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 decorView.setPadding(0, 0, 0, 0)
                 decorView.background = ColorDrawable(Color.TRANSPARENT)
                 attributes = headerWindowParams
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 再次应用 attributes 后补回模糊标志与半径，避免 attributes 覆盖前面的窗口标志。
-                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    setBackgroundBlurRadius(dp(26))
-                }
             }
         }
         headerView.post {
