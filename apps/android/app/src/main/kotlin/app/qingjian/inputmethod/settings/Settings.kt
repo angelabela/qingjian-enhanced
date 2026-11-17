@@ -98,11 +98,16 @@ data class Settings(
     enum class FontWeight(val label: String, val family: String, val style: Int, val weight: Int) {
         LIGHT("细", "sans-serif-light", android.graphics.Typeface.NORMAL, 300),
         NORMAL("标准", "sans-serif", android.graphics.Typeface.NORMAL, 400),
-        MEDIUM("中等", "sans-serif-medium", android.graphics.Typeface.NORMAL, 500),
-        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD, 700);
+        MEDIUM("中等", "sans-serif", android.graphics.Typeface.BOLD, 600),
+        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD, 800);
 
+        /** API 28+ 使用明确字重；旧系统用粗体字族回退，避免 MEDIUM 与 NORMAL 几乎看不出区别。 */
         val typeface: android.graphics.Typeface
-            get() = android.graphics.Typeface.create(family, style)
+            get() = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                android.graphics.Typeface.create("sans-serif", weight, false)
+            } else {
+                android.graphics.Typeface.create(family, style)
+            }
 
         companion object {
             fun of(value: String?): FontWeight =
