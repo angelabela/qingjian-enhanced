@@ -34,7 +34,7 @@ class PhysicsWaveView @JvmOverloads constructor(
     var color: Int = 0xFF3B82F6.toInt()
         set(value) { field = value; invalidate() }
 
-    private val count = 24
+    private val count = 18
     private val levels = FloatArray(count)
     private val pos = FloatArray(count)
     private val velocity = FloatArray(count)
@@ -157,6 +157,13 @@ class PhysicsWaveView @JvmOverloads constructor(
                 remaining -= h
             }
         }
+        // 五种新增物理动效只绘制在面板中部：左右各留8%，上下收进安全区，避开底部操作按钮。
+        val compactPhysics = style.ordinal >= Style.SPRING_BARS.ordinal
+        canvas.save()
+        if (compactPhysics) {
+            canvas.translate(width * 0.08f, height * 0.31f)
+            canvas.scale(0.84f, 0.38f)
+        }
         when (style) {
             Style.SPECTRUM_BARS -> drawSpectrumBars(canvas)
             Style.RING_SPECTRUM -> drawRingSpectrum(canvas)
@@ -166,6 +173,7 @@ class PhysicsWaveView @JvmOverloads constructor(
             Style.ELASTIC_STRING -> drawString(canvas)
             Style.GLOW_ORBS -> drawOrbs(canvas)
         }
+        canvas.restore()
         val moving = listening || smoothFft.any { it > 0.008f } ||
             (style.ordinal >= Style.SPRING_BARS.ordinal && pos.indices.any {
                 if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
@@ -241,7 +249,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         val h = height.toFloat()
         val cell = w / count
         val barW = (cell * 0.34f).coerceAtLeast(1.25f * density)
-        val maxH = h * 0.78f
+        val maxH = h * 0.58f
         paint.style = Paint.Style.FILL
         for (i in 0 until count) {
             val value = pos[i].coerceIn(0.025f, 1.05f)
@@ -313,12 +321,12 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
-        paint.strokeWidth = 6.5f * density
-        paint.alpha = 45
-        paint.maskFilter = BlurMaskFilter(7f * density, BlurMaskFilter.Blur.NORMAL)
+        paint.strokeWidth = 5.2f * density
+        paint.alpha = 32
+        paint.maskFilter = BlurMaskFilter(5f * density, BlurMaskFilter.Blur.NORMAL)
         canvas.drawPath(path, paint)
         paint.maskFilter = null
-        paint.strokeWidth = 1.8f * density
+        paint.strokeWidth = 2.4f * density
         paint.alpha = 225
         canvas.drawPath(path, paint)
         paint.shader = null
