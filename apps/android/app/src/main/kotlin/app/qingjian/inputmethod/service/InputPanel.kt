@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.service
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Canvas
 import android.os.Build
@@ -64,6 +65,19 @@ class InputPanel(
 
     val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight)
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
+    /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
+    private val cloudTipsSlot = FrameLayout(context).apply {
+        setBackgroundColor(Color.TRANSPARENT)
+        addView(
+            cloudSuggestions,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
+        cloudSuggestions.setAnchorView(this)
+    }
     val keyboard = KeyboardView(context, palette, settings, keyboardListener)
 
     /** 开着的面板；null 是键盘。 */
@@ -100,12 +114,14 @@ class InputPanel(
         setBackgroundColor(palette.board)
         clipChildren = false
         clipToPadding = false
-        // 云联想 Tips 独立占据输入法窗口最上方一行，位于候选栏与键盘主体之外；
-        // 不再叠放在候选栏/键盘 Stack 内，避免看起来嵌在输入法面板里面。
+        // Tips 行本身透明且高度固定；Tips 内容在这一行水平居中，不贴靠右侧。
         addView(
-            cloudSuggestions,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.END
+            cloudTipsSlot,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (46f * context.resources.displayMetrics.density).toInt(),
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
             },
         )
         addView(stack)
