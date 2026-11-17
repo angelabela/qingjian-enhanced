@@ -406,11 +406,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = windowParams.x
             y = 0
         }
-        // 不使用 BLUR_BEHIND：部分 Android 系统会把模糊扩散到整个底层窗口。
-        // 标题栏保留半透明渐变、描边和圆角，做局部磨砂观感，但不模糊相机预览或屏幕其他区域。
-        headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
-        // 相机预览仍由 WindowManager 单独管理；标题栏使用独立 Dialog Window，
-        // 背景模糊半径只作用于标题栏窗口，不会扩散到整块相机预览。
+        // 只给独立标题栏窗口启用背景模糊；相机预览 root 窗口不设置任何模糊标志。
+        // 标题栏 Dialog 的窗口边界就是模糊范围，不能把 FLAG_BLUR_BEHIND 加到 root。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+        }
         windowManager.addView(root, windowParams)
         headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
             setContentView(headerView)
@@ -424,8 +424,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                // 禁用系统窗口级背景模糊，避免某些 ROM 将模糊扩散到整屏。
-                clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // 系统模糊只属于标题栏 Dialog 的窗口范围；透明背景让下层相机画面成为磨砂底图。
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    setBackgroundBlurRadius((26f * resources.displayMetrics.density).toInt())
+                } else {
+                    // Android 11 及以下没有系统窗口背景模糊 API，保留半透明渐变作为兼容降级。
+                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                }
                 attributes = headerWindowParams
             }
             show()
@@ -502,17 +508,19 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val measuredHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
                 .coerceAtLeast(0)
             val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
-            // 标题栏与相机预览必须共用同一条边界。不能只把标题栏 y 截到 0，
-            // 否则窗口被拖到屏幕顶部时，标题栏会被钉在 0、相机窗仍继续下移，二者之间就出现空白。
+            // 相机窗口不得越过标题栏；顶部拖动时标题栏贴近屏幕顶端，相机窗口从标题栏下沿开始。
             windowParams.y = windowParams.y.coerceAtLeast(headerHeight)
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            // 向相机预览方向压住 1px，抵消两个独立 Window 在部分系统上的边缘取整误差。
             headerWindowParams.y = windowParams.y - headerHeight + 1
             headerWindowParams.width = windowParams.width
+        }
+        // 同一 TYPE_APPLICATION_OVERLAY 下，最后更新的窗口可能被系统提升到更高 Z 序。
+        // 先更新相机窗口，再更新标题栏 Dialog，确保预览永远不会压到标题栏上面。
+        runCatching { windowManager.updateViewLayout(root, windowParams) }
+        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
             updateHeaderWindowLayout()
         }
-        runCatching { windowManager.updateViewLayout(root, windowParams) }
     }
 
     /** 通过标题栏 Dialog 的 Window 更新位置、尺寸与焦点标志。 */
@@ -520,6 +528,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val window = headerDialog?.window ?: return
         runCatching {
             window.attributes = headerWindowParams
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window.setBackgroundBlurRadius((26f * resources.displayMetrics.density).toInt())
+            }
             window.setLayout(headerWindowParams.width, headerWindowParams.height)
         }
     }
