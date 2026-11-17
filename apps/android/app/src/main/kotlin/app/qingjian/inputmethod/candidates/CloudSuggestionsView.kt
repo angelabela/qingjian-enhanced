@@ -57,6 +57,7 @@ class CloudSuggestionsView(
     private var floatingStartX = 0
     private var floatingStartY = 0
     private var tipsDetached = false
+    private var anchorHeightBeforeFloat: Int? = null
     private var tipsAnchor: View? = null
     private var tipsDialog: Dialog? = null
     /** 当前编辑器光标屏幕坐标；云 Tips 始终锚定在输入位置上方。 */
@@ -213,6 +214,11 @@ class CloudSuggestionsView(
         val oldParent = parent as? ViewGroup ?: return
         val location = IntArray(2)
         anchor.getLocationOnScreen(location)
+        anchorHeightBeforeFloat = anchor.layoutParams?.height
+        anchor.layoutParams?.let { params ->
+            params.height = 0
+            anchor.layoutParams = params
+        }
         oldParent.removeView(this)
         tipsDetached = false
         val dialog = Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
@@ -291,6 +297,13 @@ class CloudSuggestionsView(
         tipsDetached = false
         tipsDialog = null
         runCatching { dialog.dismiss() }
+        anchorHeightBeforeFloat?.let { originalHeight ->
+            anchor.layoutParams?.let { params ->
+                params.height = originalHeight
+                anchor.layoutParams = params
+            }
+        }
+        anchorHeightBeforeFloat = null
         if (parent == null) {
             anchor.addView(
                 this,
