@@ -79,6 +79,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var windowManager: WindowManager
     private lateinit var windowParams: WindowManager.LayoutParams
     private lateinit var headerWindowParams: WindowManager.LayoutParams
+    /** 标题栏+预览作为一个整体移动；root 的 y 仅表示预览起点。 */
+    private var overlayTopY = 0
     private lateinit var headerView: View
     private var headerDialog: Dialog? = null
     private lateinit var root: FrameLayout
@@ -436,6 +438,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                setDimAmount(0f)
+                setElevation(0f)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     // 只启用窗口背景模糊，不启用矩形范围的 BLUR_BEHIND；
                     // Android 会按 roundedWindowMask 的圆角边界裁剪模糊区域。
@@ -459,8 +463,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
                 // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
                 decorView.clipToOutline = true
+                decorView.elevation = 0f
+                decorView.translationZ = 0f
+                decorView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 (decorView as? ViewGroup)?.clipChildren = true
                 decorView.outlineProvider = topRoundedOutlineProvider(16f * resources.displayMetrics.density)
+                decorView.invalidateOutline()
                 attributes = headerWindowParams
             }
         }
@@ -468,7 +476,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val measuredHeaderHeight = headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight
             if (measuredHeaderHeight > 0) {
                 headerWindowParams.height = measuredHeaderHeight
-                windowParams.y = windowParams.y.coerceAtLeast(measuredHeaderHeight)
+                val overlap = (resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                overlayTopY = (windowParams.y - measuredHeaderHeight + overlap).coerceAtLeast(0)
             }
             updateOverlayPositions()
         }
@@ -484,8 +493,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         var downRawX = 0f
         var downRawY = 0f
         var startX = 0
-        var startY = 0
-        val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        var startGroupY = 0
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         view.isClickable = true
         view.setOnTouchListener { _, event ->
@@ -495,7 +503,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     downRawX = event.rawX
                     downRawY = event.rawY
                     startX = windowParams.x
-                    startY = windowParams.y
+                    startGroupY = overlayTopY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -508,11 +516,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (dragging) {
                         windowParams.x = (startX + event.rawX - downRawX).toInt()
                             .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                        val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerWindowParams.height).coerceAtLeast(0)
-                        val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-                        val minCameraTop = (headerHeight - seamOverlap).coerceAtLeast(0)
-                        windowParams.y = (startY + event.rawY - downRawY).toInt()
-                            .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
+                        setOverlayTop(startGroupY + (event.rawY - downRawY).toInt())
                         updateOverlayPositions()
                     }
                     true
@@ -526,27 +530,32 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
     }
 
-    /** 同步更新相机内容窗与独立标题栏窗，二者始终贴合。 */
+    /** 以标题栏顶部为唯一坐标，预览始终从标题栏底边下方 1px 开始。 */
+    private fun setOverlayTop(requestedTop: Int) {
+        if (!::windowParams.isInitialized || !::headerWindowParams.isInitialized) return
+        val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerWindowParams.height).coerceAtLeast(0)
+        val overlap = resources.displayMetrics.density.toInt().coerceAtLeast(1)
+        val combinedHeight = (headerHeight + windowParams.height - overlap).coerceAtLeast(headerHeight)
+        val maxTop = (resources.displayMetrics.heightPixels - combinedHeight).coerceAtLeast(0)
+        overlayTopY = requestedTop.coerceIn(0, maxTop)
+        windowParams.y = overlayTopY + headerHeight - overlap
+    }
+
+    /** 同步更新相机内容窗与独立标题栏窗，二者始终作为一个整体移动。 */
     private fun updateOverlayPositions() {
         if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
             val measuredHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
                 .coerceAtLeast(0)
             val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
-            // 相机窗口不得越过标题栏；顶部拖动时标题栏贴近屏幕顶端，相机窗口从标题栏下沿开始。
-            val seamOverlap = (2f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-            val cameraTopMin = (headerHeight - seamOverlap).coerceAtLeast(0)
-            windowParams.y = windowParams.y.coerceAtLeast(cameraTopMin)
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            // 标题栏与预览重叠 1-2px，标题栏窗口最后更新并保持更高层级，消除抗锯齿缝隙。
-            headerWindowParams.y = (windowParams.y - headerHeight + seamOverlap).coerceAtLeast(0)
+            headerWindowParams.y = overlayTopY
             headerWindowParams.width = windowParams.width
+            setOverlayTop(overlayTopY)
         }
-        // 先更新预览，再更新标题栏；标题栏始终最后提交，保持在预览之上。
+        // 预览先更新，标题栏后更新并保持在上层；1px 重叠消除接缝但不会允许预览越过标题栏。
         runCatching { windowManager.updateViewLayout(root, windowParams) }
-        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
-            updateHeaderWindowLayout()
-        }
+        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) updateHeaderWindowLayout()
     }
 
     /** 通过标题栏 Dialog 的 Window 更新位置、尺寸与焦点标志。 */
@@ -659,15 +668,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 moveRawX = event.rawX
                 moveRawY = event.rawY
                 moveStartX = windowParams.x
-                moveStartY = windowParams.y
+                moveStartY = overlayTopY
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 windowParams.x = (moveStartX + event.rawX - moveRawX).toInt()
                     .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                val minCameraTop = headerView.height.coerceAtLeast(0)
-                windowParams.y = (moveStartY + event.rawY - moveRawY).toInt()
-                    .coerceIn(minCameraTop, (resources.displayMetrics.heightPixels - windowParams.height).coerceAtLeast(minCameraTop))
+                setOverlayTop(moveStartY + (event.rawY - moveRawY).toInt())
                 updateOverlayPositions()
                 return true
             }
