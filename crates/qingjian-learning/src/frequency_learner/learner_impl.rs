@@ -360,6 +360,13 @@ impl Learner for FrequencyLearner {
                 }
             }
         }
+        if self.bigrams_dirty {
+            let bigram_path = Self::bigram_dual_path(&path);
+            match self.save_dual_bigrams_to(&bigram_path) {
+                Ok(()) => tracing::info!(path = %bigram_path.display(), entries = self.bigrams.len(), "双时间尺度二元转移已保存"),
+                Err(error) => tracing::warn!(path = %bigram_path.display(), %error, "双时间尺度二元转移保存失败"),
+            }
+        }
         if self.ngram_dirty {
             let ngram_path = Self::ngram_path(&path);
             match self.save_ngram_to(&ngram_path) {
@@ -369,13 +376,6 @@ impl Learner for FrequencyLearner {
                 Err(error) => {
                     tracing::warn!(path = %ngram_path.display(), %error, "个人 n-gram 保存失败")
                 }
-            }
-        }
-        if self.bigrams_dirty {
-            let bigram_path = Self::bigram_dual_path(&path);
-            match self.save_dual_bigrams_to(&bigram_path) {
-                Ok(()) => tracing::info!(path = %bigram_path.display(), entries = self.bigrams.len(), "双时间尺度二元转移已保存"),
-                Err(error) => tracing::warn!(path = %bigram_path.display(), %error, "双时间尺度二元转移保存失败"),
             }
         }
         if self.choices_dirty {
