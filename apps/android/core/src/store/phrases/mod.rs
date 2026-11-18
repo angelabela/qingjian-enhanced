@@ -25,6 +25,7 @@ pub fn phrase_rules() -> PhraseRules {
 pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
     let mut book = PhraseBook::open(user_dir);
     let can_persist = book.can_persist();
+    let mut operation_error = book.storage_error().map(str::to_owned);
     let result: Result<bool, qingjian_learning::LearningError> = match request {
         PhraseRequest::List => Ok(true),
         PhraseRequest::Add { text, group, code } => {
@@ -44,13 +45,18 @@ pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
         Ok(succeeded) => succeeded,
         Err(error) => {
             tracing::warn!(%error, "常用语写不进去");
+            operation_error = Some(format!("保存常用语失败：{error}"));
             false
         }
     };
+    if !operation_succeeded && operation_error.is_none() {
+        operation_error = Some("常用语存储当前不可用（只读模式或请求未执行）".to_owned());
+    }
     PhrasePage {
         groups: book.groups(),
         phrases: book.phrases().to_vec(),
         operation_succeeded,
+        operation_error,
     }
 }
 
