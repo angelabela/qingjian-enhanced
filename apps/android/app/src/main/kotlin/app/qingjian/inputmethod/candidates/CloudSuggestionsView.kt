@@ -542,7 +542,6 @@ class CloudSuggestionsView(
                     val viewW = window.decorView.width.coerceAtLeast(width)
                     val viewH = window.decorView.height.coerceAtLeast(height)
                     val minY = (40f * density).toInt()
-                    val maxY = (screenH - viewH - 80f * density).toInt().coerceAtLeast(minY)
                     // 松手只保留当前位置与纵向惯性结果，不再吸附左边或右边。
                     val margin = (12f * density).toInt()
                     val maxX = (screenW - viewW - margin).coerceAtLeast(margin)
