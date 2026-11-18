@@ -610,6 +610,16 @@ class InputPanel(
     }
 
     private class Stack(context: Context, private val main: View) : FrameLayout(context) {
+        init {
+            // The keyboard content must be a child of the overlay container.
+            // Without this, Stack measures an unattached view and displays an empty IME window.
+            addView(main, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP,
+            ))
+        }
+
         private fun Int?.orZero() = this ?: 0
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
