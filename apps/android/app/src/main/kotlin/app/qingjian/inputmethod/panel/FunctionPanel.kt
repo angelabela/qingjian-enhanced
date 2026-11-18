@@ -315,7 +315,8 @@ class FunctionPanel(
                 val gapX = ink.dp(8f)
                 val gapY = ink.dp(8f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-                val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / 3f)
+                val rows = 4
+                val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / rows)
                 val rowTop = top + ink.dp(26f)
                 if (y >= rowTop) {
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
