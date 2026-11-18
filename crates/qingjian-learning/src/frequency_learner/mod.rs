@@ -331,6 +331,7 @@ impl FrequencyLearner {
 
     /// 加载后也执行容量约束；永久屏蔽项不淘汰，其余优先保留有效分高的记录。
     fn enforce_capacity(&mut self) {
+        let mut pruned_unigrams = false;
         while self.counts.len() > MAX_USER_UNIGRAMS {
             let weakest = self.counts.iter()
                 .filter(|(_, entry)| !entry.banned)
@@ -338,7 +339,9 @@ impl FrequencyLearner {
                 .map(|(word, _)| word.clone());
             let Some(word) = weakest else { break; };
             self.counts.remove(&word);
+            pruned_unigrams = true;
         }
+        let mut pruned_bigrams = false;
         while self.bigrams.len() > MAX_USER_BIGRAMS {
             let weakest = self.bigrams.iter()
                 .filter(|(_, entry)| !entry.banned)
@@ -346,7 +349,10 @@ impl FrequencyLearner {
                 .map(|(key, _)| key.clone());
             let Some(key) = weakest else { break; };
             self.bigrams.remove(&key);
+            pruned_bigrams = true;
         }
+        self.dirty |= pruned_unigrams;
+        self.bigrams_dirty |= pruned_bigrams;
     }
 
     /// 刷新缓存的「今天」。写路径开头调；读路径（`weight` 等，一键要查几万次）用缓存值，不查时钟。
