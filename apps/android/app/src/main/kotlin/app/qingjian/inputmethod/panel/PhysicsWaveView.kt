@@ -161,8 +161,8 @@ class PhysicsWaveView @JvmOverloads constructor(
         // 物理类样式只额外压缩垂直绘制区域，避免波形与底部操作按钮重叠。
         val compactPhysics = style.ordinal >= Style.SPRING_BARS.ordinal && style != Style.FLOWING_RIBBONS
         canvas.save()
-        canvas.translate(width * 0.10f, 0f)
-        canvas.scale(0.80f, 1f)
+        canvas.translate(width * 0.05f, 0f)
+        canvas.scale(0.90f, 1f)
         if (compactPhysics) {
             canvas.translate(0f, height * 0.31f)
             canvas.scale(1f, 0.38f)
