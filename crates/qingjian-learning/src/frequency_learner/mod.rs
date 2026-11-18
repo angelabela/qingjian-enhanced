@@ -436,8 +436,8 @@ impl FrequencyLearner {
             let skipped = learner.load_dual_bigrams(&source);
             note_skipped(&bigram_dual_path, skipped);
         }
-        learner.rebuild_ngram();
         learner.enforce_capacity();
+        learner.rebuild_ngram();
         let choices_path = Self::choices_path(&path);
         if let Some(source) = read_text_lossy(&choices_path)? {
             let skipped = learner.load_choices(&source);
