@@ -37,6 +37,8 @@ class FunctionPanel(
     private class Toggle(val key: String, val label: String, val note: String, val on: Boolean)
 
     private var voiceEffectPage = false
+    private var backgroundEffectPage = false
+    private var selectedBackgroundStyle = settings.keyboardBackgroundStyle
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
 
     private fun smsMonitoringEnabled(): Boolean =
@@ -56,6 +58,11 @@ class FunctionPanel(
                 },
                 Feature(if (settings.keyboardBackgroundEffect) Icon.WAVEFORM else Icon.PALETTE, "键盘光影", on = settings.keyboardBackgroundEffect) {
                     setToggle(Settings.KEY_BACKGROUND_EFFECT, !settings.keyboardBackgroundEffect)
+                },
+                Feature(Icon.PALETTE, "背景样式", on = settings.keyboardBackgroundEffect) {
+                    backgroundEffectPage = true
+                    voiceEffectPage = false
+                    invalidate()
                 },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
@@ -98,13 +105,15 @@ class FunctionPanel(
     private val columns = 5
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, if (voiceEffectPage) null else tabs, Icon.SETTINGS)
+        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage) null else tabs, Icon.SETTINGS)
         if (voiceEffectPage) {
             ink.text(canvas, "语音面板动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        } else if (backgroundEffectPage) {
+            ink.text(canvas, "键盘背景动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         }
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
-        if (tabs.selected == 0) { if (voiceEffectPage) drawVoiceEffectSettings(canvas) else drawFeatures(canvas) } else drawToggles(canvas)
+        if (tabs.selected == 0) { if (voiceEffectPage) drawVoiceEffectSettings(canvas) else if (backgroundEffectPage) drawBackgroundEffectSettings(canvas) else drawFeatures(canvas) } else drawToggles(canvas)
     }
 
     private fun cellWidth() = card.width() / columns
@@ -143,6 +152,51 @@ class FunctionPanel(
             val textColor = if (selected) palette.brand else palette.text
             ink.textStart(canvas, label, 12.5f, textColor, bounds.left + ink.dp(43f),
                 bounds.centerY() - ink.dp(1f), bounds.right - ink.dp(7f))
+            if (selected) {
+                ink.fill.color = palette.brand
+                canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
+            }
+        }
+    }
+
+    /** 背景动效样式选择；与语音动效选择页采用相同的卡片交互。 */
+    private fun drawBackgroundEffectSettings(canvas: Canvas) {
+        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾")
+        val colors = listOf(
+            intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt()),
+            intArrayOf(0xFF11B8A6.toInt(), 0xFF1D8FE8.toInt(), 0xFF35C6D8.toInt()),
+            intArrayOf(0xFFFF8A4C.toInt(), 0xFFF04F8B.toInt(), 0xFFB45BE8.toInt()),
+            intArrayOf(0xFF2DE2C5.toInt(), 0xFF43B66D.toInt(), 0xFF9B62FF.toInt()),
+            intArrayOf(0xFFD8F3FF.toInt(), 0xFF87B8E8.toInt(), 0xFFB7A6F6.toInt()),
+        )
+        val top = card.top + ink.dp(10f)
+        ink.textStart(canvas, "选择一种持续流动的背景色彩", 11f, palette.gloss,
+            card.left + ink.dp(16f), top + ink.dp(14f), card.right - ink.dp(12f))
+        val gapX = ink.dp(8f)
+        val gapY = ink.dp(8f)
+        val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+        val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / 3f)
+        labels.forEachIndexed { index, label ->
+            val column = index % 2
+            val row = index / 2
+            val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
+            val topY = top + ink.dp(26f) + row * (cardHeight + gapY)
+            val bounds = RectF(left, topY, left + cardWidth, topY + cardHeight)
+            val selected = selectedBackgroundStyle == index
+            ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.4f else 0.7f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(11f), ink.dp(11f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            val swatch = RectF(bounds.left + ink.dp(10f), bounds.centerY() - ink.dp(10f),
+                bounds.left + ink.dp(42f), bounds.centerY() + ink.dp(10f))
+            ink.fill.shader = android.graphics.LinearGradient(swatch.left, swatch.top, swatch.right, swatch.bottom,
+                colors[index], null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(swatch, ink.dp(7f), ink.dp(7f), ink.fill)
+            ink.fill.shader = null
+            ink.textStart(canvas, label, 12.5f, if (selected) palette.brand else palette.text,
+                bounds.left + ink.dp(50f), bounds.centerY() + ink.dp(4f), bounds.right - ink.dp(7f))
             if (selected) {
                 ink.fill.color = palette.brand
                 canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
@@ -253,6 +307,24 @@ class FunctionPanel(
             }
 
             !card.contains(x, y) -> Unit
+            tabs.selected == 0 && backgroundEffectPage -> {
+                val top = card.top + ink.dp(10f)
+                val gapX = ink.dp(8f)
+                val gapY = ink.dp(8f)
+                val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+                val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / 3f)
+                val rowTop = top + ink.dp(26f)
+                if (y >= rowTop) {
+                    val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
+                    val row = ((y - rowTop) / (cardHeight + gapY)).toInt()
+                    val index = row * 2 + column
+                    if (row in 0..2 && index in 0..4) {
+                        selectedBackgroundStyle = index
+                        actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
+                        invalidate()
+                    }
+                }
+            }
             tabs.selected == 0 && voiceEffectPage -> {
                 val top = card.top + ink.dp(8f)
                 val rows = (VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2
@@ -284,8 +356,9 @@ class FunctionPanel(
     }
 
     override fun onBack() {
-        if (voiceEffectPage) {
+        if (voiceEffectPage || backgroundEffectPage) {
             voiceEffectPage = false
+            backgroundEffectPage = false
             invalidate()
         } else {
             super.onBack()
