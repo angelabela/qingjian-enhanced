@@ -22,6 +22,7 @@ class BottomActionsView(
     private val left: BottomAction,
     private val right: BottomAction,
     private val onAction: (BottomAction) -> Unit,
+    private val transparentBackground: Boolean = false,
 ) : View(context) {
     private val density = resources.displayMetrics.density
     private val stripHeight = 40f * density
@@ -29,7 +30,7 @@ class BottomActionsView(
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.gloss }
 
     init {
-        setBackgroundColor(palette.board)
+        setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
