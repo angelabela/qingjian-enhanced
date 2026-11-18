@@ -7,6 +7,8 @@ import android.graphics.Typeface
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Matrix
+import android.graphics.Path
+import android.graphics.Outline
 import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.graphics.drawable.Drawable
@@ -14,6 +16,7 @@ import android.os.SystemClock
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -54,6 +57,7 @@ import app.qingjian.inputmethod.theme.Palette
  */
 private class FlowingKeyboardBackgroundDrawable(
     private val palette: Palette,
+    private val style: Int,
 ) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val frost = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x18FFFFFF }
@@ -80,14 +84,7 @@ private class FlowingKeyboardBackgroundDrawable(
         shaderHeight = h
         shader = LinearGradient(
             -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
-            intArrayOf(
-                0xC82DE2C5.toInt(), // 翡翠青
-                0xC83E8BFF.toInt(), // 冰川蓝
-                0xC89B62FF.toInt(), // 极光紫
-                0xC8FF62B5.toInt(), // 玫瑰粉
-                0xC8FFB347.toInt(), // 琥珀金
-                0xC82DE2C5.toInt(),
-            ),
+            colorsForStyle(style),
             floatArrayOf(0f, 0.22f, 0.46f, 0.68f, 0.86f, 1f),
             Shader.TileMode.MIRROR,
         )
@@ -120,7 +117,18 @@ private class FlowingKeyboardBackgroundDrawable(
 
     private companion object {
         const val FRAME_DELAY_MS = 33L
-        const val BACKGROUND_CYCLE_MS = 180_000L
+        const val BACKGROUND_CYCLE_MS = 150_000L
+
+        private fun colorsForStyle(style: Int): IntArray {
+            val colors = when (style.coerceIn(0, 4)) {
+                1 -> intArrayOf(0xC811B8A6.toInt(), 0xC81D8FE8.toInt(), 0xC835C6D8.toInt(), 0xC8126F9A.toInt(), 0xC811B8A6.toInt())
+                2 -> intArrayOf(0xC8FF8A4C.toInt(), 0xC8F04F8B.toInt(), 0xC8B45BE8.toInt(), 0xC8FFD166.toInt(), 0xC8FF8A4C.toInt())
+                3 -> intArrayOf(0xC82DE2C5.toInt(), 0xC843B66D.toInt(), 0xC8559BEF.toInt(), 0xC89B62FF.toInt(), 0xC82DE2C5.toInt())
+                4 -> intArrayOf(0xC8D8F3FF.toInt(), 0xC887B8E8.toInt(), 0xC8B7A6F6.toInt(), 0xC8F4E9FF.toInt(), 0xC8D8F3FF.toInt())
+                else -> intArrayOf(0xC82DE2C5.toInt(), 0xC83E8BFF.toInt(), 0xC89B62FF.toInt(), 0xC8FF62B5.toInt(), 0xC8FFB347.toInt(), 0xC82DE2C5.toInt())
+            }
+            return colors
+        }
     }
 }
 
@@ -197,12 +205,30 @@ class InputPanel(
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = if (settings.keyboardBackgroundEffect) {
-            FlowingKeyboardBackgroundDrawable(palette)
+            FlowingKeyboardBackgroundDrawable(palette, settings.keyboardBackgroundStyle)
         } else {
             android.graphics.drawable.ColorDrawable(palette.board)
         }
         clipChildren = false
         clipToPadding = false
+        // 输入法面板顶部左右圆角，底部保持方正；裁切范围覆盖候选栏、键盘与底部操作条。
+        clipToOutline = true
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                val radius = 18f * context.resources.displayMetrics.density
+                val path = Path().apply {
+                    moveTo(radius, 0f)
+                    lineTo(view.width - radius, 0f)
+                    quadTo(view.width.toFloat(), 0f, view.width.toFloat(), radius)
+                    lineTo(view.width.toFloat(), view.height.toFloat())
+                    lineTo(0f, view.height.toFloat())
+                    lineTo(0f, radius)
+                    quadTo(0f, 0f, radius, 0f)
+                    close()
+                }
+                outline.setConvexPath(path)
+            }
+        }
         // Tips 行本身透明且高度固定；Tips 内容在这一行水平居中，不贴靠右侧。
         addView(
             cloudTipsSlot,
