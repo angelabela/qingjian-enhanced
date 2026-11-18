@@ -93,7 +93,7 @@ data class Settings(
     val symbolsSwipeDown: GestureAction,
     /** 键盘底板上的光影流动背景特效。 */
     val keyboardBackgroundEffect: Boolean = false,
-    /** 流动背景配色样式；0 为极光，其他值为海洋、日落、翡翠、冰晶。 */
+    /** 流动背景配色样式；0 为极光，1–4 为海洋、日落、翡翠、冰晶，5–6 为魔幻粒子与星云裂隙。 */
     val keyboardBackgroundStyle: Int = 0,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
@@ -312,7 +312,7 @@ data class Settings(
                 symbolsSwipeUp = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_UP, null)),
                 symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
                 keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
-                keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 4),
+                keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 6),
             )
         }
     }
