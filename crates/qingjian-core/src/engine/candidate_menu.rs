@@ -14,6 +14,28 @@ impl Engine {
         candidates.sort_by_key(|candidate| self.learner.demotion(input, &candidate.text));
     }
 
+    /// 永久屏蔽候选；屏蔽状态随用户词频文件保存，之后查询时不再展示。
+    pub fn ban_candidate(&mut self, candidate: &Candidate) {
+        let text = self.stored_text(candidate);
+        self.learner.ban_word(&text);
+        self.learner.flush();
+        self.forget_span_cache();
+    }
+
+    /// 按存储字形解除永久屏蔽。
+    pub fn unban_candidate(&mut self, text: &str) {
+        let text = self.traditional.restore(text).unwrap_or_else(|| text.to_owned());
+        self.learner.unban_word(&text);
+        self.learner.flush();
+        self.forget_span_cache();
+    }
+
+    /// 查询词是否处于永久屏蔽状态。
+    pub fn candidate_is_banned(&self, text: &str) -> bool {
+        let restored = self.traditional.restore(text);
+        self.learner.is_banned(restored.as_deref().unwrap_or(text))
+    }
+
     /// 提高外部候选在指定输入串下的权重。
     pub fn promote_external_candidate(&mut self, input: &str, text: &str) {
         self.learner.record_choice(input, "", text);
