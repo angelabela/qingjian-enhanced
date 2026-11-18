@@ -214,7 +214,7 @@ impl FrequencyLearner {
                     banned.parse::<u8>().ok()? != 0,
                 )))();
                 if let Some((ls, ll, tk, hits, sys, banned)) = parsed
-                    && ls.is_finite() && ll.is_finite() && (hits > 0 || banned)
+                    && !ls.is_nan() && !ll.is_nan() && (hits > 0 || banned)
                 {
                     if let Some(entry) = self.counts.get_mut(*text) {
                         *entry = entry.with_dual_fields(ls, ll, tk, hits, sys, banned);
