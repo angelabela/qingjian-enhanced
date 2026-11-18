@@ -253,6 +253,41 @@ mod tests {
     }
 
     #[test]
+    fn open_creates_a_missing_user_directory_before_first_save() {
+        let dir = std::env::temp_dir()
+            .join(format!("qj-phrases-missing-dir-{}", std::process::id()))
+            .join("nested");
+        let mut book = PhraseBook::open(&dir);
+        assert!(book.can_persist());
+        assert!(book.add("首次保存", "", "").unwrap());
+        let reopened = PhraseBook::open(&dir);
+        assert_eq!(reopened.phrases()[0].text, "首次保存");
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn corrupt_file_is_backed_up_and_valid_entries_are_recovered() {
+        let dir = temp_dir("phrases-recover");
+        let path = dir.join(PHRASE_BOOK_FILE);
+        std::fs::write(
+            &path,
+            r#"[{"text":"保留下来的短语","group":"默认"},{"text":"","group":"默认"},null]"#,
+        ).unwrap();
+
+        let mut book = PhraseBook::open(&dir);
+        assert!(book.can_persist());
+        assert_eq!(book.phrases().len(), 1);
+        assert_eq!(book.phrases()[0].text, "保留下来的短语");
+        assert!(book.add("新短语", "", "").unwrap());
+
+        let reopened = PhraseBook::open(&dir);
+        assert_eq!(reopened.phrases().len(), 2);
+        assert!(std::fs::read_dir(&dir).unwrap().filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains(".corrupt-")));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn codes_become_custom_phrases_in_order() {
         let mut book = PhraseBook::default();
         book.add("二", "", "aa").unwrap();
