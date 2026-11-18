@@ -47,6 +47,13 @@ impl Learner for FrequencyLearner {
     fn record(&mut self, candidate: &Candidate) {
         self.tick();
         let now = self.now_seconds.get();
+        if !self.counts.contains_key(&candidate.text) && self.counts.len() >= MAX_USER_UNIGRAMS {
+            let weakest = self.counts.iter()
+                .filter(|(_, entry)| !entry.banned)
+                .min_by_key(|(_, entry)| self.effective_dual(entry))
+                .map(|(word, _)| word.clone());
+            if let Some(word) = weakest { self.counts.remove(&word); } else { return; }
+        }
         let entry = self.counts
             .entry(candidate.text.clone())
             .or_insert_with(|| Decay::from_parts(0, now / 86_400));
@@ -116,8 +123,15 @@ impl Learner for FrequencyLearner {
     }
 
     fn unrecord_transition(&mut self, context: Context<'_>, word: &str, times: u32) {
+        let key = (context.previous.unwrap_or(SENTENCE_START).to_owned(), word.to_owned());
+        if let Some(entry) = self.bigrams.get_mut(&key) {
+            entry.unrecord_dual_times(times);
+            if entry.hits == 0 && !entry.banned { self.bigrams.remove(&key); }
+            self.bigrams_dirty = true;
+        }
         self.ngram.unrecord(context, word, times);
         self.ngram_dirty = true;
+        self.rebuild_ngram();
     }
 
     fn raw_count(&self, input: &str) -> u32 {
@@ -165,12 +179,26 @@ impl Learner for FrequencyLearner {
     }
 
     fn record_transition(&mut self, context: Context<'_>, word: &str, times: u32) {
-        if word.is_empty() || times == 0 {
+        if word.is_empty() || times == 0 { return; }
+        self.tick();
+        let now = self.now_seconds.get();
+        let key = (context.previous.unwrap_or(SENTENCE_START).to_owned(), word.to_owned());
+        if !self.bigrams.contains_key(&key) && self.bigrams.len() >= MAX_USER_BIGRAMS {
+            let weakest = self.bigrams.iter()
+                .filter(|(_, entry)| !entry.banned)
+                .min_by_key(|(_, entry)| self.effective_dual(entry))
+                .map(|(key, _)| key.clone());
+            if let Some(key) = weakest { self.bigrams.remove(&key); } else { return; }
+        }
+        let entry = self.bigrams.entry(key).or_insert_with(|| Decay::from_parts(0, now / 86_400));
+        if !entry.record_dual_times(now, times, self.short_half_life_days, self.long_half_life_days) {
             return;
         }
+        self.bigrams_dirty = true;
         self.ngram.record_times(context, word, times);
         self.ngram_dirty = true;
-        tracing::debug!(?context, word, times, "记录词转移");
+        self.rebuild_ngram();
+        tracing::debug!(?context, word, times, "记录双时间尺度二元转移");
     }
 
     fn user_ngram(&self) -> Option<&UserNgram> {
@@ -246,6 +274,14 @@ impl Learner for FrequencyLearner {
         }
         if self.ngram.forget_word(text) > 0 {
             forgotten.learning = true;
+            self.ngram_dirty = true;
+        }
+        let before = self.bigrams.len();
+        self.bigrams.retain(|(previous, next), _| previous != text && next != text);
+        if self.bigrams.len() != before {
+            forgotten.learning = true;
+            self.bigrams_dirty = true;
+            self.rebuild_ngram();
             self.ngram_dirty = true;
         }
         tracing::debug!(text, ?forgotten, "删除词");
