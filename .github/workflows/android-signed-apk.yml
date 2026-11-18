@@ -21,6 +21,7 @@ on:
       - feature/workflow-480-voice-effect-header-center-spectrum
       - feature/workflow-481-theme-tips-scan-ranking
       - fix/workflow-82-prefix-editor-focus-stability
+      - fix/workflow-83-clipboard-actions-swipe-paste
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
