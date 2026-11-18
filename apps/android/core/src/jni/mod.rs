@@ -124,6 +124,15 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_destroy<'local>
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_flushLearning<'local>(
+    _env: JNIEnv<'local>,
+    _this: JObject<'local>,
+    handle: jlong,
+) {
+    let _ = with_session(handle, Session::flush_learning);
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_reset<'local>(
     _env: JNIEnv<'local>,
     _this: JObject<'local>,
