@@ -96,11 +96,18 @@ private class FlowingKeyboardBackgroundDrawable(
         val bounds = bounds
         val activeShader = shader ?: return
         if (bounds.isEmpty || bounds.width() != shaderWidth || bounds.height() != shaderHeight) return
-        // 使用长周期正弦往返，不在周期边界瞬间跳回起点；慢速流动，避免明显的循环播放感。
-        val phase = (SystemClock.uptimeMillis() % BACKGROUND_CYCLE_MS).toDouble() /
-            BACKGROUND_CYCLE_MS.toDouble() * (Math.PI * 2.0)
-        val offset = (kotlin.math.sin(phase) * shaderWidth.toDouble() * 0.82).toFloat()
-        matrix.setTranslate(offset, 0f)
+        // 多个互不整除的长周期波叠加：位置与速度连续，不会在短周期边界跳回，
+        // 组合图案要经过很长时间才会近似重现，降低明显的循环播放感。
+        val now = SystemClock.uptimeMillis()
+        fun phase(period: Long, shift: Double = 0.0): Double =
+            (now % period).toDouble() / period.toDouble() * (Math.PI * 2.0) + shift
+        val driftX = kotlin.math.sin(phase(BACKGROUND_CYCLE_MS)) * 0.60 +
+            kotlin.math.sin(phase(233_000L, 1.7)) * 0.23 +
+            kotlin.math.sin(phase(97_000L, 0.4)) * 0.09
+        val driftY = kotlin.math.sin(phase(191_000L, 2.1)) * 0.11
+        val offsetX = (driftX * shaderWidth).toFloat()
+        val offsetY = (driftY * shaderHeight).toFloat()
+        matrix.setTranslate(offsetX, offsetY)
         activeShader.setLocalMatrix(matrix)
         paint.shader = activeShader
         paint.alpha = 190
