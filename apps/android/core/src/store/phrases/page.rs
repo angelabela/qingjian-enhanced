@@ -13,4 +13,8 @@ pub struct PhrasePage {
 
     /// 本次请求是否真正成功；写入失败或只读内存模式均为 false。
     pub operation_succeeded: bool,
+
+    /// 本次操作失败的具体原因；不包含用户短语文本。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_error: Option<String>,
 }
