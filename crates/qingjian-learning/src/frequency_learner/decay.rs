@@ -59,7 +59,7 @@ pub struct Decay {
 impl Decay {
     /// 从落盘的 (次数, 天数) 还原。
     pub fn from_parts(count: u32, last_used: u64) -> Self {
-        Self { count, last_used, ls: f64::from(count.max(1)).ln(), ll: f64::from(count.max(1)).ln(), tk: last_used.saturating_mul(86_400), hits: count, sys: false, banned: false }
+        Self { count, last_used, ls: if count == 0 { f64::NEG_INFINITY } else { f64::from(count).ln() }, ll: if count == 0 { f64::NEG_INFINITY } else { f64::from(count).ln() }, tk: last_used.saturating_mul(86_400), hits: count, sys: false, banned: false }
     }
 
     /// 记 `times` 次，刷新最近使用日。
