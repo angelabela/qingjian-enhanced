@@ -108,12 +108,33 @@ class ClipboardPanel(
     private var pasteNextCellTracking = false
     private var pasteSummaryTracking = false
 
-    /** 剪贴板条目左右滑动删除的手势状态。 */
+    /** 剪贴板条目长按后左右拖动删除；拖动偏移直接作用于卡片绘制。 */
     private var swipeTracking = false
-    private var swipeTriggered = false
+    private var swipeLongPressed = false
     private var swipeDownX = 0f
     private var swipeDownY = 0f
+    private var swipeOffsetX = 0f
     private var swipeClipIndex = -1
+    private var deleteRepeatStarted = false
+
+    private val activateSwipeRunnable = Runnable {
+        if (swipeTracking && swipeClipIndex >= 0 && !showingPhrases) {
+            swipeLongPressed = true
+            parent?.requestDisallowInterceptTouchEvent(true)
+            Haptics.tap(context)
+            invalidate()
+        }
+    }
+
+    /** 退格按钮按住后先删一次，再按固定间隔连续删除；抬起立即停止。 */
+    private val deleteRepeatRunnable = object : Runnable {
+        override fun run() {
+            if (!pasteSummaryTracking || !deleteBackwardTracking) return
+            deleteRepeatStarted = true
+            actions.deleteBackward()
+            postDelayed(this, DELETE_REPEAT_INTERVAL_MS)
+        }
+    }
 
     /** 每张卡片在列表内容里的上下边（不含滚动），画与点共用。 */
     private var tops = FloatArray(0)
@@ -171,7 +192,14 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            drawCard(canvas, i, top, bottom)
+            if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
+                canvas.save()
+                canvas.translate(swipeOffsetX, 0f)
+                drawCard(canvas, i, top, bottom)
+                canvas.restore()
+            } else {
+                drawCard(canvas, i, top, bottom)
+            }
         }
         canvas.restore()
         if (showingPhrases) {
@@ -245,7 +273,8 @@ class ClipboardPanel(
     }
 
     override fun onHold(x: Float, y: Float, rawX: Float) {
-        if (showingPhrases || preview != null || !list.contains(x, y)) return
+        // 剪贴板卡片的长按由本面板负责：文字条目进入拖动删除，图片静止长按仍可预览。
+        if (swipeLongPressed || showingPhrases || preview != null || !list.contains(x, y)) return
         val contentY = y - list.top + listScroll.offset
         val i = (0 until count).firstOrNull { contentY >= tops[it] && contentY < bottoms[it] } ?: return
         preview = clips[i].image ?: return
@@ -418,8 +447,7 @@ class ClipboardPanel(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        // 开关所在整条摘要栏由本面板独占处理，先禁止父容器拦截，再决定是否切换；
-        // 热区按当前尺寸实时计算，不依赖上一次 onDraw 是否已执行。
+        // 摘要栏热区由本面板独占处理，避免父容器抢走按钮触摸序列。
         if (pasteSummaryTracking || (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
                 isPasteSummaryTouch(event.y))) {
             when (event.actionMasked) {
@@ -429,17 +457,24 @@ class ClipboardPanel(
                     deleteBackwardTracking = deleteBackwardBounds().contains(event.x, event.y)
                     pasteToggleTracking = pasteToggleBounds().contains(event.x, event.y)
                     pasteNextCellTracking = pasteNextCellBounds().contains(event.x, event.y)
+                    deleteRepeatStarted = false
+                    if (deleteBackwardTracking) {
+                        postDelayed(deleteRepeatRunnable, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+                    }
                 }
                 android.view.MotionEvent.ACTION_UP -> {
                     val activateDelete = deleteBackwardTracking && deleteBackwardBounds().contains(event.x, event.y)
                     val activateEnter = pasteToggleTracking && pasteToggleBounds().contains(event.x, event.y)
                     val activateNext = pasteNextCellTracking && pasteNextCellBounds().contains(event.x, event.y)
+                    removeCallbacks(deleteRepeatRunnable)
+                    val repeated = deleteRepeatStarted
                     pasteSummaryTracking = false
                     deleteBackwardTracking = false
                     pasteToggleTracking = false
                     pasteNextCellTracking = false
+                    deleteRepeatStarted = false
                     parent?.requestDisallowInterceptTouchEvent(false)
-                    if (activateDelete) {
+                    if (activateDelete && !repeated) {
                         actions.deleteBackward()
                         Haptics.tap(context)
                     }
@@ -462,43 +497,60 @@ class ClipboardPanel(
                     }
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
+                    removeCallbacks(deleteRepeatRunnable)
                     pasteSummaryTracking = false
                     deleteBackwardTracking = false
                     pasteToggleTracking = false
                     pasteNextCellTracking = false
+                    deleteRepeatStarted = false
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
             }
             return true
         }
 
-        // 仅在剪贴板列表内识别水平滑动；竖向滑动仍交给原有列表滚动处理。
         if (swipeTracking) {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - swipeDownX
                     val dy = event.y - swipeDownY
-                    if (!swipeTriggered && kotlin.math.abs(dx) > ink.dp(SWIPE_DELETE_DP) &&
-                        kotlin.math.abs(dx) > kotlin.math.abs(dy) * SWIPE_DIRECTION_RATIO) {
-                        swipeTriggered = true
-                        parent?.requestDisallowInterceptTouchEvent(true)
+                    if (swipeLongPressed) {
+                        if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * SWIPE_DIRECTION_RATIO) {
+                            swipeOffsetX = dx.coerceIn(-width * 0.9f, width * 0.9f)
+                            invalidate()
+                        }
+                        return true
                     }
-                    if (swipeTriggered) return true
+                    // 长按前若手指已明显移动，取消删除候选，让原有纵向列表滚动/点击识别接管。
+                    val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                    if (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop) {
+                        removeCallbacks(activateSwipeRunnable)
+                        resetSwipeTracking()
+                    }
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    val shouldDelete = swipeTriggered
-                    val index = swipeClipIndex
-                    resetSwipeTracking()
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                    if (shouldDelete) {
-                        deleteClipAt(index)
-                        Haptics.tap(context)
+                    removeCallbacks(activateSwipeRunnable)
+                    if (swipeLongPressed) {
+                        val index = swipeClipIndex
+                        val shouldDelete = kotlin.math.abs(swipeOffsetX) >= ink.dp(SWIPE_DELETE_DP)
+                        val image = clips.getOrNull(index)?.image
+                        resetSwipeTracking()
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                        if (shouldDelete) {
+                            deleteClipAt(index)
+                            Haptics.tap(context)
+                        } else if (image != null) {
+                            preview = image
+                            invalidate()
+                        }
                         invalidate()
                         return true
                     }
+                    resetSwipeTracking()
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
-                    val consumed = swipeTriggered
+                    removeCallbacks(activateSwipeRunnable)
+                    val consumed = swipeLongPressed
                     resetSwipeTracking()
                     parent?.requestDisallowInterceptTouchEvent(false)
                     if (consumed) return true
@@ -506,24 +558,29 @@ class ClipboardPanel(
             }
         } else if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
             !showingPhrases && preview == null && qrPreview == null && list.contains(event.x, event.y)) {
-            swipeTracking = true
-            swipeTriggered = false
-            parent?.requestDisallowInterceptTouchEvent(true)
-            swipeDownX = event.x
-            swipeDownY = event.y
             val contentY = event.y - list.top + listScroll.offset
-            swipeClipIndex = (0 until clips.size).firstOrNull {
+            val index = (0 until clips.size).firstOrNull {
                 contentY >= tops.getOrElse(it) { Float.MAX_VALUE } &&
                     contentY < bottoms.getOrElse(it) { Float.MIN_VALUE }
             } ?: -1
-            if (swipeClipIndex < 0) swipeTracking = false
+            if (index >= 0) {
+                swipeTracking = true
+                swipeLongPressed = false
+                swipeOffsetX = 0f
+                swipeDownX = event.x
+                swipeDownY = event.y
+                swipeClipIndex = index
+                postDelayed(activateSwipeRunnable, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+            }
         }
         return super.dispatchTouchEvent(event)
     }
 
     private fun resetSwipeTracking() {
+        removeCallbacks(activateSwipeRunnable)
         swipeTracking = false
-        swipeTriggered = false
+        swipeLongPressed = false
+        swipeOffsetX = 0f
         swipeClipIndex = -1
     }
 
@@ -617,16 +674,20 @@ class ClipboardPanel(
         when (label) {
             "编辑" -> actions.editClip(i, clips[i].text)
             "常用语" -> {
+                val clipText = clips.getOrNull(i)?.text.orEmpty()
+                if (clipText.isBlank()) {
+                    actions.toast("这条剪贴板记录没有可添加的文字")
+                    return
+                }
                 val group = visiblePhraseGroups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup
-                val beforeCount = page.phrases.size
-                val updated = ClipboardStore.addPhrase(context, clips[i].text, group, "")
-                lastGroup = group
-                if (updated.phrases.size > beforeCount) {
+                val updated = ClipboardStore.addPhrase(context, clipText, group, "")
+                if (updated.operationSucceeded) {
+                    lastGroup = group
                     reloadPhrases(updated)
                     actions.toast("已加入常用语「$group」")
                 } else {
                     this.page = updated
-                    actions.toast("添加常用语失败：内容为空或存储不可用")
+                    actions.toast("常用语保存失败：存储不可用，未能添加")
                     invalidate()
                 }
             }
@@ -663,6 +724,7 @@ class ClipboardPanel(
         private const val PREVIEW_BAR_DP = 60f
         private const val SWIPE_DELETE_DP = 64f
         private const val SWIPE_DIRECTION_RATIO = 1.25f
+        private const val DELETE_REPEAT_INTERVAL_MS = 55L
         private val PREVIEW_BUTTONS = listOf("关闭", "发送")
 
         /** 常用语停在哪一组：关了面板再开还在这组；加完常用语跳到它所在的组。 */
