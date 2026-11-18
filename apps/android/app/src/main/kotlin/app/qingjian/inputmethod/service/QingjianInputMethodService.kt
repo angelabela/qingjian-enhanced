@@ -77,6 +77,7 @@ import app.qingjian.inputmethod.translate.TranslateBar
 import app.qingjian.inputmethod.voice.VoiceInput
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.scan.ScanPreferences
+import app.qingjian.inputmethod.scan.ScanOverlayService
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
@@ -88,6 +89,7 @@ class QingjianInputMethodService :
     private lateinit var composer: Composer
     private var panel: InputPanel? = null
     private var hasActiveSelection = false
+    private var lastInputEditorPackage: String? = null
 
     override val selectionActive: Boolean get() = hasActiveSelection
 
@@ -365,6 +367,14 @@ class QingjianInputMethodService :
         // 在系统切换 InputConnection 前取消语音会话，防止迟到 AI 回复写入新输入框。
         voice.cancel()
         super.onStartInput(attribute, restarting)
+        val nextEditorPackage = attribute.packageName
+        val previousEditorPackage = lastInputEditorPackage
+        if (previousEditorPackage != null && previousEditorPackage != nextEditorPackage &&
+            ScanPreferences.isFloating(this)) {
+            // 输入法确认切换到另一个宿主 App 时，关闭上一应用遗留的扫码浮窗，避免跨应用悬挂。
+            startService(Intent(this, ScanOverlayService::class.java).setAction(ScanOverlayService.ACTION_STOP))
+        }
+        lastInputEditorPackage = nextEditorPackage
         val keepClipboard = shouldKeepClipboardPanel(attribute, restarting)
         if (isClipboardPanel() && !keepClipboard) {
             AppLog.info(
