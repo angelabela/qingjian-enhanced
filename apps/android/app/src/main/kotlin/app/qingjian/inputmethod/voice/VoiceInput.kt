@@ -1,6 +1,9 @@
 package app.qingjian.inputmethod.voice
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.panel.VoicePanel
@@ -59,6 +62,20 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     /** 使输入框切换/取消后的迟到 AI 回复失效。 */
     private var generation = 0L
     private var pendingCorrection = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingPartialText: String? = null
+    private var lastPartialText = ""
+    private var lastPartialAt = 0L
+    private val partialFlush = Runnable {
+        val text = pendingPartialText ?: return@Runnable
+        pendingPartialText = null
+        if (recognizer != null) {
+            runCatching { host.composeVoice(text) }
+                .onFailure { android.util.Log.w("QingjianVoice", "Unable to update composing text", it) }
+            lastPartialText = text
+            lastPartialAt = SystemClock.uptimeMillis()
+        }
+    }
 
     val active: Boolean get() = recognizer != null || pendingCorrection
 
@@ -107,6 +124,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
             true
         } catch (error: Throwable) {
             android.util.Log.e("QingjianVoice", "Failed to start voice recognizer", error)
+            runCatching { picked.cancel() }
             recognizer = null
             this.panel = null
             host.closeVoicePanel()
@@ -186,6 +204,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     override fun onCancel() {
         android.util.Log.i("QingjianVoice", "cancel requested recognizerActive=${recognizer != null} pendingCorrection=$pendingCorrection")
         generation += 1
+        mainHandler.removeCallbacks(partialFlush)
+        pendingPartialText = null
+        lastPartialText = ""
+        lastPartialAt = 0L
         val activeRecognizer = recognizer
         val hadPendingVoice = activeRecognizer != null || pendingCorrection
         activeRecognizer?.cancel()
@@ -198,10 +220,21 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     fun cancel() = onCancel()
 
     override fun onPartial(text: String) {
-        if (active) host.composeVoice(VoiceTextNormalizer.normalize(text))
+        if (!active) return
+        val normalized = VoiceTextNormalizer.normalize(text)
+        if (normalized.isBlank() || normalized == lastPartialText) return
+        pendingPartialText = normalized
+        val elapsed = SystemClock.uptimeMillis() - lastPartialAt
+        val delay = (PARTIAL_UPDATE_INTERVAL_MS - elapsed).coerceAtLeast(0L)
+        mainHandler.removeCallbacks(partialFlush)
+        if (delay == 0L) partialFlush.run() else mainHandler.postDelayed(partialFlush, delay)
     }
 
     override fun onFinal(text: String) {
+        mainHandler.removeCallbacks(partialFlush)
+        pendingPartialText = null
+        lastPartialText = ""
+        lastPartialAt = 0L
         android.util.Log.i("QingjianVoice", "final result received length=${text.length}")
         val then = after
         val requestGeneration = generation
@@ -221,7 +254,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         // 若用户已移动光标、继续输入或切换输入框，宿主会因上下文不匹配而安全放弃修订。
         pendingCorrection = false
         try {
+            val commitStartedAt = SystemClock.elapsedRealtime()
             host.commitVoice(original)
+            val commitElapsed = SystemClock.elapsedRealtime() - commitStartedAt
+            android.util.Log.i("QingjianVoice", "final commit completed elapsedMs=$commitElapsed length=${original.length}")
             if (then == After.ACTION) host.performVoiceAction()
             if (then == After.HIDE) host.hideKeyboard()
         } catch (error: Throwable) {
@@ -269,7 +305,15 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         panel?.addSpectrum(FloatArray(48) { level.coerceIn(0f, 1f) })
     }
 
+    private companion object {
+        const val PARTIAL_UPDATE_INTERVAL_MS = 180L
+    }
+
     private fun end() {
+        mainHandler.removeCallbacks(partialFlush)
+        pendingPartialText = null
+        lastPartialText = ""
+        lastPartialAt = 0L
         recognizer = null
         panel = null
         after = After.NOTHING
