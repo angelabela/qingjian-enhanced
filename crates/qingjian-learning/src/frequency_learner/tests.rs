@@ -21,6 +21,7 @@ fn parse_keeps_counts_as_fresh() {
 fn records_and_round_trips_through_tsv() {
     let mut learner = FrequencyLearner::default();
     learner.record(&candidate("开发"));
+    learner.counts.get_mut("开发").unwrap().tk = 0; // 模拟超过 3 秒后再次选择
     learner.record(&candidate("开发"));
     learner.record(&candidate("中文"));
     assert_eq!(learner.weight("开发"), 2);
@@ -38,6 +39,7 @@ fn records_and_round_trips_through_tsv() {
     assert_eq!(restored.weight("没有"), 0);
 
     // flush 写回加载时的路径
+    restored.counts.get_mut("中文").unwrap().tk = 0;
     restored.record(&candidate("中文"));
     restored.flush();
     assert_eq!(
@@ -236,8 +238,47 @@ fn saving_is_atomic_and_leaves_no_temporary_files() {
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names.len(), 9, "{names:?}");
+    assert_eq!(names.len(), 10, "{names:?}");
     assert!(names.iter().all(|name| !name.contains(".tmp")), "{names:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn dual_scale_frequency_uses_three_and_forty_five_day_half_lives() {
+    let entry = Decay::from_parts(10, 0);
+    assert_eq!(entry.effective_dual(0, 3.0, 45.0), 10);
+    // 三天后短期分减半，长期分只轻微衰减。
+    assert_eq!(entry.effective_dual(3 * 86_400, 3.0, 45.0), 8);
+    // 四十五天后长期分减半，短期分基本归零。
+    assert_eq!(entry.effective_dual(45 * 86_400, 3.0, 45.0), 3);
+}
+
+#[test]
+fn dual_scale_records_deduplicate_within_three_seconds() {
+    let mut entry = Decay::from_parts(0, 0);
+    assert!(entry.record_dual(100));
+    assert!(!entry.record_dual(102));
+    assert!(entry.record_dual(103));
+    assert_eq!(entry.hits, 2);
+    assert_eq!(entry.count, 2);
+}
+
+#[test]
+fn banned_words_persist_and_can_be_unbanned() {
+    let dir = std::env::temp_dir().join(format!("qingjian-banned-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("user.tsv");
+    let mut learner = FrequencyLearner::from_path(&path).unwrap();
+    assert!(learner.ban_word("不想再看到"));
+    assert!(learner.is_banned("不想再看到"));
+    learner.flush();
+
+    let mut restored = FrequencyLearner::from_path(&path).unwrap();
+    assert!(restored.is_banned("不想再看到"));
+    assert_eq!(restored.weight("不想再看到"), 0);
+    assert!(restored.unban_word("不想再看到"));
+    restored.flush();
+    assert!(!FrequencyLearner::from_path(&path).unwrap().is_banned("不想再看到"));
     std::fs::remove_dir_all(dir).unwrap();
 }
 
