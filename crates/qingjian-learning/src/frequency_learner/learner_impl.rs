@@ -50,7 +50,7 @@ impl Learner for FrequencyLearner {
         let entry = self.counts
             .entry(candidate.text.clone())
             .or_insert_with(|| Decay::from_parts(0, now / 86_400));
-        if entry.record_dual(now) {
+        if entry.record_dual(now, self.short_half_life_days, self.long_half_life_days) {
             self.dirty = true;
             tracing::debug!(text = %candidate.text, hits = entry.hits, "记录双时间尺度用户选择");
         }
