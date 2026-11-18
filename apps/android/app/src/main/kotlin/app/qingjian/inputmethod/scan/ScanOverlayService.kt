@@ -100,6 +100,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private val themePalette by lazy { runCatching { Palette.of(this) }.getOrNull() }
     private lateinit var torchButton: ScanToolbarIconView
     private var prefixEditor: EditText? = null
+    private var prefixEditingRequested = false
+    private var prefixEditorHadFocus = false
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
     // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
@@ -112,6 +114,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onCreate() {
         super.onCreate()
+        prefixEditingRequested = false
+        prefixEditorHadFocus = false
+        ScanPreferences.setPrefixEditorActive(false)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -246,11 +251,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         prefixInput.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-                (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                updateHeaderWindowLayout()
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                prefixEditingRequested = true
+                ScanPreferences.setPrefixEditorActive(true)
+                if (::headerWindowParams.isInitialized &&
+                    (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                    headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                    updateHeaderWindowLayout()
+                }
                 prefixInput.post {
+                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
                     prefixInput.requestFocus()
                     (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
                         ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
@@ -259,11 +269,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             false
         }
         prefixInput.setOnFocusChangeListener { _, focused ->
-            if (!focused && ::windowParams.isInitialized) {
-                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                    ?.hideSoftInputFromWindow(prefixInput.windowToken, 0)
-                headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                updateHeaderWindowLayout()
+            if (focused) {
+                prefixEditorHadFocus = true
+            } else if (prefixEditingRequested && prefixEditorHadFocus) {
+                // 忽略窗口切换焦点过程中的初始失焦；真正编辑完成/离开时才关闭编辑态。
+                finishPrefixEditing()
             }
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
@@ -765,11 +775,19 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     private fun finishPrefixEditing() {
-        val editor = prefixEditor ?: return
-        if (!editor.hasFocus()) return
-        editor.clearFocus()
-        (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-            ?.hideSoftInputFromWindow(editor.windowToken, 0)
+        val editor = prefixEditor
+        prefixEditingRequested = false
+        prefixEditorHadFocus = false
+        ScanPreferences.setPrefixEditorActive(false)
+        if (editor != null) {
+            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.hideSoftInputFromWindow(editor.windowToken, 0)
+            if (editor.hasFocus()) editor.clearFocus()
+        }
+        if (::headerWindowParams.isInitialized) {
+            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            updateHeaderWindowLayout()
+        }
     }
 
     /** 与青简 App 面板共用 PanelIcons 的 24dp 线框图标绘制风格。 */
@@ -1101,6 +1119,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
+        prefixEditingRequested = false
+        prefixEditorHadFocus = false
+        ScanPreferences.setPrefixEditorActive(false)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         cameraProvider?.unbindAll()
