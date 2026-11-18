@@ -105,6 +105,11 @@ impl PhraseBook {
         self.path.is_some()
     }
 
+    /// 是否达到常用语硬上限；供请求层区分「已满」与存储故障。
+    pub fn is_full(&self) -> bool {
+        self.phrases.len() >= MAX_PHRASES
+    }
+
     /// 初始化存储失败时的具体原因；不包含用户短语内容。
     pub fn storage_error(&self) -> Option<&str> {
         self.storage_error.as_deref()
