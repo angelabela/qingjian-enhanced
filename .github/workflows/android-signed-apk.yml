@@ -27,6 +27,7 @@ on:
       - fix/workflow-94-phrase-storage-diagnostics-voice-neon
       - fix/workflow-97-phrase-storage-diagnostics-round-voice-buttons
       - fix/workflow-98-phrase-save-voice-layout-user-frequency
+      - fix/voice-swipe-phrases-dual-frequency
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
