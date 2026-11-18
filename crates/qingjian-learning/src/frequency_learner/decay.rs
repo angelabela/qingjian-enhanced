@@ -75,13 +75,15 @@ impl Decay {
         removed
     }
 
-    /// 以秒为单位记录一次命中；同一词 3 秒内重复触发视为重复事件，不重复学习。
+    /// 以秒为单位记录命中；同一记录 3 秒内重复触发视为重复事件。
     pub fn record_dual(&mut self, now: u64, short_days: f64, long_days: f64) -> bool {
-        if self.banned { return false; }
-        if self.hits > 0 && now.saturating_sub(self.tk) < 3 {
-            return false;
-        }
-        // 先把历史 log 分衰减到当前时刻，再 logAdd 新命中；不能让新命中把旧偏好整体刷新。
+        self.record_dual_times(now, 1, short_days, long_days)
+    }
+
+    /// 记录一笔转移的 `times` 份权重。一次明确选词可记双份，但仍只刷新一次时间戳。
+    pub fn record_dual_times(&mut self, now: u64, times: u32, short_days: f64, long_days: f64) -> bool {
+        if self.banned || times == 0 { return false; }
+        if self.hits > 0 && now.saturating_sub(self.tk) < 3 { return false; }
         let elapsed = now.saturating_sub(self.tk) as f64;
         if short_days > 0.0 && self.ls.is_finite() {
             self.ls -= std::f64::consts::LN_2 * elapsed / (short_days * 86_400.0);
@@ -89,23 +91,31 @@ impl Decay {
         if long_days > 0.0 && self.ll.is_finite() {
             self.ll -= std::f64::consts::LN_2 * elapsed / (long_days * 86_400.0);
         }
-        self.ls = log_add(self.ls, 0.0);
-        self.ll = log_add(self.ll, 0.0);
+        for _ in 0..times {
+            self.ls = log_add(self.ls, 0.0);
+            self.ll = log_add(self.ll, 0.0);
+        }
         self.tk = now.max(self.tk);
         self.last_used = self.tk / 86_400;
-        self.hits = self.hits.saturating_add(1);
+        self.hits = self.hits.saturating_add(times);
         self.count = self.hits;
         true
     }
 
-    /// 撤销一份刚提交的命中，分别从短期和长期 log 分中减去一份质量。
+    /// 撤销刚提交的命中；返回实际撤销份数。
     pub fn unrecord_dual(&mut self) -> u32 {
-        if self.hits == 0 { return 0; }
-        self.hits -= 1;
+        self.unrecord_dual_times(1)
+    }
+
+    pub fn unrecord_dual_times(&mut self, times: u32) -> u32 {
+        let removed = times.min(self.hits);
+        for _ in 0..removed {
+            self.ls = log_sub_one(self.ls);
+            self.ll = log_sub_one(self.ll);
+        }
+        self.hits -= removed;
         self.count = self.hits;
-        self.ls = log_sub_one(self.ls);
-        self.ll = log_sub_one(self.ll);
-        1
+        removed
     }
 
     /// 按用户方案计算双时间尺度有效值。
