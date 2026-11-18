@@ -91,6 +91,8 @@ data class Settings(
     val spaceSwipeDown: GestureAction,
     val symbolsSwipeUp: GestureAction,
     val symbolsSwipeDown: GestureAction,
+    /** 键盘底板上的光影流动背景特效。 */
+    val keyboardBackgroundEffect: Boolean = false,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
 
@@ -210,6 +212,7 @@ data class Settings(
         const val KEY_SPACE_SWIPE_DOWN = "gesture_space_down"
         const val KEY_SYMBOLS_SWIPE_UP = "gesture_symbols_up"
         const val KEY_SYMBOLS_SWIPE_DOWN = "gesture_symbols_down"
+        const val KEY_BACKGROUND_EFFECT = "keyboard_background_effect"
 
         /** 没选过时的主题，同 PC 的缺省主题。 */
         const val DEFAULT_THEME = "qingjian"
@@ -305,6 +308,7 @@ data class Settings(
                 spaceSwipeDown = GestureAction.of(prefs.getString(KEY_SPACE_SWIPE_DOWN, null)),
                 symbolsSwipeUp = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_UP, null)),
                 symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
+                keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
             )
         }
     }

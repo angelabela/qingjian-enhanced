@@ -63,7 +63,9 @@ class InputPanel(
     // 游戏键盘一律深色：浮在游戏画面上，浅色太扎眼
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
 
-    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight)
+    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight).apply {
+        setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
+    }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
     private val cloudTipsSlot = FrameLayout(context).apply {

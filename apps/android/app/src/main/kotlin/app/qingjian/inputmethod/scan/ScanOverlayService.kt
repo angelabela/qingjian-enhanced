@@ -157,7 +157,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             stopSelf()
             return START_NOT_STICKY
         }
-        return START_NOT_STICKY
+        android.util.Log.i(TAG, "Scan overlay service active; startId=$startId action=${intent?.action}")
+        return START_STICKY
     }
 
     private fun buildOverlay() {
@@ -1158,6 +1159,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
+        android.util.Log.w(TAG, "Scan overlay service destroyed; scanner will be eligible for sticky restart")
         synchronized(lifecycleGuard) { shuttingDown = true }
         prefixEditingRequested = false
         prefixEditorHadFocus = false
