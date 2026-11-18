@@ -81,13 +81,14 @@ private class FlowingKeyboardBackgroundDrawable(
         shader = LinearGradient(
             -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
             intArrayOf(
-                (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
-                (palette.brand and 0x00FFFFFF) or 0x55000000,
-                (palette.accent and 0x00FFFFFF) or 0x66000000,
-                (palette.cloud and 0x00FFFFFF) or 0x44000000,
-                (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
+                0xC82DE2C5.toInt(), // 翡翠青
+                0xC83E8BFF.toInt(), // 冰川蓝
+                0xC89B62FF.toInt(), // 极光紫
+                0xC8FF62B5.toInt(), // 玫瑰粉
+                0xC8FFB347.toInt(), // 琥珀金
+                0xC82DE2C5.toInt(),
             ),
-            null,
+            floatArrayOf(0f, 0.22f, 0.46f, 0.68f, 0.86f, 1f),
             Shader.TileMode.MIRROR,
         )
         unscheduleSelf(frame)
@@ -103,7 +104,8 @@ private class FlowingKeyboardBackgroundDrawable(
         matrix.setTranslate(offset, 0f)
         activeShader.setLocalMatrix(matrix)
         paint.shader = activeShader
-        paint.alpha = 210
+        paint.alpha = 190
+        canvas.drawColor(palette.board)
         canvas.drawRect(bounds, paint)
         paint.shader = null
         canvas.drawRect(bounds, frost)
@@ -115,7 +117,7 @@ private class FlowingKeyboardBackgroundDrawable(
     override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
 
     private companion object {
-        const val FRAME_DELAY_MS = 40L
+        const val FRAME_DELAY_MS = 48L
     }
 }
 
