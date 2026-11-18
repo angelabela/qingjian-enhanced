@@ -169,7 +169,7 @@ class QingjianInputMethodService :
             // 可能因此同步加载/重排整份文档；只检查光标附近的小范围，宿主调用做异常隔离。
             val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
             val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-            if (before.contains(value) || after.contains(value)) { android.util.Log.i("QingjianScanDiag", "duplicate result ignored editor=${currentInputEditorInfo?.packageName}"); return }
+            if (before.contains(value) || after.contains(value)) { AppLog.info("[SCAN_DIAG] duplicate result ignored editor=${currentInputEditorInfo?.packageName}"); return }
 
             val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
             try {
