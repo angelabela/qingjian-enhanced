@@ -975,7 +975,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 if (lifecycle.currentState == Lifecycle.State.DESTROYED ||
                                     !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
                                 runCatching {
-                                    val output = preview.outputTransform ?: return@runCatching
+                                    val output = preview.outputTransform ?: run {
+                                        scanDiag("preview output transform not ready; wait next analysis frame")
+                                        return@runCatching
+                                    }
                                     val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
                                     val roi = scanArea.boundsInView()
                                     codes.forEach { code ->
@@ -984,7 +987,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                         if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
                                         val mapped = RectF(bounds)
                                         transform.mapRect(mapped)
-                                        if (!roi.contains(mapped)) return@forEach
+                                        // 扫码框边缘的条码允许部分进入识别区；只要求条码中心落在框内，
+                                        // 避免首次识别因检测框略超出边界而被整条丢弃。
+                                        if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
+                                        scanDiag("barcode candidate accepted center=" + mapped.centerX().toInt() + "," + mapped.centerY().toInt())
                                         if (shouldDeliverCode(value)) deliverResult(value)
                                     }
                                 }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
