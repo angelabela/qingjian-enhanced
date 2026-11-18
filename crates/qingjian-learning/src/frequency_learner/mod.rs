@@ -47,6 +47,9 @@ const USER_TYPOS_FILE: &str = "user-typos.tsv";
 /// 主表保持旧格式两列 / 三列，旧版本读不到日期列也不会丢行；日期丢了就整份退回文件的修改日。
 const USER_DAYS_FILE: &str = "user-days.tsv";
 const USER_DUAL_FILE: &str = "user-frequency-dual.tsv";
+const USER_BIGRAM_DUAL_FILE: &str = "user-ngram-dual.tsv";
+const MAX_USER_UNIGRAMS: usize = 60_000;
+const MAX_USER_BIGRAMS: usize = 120_000;
 const USER_ENGLISH_DAYS_FILE: &str = "user-english-days.tsv";
 const USER_TYPOS_DAYS_FILE: &str = "user-typos-days.tsv";
 
@@ -98,6 +101,12 @@ pub struct FrequencyLearner {
     /// 个人 n-gram：上屏词序列的转移计数（二元 + 三元）。
     ngram: UserNgram,
 
+    /// 带双时间尺度的个人二元转移（前词, 后词）；UserNgram 是供解码器读取的实时有效计数视图。
+    bigrams: HashMap<(String, String), Decay>,
+
+    /// 二元转移自上次保存后是否有变化。
+    bigrams_dirty: bool,
+
     /// 个人 n-gram 自上次保存后是否有变化。
     ngram_dirty: bool,
 
@@ -144,6 +153,8 @@ impl Default for FrequencyLearner {
             user_dictionary: None,
             words_dirty: false,
             ngram: UserNgram::default(),
+            bigrams: HashMap::default(),
+            bigrams_dirty: false,
             ngram_dirty: false,
             choices: HashMap::default(),
             choices_dirty: false,
@@ -232,6 +243,92 @@ impl FrequencyLearner {
         skipped
     }
 
+    /// 从旧 n-gram TSV 的三列二元行迁移；四列三元行继续保留在 UserNgram 中。
+    fn load_legacy_bigrams(&mut self, source: &str, fallback_day: u64) {
+        for line in data_lines(source) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            if let [previous, word, count] = fields.as_slice()
+                && let Ok(count) = count.parse::<u32>()
+                && count > 0
+            {
+                self.bigrams.insert(
+                    ((*previous).to_owned(), (*word).to_owned()),
+                    Decay::from_parts(count, fallback_day),
+                );
+            }
+        }
+    }
+
+    /// 新格式二元侧车：前词、后词、ls、ll、tk、hits、sys、banned。
+    fn load_dual_bigrams(&mut self, source: &str) -> usize {
+        let mut skipped = 0;
+        for line in data_lines(source) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            if let [previous, word, ls, ll, tk, hits, sys, banned] = fields.as_slice() {
+                let parsed = (|| Some((
+                    ls.parse::<f64>().ok()?, ll.parse::<f64>().ok()?, tk.parse::<u64>().ok()?,
+                    hits.parse::<u32>().ok()?, sys.parse::<u8>().ok()? != 0,
+                    banned.parse::<u8>().ok()? != 0,
+                )))();
+                if let Some((ls, ll, tk, hits, sys, banned)) = parsed
+                    && !ls.is_nan() && !ll.is_nan() && (hits > 0 || banned)
+                {
+                    self.bigrams.insert(
+                        ((*previous).to_owned(), (*word).to_owned()),
+                        Decay::from_parts(hits, tk / 86_400).with_dual_fields(ls, ll, tk, hits, sys, banned),
+                    );
+                } else {
+                    skipped += 1;
+                }
+            } else {
+                skipped += 1;
+            }
+        }
+        skipped
+    }
+
+    /// 用二元双时间尺度有效值重建解码器模型，同时保留原有三元上下文统计。
+    fn rebuild_ngram(&mut self) {
+        let triples = self.ngram.to_tsv();
+        let mut source = String::new();
+        let now = self.now_seconds.get();
+        let mut rows: Vec<_> = self.bigrams.iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(b.0));
+        for ((previous, word), entry) in rows {
+            let count = entry.effective_dual(now, self.short_half_life_days, self.long_half_life_days);
+            if count > 0 && !entry.banned {
+                source.push_str(previous);
+                source.push('\t');
+                source.push_str(word);
+                source.push('\t');
+                source.push_str(&count.to_string());
+                source.push('\n');
+            }
+        }
+        for line in triples.lines() {
+            if line.split('\t').count() == 4 {
+                source.push_str(line);
+                source.push('\n');
+            }
+        }
+        self.ngram = UserNgram::parse_lenient(&source).0;
+    }
+
+    fn save_dual_bigrams_to(&mut self, path: &Path) -> Result<(), LearningError> {
+        let mut rows: Vec<_> = self.bigrams.iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(b.0));
+        write_atomic(path, |file| {
+            writeln!(file, "# 青简双时间尺度二元转移：前词\\t后词\\tls\\tll\\ttk\\thits\\tsys\\tbanned")?;
+            for ((previous, word), entry) in &rows {
+                writeln!(file, "{previous}\t{word}\t{:.9}\t{:.9}\t{}\t{}\t{}\t{}",
+                    entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
+            }
+            Ok(())
+        })?;
+        self.bigrams_dirty = false;
+        Ok(())
+    }
+
     /// 刷新缓存的「今天」。写路径开头调；读路径（`weight` 等，一键要查几万次）用缓存值，不查时钟。
     fn tick(&mut self) {
         self.today.set(decay::today());
@@ -311,6 +408,15 @@ impl FrequencyLearner {
             learner.ngram = ngram;
             note_skipped(&ngram_path, skipped.len());
         }
+        // 旧 n-gram TSV 中的二元计数转换为双时间尺度初值；新侧车存在时再覆盖。
+        let legacy_ngram = learner.ngram.to_tsv();
+        learner.load_legacy_bigrams(&legacy_ngram, decay::mtime_day(&ngram_path));
+        let bigram_dual_path = Self::bigram_dual_path(&path);
+        if let Some(source) = read_text_lossy(&bigram_dual_path)? {
+            let skipped = learner.load_dual_bigrams(&source);
+            note_skipped(&bigram_dual_path, skipped);
+        }
+        learner.rebuild_ngram();
         let choices_path = Self::choices_path(&path);
         if let Some(source) = read_text_lossy(&choices_path)? {
             let skipped = learner.load_choices(&source);
@@ -353,6 +459,7 @@ impl FrequencyLearner {
             frequency_path.to_path_buf(),
             Self::days_path(frequency_path),
             Self::dual_path(frequency_path),
+            Self::bigram_dual_path(frequency_path),
             Self::words_path(frequency_path),
             Self::ngram_path(frequency_path),
             Self::choices_path(frequency_path),
@@ -371,6 +478,10 @@ impl FrequencyLearner {
 
     pub(super) fn dual_path(frequency_path: &Path) -> PathBuf {
         frequency_path.with_file_name(USER_DUAL_FILE)
+    }
+
+    pub(super) fn bigram_dual_path(frequency_path: &Path) -> PathBuf {
+        frequency_path.with_file_name(USER_BIGRAM_DUAL_FILE)
     }
 
     pub fn len(&self) -> usize {
@@ -432,6 +543,7 @@ impl FrequencyLearner {
             || self.words_dirty
             || self.english_dirty
             || self.ngram_dirty
+            || self.bigrams_dirty
             || self.choices_dirty
             || self.typos_dirty
             || self.demoted_dirty
