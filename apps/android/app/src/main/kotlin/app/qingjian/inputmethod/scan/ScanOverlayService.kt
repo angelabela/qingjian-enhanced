@@ -92,6 +92,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     @Volatile private var ocrMode = false
     private lateinit var captureButton: ScanToolbarIconView
     private lateinit var modeButton: ScanToolbarIconView
+    private lateinit var shapeButton: ScanToolbarIconView
+    private var wideScanShape = true
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var torchEnabled = false
@@ -118,6 +120,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         windowManager = getSystemService(WindowManager::class.java)
         // 悬浮窗每次新建都以连续扫码为默认模式；识图模式只在当前窗口内由用户主动切换。
         ocrMode = false
+        wideScanShape = windowPrefs.getBoolean(KEY_WIDE_SCAN_SHAPE, true)
         windowPrefs.edit().putBoolean(KEY_OCR_MODE, false).apply()
         textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
         scanner = BarcodeScanning.getClient(
@@ -141,7 +144,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
         startCamera()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_NOT_STICKY
+    }
 
     private fun buildOverlay() {
         val density = resources.displayMetrics.density
@@ -283,6 +292,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
         // 横向布局时用独立弹性间隔把工具按钮推到右侧，前缀区本身只占实际内容宽度。
         val headerSpacer = View(this)
         toolbar.addView(modeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        shapeButton = ScanToolbarIconView(
+            this,
+            if (wideScanShape) PanelIcons.Icon.SCAN_WIDE else PanelIcons.Icon.SCAN_RECTANGLE,
+            if (wideScanShape) "切换为方形扫描区域" else "切换为长方形扫描区域",
+        ).apply {
+            setOnClickListener { setWideScanShape(!wideScanShape) }
+        }
+        toolbar.addView(shapeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
@@ -383,6 +400,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         })
         attachCaptureButtonDrag()
         setOcrMode(ocrMode)
+        setWideScanShape(wideScanShape, persist = false)
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
@@ -456,7 +474,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 decorView.setPadding(0, 0, 0, 0)
                 // decor 层沿用窗口级圆角遮罩；全透明矩形 decor 会使部分系统将背景模糊扩展到矩形边界。
                 setBackgroundDrawable(roundedHeaderMask())
-                decorView.background = roundedHeaderMask()
+                // decor 本身不再绘制第二层矩形蒙版；窗口背景只负责给系统模糊提供圆角 alpha 形状。
+                decorView.background = ColorDrawable(Color.TRANSPARENT)
                 // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
                 decorView.clipToOutline = true
                 decorView.elevation = 0f
@@ -699,7 +718,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
      * 1/255 的非零 alpha 让系统识别圆角形状，视觉上近乎透明；圆角外 alpha 为 0。
      */
     private fun roundedHeaderMask() = GradientDrawable().apply {
-        setColor(0x01FFFFFF)
+        // 极低 alpha 仅用于系统背景模糊识别窗口轮廓；不在 decor 上重复绘制蒙版。
+        setColor(0x01000000)
         val radius = 16f * resources.displayMetrics.density
         cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
     }
@@ -731,6 +751,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 outline.alpha = 1f
             }
         }
+
+    private fun setWideScanShape(wide: Boolean, persist: Boolean = true) {
+        wideScanShape = wide
+        if (persist) windowPrefs.edit().putBoolean(KEY_WIDE_SCAN_SHAPE, wide).apply()
+        if (::shapeButton.isInitialized) {
+            shapeButton.setIcon(
+                if (wide) PanelIcons.Icon.SCAN_WIDE else PanelIcons.Icon.SCAN_RECTANGLE,
+                if (wide) "切换为方形扫描区域" else "切换为长方形扫描区域",
+            )
+        }
+        if (::scanArea.isInitialized) scanArea.setWideShape(wide)
+    }
 
     private fun finishPrefixEditing() {
         val editor = prefixEditor ?: return
@@ -1147,6 +1179,23 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         fun boundsInView(): RectF = RectF(rect)
 
+        fun setWideShape(wide: Boolean) {
+            if (width <= 0 || height <= 0) return
+            val centerX = if (rect.isEmpty) width / 2f else rect.centerX()
+            val centerY = if (rect.isEmpty) height / 2f else rect.centerY()
+            val targetWidth = width * if (wide) 0.82f else 0.62f
+            val targetHeight = height * if (wide) 0.34f else 0.56f
+            rect.set(
+                centerX - targetWidth / 2f,
+                centerY - targetHeight / 2f,
+                centerX + targetWidth / 2f,
+                centerY + targetHeight / 2f,
+            )
+            clampRect()
+            saveRect()
+            invalidate()
+        }
+
         private fun clampRect() {
             val minW = 100f * density
             val minH = 48f * density
@@ -1223,6 +1272,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val KEY_CAPTURE_X_RATIO = "capture_x_ratio"
         private const val KEY_CAPTURE_Y_RATIO = "capture_y_ratio"
         private const val KEY_OCR_MODE = "ocr_mode"
+        private const val KEY_WIDE_SCAN_SHAPE = "wide_scan_shape"
+        const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_SCAN_OVERLAY"
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
     }
 }
