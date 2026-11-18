@@ -1270,8 +1270,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val centerX = if (rect.isEmpty) width / 2f else rect.centerX()
             val centerY = if (rect.isEmpty) height / 2f else rect.centerY()
             if (square) {
-                // 切到正方形前先单独保存用户自定义的长方形，切回时完整恢复。
-                saveCustomRect()
+                // 只有用户从长方形主动切到正方形时才保存当前框；
+                // 窗口重建时 rect 先读到的是上次显示的正方形，不能覆盖已保存的长方形。
+                if (!force) saveCustomRect()
                 val side = minOf(width * 0.68f, height * 0.68f)
                 rect.set(centerX - side / 2f, centerY - side / 2f,
                     centerX + side / 2f, centerY + side / 2f)
