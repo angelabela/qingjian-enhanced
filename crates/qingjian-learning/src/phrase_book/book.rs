@@ -292,6 +292,44 @@ mod tests {
     }
 
     #[test]
+    fn manual_phrase_replaces_oldest_auto_memory_at_capacity() {
+        let mut book = PhraseBook::default();
+        book.phrases = (0..MAX_PHRASES - 1)
+            .map(|i| Phrase { text: format!("手动{i}"), group: "工作".to_owned(), code: String::new() })
+            .collect();
+        book.phrases.push(Phrase {
+            text: "最旧自动记忆".to_owned(),
+            group: AUTO_MEMORY_GROUP.to_owned(),
+            code: String::new(),
+        });
+        assert_eq!(book.total_count(), MAX_PHRASES);
+        assert_eq!(book.manual_count(), MAX_PHRASES - 1);
+        assert!(!book.is_full());
+        assert!(book.add("新手动短语", "工作", "").unwrap());
+        assert_eq!(book.total_count(), MAX_PHRASES);
+        assert_eq!(book.manual_count(), MAX_PHRASES);
+        assert_eq!(book.automatic_count(), 0);
+        assert_eq!(book.phrases[0].text, "新手动短语");
+    }
+
+    #[test]
+    fn manual_capacity_limit_counts_only_manual_entries() {
+        let mut book = PhraseBook::default();
+        book.phrases = (0..MAX_PHRASES)
+            .map(|i| Phrase { text: format!("手动{i}"), group: "工作".to_owned(), code: String::new() })
+            .collect();
+        book.phrases.push(Phrase {
+            text: "自动记忆".to_owned(),
+            group: AUTO_MEMORY_GROUP.to_owned(),
+            code: String::new(),
+        });
+        assert!(book.is_full());
+        assert!(!book.add("再加一条", "工作", "").unwrap());
+        assert_eq!(book.manual_count(), MAX_PHRASES);
+        assert_eq!(book.automatic_count(), 1);
+    }
+
+    #[test]
     fn open_creates_a_missing_user_directory_before_first_save() {
         let dir = std::env::temp_dir()
             .join(format!("qj-phrases-missing-dir-{}", std::process::id()))
