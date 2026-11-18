@@ -101,6 +101,12 @@ class FunctionPanel(
 
     private val card = RectF()
     private val knob = RectF()
+    // 两个动效选择页共用竖向惯性滚动，内容始终裁切在面板卡片内部。
+    private val effectScroll = scrollable(false) { x, y ->
+        (voiceEffectPage || backgroundEffectPage) &&
+            x >= card.left && x <= card.right &&
+            y >= card.top + ink.dp(38f) && y <= card.bottom - ink.dp(6f)
+    }
 
     private val columns = 5
 
@@ -128,17 +134,24 @@ class FunctionPanel(
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(34f)
-        val rowHeight = (card.height() - ink.dp(44f)) / rows
+        val viewportBottom = card.bottom - ink.dp(8f)
+        val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
+        val rowStep = ink.dp(64f)
+        val itemHeight = ink.dp(56f)
+        effectScroll.max = (rows * rowStep - viewportHeight).coerceAtLeast(0f)
         val gapX = ink.dp(7f)
-        val gapY = ink.dp(5f)
         val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
 
+        canvas.save()
+        canvas.clipRect(card.left, rowTop, card.right, viewportBottom)
+        canvas.translate(0f, -effectScroll.offset)
         labels.forEachIndexed { index, label ->
             val column = index % 2
             val row = index / 2
             val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
-            val y = rowTop + row * rowHeight
-            val bounds = RectF(left, y + gapY / 2f, left + cardWidth, y + rowHeight - gapY / 2f)
+            val y = rowTop + row * rowStep
+            val bounds = RectF(left, y + (rowStep - itemHeight) / 2f,
+                left + cardWidth, y + (rowStep + itemHeight) / 2f)
             val selected = (if (selectedVoiceStyle == -1) 8 else selectedVoiceStyle) == index
 
             ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
@@ -157,9 +170,10 @@ class FunctionPanel(
                 canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
             }
         }
+        canvas.restore()
     }
 
-    /** 背景动效样式选择；与语音动效选择页采用相同的卡片交互。 */
+    /** 背景动效样式选择；内容超过可视区时在卡片内部滚动，不再挤出面板。 */
     private fun drawBackgroundEffectSettings(canvas: Canvas) {
         val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾", "魔幻粒子", "星云裂隙")
         val colors = listOf(
@@ -175,16 +189,25 @@ class FunctionPanel(
         ink.textStart(canvas, "选择一种持续流动的背景色彩", 11f, palette.gloss,
             card.left + ink.dp(16f), top + ink.dp(14f), card.right - ink.dp(12f))
         val gapX = ink.dp(8f)
-        val gapY = ink.dp(8f)
-        val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+        val rowStep = ink.dp(74f)
+        val itemHeight = ink.dp(64f)
         val rows = (labels.size + 1) / 2
-        val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / rows)
+        val rowTop = top + ink.dp(26f)
+        val viewportBottom = card.bottom - ink.dp(8f)
+        val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
+        effectScroll.max = (rows * rowStep - viewportHeight).coerceAtLeast(0f)
+        val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+
+        canvas.save()
+        canvas.clipRect(card.left, rowTop, card.right, viewportBottom)
+        canvas.translate(0f, -effectScroll.offset)
         labels.forEachIndexed { index, label ->
             val column = index % 2
             val row = index / 2
             val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
-            val topY = top + ink.dp(26f) + row * (cardHeight + gapY)
-            val bounds = RectF(left, topY, left + cardWidth, topY + cardHeight)
+            val topY = rowTop + row * rowStep
+            val bounds = RectF(left, topY + (rowStep - itemHeight) / 2f,
+                left + cardWidth, topY + (rowStep + itemHeight) / 2f)
             val selected = selectedBackgroundStyle == index
             ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
             ink.fill.style = android.graphics.Paint.Style.STROKE
@@ -205,6 +228,7 @@ class FunctionPanel(
                 canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
             }
         }
+        canvas.restore()
     }
 
     /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
@@ -334,18 +358,16 @@ class FunctionPanel(
 
             !card.contains(x, y) -> Unit
             tabs.selected == 0 && backgroundEffectPage -> {
-                val top = card.top + ink.dp(10f)
+                val rowTop = card.top + ink.dp(10f + 26f)
+                val rowStep = ink.dp(74f)
+                val viewportBottom = card.bottom - ink.dp(8f)
                 val gapX = ink.dp(8f)
-                val gapY = ink.dp(8f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-                val rows = 4
-                val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / rows)
-                val rowTop = top + ink.dp(26f)
-                if (y >= rowTop) {
+                if (y in rowTop..viewportBottom) {
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
-                    val row = ((y - rowTop) / (cardHeight + gapY)).toInt()
+                    val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
-                    if (row in 0..3 && index in 0..6) {
+                    if (row in 0 until 4 && index in 0..6) {
                         selectedBackgroundStyle = index
                         actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
                         invalidate()
@@ -353,17 +375,16 @@ class FunctionPanel(
                 }
             }
             tabs.selected == 0 && voiceEffectPage -> {
-                val top = card.top + ink.dp(8f)
-                val rows = (VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2
-                val rowTop = top + ink.dp(34f)
-                val rowHeight = (card.height() - ink.dp(44f)) / rows
-                if (y >= rowTop) {
-                    val gapX = ink.dp(7f)
-                    val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+                val rowTop = card.top + ink.dp(8f + 34f)
+                val rowStep = ink.dp(64f)
+                val viewportBottom = card.bottom - ink.dp(8f)
+                val gapX = ink.dp(7f)
+                val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+                if (y in rowTop..viewportBottom) {
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
-                    val row = ((y - rowTop) / rowHeight).toInt()
+                    val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
-                    if (row in 0 until rows && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
+                    if (row in 0 until 5 && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
                         selectedVoiceStyle = if (index == 8) -1 else index
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
