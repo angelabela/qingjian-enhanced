@@ -169,8 +169,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // 首选候选采用轻量 Liquid Glass：主题色染色、顶部镜面高光、暗边和内层柔光。
         // 只绘制在首个候选格下方，文字仍由原渲染位图绘制，保证字色与主题候选文字完全一致。
         image.wordRect(0)?.let { original ->
-            val rect = RectF(original).apply { offset(-scrollX.toFloat(), 0f) }
-            if (rect.right > 0f && rect.left < viewWidth) {
+            val rect = RectF(original)
+            if (rect.right > scrollX && rect.left < scrollX + viewWidth) {
                 val radius = 10f * density
                 val tint = glassTint
                 val tintAlpha = if (transparentBackground) 0x52 else 0x38
