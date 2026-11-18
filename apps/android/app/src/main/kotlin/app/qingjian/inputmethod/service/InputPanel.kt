@@ -60,6 +60,7 @@ private class FlowingKeyboardBackgroundDrawable(
     private val style: Int,
 ) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val motionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val frost = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x18FFFFFF }
     private val matrix = Matrix()
     private var shader: LinearGradient? = null
@@ -98,17 +99,17 @@ private class FlowingKeyboardBackgroundDrawable(
         val bounds = bounds
         val activeShader = shader ?: return
         if (bounds.isEmpty || bounds.width() != shaderWidth || bounds.height() != shaderHeight) return
-        // 多个互不整除的长周期波叠加：位置与速度连续，不会在短周期边界跳回，
-        // 组合图案要经过很长时间才会近似重现，降低明显的循环播放感。
+        // 多个不同周期叠加，连续运动；比上一版明显加快，同时避免短周期机械回跳。
         val now = SystemClock.uptimeMillis()
         fun phase(period: Long, shift: Double = 0.0): Double =
             (now % period).toDouble() / period.toDouble() * (Math.PI * 2.0) + shift
-        val driftX = kotlin.math.sin(phase(BACKGROUND_CYCLE_MS)) * 0.60 +
-            kotlin.math.sin(phase(233_000L, 1.7)) * 0.23 +
-            kotlin.math.sin(phase(97_000L, 0.4)) * 0.09
-        val driftY = kotlin.math.sin(phase(191_000L, 2.1)) * 0.11
-        val offsetX = (driftX * shaderWidth).toFloat()
-        val offsetY = (driftY * shaderHeight).toFloat()
+        val p = phase(BACKGROUND_CYCLE_MS)
+        val driftX = kotlin.math.sin(p) * 0.66 +
+            kotlin.math.sin(phase(117_000L, 1.7)) * 0.23 +
+            kotlin.math.sin(phase(49_000L, 0.4)) * 0.09
+        val driftY = kotlin.math.sin(phase(96_000L, 2.1)) * 0.16
+        val offsetX = (driftX * shaderWidth * 1.18).toFloat()
+        val offsetY = (driftY * shaderHeight * 1.18).toFloat()
         matrix.setTranslate(offsetX, offsetY)
         activeShader.setLocalMatrix(matrix)
         paint.shader = activeShader
@@ -117,6 +118,105 @@ private class FlowingKeyboardBackgroundDrawable(
         canvas.drawRect(bounds, paint)
         paint.shader = null
         canvas.drawRect(bounds, frost)
+
+        // 第1套保留原有极光流彩；其余三套使用不同的运动构图，而非只替换色板。
+        val w = bounds.width().toFloat()
+        val h = bounds.height().toFloat()
+        val t = now / 1000.0
+        motionPaint.style = Paint.Style.STROKE
+        when (style.coerceIn(0, 4)) {
+            1 -> { // 深海蓝潮：三层错相海浪横向推进
+                for (layer in 0 until 4) {
+                    val path = Path()
+                    val baseY = h * (0.40f + layer * 0.16f)
+                    for (step in 0..48) {
+                        val x = w * step / 48f
+                        val wave = kotlin.math.sin(x / w * Math.PI * 3.2 + t * (0.72 + layer * 0.09) + layer).toFloat()
+                        val swell = kotlin.math.sin(x / w * Math.PI * 1.15 - t * 0.38 + layer * 0.8).toFloat()
+                        val y = baseY + wave * h * 0.045f + swell * h * 0.025f
+                        if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    motionPaint.color = when (layer % 2) { 0 -> 0x6654E7F2; 1 -> 0x5540A8FF; else -> 0x4478F4D8 }
+                    motionPaint.strokeWidth = (2.5f + layer * 1.1f) * (h / 240f).coerceAtLeast(0.7f)
+                    canvas.drawPath(path, motionPaint)
+                }
+            }
+            2 -> { // 日落熔金：缓慢升降的太阳圆盘与地平线光环
+                val sunX = w * (0.70f + kotlin.math.sin(t * 0.19).toFloat() * 0.08f)
+                val sunY = h * (0.43f + kotlin.math.sin(t * 0.23).toFloat() * 0.055f)
+                motionPaint.style = Paint.Style.FILL
+                motionPaint.color = 0x44FFD16A
+                canvas.drawCircle(sunX, sunY, h * 0.27f, motionPaint)
+                motionPaint.color = 0x66FFB45E
+                canvas.drawCircle(sunX, sunY, h * 0.17f, motionPaint)
+                motionPaint.color = 0x99FFE0A0.toInt()
+                canvas.drawCircle(sunX, sunY, h * 0.105f, motionPaint)
+                motionPaint.style = Paint.Style.STROKE
+                for (ring in 0..2) {
+                    motionPaint.color = (0x36 + ring * 0x0A shl 24) or 0x00FFB86B
+                    motionPaint.strokeWidth = 1.5f * (ring + 1)
+                    canvas.drawCircle(sunX, sunY, h * (0.21f + ring * 0.075f), motionPaint)
+                }
+                motionPaint.style = Paint.Style.FILL
+                motionPaint.color = 0x30FF8C58
+                canvas.drawRect(0f, h * 0.72f, w, h, motionPaint)
+            }
+            3 -> { // 翡翠幻境：偏心旋转的叶片/涡旋轨迹，带呼吸式扩张
+                val cx = w * 0.52f
+                val cy = h * 0.52f
+                for (arm in 0 until 5) {
+                    val path = Path()
+                    for (step in 0..90) {
+                        val u = step / 90f
+                        val angle = u * (Math.PI * 2.6) + t * 0.52 + arm * (Math.PI * 2.0 / 5.0)
+                        val radius = h * (0.035 + u * 0.34 + kotlin.math.sin(t * 0.31 + arm).let { it * 0.018 })
+                        val x = cx + kotlin.math.cos(angle).toFloat() * radius * 1.45f
+                        val y = cy + kotlin.math.sin(angle).toFloat() * radius * 0.72f
+                        if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    motionPaint.color = if (arm % 2 == 0) 0x6659E5B5 else 0x555CBF91
+                    motionPaint.strokeWidth = (2.2f + arm * 0.45f) * (h / 240f).coerceAtLeast(0.7f)
+                    motionPaint.style = Paint.Style.STROKE
+                    canvas.drawPath(path, motionPaint)
+                }
+                motionPaint.style = Paint.Style.FILL
+                motionPaint.color = 0x448FFFD0
+                canvas.drawCircle(cx, cy, h * (0.045f + 0.012f * kotlin.math.sin(t * 0.8).toFloat()), motionPaint)
+            }
+            4 -> { // 冰晶星雾：多组缓慢漂移的六角晶体与闪烁星点
+                for (crystal in 0 until 9) {
+                    val seed = crystal * 2.399
+                    val cx = (w * (0.08 + ((crystal * 37) % 83) / 100.0) +
+                        kotlin.math.sin(t * 0.16 + seed) * w * 0.025).toFloat()
+                    val cy = (h * (0.12 + ((crystal * 29) % 76) / 100.0) +
+                        kotlin.math.cos(t * 0.13 + seed) * h * 0.035).toFloat()
+                    val radius = h * (0.025f + (crystal % 3) * 0.012f)
+                    motionPaint.color = 0x779DDCFF
+                    motionPaint.strokeWidth = 1.2f
+                    motionPaint.style = Paint.Style.STROKE
+                    val points = ArrayList<Pair<Float, Float>>(6)
+                    for (side in 0 until 6) {
+                        val a = side * Math.PI / 3.0 + t * 0.12 * if (crystal % 2 == 0) 1 else -1
+                        points.add(cx + kotlin.math.cos(a).toFloat() * radius, cy + kotlin.math.sin(a).toFloat() * radius)
+                    }
+                    val crystalPath = Path()
+                    points.forEachIndexed { index, point ->
+                        if (index == 0) crystalPath.moveTo(point.first, point.second)
+                        else crystalPath.lineTo(point.first, point.second)
+                    }
+                    crystalPath.close()
+                    canvas.drawPath(crystalPath, motionPaint)
+                    for (side in 0 until 3) {
+                        canvas.drawLine(cx, cy, points[side].first, points[side].second, motionPaint)
+                    }
+                    val twinkle = (0.5 + 0.5 * kotlin.math.sin(t * 1.2 + seed)).toFloat()
+                    motionPaint.style = Paint.Style.FILL
+                    motionPaint.color = (0x55 + (twinkle * 0x66).toInt() shl 24) or 0x00E7F7FF
+                    canvas.drawCircle(cx, cy, radius * (0.12f + twinkle * 0.12f), motionPaint)
+                }
+            }
+        }
+        motionPaint.style = Paint.Style.FILL
     }
 
     override fun setAlpha(alpha: Int) { paint.alpha = alpha }
@@ -126,7 +226,7 @@ private class FlowingKeyboardBackgroundDrawable(
 
     private companion object {
         const val FRAME_DELAY_MS = 33L
-        const val BACKGROUND_CYCLE_MS = 150_000L
+        const val BACKGROUND_CYCLE_MS = 75_000L
 
         private fun colorsForStyle(style: Int): IntArray {
             val colors = when (style.coerceIn(0, 4)) {
