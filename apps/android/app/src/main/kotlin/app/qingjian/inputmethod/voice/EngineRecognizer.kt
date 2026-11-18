@@ -6,6 +6,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.NoiseSuppressor
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import app.qingjian.inputmethod.core.Engine
 import kotlin.concurrent.thread
@@ -21,7 +22,11 @@ import kotlin.math.sqrt
  */
 class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     private val main = Handler(Looper.getMainLooper())
-    private var listener: VoiceRecognizer.Listener? = null
+    // JNI 语音引擎的 feed / finish / poll 统一串行放到工作线程，避免 100ms 轮询阻塞输入法主线程。
+    private val engineThread = HandlerThread("qingjian-voice-engine").apply { start() }
+    private val engineHandler = Handler(engineThread.looper)
+    @Volatile private var listener: VoiceRecognizer.Listener? = null
+    @Volatile private var callbackGeneration = 0L
 
     /** 每个频带独立估计环境底噪；语音峰值只慢速抬高估计，低能量段较快回落。 */
     private val noiseFloorDb = DoubleArray(SPECTRUM_BANDS) { -58.0 }
@@ -49,12 +54,25 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
     override fun start(listener: VoiceRecognizer.Listener) {
         this.listener = listener
         pcmNoiseSuppressor.reset()
-        engine.voiceStart(SAMPLE_RATE)
         val currentSession = synchronized(feedLock) {
             sessionId += 1
+            callbackGeneration += 1
             cancelled = false
             recording = true
             sessionId
+        }
+        val currentCallbackGeneration = callbackGeneration
+        engineHandler.post {
+            if (sessionId == currentSession && !cancelled) {
+                runCatching { engine.voiceStart(SAMPLE_RATE) }
+                    .onFailure {
+                        main.post {
+                            if (sessionId == currentSession && callbackGeneration == currentCallbackGeneration) {
+                                fail("语音引擎启动失败，请重新尝试")
+                            }
+                        }
+                    }
+            }
         }
         thread(name = "qingjian-voice-record") {
             val size = maxOf(AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING), CHUNK * 2)
@@ -110,10 +128,21 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                     // 与 finish() 共用锁：先获得锁的音频块先入主线程队列；
                     // finish() 获锁后会关闭采集，之后返回的 read 不再排到 Finish 之后。
                     if (!recording || sessionId != currentSession || cancelled) return@synchronized
-                    main.post {
+                    engineHandler.post {
                         if (sessionId != currentSession || cancelled) return@post
-                        engine.voiceFeed(chunk)
-                        this.listener?.onSpectrum(spectrum)
+                        runCatching { engine.voiceFeed(chunk) }
+                            .onFailure {
+                                main.post {
+                                    if (sessionId == currentSession && callbackGeneration == currentCallbackGeneration) {
+                                        fail("语音音频处理失败，请重新尝试")
+                                    }
+                                }
+                            }
+                        main.post {
+                            if (sessionId == currentSession && callbackGeneration == currentCallbackGeneration) {
+                                this.listener?.onSpectrum(spectrum)
+                            }
+                        }
                     }
                 }
             }
@@ -121,7 +150,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
             runCatching { platformNoiseSuppressor?.release() }
             record.release()
         }
-        main.postDelayed(poll, POLL_MS)
+        engineHandler.postDelayed(poll, POLL_MS)
     }
 
     override fun finish() {
@@ -132,8 +161,11 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
             sessionId
         }
         // 所有已接收的音频块都已先入队；finish 之后完成的 read 会被丢弃。
-        main.post {
-            if (sessionId == currentSession && !cancelled) engine.voiceFinish()
+        engineHandler.post {
+            if (sessionId == currentSession && !cancelled) {
+                runCatching { engine.voiceFinish() }
+                    .onFailure { main.post { fail("语音识别结束处理失败，请重试") } }
+            }
         }
     }
 
@@ -143,44 +175,64 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
             sessionId += 1
             recording = false
         }
-        engine.voiceCancel()
+        callbackGeneration += 1
+        engineHandler.post { runCatching { engine.voiceCancel() } }
         stop()
     }
 
     private val poll: Runnable = Runnable {
-        val listener = listener ?: return@Runnable
-        engine.pollVoice()?.let { (kind, text) ->
+        val activeListener = listener ?: return@Runnable
+        val activeSession = sessionId
+        val activeGeneration = callbackGeneration
+        val event = runCatching { engine.pollVoice() }.getOrElse {
+            main.post {
+                if (callbackGeneration == activeGeneration) fail("语音识别处理异常，请重新尝试")
+            }
+            null
+        }
+        event?.let { (kind, text) ->
             when (kind) {
-                "partial" -> listener.onPartial(text)
+                "partial" -> main.post {
+                    if (sessionId == activeSession && callbackGeneration == activeGeneration && !cancelled) {
+                        activeListener.onPartial(text)
+                    }
+                }
                 "final" -> {
                     stop()
-                    listener.onFinal(text)
+                    main.post {
+                        if (callbackGeneration == activeGeneration) activeListener.onFinal(text)
+                    }
                 }
                 else -> {
                     stop()
-                    listener.onError(text)
+                    main.post {
+                        if (callbackGeneration == activeGeneration) activeListener.onError(text)
+                    }
                 }
             }
         }
-        if (this.listener != null) main.postDelayed(poll, POLL_MS)
+        if (this.listener != null && sessionId == activeSession && callbackGeneration == activeGeneration) {
+            engineHandler.postDelayed(poll, POLL_MS)
+        }
     }
 
     private fun fail(message: String) {
-        val listener = listener ?: return
-        engine.voiceCancel()
+        val activeListener = listener ?: return
+        engineHandler.post { runCatching { engine.voiceCancel() } }
         stop()
-        listener.onError(message)
+        activeListener.onError(message)
     }
 
-    /** 收尾：录音线程跟着停（出错、服务端先结束时也得停，不然麦克风一直开着）。 */
+    /** 收尾：录音线程跟着停，轮询不再占用输入法主线程。 */
     private fun stop() {
         synchronized(feedLock) {
             recording = false
             cancelled = true
             sessionId += 1
         }
-        main.removeCallbacks(poll)
+        engineHandler.removeCallbacks(poll)
         listener = null
+        engineHandler.post { engineThread.quitSafely() }
     }
 
     /**

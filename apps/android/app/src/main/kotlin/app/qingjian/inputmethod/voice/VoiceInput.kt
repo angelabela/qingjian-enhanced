@@ -207,28 +207,43 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         panel = completedPanel
         val original = VoiceTextNormalizer.normalize(text)
         if (original.isBlank()) {
-            host.composeVoice("")
+            android.util.Log.w("QingjianVoice", "Recognizer returned an empty final result; closing the completed voice session")
+            runCatching { host.composeVoice("") }
+            end()
             return
         }
 
         // 先立即提交 ASR 原文，避免用户等待整段云端校正；校正随后尝试原位修订同一条撤销记录。
         // 若用户已移动光标、继续输入或切换输入框，宿主会因上下文不匹配而安全放弃修订。
         pendingCorrection = false
-        host.commitVoice(original)
-        if (then == After.ACTION) host.performVoiceAction()
-        if (then == After.HIDE) host.hideKeyboard()
+        try {
+            host.commitVoice(original)
+            if (then == After.ACTION) host.performVoiceAction()
+            if (then == After.HIDE) host.hideKeyboard()
+        } catch (error: Throwable) {
+            android.util.Log.e("QingjianVoice", "Failed to commit final voice result", error)
+            runCatching { host.composeVoice("") }
+            end()
+            host.toast("语音结果提交失败，请重试")
+            return
+        }
 
-        host.correctVoiceText(original) { result ->
-            if (generation != requestGeneration) return@correctVoiceText
-            val corrected = result.getOrNull()
-                ?.let(VoiceTextNormalizer::normalize)
-                ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
-                ?: original
-            if (result.isFailure) {
-                android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; keeping immediate ASR text")
-            } else if (corrected != original) {
-                host.refineCommittedVoice(original, corrected)
+        runCatching {
+            host.correctVoiceText(original) { result ->
+                if (generation != requestGeneration) return@correctVoiceText
+                val corrected = result.getOrNull()
+                    ?.let(VoiceTextNormalizer::normalize)
+                    ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
+                    ?: original
+                if (result.isFailure) {
+                    android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; keeping immediate ASR text")
+                } else if (corrected != original) {
+                    runCatching { host.refineCommittedVoice(original, corrected) }
+                        .onFailure { android.util.Log.w("QingjianVoice", "Unable to apply corrected voice text", it) }
+                }
             }
+        }.onFailure {
+            android.util.Log.w("QingjianVoice", "Unable to start cloud voice correction; keeping ASR text", it)
         }
         // 识别结束后保留面板，让用户能立即撤销/重做刚提交的整段语音。
         panel?.listening = false

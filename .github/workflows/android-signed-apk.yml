@@ -28,6 +28,7 @@ on:
       - fix/workflow-97-phrase-storage-diagnostics-round-voice-buttons
       - fix/workflow-98-phrase-save-voice-layout-user-frequency
       - fix/voice-swipe-phrases-dual-frequency
+      - fix/workflow-145-scan-lifecycle-keyboard-flow-voice-freeze
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'

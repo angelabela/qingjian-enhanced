@@ -418,9 +418,13 @@ class QingjianInputMethodService :
             ScanPreferences.isPrefixEditorActive()
         if (!editingOwnScanPrefix && previousEditorPackage != null &&
             previousEditorPackage != nextEditorPackage && ScanPreferences.isFloating(this)) {
-            // 前缀输入框短暂使用本应用窗口接收文字，不代表宿主已切换；真正切换宿主时才关闭扫码窗。
-            android.util.Log.w("QingjianScanDiag", "STOP_REQUEST reason=editor_package_changed previous=$previousEditorPackage next=$nextEditorPackage")
-            stopService(Intent(this, ScanOverlayService::class.java))
+            // 悬浮扫码窗独立于输入法焦点生命周期。扫码结果写入剪贴板时，
+            // HyperCopy 等剪贴板应用可能短暂接管输入目标；此时不能停止扫码服务。
+            // 用户关闭按钮 / 显式 ACTION_STOP 才负责结束悬浮扫码。
+            android.util.Log.i(
+                "QingjianScanDiag",
+                "KEEP_OVERLAY reason=editor_package_changed previous=$previousEditorPackage next=$nextEditorPackage",
+            )
         }
         // 前缀编辑期间保留原宿主包名，编辑结束回到宿主时不会误触发关闭扫码窗。
         if (!editingOwnScanPrefix) lastInputEditorPackage = nextEditorPackage

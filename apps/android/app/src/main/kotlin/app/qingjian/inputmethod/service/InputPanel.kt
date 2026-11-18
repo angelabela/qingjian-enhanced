@@ -5,6 +5,14 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Matrix
+import android.graphics.Shader
+import android.graphics.LinearGradient
+import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
@@ -41,6 +49,79 @@ import app.qingjian.inputmethod.panel.editor.FloatingEditor
 import app.qingjian.inputmethod.settings.BottomAction
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
+
+/**
+ * 覆盖整块输入法窗口的流动光影背景。键盘、候选工具栏和底部操作条共用同一层，
+ * 避免只在 KeyboardView 自己的画布里绘制而导致上下两排仍露出纯主题色。
+ */
+private class FlowingKeyboardBackgroundDrawable(
+    private val palette: Palette,
+) : Drawable() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val frost = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x18FFFFFF }
+    private val matrix = Matrix()
+    private var shader: LinearGradient? = null
+    private var shaderWidth = 0
+    private var shaderHeight = 0
+    private val handler = Handler(Looper.getMainLooper())
+    private val frame = Runnable {
+        invalidateSelf()
+        scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+    }
+
+    override fun onBoundsChange(bounds: android.graphics.Rect) {
+        super.onBoundsChange(bounds)
+        val w = bounds.width()
+        val h = bounds.height()
+        if (w <= 0 || h <= 0) {
+            shader = null
+            return
+        }
+        shaderWidth = w
+        shaderHeight = h
+        shader = LinearGradient(
+            -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
+            intArrayOf(
+                (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
+                (palette.brand and 0x00FFFFFF) or 0x55000000,
+                (palette.accent and 0x00FFFFFF) or 0x66000000,
+                (palette.cloud and 0x00FFFFFF) or 0x44000000,
+                (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
+            ),
+            null,
+            Shader.TileMode.MIRROR,
+        )
+        unscheduleSelf(frame)
+        scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+    }
+
+    override fun draw(canvas: Canvas) {
+        val bounds = bounds
+        val activeShader = shader ?: return
+        if (bounds.isEmpty || bounds.width() != shaderWidth || bounds.height() != shaderHeight) return
+        val period = (shaderWidth * 2L).coerceAtLeast(1L)
+        val offset = (SystemClock.uptimeMillis() % period).toFloat() - shaderWidth
+        matrix.setTranslate(offset, 0f)
+        activeShader.setLocalMatrix(matrix)
+        paint.shader = activeShader
+        paint.alpha = 210
+        canvas.drawRect(bounds, paint)
+        paint.shader = null
+        canvas.drawRect(bounds, frost)
+        if (!handler.hasCallbacks(frame)) {
+            scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        }
+    }
+
+    override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+
+    private companion object {
+        const val FRAME_DELAY_MS = 40L
+    }
+}
 
 /**
  * 输入法的整块视图：候选条 + 键盘，全面屏适配开着且角上放了键时底下再接一条操作条，否则只让出导航栏的高度（游戏键盘里两样都不要）。
@@ -114,7 +195,11 @@ class InputPanel(
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
+        background = if (settings.keyboardBackgroundEffect) {
+            FlowingKeyboardBackgroundDrawable(palette)
+        } else {
+            android.graphics.drawable.ColorDrawable(palette.board)
+        }
         clipChildren = false
         clipToPadding = false
         // Tips 行本身透明且高度固定；Tips 内容在这一行水平居中，不贴靠右侧。
