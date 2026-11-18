@@ -59,6 +59,8 @@ impl Engine {
         };
         query.aux = self.aux_segment();
         query.held = self.held_text();
+        // 永久屏蔽在候选进入重排、联想和展示前统一过滤，避免从个人词频再次冒出。
+        query.candidates.items.retain(|candidate| !self.learner.is_banned(&candidate.text));
         self.apply_demotions(&mut query.candidates.items);
         // 辅码态只出命中码的词：自定义短语没有码，不出
         if self.aux_filter().is_none() {
