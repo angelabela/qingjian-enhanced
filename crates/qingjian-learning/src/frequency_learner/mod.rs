@@ -353,6 +353,7 @@ impl FrequencyLearner {
         }
         self.dirty |= pruned_unigrams;
         self.bigrams_dirty |= pruned_bigrams;
+        self.ngram_dirty |= pruned_bigrams;
     }
 
     /// 刷新缓存的「今天」。写路径开头调；读路径（`weight` 等，一键要查几万次）用缓存值，不查时钟。
