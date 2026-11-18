@@ -1121,7 +1121,7 @@ class QingjianInputMethodService :
             Normalizer.normalize(raw, Normalizer.Form.NFD)
                 .filter { it in 'a'..'z' }
                 .takeIf(String::isNotEmpty)
-        }
+        }.toList()
 
     /**
      * 生成逐步展开的简拼：首字母码 + 前缀音节逐个展开的混合码。
