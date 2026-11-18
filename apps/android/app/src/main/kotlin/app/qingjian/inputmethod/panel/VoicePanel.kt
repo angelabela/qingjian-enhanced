@@ -98,7 +98,7 @@ class VoicePanel(
         isFocusable = true
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
         blurredKeyboard?.let(backdrop::setImageBitmap)
-        // 降低模糊半径，保留更多键盘细节；背景遮罩稍加深，减弱过透的感觉。
+        // 降低模糊半径，保留更多键盘细节；轻微降低遮罩不透明度，让底层键盘更通透。
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
             val radius = 12f * resources.displayMetrics.density
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
@@ -110,10 +110,10 @@ class VoicePanel(
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                themedAlpha(palette.surface, 0x55),
-                themedAlpha(palette.board, 0x55),
-                themedAlpha(palette.surface, 0x66),
-                themedAlpha(palette.board, 0x33),
+                themedAlpha(palette.surface, 0x4C),
+                themedAlpha(palette.board, 0x4C),
+                themedAlpha(palette.surface, 0x5C),
+                themedAlpha(palette.board, 0x2C),
             ),
         ).apply {
             cornerRadius = glassRadius
