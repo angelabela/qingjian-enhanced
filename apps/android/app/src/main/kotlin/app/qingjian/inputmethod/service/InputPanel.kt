@@ -114,7 +114,7 @@ class InputPanel(
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(palette.board)
+        setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
         clipChildren = false
         clipToPadding = false
         // Tips 行本身透明且高度固定；Tips 内容在这一行水平居中，不贴靠右侧。
@@ -133,7 +133,7 @@ class InputPanel(
         // 两个角都不放键时不要那条操作条，只让出导航栏，不留一截空白（#889）
         val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
         if (settings.fullscreenAdapt && corners) {
-            addView(BottomActionsView(context, palette, inset, settings.bottomLeft, settings.bottomRight, onBottomAction))
+            addView(BottomActionsView(context, palette, inset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect))
         } else {
             setPadding(0, 0, 0, inset)
         }
