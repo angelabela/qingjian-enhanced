@@ -165,7 +165,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val image = image
         if (image == null) {
             drawFallback(canvas, scrollX, viewWidth)
-            applyLeftFade(canvas, scrollX, viewWidth)
+            applyLeftFade(canvas, scrollX, viewWidth, if (preedit.isNotEmpty()) barHeight * 0.42f else 0f)
             canvas.restoreToCount(layer)
             return
         }
@@ -219,19 +219,19 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val cy = word.top + shift + size * 0.85f
             PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx, cy, size, markPaint)
         }
-        applyLeftFade(canvas, scrollX, viewWidth)
+        applyLeftFade(canvas, scrollX, viewWidth, (top + shift).toFloat())
         canvas.restoreToCount(layer)
     }
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
-    private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int) {
+    private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
         val fadeWidth = minOf(28f * density, viewWidth.toFloat()).coerceAtLeast(1f)
         leftFadePaint.shader = android.graphics.LinearGradient(
             scrollX.toFloat(), 0f, scrollX + fadeWidth, 0f,
             intArrayOf(0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt()),
             floatArrayOf(0f, 1f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, leftFadePaint)
+        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + viewWidth).toFloat(), barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 
