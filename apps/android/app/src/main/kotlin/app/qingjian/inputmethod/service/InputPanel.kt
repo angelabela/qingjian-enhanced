@@ -24,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import app.qingjian.inputmethod.candidates.CandidateBarView
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
@@ -330,7 +331,10 @@ class InputPanel(
 ) {
     // 游戏键盘一律深色：浮在游戏画面上，浅色太扎眼
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
-    private val videoBackgroundEnabled = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)
+    private val dynamicBackgroundPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+    private val videoBackgroundEnabled = dynamicBackgroundPrefs.getBoolean("video_enabled", false)
+    private val videoBackgroundUri = if (videoBackgroundEnabled) dynamicBackgroundPrefs.getString("video_uri", null) else null
+    private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
 
     val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, settings.keyboardBackgroundEffect || videoBackgroundEnabled).apply {
         setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
@@ -372,7 +376,7 @@ class InputPanel(
         addView(keyboard)
     }
 
-    private val stack = Stack(context, main).apply {
+    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha).apply {
         clipChildren = false
         clipToPadding = false
     }
@@ -609,10 +613,14 @@ class InputPanel(
         }
     }
 
-    private class Stack(context: Context, private val main: View) : FrameLayout(context) {
+    private class Stack(context: Context, private val main: View, videoUri: String?, videoAlpha: Float) : FrameLayout(context) {
+        private val videoBackground = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha) }
+
         init {
+            videoBackground?.let {
+                addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
+            }
             // The keyboard content must be a child of the overlay container.
-            // Without this, Stack measures an unattached view and displays an empty IME window.
             addView(main, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -628,6 +636,10 @@ class InputPanel(
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
+                if (child is DynamicVideoBackgroundView) {
+                    child.measure(widthMeasureSpec, height)
+                    continue
+                }
                 if (child is CloudSuggestionsView) {
                     // 悬浮 Tips 自己测量高度，不参与候选栏/键盘的垂直排版。
                     measureChild(child, widthMeasureSpec, heightMeasureSpec)

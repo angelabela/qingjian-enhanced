@@ -162,10 +162,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int) {
         val layer = canvas.saveLayer(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, null)
+        val leftInset = viewWidth * 0.05f
+        canvas.translate(leftInset, 0f)
+        val contentViewWidth = (viewWidth - leftInset).toInt().coerceAtLeast(1)
         val image = image
         if (image == null) {
-            drawFallback(canvas, scrollX, viewWidth)
-            applyLeftFade(canvas, scrollX, viewWidth, if (preedit.isNotEmpty()) barHeight * 0.42f else 0f)
+            drawFallback(canvas, scrollX, contentViewWidth)
+            applyLeftFade(canvas, scrollX, contentViewWidth, if (preedit.isNotEmpty()) barHeight * 0.42f else 0f)
             canvas.restoreToCount(layer)
             return
         }
@@ -177,7 +180,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
         // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
         val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
-        val right = minOf(scrollX + viewWidth, bitmap.width)
+        val right = minOf(scrollX + contentViewWidth, bitmap.width)
         if (right > scrollX && top < bitmap.height) {
             src.set(scrollX, top, right, bitmap.height)
             dst.set(src)
@@ -185,7 +188,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             canvas.drawBitmap(bitmap, src, dst, null)
         }
         if (top > 0) {
-            src.set(0, 0, minOf(viewWidth, bitmap.width), top)
+            src.set(0, 0, minOf(contentViewWidth, bitmap.width), top)
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
         }
@@ -195,7 +198,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val extraCell = 38f * density
         extras.forEachIndexed { slot, index ->
             val left = extraStart + slot * extraCell
-            if (left + extraCell < scrollX || left > scrollX + viewWidth) return@forEachIndexed
+            if (left + extraCell < scrollX || left > scrollX + contentViewWidth) return@forEachIndexed
             val rect = RectF(left + 2f * density, 8f * density, left + extraCell - 2f * density, barHeight - 8f * density)
             // 补充候选不再铺独立色块，保持与主候选一致的透明文字层。
             val value = candidates.getOrNull(index)?.text ?: return@forEachIndexed
@@ -204,7 +207,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
         for (index in image.emoji) {
             val word = image.wordRect(index) ?: continue
-            if (word.right < scrollX || word.left > scrollX + viewWidth) continue
+            if (word.right < scrollX || word.left > scrollX + contentViewWidth) continue
             val text = candidates.getOrNull(index)?.text ?: continue
             val baseline = word.centerY() + shift - (emojiPaint.ascent() + emojiPaint.descent()) / 2
             canvas.drawText(text, word.centerX(), baseline, emojiPaint)
@@ -219,8 +222,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val cy = word.top + shift + size * 0.85f
             PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx, cy, size, markPaint)
         }
-        applyLeftFade(canvas, scrollX, viewWidth, (top + shift).toFloat())
-        applyRightFade(canvas, scrollX, viewWidth, (top + shift).toFloat())
+        applyLeftFade(canvas, scrollX, contentViewWidth, (top + shift).toFloat())
+        applyRightFade(canvas, scrollX, contentViewWidth, (top + shift).toFloat())
         canvas.restoreToCount(layer)
     }
 

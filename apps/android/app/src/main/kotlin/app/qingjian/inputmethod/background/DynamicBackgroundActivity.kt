@@ -10,6 +10,9 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import android.content.res.ColorStateList
+import app.qingjian.inputmethod.settings.Settings
+import app.qingjian.inputmethod.theme.Palette
 
 /** 动态视频背景控制面板：从输入法「常用功能」进入。 */
 class DynamicBackgroundActivity : Activity() {
@@ -18,24 +21,32 @@ class DynamicBackgroundActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val appSettings = Settings.load(this)
+        val palette = Palette.of(appSettings.theme, appSettings.appearance.dark(this))
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(18))
-            setBackgroundColor(0xFF111827.toInt())
+            setBackgroundColor(palette.board)
+        }
+        fun styleButton(button: Button) {
+            button.setTextColor(palette.text)
+            button.backgroundTintList = ColorStateList.valueOf(palette.functionalKey)
+            button.isAllCaps = false
         }
         root.addView(TextView(this).apply {
-            text = "动态视频背景"; textSize = 22f; setTextColor(0xFFF4F7FF.toInt())
+            text = "动态视频背景"; textSize = 22f; setTextColor(palette.text)
         })
         root.addView(TextView(this).apply {
             text = "导入无声 MP4，设置键盘背景透明度。视频只在键盘显示时播放。"
-            textSize = 13f; setTextColor(0xFFADB8CC.toInt()); setPadding(0, dp(8), 0, dp(18))
+            textSize = 13f; setTextColor(palette.faint); setPadding(0, dp(8), 0, dp(18))
         })
         status = TextView(this).apply {
-            textSize = 14f; setTextColor(0xFF9DE8D5.toInt())
+            textSize = 14f; setTextColor(palette.brand)
             text = if (prefs.getString(KEY_URI, null) == null) "尚未选择视频" else "已选择自定义视频"
         }
         root.addView(status)
         root.addView(Button(this).apply {
+            styleButton(this)
             text = "从手机导入 MP4"
             setOnClickListener {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -48,6 +59,8 @@ class DynamicBackgroundActivity : Activity() {
             text = "视频透明度"; setTextColor(0xFFE8ECF5.toInt()); setPadding(0, dp(18), 0, dp(4))
         })
         root.addView(SeekBar(this).apply {
+            progressTintList = ColorStateList.valueOf(palette.brand)
+            thumbTintList = ColorStateList.valueOf(palette.brand)
             max = 100; progress = prefs.getInt(KEY_ALPHA, 72)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -58,6 +71,7 @@ class DynamicBackgroundActivity : Activity() {
             })
         })
         root.addView(Button(this).apply {
+            styleButton(this)
             text = if (prefs.getBoolean(KEY_ENABLED, false)) "关闭视频背景" else "启用视频背景"
             setOnClickListener {
                 val enabled = !prefs.getBoolean(KEY_ENABLED, false)
@@ -67,6 +81,7 @@ class DynamicBackgroundActivity : Activity() {
             }
         }, matchWrap())
         root.addView(Button(this).apply {
+            styleButton(this)
             text = "恢复默认背景"
             setOnClickListener {
                 prefs.edit().remove(KEY_URI).putBoolean(KEY_ENABLED, false).apply()
@@ -74,7 +89,7 @@ class DynamicBackgroundActivity : Activity() {
             }
         }, matchWrap())
         root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
-        root.addView(Button(this).apply { text = "完成"; setOnClickListener { finish() } }, matchWrap())
+        root.addView(Button(this).apply { styleButton(this); text = "完成"; setOnClickListener { finish() } }, matchWrap())
         setContentView(root)
     }
 
