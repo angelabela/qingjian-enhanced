@@ -7,6 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 缺省半衰期（天）：90 天不用，计数减半。回放调参可用 `--tune decay-days=` 覆盖，0 为不衰减。
 pub const DEFAULT_HALF_LIFE_DAYS: f64 = 90.0;
+/// 用户主词频短期半衰期：3 天。
+pub const DEFAULT_SHORT_HALF_LIFE_DAYS: f64 = 3.0;
+/// 用户主词频长期半衰期：45 天。
+pub const DEFAULT_LONG_HALF_LIFE_DAYS: f64 = 45.0;
 
 /// 冷了多少天算是「真的不用了」：落盘时把最近使用日在这一年之外的条目清出。
 /// 衰减只影响排序权重，记录本身不清——只选过一两次的词冷却之后还留在文件里，别让用户觉得学过的词被忘掉了。
