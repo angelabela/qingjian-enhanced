@@ -52,6 +52,7 @@ pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
         phrases: book.phrases().to_vec(),
         operation_succeeded,
     }
+}
 
 #[cfg(test)]
 mod tests {
