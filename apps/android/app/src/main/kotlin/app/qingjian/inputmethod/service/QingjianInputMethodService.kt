@@ -103,6 +103,13 @@ class QingjianInputMethodService :
     private lateinit var candidateReranker: CandidateContextReranker
     private val candidateRerankHandler = Handler(Looper.getMainLooper())
     private var candidateRerankRunnable: Runnable? = null
+    /** 30 秒批量落盘：只写学习表，不重置输入中的组句。 */
+    private val learningFlushRunnable = object : Runnable {
+        override fun run() {
+            if (::engine.isInitialized) engine.flushLearning()
+            candidateRerankHandler.postDelayed(this, 30_000L)
+        }
+    }
     private var candidateRerankSequence = 0
     /** 显示顺序到 Rust 原始候选下标的映射，确保重排后点击仍选中正确候选。 */
     private var candidateIndexMap: List<Int> = emptyList()
@@ -266,6 +273,7 @@ class QingjianInputMethodService :
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
+        candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
     }
 
     override fun onDestroy() {
@@ -471,6 +479,8 @@ class QingjianInputMethodService :
         }
         composer.finishStructuredToken()
         composer.abandon()
+        // 即使本轮没有触发 reset，输入视图结束时也确保学习数据立即落盘。
+        engine.flushLearning()
     }
 
     override fun onFinishInput() {
