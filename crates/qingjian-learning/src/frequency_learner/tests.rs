@@ -381,20 +381,23 @@ fn weight_decays_by_half_life_and_only_year_cold_entries_are_pruned() {
 
     let mut learner = FrequencyLearner::from_path(&path).unwrap();
     learner.record(&candidate("开发"));
+    learner.counts.get_mut("开发").unwrap().tk = 0;
     learner.record(&candidate("开发"));
     learner.record(&candidate("中文"));
-    // 拨到 90 天前：90 天半衰期下 2 次变 1 次、1 次变 0.5 回 1
+    let now = learner.now_seconds.get();
+    // 三天后短期权重减半，长期权重基本保留。
     for entry in learner.counts.values_mut() {
-        entry.last_used -= 90;
+        entry.tk = now.saturating_sub(3 * 86_400);
+    }
+    assert_eq!(learner.weight("开发"), 2);
+    assert_eq!(learner.weight("中文"), 1);
+    // 四十五天后长期分减半，短期分接近零；原始命中数不被衰减改写。
+    for entry in learner.counts.values_mut() {
+        entry.tk = now.saturating_sub(45 * 86_400);
     }
     assert_eq!(learner.weight("开发"), 1);
-    assert_eq!(learner.weight("中文"), 1);
-    // 冷却到 0 也只压排序：记录留着，重排后仍能查出原次数
-    for entry in learner.counts.values_mut() {
-        entry.last_used -= 180;
-    }
-    assert_eq!(learner.weight("开发"), 0);
-    assert_eq!(learner.counts.get("开发").unwrap().count, 2, "记录本身不减");
+    assert_eq!(learner.weight("中文"), 0);
+    assert_eq!(learner.counts.get("开发").unwrap().hits, 2, "衰减只影响排序分");
     learner.flush();
     // 冷不到一年的记录原样保留（主表旧格式两列，日期在侧车）
     assert_eq!(learner.counts.len(), 2);
@@ -405,7 +408,7 @@ fn weight_decays_by_half_life_and_only_year_cold_entries_are_pruned() {
 
     // 拨过一年：落盘时文件与内存一起清出（没有新记录也清，直接走保存）
     for entry in learner.counts.values_mut() {
-        entry.last_used -= 400;
+        entry.tk = now.saturating_sub(400 * 86_400);
     }
     learner.save_to(&path).unwrap();
     assert!(learner.counts.is_empty());
