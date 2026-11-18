@@ -329,6 +329,26 @@ impl FrequencyLearner {
         Ok(())
     }
 
+    /// 加载后也执行容量约束；永久屏蔽项不淘汰，其余优先保留有效分高的记录。
+    fn enforce_capacity(&mut self) {
+        while self.counts.len() > MAX_USER_UNIGRAMS {
+            let weakest = self.counts.iter()
+                .filter(|(_, entry)| !entry.banned)
+                .min_by_key(|(_, entry)| self.effective_dual(entry))
+                .map(|(word, _)| word.clone());
+            let Some(word) = weakest else { break; };
+            self.counts.remove(&word);
+        }
+        while self.bigrams.len() > MAX_USER_BIGRAMS {
+            let weakest = self.bigrams.iter()
+                .filter(|(_, entry)| !entry.banned)
+                .min_by_key(|(_, entry)| self.effective_dual(entry))
+                .map(|(key, _)| key.clone());
+            let Some(key) = weakest else { break; };
+            self.bigrams.remove(&key);
+        }
+    }
+
     /// 刷新缓存的「今天」。写路径开头调；读路径（`weight` 等，一键要查几万次）用缓存值，不查时钟。
     fn tick(&mut self) {
         self.today.set(decay::today());
@@ -417,6 +437,7 @@ impl FrequencyLearner {
             note_skipped(&bigram_dual_path, skipped);
         }
         learner.rebuild_ngram();
+        learner.enforce_capacity();
         let choices_path = Self::choices_path(&path);
         if let Some(source) = read_text_lossy(&choices_path)? {
             let skipped = learner.load_choices(&source);
