@@ -24,26 +24,34 @@ pub fn phrase_rules() -> PhraseRules {
 /// 跑一个请求，返回操作之后的整页（分组与全部常用语，靠前的常用）。
 pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
     let mut book = PhraseBook::open(user_dir);
-    let result = match request {
-        PhraseRequest::List => Ok(()),
-        PhraseRequest::Add { text, group, code } => book.add(&text, &group, &code).map(drop),
-        PhraseRequest::Update {
-            index,
-            text,
-            group,
-            code,
-        } => book.update(index, &text, &group, &code).map(drop),
-        PhraseRequest::Remove { index } => book.remove(index),
-        PhraseRequest::Top { index } => book.move_to_top(index),
+    let can_persist = book.can_persist();
+    let result: Result<bool, qingjian_learning::LearningError> = match request {
+        PhraseRequest::List => Ok(true),
+        PhraseRequest::Add { text, group, code } => {
+            if can_persist { book.add(&text, &group, &code) } else { Ok(false) }
+        }
+        PhraseRequest::Update { index, text, group, code } => {
+            if can_persist { book.update(index, &text, &group, &code) } else { Ok(false) }
+        }
+        PhraseRequest::Remove { index } => {
+            if can_persist { book.remove(index).map(|_| true) } else { Ok(false) }
+        }
+        PhraseRequest::Top { index } => {
+            if can_persist { book.move_to_top(index).map(|_| true) } else { Ok(false) }
+        }
     };
-    if let Err(error) = result {
-        tracing::warn!(%error, "常用语写不进去");
-    }
+    let operation_succeeded = match result {
+        Ok(succeeded) => succeeded,
+        Err(error) => {
+            tracing::warn!(%error, "常用语写不进去");
+            false
+        }
+    };
     PhrasePage {
         groups: book.groups(),
         phrases: book.phrases().to_vec(),
+        operation_succeeded,
     }
-}
 
 #[cfg(test)]
 mod tests {
