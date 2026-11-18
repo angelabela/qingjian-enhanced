@@ -178,14 +178,45 @@ class VoicePanel(
         target = next
         undoButton.isSelected = next == Target.CANCEL
         finishButton.isSelected = next == Target.ACTION
-        fun animateTarget(view: View, selected: Boolean) {
+        fun targetBackground(selected: Boolean): android.graphics.drawable.Drawable {
+            val density = resources.displayMetrics.density
+            val green = Color.rgb(7, 193, 96) // 微信绿
+            val layers = arrayOf(
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = 24f * density
+                    setColor(Color.TRANSPARENT)
+                    setStroke((7f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or (0x20 shl 24))
+                },
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = 23f * density
+                    setColor(Color.TRANSPARENT)
+                    setStroke((4f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or (0x55 shl 24))
+                },
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = 22f * density
+                    setColor(if (selected) green else palette.functionalKey)
+                    setStroke((if (selected) 1.8f else 1f).times(density).toInt().coerceAtLeast(1),
+                        if (selected) 0xFF8AFFB8.toInt() else 0x44FFFFFF)
+                },
+            )
+            return android.graphics.drawable.LayerDrawable(layers).apply {
+                setLayerInset(0, (-5f * density).toInt(), (-5f * density).toInt(), (-5f * density).toInt(), (-5f * density).toInt())
+                setLayerInset(1, (-2f * density).toInt(), (-2f * density).toInt(), (-2f * density).toInt(), (-2f * density).toInt())
+            }
+        }
+        fun animateTarget(view: TextView, selected: Boolean) {
             view.animate().cancel()
+            view.background = targetBackground(selected)
+            view.setTextColor(if (selected) Color.WHITE else palette.text)
             view.animate()
-                .alpha(if (selected) 1f else 0.86f)
-                .scaleX(if (selected) 1.045f else 1f)
-                .scaleY(if (selected) 1.045f else 1f)
+                .alpha(if (selected) 1f else 0.9f)
+                .scaleX(if (selected) 1.055f else 1f)
+                .scaleY(if (selected) 1.055f else 1f)
                 .translationY(if (selected) -2f * resources.displayMetrics.density else 0f)
-                .setDuration(145L)
+                .setDuration(120L)
                 .setInterpolator(android.view.animation.DecelerateInterpolator(1.25f))
                 .start()
         }
