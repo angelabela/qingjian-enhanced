@@ -300,7 +300,7 @@ class FunctionPanel(
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
-            y < headerHeight -> if (!voiceEffectPage) tabs.indexAt(x)?.let {
+            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
                 voiceEffectPage = false
