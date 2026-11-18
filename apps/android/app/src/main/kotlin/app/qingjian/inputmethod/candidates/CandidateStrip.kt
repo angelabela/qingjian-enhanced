@@ -177,7 +177,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 val base = (tint and 0x00FFFFFF) or (tintAlpha shl 24)
                 glassFill.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.bottom,
-                    intArrayOf(0xBFFFFFFF.toInt(), base, (tint and 0x00FFFFFF) or 0x24 shl 24),
+                    intArrayOf(0xBFFFFFFF.toInt(), base, ((tint and 0x00FFFFFF) or (0x24 shl 24))),
                     floatArrayOf(0f, 0.42f, 1f), android.graphics.Shader.TileMode.CLAMP
                 )
                 canvas.drawRoundRect(rect, radius, radius, glassFill)
