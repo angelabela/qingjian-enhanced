@@ -45,11 +45,13 @@ impl PhraseBook {
             Ok(None) => Self {
                 phrases: Vec::new(),
                 path: Some(path),
+                storage_error: None,
             },
             Ok(Some(text)) => match serde_json::from_str::<Vec<Phrase>>(&text) {
                 Ok(phrases) => Self {
                     phrases,
                     path: Some(path),
+                    storage_error: None,
                 },
                 Err(error) => {
                     tracing::warn!(path = %path.display(), %error, "常用语文件损坏，尝试备份并恢复有效条目");
@@ -78,7 +80,7 @@ impl PhraseBook {
                                 recovered = recovered.len(),
                                 "常用语文件已备份并恢复"
                             );
-                            Self { phrases: recovered, path: Some(path) }
+                            Self { phrases: recovered, path: Some(path), storage_error: None }
                         }
                         Err(write_error) => {
                             tracing::error!(path = %path.display(), %write_error, "常用语恢复文件写入失败");
