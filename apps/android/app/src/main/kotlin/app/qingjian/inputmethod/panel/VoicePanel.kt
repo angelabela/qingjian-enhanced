@@ -132,7 +132,6 @@ class VoicePanel(
             view.background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(palette.functionalKey)
                 cornerRadius = 22f * density
-                setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
             }
             view.setOnClickListener {
                 // 语音面板与键盘按键共用 App 内「按键震动」开关和强度档位。
