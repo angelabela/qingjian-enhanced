@@ -4,6 +4,12 @@ import android.content.Context
 
 /** 扫码模式与提交行为：独立于键盘外观设置，所有页面和扫码 Activity 共用。 */
 object ScanPreferences {
+    @Volatile private var prefixEditorActive = false
+
+    /** 悬浮扫码前缀框临时取得焦点时，避免输入法误判为切换宿主应用。 */
+    fun setPrefixEditorActive(active: Boolean) { prefixEditorActive = active }
+    fun isPrefixEditorActive(): Boolean = prefixEditorActive
+
     const val PREFS = "scan_settings"
     const val KEY_MODE = "scan_mode"
     const val MODE_FULL = "full"
