@@ -7,7 +7,7 @@ use crate::{Language, Sense, Translation};
 impl Engine {
     /// 给不走中文 Composition 的候选排序（如越南语）：选择权重优先，再应用该输入串下的降权。
     /// 调用方应给 `input` 加模式前缀，避免与拼音学习记录混用。
-    pub fn rank_external_candidates(&self, input: &str, candidates: &mut [Candidate]) {
+    pub fn rank_external_candidates(&self, input: &str, candidates: &mut Vec<Candidate>) {
         candidates.retain(|candidate| !self.learner.is_banned(&candidate.text));
         candidates.sort_by_key(|candidate| {
             std::cmp::Reverse(self.learner.choice_weight(input, &candidate.text))
