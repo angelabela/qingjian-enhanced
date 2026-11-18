@@ -23,6 +23,7 @@ on:
       - fix/workflow-82-prefix-editor-focus-stability
       - fix/workflow-83-clipboard-actions-swipe-paste
       - fix/workflow-85-clipboard-longpress-phrase-storage-scan-outline
+      - fix/workflow-92-phrase-storage-recovery
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
