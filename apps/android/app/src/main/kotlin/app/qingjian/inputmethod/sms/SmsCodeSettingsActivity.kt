@@ -2,84 +2,32 @@ package app.qingjian.inputmethod.sms
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import app.qingjian.inputmethod.theme.AppColors
 
-/** 短信验证码监测的显式开关；只有用户主动开启时才请求 RECEIVE_SMS。 */
+/**
+ * 常用功能面板中的验证码开关代理。
+ * 已授权时点击立即开/关；首次开启只请求系统 RECEIVE_SMS 权限，不展示独立设置页。
+ */
 class SmsCodeSettingsActivity : Activity() {
-    private lateinit var status: TextView
-    private lateinit var toggle: Button
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val colors = AppColors.of(this)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(48), dp(24), dp(24))
-            setBackgroundColor(colors.background)
-        }
-        root.addView(TextView(this).apply {
-            text = "短信验证码监测"
-            textSize = 22f
-            setTextColor(colors.text)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        })
-        root.addView(TextView(this).apply {
-            text = "开启后，青简只在本机识别短信中明确标注的 4～6 位验证码，自动复制并在候选栏提供上屏入口。短信正文不会上传。"
-            textSize = 14f
-            setTextColor(colors.secondary)
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setPadding(0, dp(18), 0, dp(22))
-        })
-        status = TextView(this).apply {
-            textSize = 14f
-            setTextColor(colors.text)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        }
-        root.addView(status)
-        toggle = Button(this).apply {
-            setTextColor(colors.onBrand)
-            background = GradientDrawable().apply {
-                setColor(colors.brand)
-                cornerRadius = dp(12).toFloat()
-            }
-            backgroundTintList = ColorStateList.valueOf(colors.brand)
-            setOnClickListener { toggleMonitoring() }
-        }
-        root.addView(toggle)
-        root.addView(Button(this).apply {
-            text = "返回"
-            setTextColor(colors.text)
-            backgroundTintList = ColorStateList.valueOf(colors.surface)
-            setOnClickListener { finish() }
-        })
-        setContentView(root)
-        refresh()
-    }
-
-    private fun toggleMonitoring() {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        val enabled = prefs.getBoolean(SmsCodeReceiver.KEY_ENABLED, false)
-        if (enabled) {
+        if (prefs.getBoolean(SmsCodeReceiver.KEY_ENABLED, false)) {
             prefs.edit().putBoolean(SmsCodeReceiver.KEY_ENABLED, false).apply()
-            refresh()
+            Toast.makeText(this, "验证码监测已关闭", Toast.LENGTH_SHORT).show()
+            publishAndFinish(false)
             return
         }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
             prefs.edit().putBoolean(SmsCodeReceiver.KEY_ENABLED, true).apply()
-            refresh()
+            Toast.makeText(this, "验证码监测已开启", Toast.LENGTH_SHORT).show()
+            publishAndFinish(true)
         } else {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECEIVE_SMS), REQUEST_SMS)
         }
@@ -87,21 +35,30 @@ class SmsCodeSettingsActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_SMS && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+        val granted = requestCode == REQUEST_SMS &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        if (granted) {
             getSharedPreferences("settings", MODE_PRIVATE).edit()
                 .putBoolean(SmsCodeReceiver.KEY_ENABLED, true).apply()
             Toast.makeText(this, "验证码监测已开启", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "未授予短信权限，验证码监测未开启", Toast.LENGTH_SHORT).show()
         }
-        refresh()
+        publishAndFinish(granted)
     }
 
-    private fun refresh() {
-        val enabled = getSharedPreferences("settings", MODE_PRIVATE).getBoolean(SmsCodeReceiver.KEY_ENABLED, false)
-        status.text = if (enabled) "当前状态：已开启" else "当前状态：已关闭"
-        toggle.text = if (enabled) "关闭验证码监测" else "开启验证码监测"
+    private fun publishAndFinish(enabled: Boolean) {
+        sendBroadcast(
+            Intent(ACTION_STATE_CHANGED)
+                .setPackage(packageName)
+                .putExtra(EXTRA_ENABLED, enabled),
+        )
+        finish()
     }
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-    companion object { private const val REQUEST_SMS = 2602 }
+    companion object {
+        const val ACTION_STATE_CHANGED = "app.qingjian.inputmethod.SMS_CODE_STATE_CHANGED"
+        const val EXTRA_ENABLED = "enabled"
+        private const val REQUEST_SMS = 2602
+    }
 }

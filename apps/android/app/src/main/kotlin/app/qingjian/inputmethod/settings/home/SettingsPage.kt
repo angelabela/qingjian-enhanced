@@ -27,9 +27,7 @@ import app.qingjian.inputmethod.settings.page.KeyboardSettingsActivity
 import app.qingjian.inputmethod.settings.page.VoiceSettingsActivity
 import app.qingjian.inputmethod.settings.page.ScanSettingsActivity
 import app.qingjian.inputmethod.settings.page.PermissionSettingsActivity
-import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import app.qingjian.inputmethod.scan.ScanPreferences
-import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.settings.widget.SettingsWidgets
 import app.qingjian.inputmethod.voice.VoiceConfig
 
@@ -105,11 +103,6 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                 ui.entry(Icon.MIC, R.string.page_voice, activity.getString(if (VoiceConfig.load(activity).provider == VoiceConfig.PROVIDER_NONE) R.string.value_unset else R.string.value_set)) {
                     open(VoiceSettingsActivity::class.java)
                 },
-                ui.entry(
-                    Icon.LOCK,
-                    R.string.page_sms_code_settings,
-                    if (activity.getSharedPreferences("settings", Activity.MODE_PRIVATE).getBoolean(SmsCodeReceiver.KEY_ENABLED, false)) "已开启" else "已关闭",
-                ) { open(SmsCodeSettingsActivity::class.java) },
                 footer = R.string.online_note,
             ))
             addView(ui.group(

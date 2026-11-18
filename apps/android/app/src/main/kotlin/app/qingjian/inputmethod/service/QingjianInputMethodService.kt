@@ -151,6 +151,13 @@ class QingjianInputMethodService :
         }
     }
 
+    /** 短信验证码开关变化时只刷新常用功能图标，不重建输入法窗口。 */
+    private val smsStateListener = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            panel?.refreshFunctions()
+        }
+    }
+
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
@@ -285,6 +292,12 @@ class QingjianInputMethodService :
         val smsFilter = IntentFilter(SmsCodeReceiver.ACTION_CODE_READY)
         // 动态广播仅允许本应用接收方处理，兼容 Android 8+，避免旧系统默认导出带来的伪造广播风险。
         ContextCompat.registerReceiver(this, smsCodeListener, smsFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(
+            this,
+            smsStateListener,
+            IntentFilter(app.qingjian.inputmethod.sms.SmsCodeSettingsActivity.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         val scanFilter = IntentFilter(ScanPreferences.ACTION_RESULT)
         ContextCompat.registerReceiver(this, scanResultListener, scanFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         cloud.start()
@@ -301,6 +314,7 @@ class QingjianInputMethodService :
         ClipboardSync.removeListener(syncListener)
         Settings.preferences(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
         runCatching { unregisterReceiver(smsCodeListener) }
+        runCatching { unregisterReceiver(smsStateListener) }
         runCatching { unregisterReceiver(scanResultListener) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
         candidateRerankSequence++
