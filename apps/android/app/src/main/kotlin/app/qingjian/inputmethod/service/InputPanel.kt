@@ -16,6 +16,11 @@ import android.os.SystemClock
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.TextureView
+import android.graphics.SurfaceTexture
+import android.view.Surface
+import android.media.MediaPlayer
+import android.net.Uri
 import android.view.ViewOutlineProvider
 import android.view.Gravity
 import android.view.WindowInsets
@@ -307,6 +312,76 @@ private class FlowingKeyboardBackgroundDrawable(
             }
             return colors
         }
+    }
+}
+
+
+/** TextureView 播放用户授权的本地 MP4；只在输入法视图附着时播放，隐藏/销毁即释放。 */
+private class DynamicVideoBackgroundView(context: Context) : TextureView(context), TextureView.SurfaceTextureListener {
+    private var player: MediaPlayer? = null
+    private var surface: Surface? = null
+    private val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+
+    init {
+        isOpaque = false
+        surfaceTextureListener = this
+        alpha = prefs.getInt("video_alpha", 72) / 100f
+        visibility = if (prefs.getBoolean("video_enabled", false) && !prefs.getString("video_uri", null).isNullOrBlank()) View.VISIBLE else View.GONE
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (isAvailable) startPlayback()
+    }
+
+    override fun onDetachedFromWindow() {
+        releasePlayer()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+        startPlayback()
+    }
+
+    override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
+
+    override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+        releasePlayer()
+        return true
+    }
+
+    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+
+    private fun startPlayback() {
+        if (!isAttachedToWindow || !isAvailable || player != null) return
+        val raw = prefs.getString("video_uri", null) ?: return
+        if (!prefs.getBoolean("video_enabled", false)) return
+        runCatching {
+            val targetSurface = Surface(surfaceTexture)
+            surface = targetSurface
+            val media = MediaPlayer()
+            player = media
+            media.setSurface(targetSurface)
+            media.setDataSource(context, Uri.parse(raw))
+            media.isLooping = true
+            media.setVolume(0f, 0f)
+            media.setOnPreparedListener { prepared ->
+                if (isAttachedToWindow && player === prepared) prepared.start() else releasePlayer()
+            }
+            media.setOnErrorListener { _, _, _ -> releasePlayer(); true }
+            media.prepareAsync()
+        }.onFailure { releasePlayer() }
+    }
+
+    private fun releasePlayer() {
+        val old = player
+        player = null
+        runCatching { old?.setOnPreparedListener(null) }
+        runCatching { old?.setOnErrorListener(null) }
+        runCatching { old?.stop() }
+        runCatching { old?.release() }
+        runCatching { surface?.release() }
+        surface = null
     }
 }
 
@@ -611,6 +686,11 @@ class InputPanel(
 
     private class Stack(context: Context, private val main: View) : FrameLayout(context) {
         private fun Int?.orZero() = this ?: 0
+        private val videoBackground = DynamicVideoBackgroundView(context)
+        init {
+            addView(videoBackground, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            addView(main)
+        }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             measureChild(main, widthMeasureSpec, heightMeasureSpec)
