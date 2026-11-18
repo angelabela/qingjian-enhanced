@@ -124,7 +124,7 @@ private class FlowingKeyboardBackgroundDrawable(
         val h = bounds.height().toFloat()
         val t = now / 1000.0
         motionPaint.style = Paint.Style.STROKE
-        when (style.coerceIn(0, 4)) {
+        when (style.coerceIn(0, 6)) {
             1 -> { // 深海蓝潮：三层错相海浪横向推进
                 for (layer in 0 until 4) {
                     val path = Path()
@@ -213,6 +213,73 @@ private class FlowingKeyboardBackgroundDrawable(
                     motionPaint.style = Paint.Style.FILL
                     motionPaint.color = (0x55 + (twinkle * 0x66).toInt() shl 24) or 0x00E7F7FF
                     canvas.drawCircle(cx, cy, radius * (0.12f + twinkle * 0.12f), motionPaint)
+                }
+            }
+            5 -> { // 魔幻炫彩粒子：多轨旋涡、粒子尾迹与脉冲光核
+                val cx = w * (0.50f + kotlin.math.sin(t * 0.17).toFloat() * 0.08f)
+                val cy = h * (0.50f + kotlin.math.cos(t * 0.14).toFloat() * 0.08f)
+                motionPaint.style = Paint.Style.STROKE
+                for (orbit in 0 until 4) {
+                    val orbitRadius = h * (0.16f + orbit * 0.095f)
+                    val path = Path()
+                    for (step in 0..72) {
+                        val a = step / 72.0 * Math.PI * 2.0 + t * (0.12 + orbit * 0.035) * if (orbit % 2 == 0) 1 else -1
+                        val wobble = 1.0 + 0.10 * kotlin.math.sin(a * 3.0 + t * 0.7 + orbit)
+                        val x = cx + kotlin.math.cos(a).toFloat() * orbitRadius * wobble * 1.55f
+                        val y = cy + kotlin.math.sin(a).toFloat() * orbitRadius * wobble * 0.68f
+                        if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    motionPaint.color = when (orbit % 3) { 0 -> 0x557FFFE5; 1 -> 0x665E9BFF; else -> 0x66E47BFF }
+                    motionPaint.strokeWidth = (1.3f + orbit * 0.45f) * (h / 240f).coerceAtLeast(0.7f)
+                    canvas.drawPath(path, motionPaint)
+                }
+                motionPaint.style = Paint.Style.FILL
+                for (particle in 0 until 42) {
+                    val seed = particle * 2.399
+                    val orbit = h * (0.10 + (particle % 7) * 0.055)
+                    val angle = seed + t * (0.22 + (particle % 5) * 0.035) * if (particle % 2 == 0) 1 else -1
+                    val pulse = (0.5 + 0.5 * kotlin.math.sin(t * 1.8 + seed)).toFloat()
+                    val x = cx + kotlin.math.cos(angle).toFloat() * orbit * 1.6f
+                    val y = cy + kotlin.math.sin(angle).toFloat() * orbit * 0.72f
+                    motionPaint.color = when (particle % 4) { 0 -> 0xCC9CFFF0.toInt(); 1 -> 0xCC8BB8FF.toInt(); 2 -> 0xCCF49BFF.toInt(); else -> 0xCCFFE49A.toInt() }
+                    canvas.drawCircle(x, y, (0.8f + pulse * 2.0f) * (h / 240f).coerceAtLeast(0.65f), motionPaint)
+                    motionPaint.color = when (particle % 4) { 0 -> 0x338CFFE9; 1 -> 0x335F9DFF; 2 -> 0x33F18BFF; else -> 0x33FFE49A }
+                    canvas.drawCircle(x, y, (3.5f + pulse * 4.0f) * (h / 240f).coerceAtLeast(0.65f), motionPaint)
+                }
+                motionPaint.color = 0x66B7A0FF
+                canvas.drawCircle(cx, cy, h * (0.045f + 0.012f * kotlin.math.sin(t * 1.3).toFloat()), motionPaint)
+            }
+            6 -> { // 星云裂隙：多层丝带星云、缓慢旋转的星尘与流星
+                val cx = w * 0.53f
+                val cy = h * 0.50f
+                for (ribbon in 0 until 6) {
+                    val path = Path()
+                    for (step in 0..80) {
+                        val u = step / 80.0
+                        val a = u * Math.PI * 2.4 + t * (0.11 + ribbon * 0.018) + ribbon * 0.7
+                        val radius = h * (0.08 + u * 0.30 + 0.025 * kotlin.math.sin(t * 0.35 + ribbon))
+                        val x = cx + kotlin.math.cos(a).toFloat() * radius * 1.5f
+                        val y = cy + kotlin.math.sin(a).toFloat() * radius * 0.65f
+                        if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    motionPaint.style = Paint.Style.STROKE
+                    motionPaint.color = when (ribbon % 3) { 0 -> 0x557F8CFF; 1 -> 0x557DE7D9; else -> 0x66D17BFF }
+                    motionPaint.strokeWidth = (2f + ribbon * 0.55f) * (h / 240f).coerceAtLeast(0.7f)
+                    canvas.drawPath(path, motionPaint)
+                }
+                motionPaint.style = Paint.Style.FILL
+                for (star in 0 until 54) {
+                    val seed = star * 1.618
+                    val x = (w * ((star * 47 % 97) / 100.0) + kotlin.math.sin(t * 0.19 + seed) * w * 0.025).toFloat()
+                    val y = (h * ((star * 31 % 91) / 100.0) + kotlin.math.cos(t * 0.16 + seed) * h * 0.045).toFloat()
+                    val blink = (0.35 + 0.65 * (0.5 + 0.5 * kotlin.math.sin(t * 1.4 + seed))).toFloat()
+                    motionPaint.color = if (star % 3 == 0) 0xD8D7C8FF.toInt() else 0xB88CF4FF.toInt()
+                    canvas.drawCircle(x, y, (0.65f + blink * 1.45f) * (h / 240f).coerceAtLeast(0.65f), motionPaint)
+                    if (star % 9 == 0) {
+                        motionPaint.color = 0x558EDCFF
+                        canvas.drawLine(x - 5f * blink, y, x + 5f * blink, y, motionPaint)
+                        canvas.drawLine(x, y - 5f * blink, x, y + 5f * blink, motionPaint)
+                    }
                 }
             }
         }
