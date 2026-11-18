@@ -472,7 +472,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
-                // decor 层沿用窗口级圆角遮罩；全透明矩形 decor 会使部分系统将背景模糊扩展到矩形边界。
+                // 窗口背景保留圆角 alpha 遮罩供系统裁剪模糊；decor 内容层保持完全透明。
                 setBackgroundDrawable(roundedHeaderMask())
                 // decor 本身不再绘制第二层矩形蒙版；窗口背景只负责给系统模糊提供圆角 alpha 形状。
                 decorView.background = ColorDrawable(Color.TRANSPARENT)
