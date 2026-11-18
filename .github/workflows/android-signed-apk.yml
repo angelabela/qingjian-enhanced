@@ -19,6 +19,7 @@ on:
       - feature/workflow-478-voice-effects-7styles
       - feature/workflow-479-voice-panel-touch-spectrum-polish
       - feature/workflow-480-voice-effect-header-center-spectrum
+      - feature/workflow-481-theme-tips-scan-ranking
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
