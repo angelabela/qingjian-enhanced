@@ -462,6 +462,12 @@ class ClipboardPanel(
                         postDelayed(deleteRepeatRunnable, android.view.ViewConfiguration.getLongPressTimeout().toLong())
                     }
                 }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (deleteBackwardTracking && !deleteBackwardBounds().contains(event.x, event.y)) {
+                        removeCallbacks(deleteRepeatRunnable)
+                        deleteBackwardTracking = false
+                    }
+                }
                 android.view.MotionEvent.ACTION_UP -> {
                     val activateDelete = deleteBackwardTracking && deleteBackwardBounds().contains(event.x, event.y)
                     val activateEnter = pasteToggleTracking && pasteToggleBounds().contains(event.x, event.y)
