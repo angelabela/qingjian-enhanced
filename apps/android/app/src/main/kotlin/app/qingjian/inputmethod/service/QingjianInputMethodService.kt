@@ -161,14 +161,15 @@ class QingjianInputMethodService :
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
-            val connection = currentInputConnection ?: return
+            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: run { android.util.Log.w("QingjianScanDiag", "result broadcast empty"); return }
+            val connection = currentInputConnection ?: run { android.util.Log.e("QingjianScanDiag", "result received but InputConnection is null; editor=${currentInputEditorInfo?.packageName}"); return }
+            android.util.Log.i("QingjianScanDiag", "result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
 
             // 不向微信/Excel 等宿主请求 8192 字符的长文窗口。自定义 InputConnection
             // 可能因此同步加载/重排整份文档；只检查光标附近的小范围，宿主调用做异常隔离。
             val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
             val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-            if (before.contains(value) || after.contains(value)) return
+            if (before.contains(value) || after.contains(value)) { android.util.Log.i("QingjianScanDiag", "duplicate result ignored editor=${currentInputEditorInfo?.packageName}"); return }
 
             val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
             try {
@@ -412,11 +413,13 @@ class QingjianInputMethodService :
         super.onStartInput(attribute, restarting)
         val nextEditorPackage = attribute.packageName
         val previousEditorPackage = lastInputEditorPackage
+        android.util.Log.i("QingjianScanDiag", "onStartInput previous=$previousEditorPackage next=${attribute.packageName} field=${attribute.fieldId} restarting=$restarting floating=${ScanPreferences.isFloating(this)} prefixEditing=${ScanPreferences.isPrefixEditorActive()}")
         val editingOwnScanPrefix = nextEditorPackage == packageName &&
             ScanPreferences.isPrefixEditorActive()
         if (!editingOwnScanPrefix && previousEditorPackage != null &&
             previousEditorPackage != nextEditorPackage && ScanPreferences.isFloating(this)) {
             // 前缀输入框短暂使用本应用窗口接收文字，不代表宿主已切换；真正切换宿主时才关闭扫码窗。
+            android.util.Log.w("QingjianScanDiag", "STOP_REQUEST reason=editor_package_changed previous=$previousEditorPackage next=$nextEditorPackage")
             stopService(Intent(this, ScanOverlayService::class.java))
         }
         // 前缀编辑期间保留原宿主包名，编辑结束回到宿主时不会误触发关闭扫码窗。
@@ -495,10 +498,12 @@ class QingjianInputMethodService :
     override fun onWindowHidden() {
         super.onWindowHidden()
         AppLog.info("window hidden")
+        android.util.Log.w("QingjianScanDiag", "IME window hidden editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         AppLog.info("finish input view: finishingInput=$finishingInput, editor=${currentInputEditorInfo?.packageName}, panel=${panel?.openPanel}, clipboardOwner=$clipboardPanelEditorPackage")
+        android.util.Log.w("QingjianScanDiag", "finishInputView finishing=$finishingInput editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
         super.onFinishInputView(finishingInput)
         voice.cancel()
         closeEditor()
