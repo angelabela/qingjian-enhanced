@@ -20,6 +20,7 @@ on:
       - feature/workflow-479-voice-panel-touch-spectrum-polish
       - feature/workflow-480-voice-effect-header-center-spectrum
       - feature/workflow-481-theme-tips-scan-ranking
+      - fix/workflow-82-prefix-editor-focus-stability
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
