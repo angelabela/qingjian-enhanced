@@ -33,6 +33,7 @@ class VoicePanel(
     private val actions: Actions,
     private val blurredKeyboard: Bitmap? = null,
     private val animationStyle: Int = 0,
+    private val animatedKeyboardBackground: Boolean = false,
 ) : FrameLayout(context) {
 
     interface Actions {
@@ -97,7 +98,7 @@ class VoicePanel(
         isClickable = true
         isFocusable = true
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
-        blurredKeyboard?.let(backdrop::setImageBitmap)
+        if (animatedKeyboardBackground) backdrop.visibility = View.GONE else blurredKeyboard?.let(backdrop::setImageBitmap)
         // 降低模糊半径，保留更多键盘细节；轻微降低遮罩不透明度，让底层键盘更通透。
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
             val radius = 12f * resources.displayMetrics.density
@@ -110,10 +111,10 @@ class VoicePanel(
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                themedAlpha(palette.surface, 0x3D),
-                themedAlpha(palette.board, 0x3D),
-                themedAlpha(palette.surface, 0x49),
-                themedAlpha(palette.board, 0x23),
+                themedAlpha(palette.surface, 0x56),
+                themedAlpha(palette.board, 0x56),
+                themedAlpha(palette.surface, 0x66),
+                themedAlpha(palette.board, 0x32),
             ),
         ).apply {
             cornerRadius = glassRadius
