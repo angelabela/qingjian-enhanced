@@ -123,10 +123,9 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 // 对实际送入 ASR 的 PCM 做自适应降噪，频谱动画也显示处理后的音频。
                 val chunk = pcmNoiseSuppressor.process(captured)
                 val spectrum = spectrum(chunk)
-                // 句柄只在主线程用；说完之后晚到的那截不再交
+                // 与 finish() 共用锁：先获得锁的音频块先进入引擎工作线程队列；
+                // finish() 获锁后会关闭采集，之后返回的 read 不再排到 Finish 之后。
                 synchronized(feedLock) {
-                    // 与 finish() 共用锁：先获得锁的音频块先入主线程队列；
-                    // finish() 获锁后会关闭采集，之后返回的 read 不再排到 Finish 之后。
                     if (!recording || sessionId != currentSession || cancelled) return@synchronized
                     engineHandler.post {
                         if (sessionId != currentSession || cancelled) return@post

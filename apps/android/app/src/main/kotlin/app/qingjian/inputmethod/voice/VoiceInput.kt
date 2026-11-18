@@ -70,6 +70,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     /** 开始说话；[holding] 是按着空格说。返回开没开起来：不能用、要先申请权限都是 false。 */
     fun start(holding: Boolean): Boolean {
+        android.util.Log.i("QingjianVoice", "start requested holding=$holding active=${active}")
         if (active) return true
         if (!host.canStartVoice()) {
             host.toast("当前输入框属于密码、私密或直接输入模式，已禁止云端语音输入")
@@ -169,6 +170,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     }
 
     override fun onFinish(act: Boolean, hide: Boolean) {
+        android.util.Log.i("QingjianVoice", "finish requested act=$act hide=$hide recognizerActive=${recognizer != null}")
         val recognizer = recognizer ?: return
         after = when {
             act -> After.ACTION
@@ -182,6 +184,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     /** 不要这一段（撤回、返回键、换输入框、收起键盘）：编辑中的字撤掉。 */
     override fun onCancel() {
+        android.util.Log.i("QingjianVoice", "cancel requested recognizerActive=${recognizer != null} pendingCorrection=$pendingCorrection")
         generation += 1
         val activeRecognizer = recognizer
         val hadPendingVoice = activeRecognizer != null || pendingCorrection
@@ -199,6 +202,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     }
 
     override fun onFinal(text: String) {
+        android.util.Log.i("QingjianVoice", "final result received length=${text.length}")
         val then = after
         val requestGeneration = generation
         val completedPanel = panel
@@ -251,6 +255,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     }
 
     override fun onError(message: String) {
+        android.util.Log.e("QingjianVoice", "recognition error: $message")
         host.composeVoice("")
         end()
         host.toast(message)
