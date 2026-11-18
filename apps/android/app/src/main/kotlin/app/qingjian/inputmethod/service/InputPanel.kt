@@ -85,7 +85,9 @@ private class FlowingKeyboardBackgroundDrawable(
         shader = LinearGradient(
             -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
             colorsForStyle(style),
-            floatArrayOf(0f, 0.22f, 0.46f, 0.68f, 0.86f, 1f),
+            FloatArray(colorsForStyle(style).size) { index ->
+                index.toFloat() / (colorsForStyle(style).size - 1).coerceAtLeast(1)
+            },
             Shader.TileMode.MIRROR,
         )
         unscheduleSelf(frame)
