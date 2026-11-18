@@ -59,6 +59,7 @@ class VoicePanel(
             4 -> PhysicsWaveView.Style.PEAK_HOLD
             5 -> PhysicsWaveView.Style.ELASTIC_STRING
             6 -> PhysicsWaveView.Style.GLOW_ORBS
+            7 -> PhysicsWaveView.Style.FLOWING_RIBBONS
             else -> PhysicsWaveView.Style.SPECTRUM_BARS
         }
         color = palette.brand
@@ -280,12 +281,12 @@ class VoicePanel(
     companion object {
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "每次启动随机")
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, 0)
-            return if (selected == -1) kotlin.random.Random.nextInt(7) else selected.coerceIn(0, 6)
+            return if (selected == -1) kotlin.random.Random.nextInt(8) else selected.coerceIn(0, 7)
         }
     }
 }
