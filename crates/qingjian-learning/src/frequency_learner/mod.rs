@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use qingjian_core::sentence::{Context, UserNgram};
+use qingjian_core::sentence::{Context, SENTENCE_START, UserNgram};
 use qingjian_core::storage::{read_text_lossy, write_atomic};
 use qingjian_core::{Candidate, Forgotten, Learner};
 use qingjian_dictionary::{Dictionary, WordList};
