@@ -194,6 +194,7 @@ impl FrequencyLearner {
                 && let Some(entry) = self.counts.get_mut(text)
             {
                 entry.last_used = day;
+                entry.tk = day.saturating_mul(86_400);
             }
         }
     }
@@ -252,6 +253,28 @@ impl FrequencyLearner {
         self.long_half_life_days = days.max(0.0);
         self.short_half_life_days = if days > 0.0 { days * 3.0 / 45.0 } else { 0.0 };
         self.tick();
+    }
+
+    /// 将词加入永久屏蔽表；屏蔽词的个性化权重始终为零。
+    pub fn ban_word(&mut self, text: &str) -> bool {
+        let Some(entry) = self.counts.get_mut(text) else { return false; };
+        if entry.banned { return false; }
+        entry.banned = true;
+        self.dirty = true;
+        true
+    }
+
+    /// 解除永久屏蔽。
+    pub fn unban_word(&mut self, text: &str) -> bool {
+        let Some(entry) = self.counts.get_mut(text) else { return false; };
+        if !entry.banned { return false; }
+        entry.banned = false;
+        self.dirty = true;
+        true
+    }
+
+    pub fn is_banned(&self, text: &str) -> bool {
+        self.counts.get(text).is_some_and(|entry| entry.banned)
     }
 
     /// 从文件加载，之后 [`Learner::flush`] 会写回同一个文件。
@@ -393,7 +416,7 @@ impl FrequencyLearner {
             let mut dual_rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
             dual_rows.sort_by(|a, b| a.0.cmp(b.0));
             for (text, entry) in dual_rows {
-                writeln!(file, "{text}\\t{:.9}\\t{:.9}\\t{}\\t{}\\t{}\\t{}",
+                writeln!(file, "{text}\t{:.9}\t{:.9}\t{}\t{}\t{}\t{}",
                     entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
             }
             Ok(())
