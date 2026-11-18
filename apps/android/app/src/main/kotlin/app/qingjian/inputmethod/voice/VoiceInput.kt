@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.Engine
+import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.panel.VoicePanel
 
 /**
@@ -71,7 +72,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         pendingPartialText = null
         if (recognizer != null) {
             runCatching { host.composeVoice(text) }
-                .onFailure { android.util.Log.w("QingjianVoice", "Unable to update composing text", it) }
+                .onFailure { AppLog.warn("Unable to update composing text" + ": " + it.stackTraceToString()) }
             lastPartialText = text
             lastPartialAt = SystemClock.uptimeMillis()
         }
@@ -87,7 +88,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     /** 开始说话；[holding] 是按着空格说。返回开没开起来：不能用、要先申请权限都是 false。 */
     fun start(holding: Boolean): Boolean {
-        android.util.Log.i("QingjianVoice", "start requested holding=$holding active=${active}")
+        AppLog.info("start requested holding=$holding active=${active}")
         if (active) return true
         if (!host.canStartVoice()) {
             host.toast("当前输入框属于密码、私密或直接输入模式，已禁止云端语音输入")
@@ -110,7 +111,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         val panel = try {
             host.openVoicePanel(this)
         } catch (error: Throwable) {
-            android.util.Log.e("QingjianVoice", "Failed to create voice panel", error)
+            AppLog.error("Failed to create voice panel" + ": " + error.stackTraceToString())
             host.toast("语音界面启动失败，请稍后重试")
             return false
         } ?: return false
@@ -123,7 +124,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
             picked.start(this)
             true
         } catch (error: Throwable) {
-            android.util.Log.e("QingjianVoice", "Failed to start voice recognizer", error)
+            AppLog.error("Failed to start voice recognizer" + ": " + error.stackTraceToString())
             runCatching { picked.cancel() }
             recognizer = null
             this.panel = null
@@ -181,14 +182,14 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         host.closeVoicePanel()
         runCatching { activeRecognizer.finish() }
             .onFailure {
-                android.util.Log.e("QingjianVoice", "Failed to finish voice input", it)
+                AppLog.error("Failed to finish voice input" + ": " + it.stackTraceToString())
                 host.composeVoice("")
                 end()
             }
     }
 
     override fun onFinish(act: Boolean, hide: Boolean) {
-        android.util.Log.i("QingjianVoice", "finish requested act=$act hide=$hide recognizerActive=${recognizer != null}")
+        AppLog.info("finish requested act=$act hide=$hide recognizerActive=${recognizer != null}")
         val recognizer = recognizer ?: return
         after = when {
             act -> After.ACTION
@@ -202,7 +203,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
 
     /** 不要这一段（撤回、返回键、换输入框、收起键盘）：编辑中的字撤掉。 */
     override fun onCancel() {
-        android.util.Log.i("QingjianVoice", "cancel requested recognizerActive=${recognizer != null} pendingCorrection=$pendingCorrection")
+        AppLog.info("cancel requested recognizerActive=${recognizer != null} pendingCorrection=$pendingCorrection")
         generation += 1
         mainHandler.removeCallbacks(partialFlush)
         pendingPartialText = null
@@ -235,7 +236,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         pendingPartialText = null
         lastPartialText = ""
         lastPartialAt = 0L
-        android.util.Log.i("QingjianVoice", "final result received length=${text.length}")
+        AppLog.info("final result received length=${text.length}")
         val then = after
         val requestGeneration = generation
         val completedPanel = panel
@@ -244,7 +245,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         panel = completedPanel
         val original = VoiceTextNormalizer.normalize(text)
         if (original.isBlank()) {
-            android.util.Log.w("QingjianVoice", "Recognizer returned an empty final result; closing the completed voice session")
+            AppLog.warn("Recognizer returned an empty final result; closing the completed voice session")
             runCatching { host.composeVoice("") }
             end()
             return
@@ -257,11 +258,11 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
             val commitStartedAt = SystemClock.elapsedRealtime()
             host.commitVoice(original)
             val commitElapsed = SystemClock.elapsedRealtime() - commitStartedAt
-            android.util.Log.i("QingjianVoice", "final commit completed elapsedMs=$commitElapsed length=${original.length}")
+            AppLog.info("final commit completed elapsedMs=$commitElapsed length=${original.length}")
             if (then == After.ACTION) host.performVoiceAction()
             if (then == After.HIDE) host.hideKeyboard()
         } catch (error: Throwable) {
-            android.util.Log.e("QingjianVoice", "Failed to commit final voice result", error)
+            AppLog.error("Failed to commit final voice result" + ": " + error.stackTraceToString())
             runCatching { host.composeVoice("") }
             end()
             host.toast("语音结果提交失败，请重试")
@@ -276,14 +277,14 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
                     ?.takeIf { it.isNotBlank() && it.length <= maxOf(original.length * 2, original.length + 40) }
                     ?: original
                 if (result.isFailure) {
-                    android.util.Log.w("QingjianVoice", "Cloud voice correction unavailable; keeping immediate ASR text")
+                    AppLog.warn("Cloud voice correction unavailable; keeping immediate ASR text")
                 } else if (corrected != original) {
                     runCatching { host.refineCommittedVoice(original, corrected) }
-                        .onFailure { android.util.Log.w("QingjianVoice", "Unable to apply corrected voice text", it) }
+                        .onFailure { AppLog.warn("Unable to apply corrected voice text" + ": " + it.stackTraceToString()) }
                 }
             }
         }.onFailure {
-            android.util.Log.w("QingjianVoice", "Unable to start cloud voice correction; keeping ASR text", it)
+            AppLog.warn("Unable to start cloud voice correction; keeping ASR text" + ": " + it.stackTraceToString())
         }
         // 识别结束后保留面板，让用户能立即撤销/重做刚提交的整段语音。
         panel?.listening = false
@@ -291,7 +292,7 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
     }
 
     override fun onError(message: String) {
-        android.util.Log.e("QingjianVoice", "recognition error: $message")
+        AppLog.error("recognition error: $message")
         host.composeVoice("")
         end()
         host.toast(message)
