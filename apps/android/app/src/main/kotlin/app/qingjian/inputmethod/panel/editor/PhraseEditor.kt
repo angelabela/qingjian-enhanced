@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.panel.editor
 
 import android.annotation.SuppressLint
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -11,10 +12,12 @@ import android.text.Selection
 import android.text.SpannableStringBuilder
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
+import android.widget.PopupMenu
 import android.view.inputmethod.InputConnection
 import app.qingjian.inputmethod.core.store.PhraseItem
 import app.qingjian.inputmethod.core.store.PhraseRules
@@ -57,6 +60,17 @@ class PhraseEditor(
     /** 新建分组的名字；[creatingGroup] 时用它而不是 [groups] 里选的。 */
     private val newGroup = SpannableStringBuilder()
     private var creatingGroup = false
+    private var longPressHandled = false
+
+    /** 长按编辑区时提供系统剪贴板粘贴入口；自绘 View 不会自动显示 TextView 的文本选择菜单。 */
+    private val pasteGesture = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent): Boolean = true
+
+        override fun onLongPress(e: MotionEvent) {
+            longPressHandled = true
+            showPasteMenu()
+        }
+    })
 
     /** 打的字进哪一格。 */
     private var field = Field.TEXT
@@ -216,7 +230,13 @@ class PhraseEditor(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) longPressHandled = false
+        pasteGesture.onTouchEvent(event)
         if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        if (longPressHandled) {
+            longPressHandled = false
+            return true
+        }
         val x = event.x
         val y = event.y
         when {
@@ -246,6 +266,31 @@ class PhraseEditor(
         }
         invalidate()
         return true
+    }
+
+    private fun showPasteMenu() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        if (clipboard?.hasPrimaryClip() != true) {
+            return
+        }
+        PopupMenu(context, this).apply {
+            menu.add("粘贴").setOnMenuItemClickListener {
+                pasteFromClipboard(clipboard)
+                true
+            }
+            show()
+        }
+    }
+
+    /** 按当前字段的光标/选区粘贴；复用 InputConnection 的长度与输入码过滤规则。 */
+    private fun pasteFromClipboard(clipboard: ClipboardManager) {
+        val clipData = clipboard.primaryClip ?: return
+        if (clipData.itemCount == 0) return
+        val value = clipData.getItemAt(0).coerceToText(context) ?: return
+        if (value.isEmpty()) return
+        connection.finishComposingText()
+        connection.commitText(value, 1)
+        invalidate()
     }
 
     private fun focus(to: Field) {
