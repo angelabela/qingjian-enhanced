@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.panel.base
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.RectF
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -84,6 +85,11 @@ abstract class PanelView(
 
     /** 点在返回键以外的地方。 */
     protected abstract fun onTap(x: Float, y: Float)
+
+    /** 动态键盘背景开启时，面板底层必须透出根视图的动态背景。 */
+    fun useAnimatedBackground(enabled: Boolean) {
+        setBackgroundColor(if (enabled) Color.TRANSPARENT else palette.board)
+    }
 
     init {
         setBackgroundColor(palette.board)
