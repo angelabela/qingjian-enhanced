@@ -151,6 +151,7 @@ fn transitions_round_trip_through_ngram_tsv() {
     assert!(learner.user_ngram().is_none());
     learner.record_transition(Context::START, "我", 1);
     learner.record_transition(Context::after("我"), "想", 1);
+    learner.bigrams.get_mut(&("我".to_owned(), "想".to_owned())).unwrap().tk = 0;
     learner.record_transition(Context::after("我"), "想", 1);
     learner.record_transition(Context::after_two("我", "想"), "去", 1);
     assert_eq!(learner.user_ngram().unwrap().pair(Some("我"), "想"), 2);
@@ -238,7 +239,7 @@ fn saving_is_atomic_and_leaves_no_temporary_files() {
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names.len(), 10, "{names:?}");
+    assert_eq!(names.len(), 11, "{names:?}");
     assert!(names.iter().all(|name| !name.contains(".tmp")), "{names:?}");
     std::fs::remove_dir_all(dir).unwrap();
 }
