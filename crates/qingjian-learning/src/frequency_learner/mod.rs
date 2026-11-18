@@ -524,8 +524,22 @@ impl FrequencyLearner {
 
     pub fn save_to(&mut self, path: impl AsRef<Path>) -> Result<(), LearningError> {
         let now = self.now_seconds.get();
-        // 365 天未使用才清理记录；短期分下降不会直接删除用户学过的词。
+        // 365 天未使用才清理记录；屏蔽词永久保留，短期分下降不会直接删除用户学过的词。
         self.counts.retain(|_, entry| entry.banned || now.saturating_sub(entry.tk) <= decay::COLD_DAYS.saturating_mul(86_400));
+
+        // 先写完整双时间尺度侧车，再写旧版兼容文件；崩溃发生在中间时，新版仍以侧车为准。
+        let dual_path = Self::dual_path(path.as_ref());
+        write_atomic(&dual_path, |file| {
+            writeln!(file, "# 青简双时间尺度词频：词\\tls\\tll\\ttk\\thits\\tsys\\tbanned")?;
+            let mut dual_rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
+            dual_rows.sort_by(|a, b| a.0.cmp(b.0));
+            for (text, entry) in dual_rows {
+                writeln!(file, "{text}\\t{:.9}\\t{:.9}\\t{}\\t{}\\t{}\\t{}",
+                    entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
+            }
+            Ok(())
+        })?;
+
         let mut rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
         rows.sort_by(|a, b| {
             b.1.effective_dual(now, self.short_half_life_days, self.long_half_life_days)
@@ -535,31 +549,16 @@ impl FrequencyLearner {
         write_atomic(path.as_ref(), |file| {
             writeln!(file, "# 青简用户词频：词\\t选择次数")?;
             for (text, entry) in rows {
-                writeln!(file, "{text}\t{}", entry.hits)?;
+                writeln!(file, "{text}\\t{}", entry.hits)?;
             }
             Ok(())
         })?;
         let days_path = Self::days_path(path.as_ref());
-        let days: Vec<(&String, u64)> = self
-            .counts
-            .iter()
-            .map(|(text, e)| (text, e.tk / 86_400))
-            .collect();
+        let days: Vec<(&String, u64)> = self.counts.iter().map(|(text, entry)| (text, entry.tk / 86_400)).collect();
         write_atomic(&days_path, |file| {
             writeln!(file, "# 青简用户词频最近使用日：词\\t天数（unix 天）")?;
             for (text, day) in days {
-                writeln!(file, "{text}\t{day}")?;
-            }
-            Ok(())
-        })?;
-        let dual_path = Self::dual_path(path.as_ref());
-        write_atomic(&dual_path, |file| {
-            writeln!(file, "# 青简双时间尺度词频：词\\tls\\tll\\ttk\\thits\\tsys\\tbanned")?;
-            let mut dual_rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
-            dual_rows.sort_by(|a, b| a.0.cmp(b.0));
-            for (text, entry) in dual_rows {
-                writeln!(file, "{text}\t{:.9}\t{:.9}\t{}\t{}\t{}\t{}",
-                    entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
+                writeln!(file, "{text}\\t{day}")?;
             }
             Ok(())
         })?;
