@@ -312,7 +312,7 @@ data class Settings(
                 symbolsSwipeUp = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_UP, null)),
                 symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
                 keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
-                keyboardBackgroundStyle = prefs.getInt(KEY_BACKGROUND_STYLE, 0).coerceIn(0, 4),
+                keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 4),
             )
         }
     }
