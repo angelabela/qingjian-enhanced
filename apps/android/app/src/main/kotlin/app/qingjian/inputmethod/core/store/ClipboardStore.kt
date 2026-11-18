@@ -58,7 +58,7 @@ object ClipboardStore {
 
     private fun phrases(context: Context, request: JSONObject): PhrasePage {
         val json = runCatching { Native.phrases(userDir(context), request.toString()) }.getOrNull()
-            ?: return PhrasePage(listOf(PhraseRules.defaultGroup), emptyList())
+            ?: return PhrasePage(listOf(PhraseRules.defaultGroup), emptyList(), operationSucceeded = false)
         val page = JSONObject(json)
         val groups = page.getJSONArray("groups")
         val phrases = page.getJSONArray("phrases")
@@ -68,6 +68,7 @@ object ClipboardStore {
                 val phrase = phrases.getJSONObject(i)
                 PhraseItem(i, phrase.getString("text"), phrase.getString("group"), phrase.optString("code"))
             },
+            page.optBoolean("operation_succeeded", true),
         )
     }
 }
