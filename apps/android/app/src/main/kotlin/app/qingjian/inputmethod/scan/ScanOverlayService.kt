@@ -117,6 +117,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onCreate() {
         super.onCreate()
+        android.util.Log.i(TAG, "[SCAN_DIAG] onCreate pid=${android.os.Process.myPid()}")
         prefixEditingRequested = false
         prefixEditorHadFocus = false
         ScanPreferences.setPrefixEditorActive(false)
@@ -154,10 +155,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            android.util.Log.w(TAG, "[SCAN_DIAG] explicit ACTION_STOP received")
             stopSelf()
             return START_NOT_STICKY
         }
-        android.util.Log.i(TAG, "Scan overlay service active; startId=$startId action=${intent?.action}")
+        android.util.Log.i(TAG, "[SCAN_DIAG] onStartCommand startId=$startId flags=$flags action=${intent?.action} shuttingDown=$shuttingDown")
         return START_STICKY
     }
 
@@ -334,7 +336,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
-            setOnClickListener { finishPrefixEditing(); stopSelf() }
+            setOnClickListener { android.util.Log.w(TAG, "[SCAN_DIAG] close button tapped"); finishPrefixEditing(); stopSelf() }
         }
         toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
         // 空白标题栏/行区域可直接拖动；按钮和输入框保留各自点击、编辑行为。
@@ -453,6 +455,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.scaleX = 0.94f
         root.scaleY = 0.94f
         windowManager.addView(root, windowParams)
+        android.util.Log.i(TAG, "[SCAN_DIAG] overlay root attached width=${windowParams.width} height=${windowParams.height} type=${windowParams.type}")
         // 窗口以轻微缩放+淡入出现；不改变最终窗口尺寸和触摸坐标。
         root.animate().alpha(1f).scaleX(1f).scaleY(1f)
             .setDuration(220L)
@@ -1120,6 +1123,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (shuttingDown) return
         android.os.Handler(mainLooper).post {
             if (shuttingDown) return@post
+            android.util.Log.i(TAG, "[SCAN_DIAG] broadcast scan result length=${value.length} editorPrefixActive=${ScanPreferences.isPrefixEditorActive()}")
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
@@ -1159,7 +1163,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
-        android.util.Log.w(TAG, "Scan overlay service destroyed; scanner will be eligible for sticky restart")
+        android.util.Log.w(TAG, "[SCAN_DIAG] onDestroy shuttingDown=$shuttingDown processing=${processing.get()} prefixEditing=$prefixEditingRequested rootAttached=${::root.isInitialized && root.isAttachedToWindow}")
         synchronized(lifecycleGuard) { shuttingDown = true }
         prefixEditingRequested = false
         prefixEditorHadFocus = false
