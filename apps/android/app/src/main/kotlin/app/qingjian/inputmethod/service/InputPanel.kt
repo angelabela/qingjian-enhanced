@@ -475,6 +475,22 @@ class InputPanel(
         cover(kind, panel)
     }
 
+    /** 生成跨 Android 版本一致的磨砂底图：先缩小再高质量放大，避免依赖仅部分设备生效的 RenderEffect。 */
+    private fun blurVoiceBackdrop(source: Bitmap): Bitmap {
+        val width = source.width
+        val height = source.height
+        val reduced = Bitmap.createScaledBitmap(
+            source,
+            (width / 7).coerceAtLeast(1),
+            (height / 7).coerceAtLeast(1),
+            true,
+        )
+        val blurred = Bitmap.createScaledBitmap(reduced, width, height, true)
+        if (reduced !== source && !reduced.isRecycled) reduced.recycle()
+        if (!source.isRecycled) source.recycle()
+        return blurred
+    }
+
     /** 盖上语音面板：右边那块写 [actionLabel]，点各块接回 [actions]。 */
     fun openVoice(actionLabel: String, actions: VoicePanel.Actions): VoicePanel {
         close()
@@ -487,7 +503,13 @@ class InputPanel(
                 main.draw(Canvas(bitmap))
             }
         }.getOrNull()
-        return VoicePanel(context, palette, actionLabel, actions, backdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect).also { voice ->
+        val frostedBackdrop = backdrop?.let { bitmap ->
+            runCatching { blurVoiceBackdrop(bitmap) }.getOrElse {
+                if (!bitmap.isRecycled) bitmap.recycle()
+                null
+            }
+        }
+        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
