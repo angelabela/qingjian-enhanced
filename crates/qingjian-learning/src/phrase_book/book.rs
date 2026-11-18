@@ -59,6 +59,11 @@ impl PhraseBook {
         &self.phrases
     }
 
+    /// 当前常用语文件是否可持久化；读入损坏/不可读时不能把内存写入误报为成功。
+    pub fn can_persist(&self) -> bool {
+        self.path.is_some()
+    }
+
     /// 出现过的分组，[`DEFAULT_GROUP`] 总在第一个，其余按第一次出现的顺序。
     pub fn groups(&self) -> Vec<String> {
         let mut groups = vec![DEFAULT_GROUP.to_owned()];
