@@ -102,7 +102,7 @@ private class FlowingKeyboardBackgroundDrawable(
         // 使用长周期正弦往返，不在周期边界瞬间跳回起点；慢速流动，避免明显的循环播放感。
         val phase = (SystemClock.uptimeMillis() % BACKGROUND_CYCLE_MS).toDouble() /
             BACKGROUND_CYCLE_MS.toDouble() * (Math.PI * 2.0)
-        val offset = (kotlin.math.sin(phase) * shaderWidth * 0.82f).toFloat()
+        val offset = (kotlin.math.sin(phase) * shaderWidth.toDouble() * 0.82).toFloat()
         matrix.setTranslate(offset, 0f)
         activeShader.setLocalMatrix(matrix)
         paint.shader = activeShader
