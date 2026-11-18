@@ -30,22 +30,58 @@ pub struct PhraseBook {
 }
 
 impl PhraseBook {
-    /// 读数据目录里的常用语（不存在就是空的）；读不了或格式坏了就退回只在内存里记，不拿空表覆盖用户文件。
+    /// 读数据目录里的常用语。先确保目录存在；损坏文件先备份，再尽可能恢复有效条目。
+    /// 任何恢复/初始化失败都退回只读内存模式，不覆盖原始数据。
     pub fn open(dir: &Path) -> Self {
+        if let Err(error) = std::fs::create_dir_all(dir) {
+            tracing::warn!(path = %dir.display(), %error, "常用语目录不可用");
+            return Self::default();
+        }
         let path = dir.join(PHRASE_BOOK_FILE);
         match read_text_lossy(&path) {
             Ok(None) => Self {
                 phrases: Vec::new(),
                 path: Some(path),
             },
-            Ok(Some(text)) => match serde_json::from_str(&text) {
+            Ok(Some(text)) => match serde_json::from_str::<Vec<Phrase>>(&text) {
                 Ok(phrases) => Self {
                     phrases,
                     path: Some(path),
                 },
                 Err(error) => {
-                    tracing::warn!(path = %path.display(), %error, "常用语文件格式不对，本次只在内存里记");
-                    Self::default()
+                    tracing::warn!(path = %path.display(), %error, "常用语文件损坏，尝试备份并恢复有效条目");
+                    let recovered = recover_phrases(&text);
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_nanos())
+                        .unwrap_or_default();
+                    let backup = dir.join(format!("{PHRASE_BOOK_FILE}.corrupt-{stamp}.bak"));
+                    if let Err(backup_error) = std::fs::write(&backup, text.as_bytes()) {
+                        tracing::error!(path = %backup.display(), %backup_error, "常用语损坏文件备份失败，拒绝覆盖");
+                        return Self::default();
+                    }
+                    let serialized = match serde_json::to_string_pretty(&recovered) {
+                        Ok(value) => value,
+                        Err(serialize_error) => {
+                            tracing::error!(%serialize_error, "常用语恢复数据序列化失败");
+                            return Self::default();
+                        }
+                    };
+                    match write_atomic_str(&path, &serialized) {
+                        Ok(()) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                backup = %backup.display(),
+                                recovered = recovered.len(),
+                                "常用语文件已备份并恢复"
+                            );
+                            Self { phrases: recovered, path: Some(path) }
+                        }
+                        Err(write_error) => {
+                            tracing::error!(path = %path.display(), %write_error, "常用语恢复文件写入失败");
+                            Self::default()
+                        }
+                    }
                 }
             },
             Err(error) => {
@@ -151,6 +187,18 @@ impl PhraseBook {
         write_atomic_str(path, &text)?;
         Ok(())
     }
+}
+
+/// 从损坏的 JSON 数组中逐条恢复仍然有效的常用语。
+fn recover_phrases(text: &str) -> Vec<Phrase> {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
+    items.into_iter()
+        .filter_map(|item| serde_json::from_value::<Phrase>(item).ok())
+        .filter(|phrase| !phrase.text.trim().is_empty())
+        .take(MAX_PHRASES)
+        .collect()
 }
 
 /// 文字为空返回 `None`；分组空了归 [`DEFAULT_GROUP`]；输入码只留字母、转小写、截到 [`MAX_CODE_CHARS`]。
