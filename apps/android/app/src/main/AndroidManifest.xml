@@ -59,6 +59,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".background.DynamicBackgroundActivity" android:exported="false" />
         <activity android:name=".service.SmartActionActivity" android:exported="false" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
         <service
