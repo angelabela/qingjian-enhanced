@@ -246,6 +246,10 @@ class InputPanel(
         if (openPanel == PanelKind.CLIPBOARD) open(PanelKind.CLIPBOARD)
     }
 
+    fun refreshFunctions() {
+        (panelView as? FunctionPanel)?.refreshState()
+    }
+
     /** 候选展开开着时换上这一帧的拼音与候选。 */
     fun showCandidates(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
         (panelView as? CandidateGrid)?.show(preedit, candidates, singleChars)

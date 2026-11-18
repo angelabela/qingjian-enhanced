@@ -264,12 +264,19 @@ class CloudSuggestionsView(
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
+                if (blurAvailable) {
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    setBackgroundBlurRadius((34f * density).toInt())
+                } else {
+                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    setBackgroundBlurRadius(0)
+                }
                 setBackgroundDrawable(glassBackground(blurAvailable))
             }
             dialog.show()
             dialog.window?.apply {
                 setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
-                if (blurAvailable) setBackgroundBlurRadius((40f * density).toInt())
+                if (blurAvailable) setBackgroundBlurRadius((38f * density).toInt())
                 decorView.background = glassBackground(blurAvailable)
                 decorView.clipToOutline = true
                 decorView.outlineProvider = ViewOutlineProvider.BACKGROUND
@@ -300,7 +307,11 @@ class CloudSuggestionsView(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val listener = Consumer<Boolean> { enabled ->
                     tipsContainer?.background = glassBackground(enabled)
-                    tipsDialog?.window?.setBackgroundBlurRadius(if (enabled) (40f * density).toInt() else 0)
+                    tipsDialog?.window?.apply {
+                        if (enabled) addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                        else clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                        setBackgroundBlurRadius(if (enabled) (38f * density).toInt() else 0)
+                    }
                 }
                 blurEnabledListener = listener
                 wm.addCrossWindowBlurEnabledListener(context.mainExecutor, listener)
@@ -398,11 +409,26 @@ class CloudSuggestionsView(
         }
     }
 
-    private fun glassBackground(blurAvailable: Boolean) = GradientDrawable().apply {
+    private fun glassBackground(blurAvailable: Boolean) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(
+            blendThemeColor(palette.surface, palette.brand, 0.16f, if (blurAvailable) 0xA8 else 0xE8),
+            blendThemeColor(palette.surface, palette.accent, 0.10f, if (blurAvailable) 0xB8 else 0xEE),
+        ),
+    ).apply {
         cornerRadius = 16f * density
-        val alpha = if (blurAvailable) 0xB8 else 0xEC
-        setColor((palette.surface and 0x00FFFFFF) or (alpha shl 24))
-        setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
+        val alpha = if (blurAvailable) 0x72 else 0x96
+        setStroke((1f * density).toInt().coerceAtLeast(1),
+            (palette.brand and 0x00FFFFFF) or (alpha shl 24))
+    }
+
+    private fun blendThemeColor(base: Int, accent: Int, amount: Float, alpha: Int): Int {
+        fun channel(shift: Int): Int {
+            val first = (base shr shift) and 0xFF
+            val second = (accent shr shift) and 0xFF
+            return (first + (second - first) * amount).toInt().coerceIn(0, 255)
+        }
+        return (alpha shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
     private fun scheduleAutoHide() {

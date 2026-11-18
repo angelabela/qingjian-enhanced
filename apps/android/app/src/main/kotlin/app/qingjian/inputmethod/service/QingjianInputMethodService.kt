@@ -156,27 +156,45 @@ class QingjianInputMethodService :
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
             val connection = currentInputConnection ?: return
-            // 仅检查当前输入框已有文本，不读取剪贴板作为去重依据。
-            // 因此剪贴板里即使已有相同条码，只要当前输入框没有，仍然允许扫码上屏。
-            val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
-            val after = connection.getTextAfterCursor(8192, 0)?.toString().orEmpty()
+
+            // 不向微信/Excel 等宿主请求 8192 字符的长文窗口。自定义 InputConnection
+            // 可能因此同步加载/重排整份文档；只检查光标附近的小范围，宿主调用做异常隔离。
+            val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+            val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
             if (before.contains(value) || after.contains(value)) return
-            connection.beginBatchEdit()
+
+            val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
             try {
-                if (!composer.commitExternalText(value, connection)) return
-                // 扫码成功写入输入框后再更新系统剪贴板，剪贴板不参与拦截逻辑。
-                getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+                var committed = runCatching { composer.commitExternalText(value, connection) }.getOrDefault(false)
+                if (!committed) {
+                    val alreadyInserted = runCatching {
+                        connection.getTextBeforeCursor(value.length, 0)?.toString()?.endsWith(value) == true
+                    }.getOrDefault(false)
+                    committed = alreadyInserted || runCatching { connection.commitText(value, 1) }.getOrDefault(false)
+                }
+                if (!committed) {
+                    android.util.Log.w("QingjianScan", "Host rejected scan text: ${currentInputEditorInfo?.packageName}")
+                    return
+                }
+
+                runCatching {
+                    getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+                }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
+
                 if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
-                    // 优先直接提交换行字符，避免某些编辑器把 Enter 当成发送/搜索动作；
-                    // 对不接受换行字符的编辑器再退回真实 Enter 按键事件。
-                    if (!composer.commitExternalText("\n", connection)) {
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+                    val newlineCommitted = runCatching { composer.commitExternalText("\n", connection) }.getOrDefault(false)
+                    if (!newlineCommitted) {
+                        runCatching {
+                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+                        }
                     }
                 }
+            } catch (error: Throwable) {
+                android.util.Log.e("QingjianScan", "Failed to write scan result through host InputConnection", error)
             } finally {
-                connection.endBatchEdit()
+                if (batchStarted) runCatching { connection.endBatchEdit() }
             }
         }
     }
@@ -586,24 +604,37 @@ class QingjianInputMethodService :
     }
 
     /**
-     * 停止输入 650ms 后才请求一次。私密输入、密码/直接输入、非中文输入不上传上下文。
-     * 模型只能把原候选中的一个提到首位，任何非候选输出都会被严格丢弃。
+     * 停止输入 650ms 后才请求一次。结合光标前 64 字与后 32 字判断搭配、句法和指代；
+     * 私密/密码/直接输入不读取、不上传上下文。
      */
     private fun scheduleCandidateRerank(preedit: String, candidates: List<Candidate>) {
         if (candidates.size < 2 || preedit.isBlank() || composer.privateInput ||
             composer.directInput || !composer.chinese || editor != null) return
         val input = currentInputConnection ?: return
-        val before = runCatching { input.getTextBeforeCursor(20, 0)?.toString().orEmpty() }.getOrDefault("")
-        if (before.isBlank()) return
+        val before = runCatching { input.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { input.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
+        if (before.isBlank() && after.isBlank()) return
         val candidateTexts = candidates.map { it.text }
+        if (candidateTexts.distinct().size != candidateTexts.size) return
         val requestSequence = candidateRerankSequence
+        val editorPackage = currentInputEditorInfo?.packageName
         val task = Runnable {
-            candidateReranker.rerank(before, preedit, candidateTexts) { selected ->
-                if (selected == null || requestSequence != candidateRerankSequence ||
-                    shownPreedit != preedit || shownCandidates.map { it.text } != candidateTexts) return@rerank
-                val selectedIndex = candidateTexts.indexOf(selected)
-                if (selectedIndex <= 0) return@rerank
-                val order = listOf(selectedIndex) + candidateTexts.indices.filter { it != selectedIndex }
+            candidateReranker.rerank(before, after, preedit, candidateTexts) { ranked ->
+                if (ranked == null || requestSequence != candidateRerankSequence ||
+                    shownPreedit != preedit || shownCandidates.map { it.text } != candidateTexts ||
+                    currentInputEditorInfo?.packageName != editorPackage
+                ) return@rerank
+
+                val liveInput = currentInputConnection ?: return@rerank
+                val liveBefore = runCatching { liveInput.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
+                val liveAfter = runCatching { liveInput.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
+                if (liveBefore != before || liveAfter != after) return@rerank
+
+                val remaining = candidates.indices.toMutableList()
+                val order = ranked.mapNotNull { value ->
+                    remaining.firstOrNull { candidateTexts[it] == value }?.also { remaining.remove(it) }
+                } + remaining
+                if (order.size != candidates.size || order == candidates.indices.toList()) return@rerank
                 candidateIndexMap = order
                 shownCandidates = order.map(candidates::get)
                 renderShownComposition(preedit, shownCandidates)

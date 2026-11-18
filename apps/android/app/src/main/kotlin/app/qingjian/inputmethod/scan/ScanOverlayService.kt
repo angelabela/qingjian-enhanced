@@ -103,6 +103,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var prefixEditorHadFocus = false
     private val executor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
+    private val lifecycleGuard = Any()
+    private val clientsClosed = AtomicBoolean(false)
+    @Volatile private var shuttingDown = false
+    private var analysisUseCase: ImageAnalysis? = null
     // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
     private val lastDeliveredAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
@@ -762,13 +766,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     private fun finishPrefixEditing() {
         val editor = prefixEditor
+        // 预览层也会调用本方法。只有用户确实编辑过前缀时，才允许隐藏软键盘；
+        // 否则悬浮标题栏的 windowToken 可能连带关闭微信/Excel 当前使用的输入法。
+        val wasEditing = prefixEditingRequested || prefixEditorHadFocus || editor?.hasFocus() == true
+        if (!wasEditing) return
+
         prefixEditingRequested = false
         prefixEditorHadFocus = false
         ScanPreferences.setPrefixEditorActive(false)
-        if (editor != null) {
+        if (editor?.hasFocus() == true) {
             (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
                 ?.hideSoftInputFromWindow(editor.windowToken, 0)
-            if (editor.hasFocus()) editor.clearFocus()
+            editor.clearFocus()
         }
         if (::headerWindowParams.isInitialized) {
             headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -907,10 +916,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
             .setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
     }
 
+    private fun closeMlKitClients() {
+        if (!clientsClosed.compareAndSet(false, true)) return
+        if (::scanner.isInitialized) runCatching { scanner.close() }
+        if (::textRecognizer.isInitialized) runCatching { textRecognizer.close() }
+    }
+
     private fun startCamera() {
+        if (shuttingDown) return
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
-            if (lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
+            if (shuttingDown || lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
             val provider = future.get()
             cameraProvider = provider
             val previewBuilder = Preview.Builder()
@@ -920,20 +936,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 it.setSurfaceProvider(preview.surfaceProvider)
             }
             val analysisBuilder = ImageAnalysis.Builder()
-                // 连续扫码无需 1080p；降低每帧内存和 ML Kit 负载，避免微信等宿主前台时的峰值内存压力。
-                .setTargetResolution(Size(1280, 720))
+                // 分析帧降至 640×480，预览保留 720p，降低办公软件前台时的内存峰值。
+                .setTargetResolution(Size(640, 480))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            applyScanCaptureQuality(analysisBuilder)
+            Camera2Interop.Extender(analysisBuilder)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             val analysis = analysisBuilder.build()
+            analysisUseCase = analysis
             val capture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                .setTargetResolution(Size(1920, 1080))
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setTargetResolution(Size(1280, 720))
                 .build()
             imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
                 val media = proxy.image
-                if (ocrMode || media == null || !processing.compareAndSet(false, true)) {
-                    // 识图模式暂停条码分析；忙碌或无图像时也必须立即释放当前帧。
+                val accepted = synchronized(lifecycleGuard) {
+                    !shuttingDown && !ocrMode && media != null && processing.compareAndSet(false, true)
+                }
+                if (!accepted || media == null) {
+                    // 识图模式暂停条码分析；忙碌、无图像或服务退出时立即释放当前帧。
                     runCatching { proxy.close() }
                 } else {
                     try {
@@ -963,11 +984,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                             .addOnCompleteListener {
                                 processing.set(false)
                                 runCatching { proxy.close() }
+                                if (shuttingDown) closeMlKitClients()
                             }
                     } catch (error: Throwable) {
                         processing.set(false)
                         runCatching { proxy.close() }
                         android.util.Log.e(TAG, "Unable to submit barcode frame to ML Kit", error)
+                        if (shuttingDown) closeMlKitClients()
                     }
                 }
             }
@@ -1007,6 +1030,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 拍照识图仅在本机运行 ML Kit；识别完成后将整段文字写入当前输入框。 */
     private fun capturePhotoForOcr() {
+        if (shuttingDown) return
         val capture = imageCapture ?: run {
             Toast.makeText(this, "相机尚未准备好，请稍后再试", Toast.LENGTH_SHORT).show()
             return
@@ -1016,10 +1040,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
                 val media = image.image
                 if (media == null) {
-                    image.close()
+                    runCatching { image.close() }
                     processing.set(false)
+                    if (shuttingDown) closeMlKitClients()
                     android.os.Handler(mainLooper).post {
-                        Toast.makeText(this@ScanOverlayService, "照片读取失败，请重试", Toast.LENGTH_SHORT).show()
+                        if (!shuttingDown) Toast.makeText(this@ScanOverlayService, "照片读取失败，请重试", Toast.LENGTH_SHORT).show()
                     }
                     return
                 }
@@ -1041,15 +1066,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         }
                     }
                     .addOnCompleteListener {
-                        image.close()
+                        runCatching { image.close() }
                         processing.set(false)
+                        if (shuttingDown) closeMlKitClients()
                     }
             }
 
             override fun onError(exception: ImageCaptureException) {
                 processing.set(false)
+                if (shuttingDown) closeMlKitClients()
                 android.os.Handler(mainLooper).post {
-                    Toast.makeText(this@ScanOverlayService, "拍照失败：${exception.message ?: "请重试"}", Toast.LENGTH_SHORT).show()
+                    if (!shuttingDown) Toast.makeText(this@ScanOverlayService, "拍照失败：${exception.message ?: "请重试"}", Toast.LENGTH_SHORT).show()
                 }
             }
         })
@@ -1089,7 +1116,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     private fun deliverResult(value: String) {
+        if (shuttingDown) return
         android.os.Handler(mainLooper).post {
+            if (shuttingDown) return@post
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
@@ -1129,14 +1158,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
+        synchronized(lifecycleGuard) { shuttingDown = true }
         prefixEditingRequested = false
         prefixEditorHadFocus = false
         ScanPreferences.setPrefixEditorActive(false)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        cameraProvider?.unbindAll()
-        if (::scanner.isInitialized) scanner.close()
-        if (::textRecognizer.isInitialized) textRecognizer.close()
+        runCatching { analysisUseCase?.clearAnalyzer() }
+        runCatching { cameraProvider?.unbindAll() }
+        // 正在处理的 ML Kit Task 完成后才关闭识别器，避免 close 与识别任务竞争。
+        if (!processing.get()) closeMlKitClients()
         saveWindowSize()
         runCatching { headerDialog?.dismiss() }
         headerDialog = null

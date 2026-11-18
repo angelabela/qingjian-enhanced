@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
+import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import android.graphics.Canvas
 import android.graphics.RectF
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
@@ -38,29 +39,41 @@ class FunctionPanel(
     private var voiceEffectPage = false
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
 
-    private val features = listOf(
-        Feature(Icon.EMOJI, "表情") { openPanel(PanelKind.EMOJI) },
-        Feature(Icon.SYMBOLS, "符号") { openPanel(PanelKind.SYMBOLS) },
-        Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
-        Feature(Icon.CAMERA, "扫码") { context.startActivity(Intent(context, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-        Feature(Icon.INFO, "验证码监测") { context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-        Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
-        Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
-            setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
-        },
-        // 两套键位排法之间切，见 Settings.Arrangement
-        Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
-            val next = if (settings.arrangement == Settings.Arrangement.LEFT_THUMB) Settings.Arrangement.STANDARD else Settings.Arrangement.LEFT_THUMB
-            setChoice(Settings.KEY_ARRANGEMENT, next.name)
-        },
-        Feature(Icon.RESIZE, "键盘高度") { startResize() },
-        Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
-        Feature(Icon.WAVEFORM, "语音动效") { voiceEffectPage = true; invalidate() },
-        Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
-        Feature(Icon.SETTINGS, "设置") { openSettings() },
-    ) + listOfNotNull(
-        actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on) { toggleGameKeyboard() } },
-    )
+    private fun smsMonitoringEnabled(): Boolean =
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getBoolean(SmsCodeReceiver.KEY_ENABLED, false)
+
+    private val features: List<Feature>
+        get() {
+            val smsEnabled = smsMonitoringEnabled()
+            return listOf(
+                Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
+                Feature(Icon.CAMERA, "扫码") {
+                    context.startActivity(Intent(context, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
+                    context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
+                Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
+                    setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
+                },
+                // 两套键位排法之间切，见 Settings.Arrangement
+                Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
+                    val next = if (settings.arrangement == Settings.Arrangement.LEFT_THUMB) Settings.Arrangement.STANDARD else Settings.Arrangement.LEFT_THUMB
+                    setChoice(Settings.KEY_ARRANGEMENT, next.name)
+                },
+                Feature(Icon.RESIZE, "键盘高度") { startResize() },
+                Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
+                Feature(Icon.WAVEFORM, "语音动效") { voiceEffectPage = true; invalidate() },
+                Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
+                Feature(Icon.SETTINGS, "设置") { openSettings() },
+            ) + listOfNotNull(
+                actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on) { toggleGameKeyboard() } },
+            )
+        }
+
+    fun refreshState() = invalidate()
 
     private val toggles
         get() = listOf(
