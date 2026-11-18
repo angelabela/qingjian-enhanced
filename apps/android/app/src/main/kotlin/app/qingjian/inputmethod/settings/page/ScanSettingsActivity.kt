@@ -31,6 +31,11 @@ class ScanSettingsActivity : PageActivity() {
                     ScanPreferences.KEY_MODE,
                     if (enabled) ScanPreferences.MODE_FLOATING else ScanPreferences.MODE_FULL,
                 ).apply()
+                if (!enabled) {
+                    // 关闭悬浮扫码开关时，立即结束已运行的前台相机服务与两个悬浮窗口。
+                    stopService(android.content.Intent(this, app.qingjian.inputmethod.scan.ScanOverlayService::class.java)
+                        .setAction(app.qingjian.inputmethod.scan.ScanOverlayService.ACTION_STOP))
+                }
                 rebuild()
             },
             ui.toggle(
@@ -43,6 +48,11 @@ class ScanSettingsActivity : PageActivity() {
                     ScanPreferences.KEY_MODE,
                     if (enabled) ScanPreferences.MODE_FULL else ScanPreferences.MODE_FLOATING,
                 ).apply()
+                if (enabled) {
+                    // 切换到全屏扫码时同步关闭旧的悬浮窗口。
+                    stopService(android.content.Intent(this, app.qingjian.inputmethod.scan.ScanOverlayService::class.java)
+                        .setAction(app.qingjian.inputmethod.scan.ScanOverlayService.ACTION_STOP))
+                }
                 rebuild()
             },
             ui.toggle(
