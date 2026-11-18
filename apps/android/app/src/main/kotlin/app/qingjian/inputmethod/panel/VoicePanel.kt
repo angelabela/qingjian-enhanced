@@ -178,12 +178,19 @@ class VoicePanel(
         target = next
         undoButton.isSelected = next == Target.CANCEL
         finishButton.isSelected = next == Target.ACTION
-        undoButton.alpha = if (undoButton.isSelected) 1f else 0.86f
-        finishButton.alpha = if (finishButton.isSelected) 1f else 0.86f
-        undoButton.scaleX = if (undoButton.isSelected) 1.06f else 1f
-        undoButton.scaleY = if (undoButton.isSelected) 1.06f else 1f
-        finishButton.scaleX = if (finishButton.isSelected) 1.06f else 1f
-        finishButton.scaleY = if (finishButton.isSelected) 1.06f else 1f
+        fun animateTarget(view: View, selected: Boolean) {
+            view.animate().cancel()
+            view.animate()
+                .alpha(if (selected) 1f else 0.86f)
+                .scaleX(if (selected) 1.045f else 1f)
+                .scaleY(if (selected) 1.045f else 1f)
+                .translationY(if (selected) -2f * resources.displayMetrics.density else 0f)
+                .setDuration(145L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.25f))
+                .start()
+        }
+        animateTarget(undoButton, undoButton.isSelected)
+        animateTarget(finishButton, finishButton.isSelected)
         if (next != Target.NONE) Haptics.tap(context)
         overlay.invalidate()
     }

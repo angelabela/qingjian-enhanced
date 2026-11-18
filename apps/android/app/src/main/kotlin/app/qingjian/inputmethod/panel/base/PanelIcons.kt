@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, SCAN_SQUARE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE }
 
     private val path = Path()
     private val oval = RectF()
@@ -56,6 +56,7 @@ object PanelIcons {
             Icon.QR_SCAN -> qrScan()
             Icon.SCAN_RECTANGLE -> scanRectangle(false)
             Icon.SCAN_WIDE -> scanRectangle(true)
+            Icon.SCAN_SQUARE -> scanSquare()
             Icon.FLASHLIGHT -> flashlight(false)
             Icon.FLASHLIGHT_ON -> flashlight(true)
             Icon.DRAG -> drag()
@@ -325,10 +326,16 @@ object PanelIcons {
         polyline(14f, 14f, 16f, 14f, 16f, 16f, 14f, 16f, 14f, 14f)
     }
 
-    /** 切换扫描区域比例：方形取景框与横向长方形取景框。 */
+    /** 长方形扫描框图标。 */
     private fun scanRectangle(wide: Boolean) {
         val bounds = if (wide) floatArrayOf(2.5f, 7f, 21.5f, 17f) else floatArrayOf(5f, 4f, 19f, 20f)
         oval.set(bounds[0], bounds[1], bounds[2], bounds[3])
+        path.addRoundRect(oval, 1.5f, 1.5f, Path.Direction.CW)
+        polyline(8f, 12f, 16f, 12f)
+    }
+
+    private fun scanSquare() {
+        oval.set(4f, 4f, 20f, 20f)
         path.addRoundRect(oval, 1.5f, 1.5f, Path.Direction.CW)
         polyline(8f, 12f, 16f, 12f)
     }

@@ -203,6 +203,7 @@ class CloudSuggestionsView(
         visibility = VISIBLE
         // 有悬浮窗权限时放入独立圆角 Window，使用系统背景模糊；输入法内只保留透明占位行。
         attachTipsDialogIfAllowed()
+        post { syncFloatingWindowSize() }
 
         if (!wasVisible) {
             motion.alpha = 0f
@@ -231,7 +232,14 @@ class CloudSuggestionsView(
 
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val blurAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && wm.isCrossWindowBlurEnabled
-        val container = FrameLayout(context).apply {
+        val container = object : FrameLayout(context) {
+            // 把整个浮窗容器的触摸序列交给 Tips 本体统一判断；空白区域也能启动拖动。
+            override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
+                this@CloudSuggestionsView.onInterceptTouchEvent(event)
+
+            override fun onTouchEvent(event: MotionEvent): Boolean =
+                this@CloudSuggestionsView.onTouchEvent(event) || super.onTouchEvent(event)
+        }.apply {
             isClickable = true
             isFocusable = true
             setOnClickListener { this@CloudSuggestionsView.performClick() }
@@ -307,6 +315,32 @@ class CloudSuggestionsView(
                 FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER),
             )
         }
+    }
+
+    /** 内容变化后显式同步 Dialog Window 宽度，避免窗口仍沿用首次显示时的旧尺寸。 */
+    private fun syncFloatingWindowSize() {
+        val dialog = tipsDialog ?: return
+        if (!dialog.isShowing) return
+        val window = dialog.window ?: return
+        val container = tipsContainer ?: return
+        val height = (46f * density).toInt()
+        val maxWidth = (resources.displayMetrics.widthPixels * 0.80f).toInt().coerceAtLeast(1)
+        measure(
+            MeasureSpec.makeMeasureSpec(maxWidth, MeasureSpec.AT_MOST),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
+        )
+        val targetWidth = measuredWidth.coerceIn(1, maxWidth)
+        container.minimumWidth = 0
+        container.minimumHeight = height
+        container.layoutParams = container.layoutParams?.apply {
+            width = targetWidth
+            this.height = height
+        } ?: ViewGroup.LayoutParams(targetWidth, height)
+        window.setLayout(targetWidth, height)
+        window.decorView.minimumWidth = 0
+        window.decorView.requestLayout()
+        container.requestLayout()
+        updateAnchorPosition()
     }
 
     private fun updateAnchorPosition() {
@@ -459,7 +493,6 @@ class CloudSuggestionsView(
                     if (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop) {
                         floatingDragActive = true
                         draggingTips = true
-                        parent?.requestDisallowInterceptTouchEvent(true)
                         return true
                     }
                 }
@@ -643,7 +676,7 @@ class CloudSuggestionsView(
         val height = (46 * density).toInt()
         val maxWidth = (resources.displayMetrics.widthPixels * 0.80f).toInt()
             .coerceAtLeast(1)
-        // 先按内容自然宽度测量，再限制到屏幕宽度；短联想短显示，长联想才启用横向滚动。
+        // 按内容自然宽度测量；外层 Dialog 也会在每次内容更新后同步到这个宽度。
         items.measure(
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),

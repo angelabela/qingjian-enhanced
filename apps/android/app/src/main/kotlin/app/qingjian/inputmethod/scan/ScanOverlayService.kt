@@ -93,7 +93,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var captureButton: ScanToolbarIconView
     private lateinit var modeButton: ScanToolbarIconView
     private lateinit var shapeButton: ScanToolbarIconView
-    private var wideScanShape = true
+    private var squareScanShape = true
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var torchEnabled = false
@@ -120,7 +120,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         windowManager = getSystemService(WindowManager::class.java)
         // 悬浮窗每次新建都以连续扫码为默认模式；识图模式只在当前窗口内由用户主动切换。
         ocrMode = false
-        wideScanShape = windowPrefs.getBoolean(KEY_WIDE_SCAN_SHAPE, true)
+        squareScanShape = windowPrefs.getBoolean(KEY_SQUARE_SCAN_SHAPE, false)
         windowPrefs.edit().putBoolean(KEY_OCR_MODE, false).apply()
         textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
         scanner = BarcodeScanning.getClient(
@@ -294,10 +294,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
         toolbar.addView(modeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         shapeButton = ScanToolbarIconView(
             this,
-            if (wideScanShape) PanelIcons.Icon.SCAN_WIDE else PanelIcons.Icon.SCAN_RECTANGLE,
-            if (wideScanShape) "切换为方形扫描区域" else "切换为长方形扫描区域",
+            if (squareScanShape) PanelIcons.Icon.SCAN_SQUARE else PanelIcons.Icon.SCAN_RECTANGLE,
+            if (squareScanShape) "切换为自定义长方形扫描区域" else "切换为正方形扫描区域",
         ).apply {
-            setOnClickListener { setWideScanShape(!wideScanShape) }
+            setOnClickListener { setScanShape(!squareScanShape) }
         }
         toolbar.addView(shapeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
@@ -400,7 +400,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         })
         attachCaptureButtonDrag()
         setOcrMode(ocrMode)
-        setWideScanShape(wideScanShape, persist = false)
+        setScanShape(squareScanShape, persist = false)
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
@@ -752,16 +752,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
 
-    private fun setWideScanShape(wide: Boolean, persist: Boolean = true) {
-        wideScanShape = wide
-        if (persist) windowPrefs.edit().putBoolean(KEY_WIDE_SCAN_SHAPE, wide).apply()
+    private fun setScanShape(square: Boolean, persist: Boolean = true) {
+        squareScanShape = square
+        if (persist) windowPrefs.edit().putBoolean(KEY_SQUARE_SCAN_SHAPE, square).apply()
         if (::shapeButton.isInitialized) {
             shapeButton.setIcon(
-                if (wide) PanelIcons.Icon.SCAN_WIDE else PanelIcons.Icon.SCAN_RECTANGLE,
-                if (wide) "切换为方形扫描区域" else "切换为长方形扫描区域",
+                if (square) PanelIcons.Icon.SCAN_SQUARE else PanelIcons.Icon.SCAN_RECTANGLE,
+                if (square) "切换为自定义长方形扫描区域" else "切换为正方形扫描区域",
             )
         }
-        if (::scanArea.isInitialized) scanArea.post { if (wideScanShape == wide) scanArea.setWideShape(wide) }
+        if (::scanArea.isInitialized) scanArea.post { if (squareScanShape == square) scanArea.setShape(square) }
     }
 
     private fun finishPrefixEditing() {
@@ -1138,6 +1138,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var downY = 0f
         private var start = RectF()
         private var resizing = false
+        private var squareMode = false
         private var touchInScanArea = false
         private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -1179,21 +1180,44 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         fun boundsInView(): RectF = RectF(rect)
 
-        fun setWideShape(wide: Boolean) {
-            if (width <= 0 || height <= 0) return
+        fun setShape(square: Boolean) {
+            if (width <= 0 || height <= 0 || square == squareMode) return
             val centerX = if (rect.isEmpty) width / 2f else rect.centerX()
             val centerY = if (rect.isEmpty) height / 2f else rect.centerY()
-            val targetWidth = width * if (wide) 0.82f else 0.62f
-            val targetHeight = height * if (wide) 0.34f else 0.56f
-            rect.set(
-                centerX - targetWidth / 2f,
-                centerY - targetHeight / 2f,
-                centerX + targetWidth / 2f,
-                centerY + targetHeight / 2f,
-            )
+            if (square) {
+                // 切到正方形前先单独保存用户自定义的长方形，切回时完整恢复。
+                saveCustomRect()
+                val side = minOf(width * 0.68f, height * 0.68f)
+                rect.set(centerX - side / 2f, centerY - side / 2f,
+                    centerX + side / 2f, centerY + side / 2f)
+            } else if (prefs.contains("custom_left") && prefs.contains("custom_top") &&
+                prefs.contains("custom_right") && prefs.contains("custom_bottom")) {
+                rect.set(
+                    prefs.getFloat("custom_left", .12f) * width,
+                    prefs.getFloat("custom_top", .30f) * height,
+                    prefs.getFloat("custom_right", .88f) * width,
+                    prefs.getFloat("custom_bottom", .68f) * height,
+                )
+            } else {
+                val targetWidth = width * 0.76f
+                val targetHeight = height * 0.38f
+                rect.set(centerX - targetWidth / 2f, centerY - targetHeight / 2f,
+                    centerX + targetWidth / 2f, centerY + targetHeight / 2f)
+            }
+            squareMode = square
             clampRect()
             saveRect()
             invalidate()
+        }
+
+        private fun saveCustomRect() {
+            if (width <= 0 || height <= 0) return
+            prefs.edit()
+                .putFloat("custom_left", rect.left / width)
+                .putFloat("custom_top", rect.top / height)
+                .putFloat("custom_right", rect.right / width)
+                .putFloat("custom_bottom", rect.bottom / height)
+                .apply()
         }
 
         private fun clampRect() {
@@ -1210,6 +1234,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (width <= 0 || height <= 0) return
             prefs.edit().putFloat("left", rect.left / width).putFloat("top", rect.top / height)
                 .putFloat("right", rect.right / width).putFloat("bottom", rect.bottom / height).apply()
+            if (!squareMode) saveCustomRect()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -1237,8 +1262,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     val dx = event.x - downX
                     val dy = event.y - downY
                     if (resizing) {
-                        rect.right = (start.right + dx).coerceIn(start.left + 100f * density, width.toFloat())
-                        rect.bottom = (start.bottom + dy).coerceIn(start.top + 48f * density, height.toFloat())
+                        if (squareMode) {
+                            val maxSide = minOf(width - start.left, height - start.top)
+                            val side = (start.width() + maxOf(dx, dy)).coerceIn(100f * density, maxSide)
+                            rect.right = start.left + side
+                            rect.bottom = start.top + side
+                        } else {
+                            rect.right = (start.right + dx).coerceIn(start.left + 100f * density, width.toFloat())
+                            rect.bottom = (start.bottom + dy).coerceIn(start.top + 48f * density, height.toFloat())
+                        }
                     } else {
                         val w = start.width()
                         val h = start.height()
@@ -1272,7 +1304,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val KEY_CAPTURE_X_RATIO = "capture_x_ratio"
         private const val KEY_CAPTURE_Y_RATIO = "capture_y_ratio"
         private const val KEY_OCR_MODE = "ocr_mode"
-        private const val KEY_WIDE_SCAN_SHAPE = "wide_scan_shape"
+        private const val KEY_SQUARE_SCAN_SHAPE = "square_scan_shape"
         const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_SCAN_OVERLAY"
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
     }
