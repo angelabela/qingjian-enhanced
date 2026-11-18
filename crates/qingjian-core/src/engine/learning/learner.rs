@@ -17,6 +17,12 @@ pub trait Learner: Send {
         false
     }
 
+    /// 将词永久加入屏蔽表；不支持个性化屏蔽的学习器保持默认空实现。
+    fn ban_word(&mut self, _text: &str) {}
+
+    /// 解除词屏蔽。
+    fn unban_word(&mut self, _text: &str) {}
+
     /// 用户在输入串 `input`（候选覆盖的那段拼音，不含分隔符）下选了 `text`，候选的读音键是 `reading`
     /// （音节无分隔符连起来；形码 / 英文候选没有读音是空串）。字面键照记：
     /// 词级排序里同一输入串下选过的词排最前（`mgs` 选过 美国式，下次 `mgs` 它就是首选）。
