@@ -29,7 +29,21 @@ pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
     let result: Result<bool, qingjian_learning::LearningError> = match request {
         PhraseRequest::List => Ok(true),
         PhraseRequest::Add { text, group, code } => {
-            if can_persist { book.add(&text, &group, &code) } else { Ok(false) }
+            if !can_persist {
+                Ok(false)
+            } else if text.trim().is_empty() {
+                operation_error = Some("常用语内容为空：请先输入文字，再点击完成".to_owned());
+                Ok(false)
+            } else if book.is_full() {
+                operation_error = Some("常用语数量已达到上限（10000 条），请先删除部分条目".to_owned());
+                Ok(false)
+            } else {
+                let result = book.add(&text, &group, &code);
+                if matches!(result, Ok(false)) {
+                    operation_error = Some("常用语未添加：内容无效或数量已达到上限".to_owned());
+                }
+                result
+            }
         }
         PhraseRequest::Update { index, text, group, code } => {
             if can_persist { book.update(index, &text, &group, &code) } else { Ok(false) }
