@@ -78,11 +78,14 @@ mod tests {
     }
 
     #[test]
-    fn refuses_to_report_success_when_phrase_file_is_corrupt() {
+    fn backs_up_corrupt_phrase_file_and_allows_new_entries_to_persist() {
         let dir = std::env::temp_dir().join(format!("qj-android-phrases-corrupt-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(qingjian_learning::PHRASE_BOOK_FILE);
-        std::fs::write(&path, "{broken").unwrap();
+        std::fs::write(
+            &path,
+            r#"[{"text":"原有短语","group":"默认"},{"text":"","group":"默认"},null]"#,
+        ).unwrap();
 
         let page = phrases(
             &dir,
@@ -92,9 +95,13 @@ mod tests {
                 code: String::new(),
             },
         );
-        assert!(!page.operation_succeeded);
-        assert!(page.phrases.is_empty());
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{broken");
+        assert!(page.operation_succeeded);
+        assert_eq!(page.phrases.len(), 2);
+        assert!(page.phrases.iter().any(|phrase| phrase.text == "原有短语"));
+        assert!(std::fs::read_dir(&dir).unwrap().filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains(".corrupt-")));
+        let reopened = phrases(&dir, PhraseRequest::List);
+        assert_eq!(reopened.phrases.len(), 2);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
