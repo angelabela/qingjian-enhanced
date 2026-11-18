@@ -64,6 +64,14 @@ impl Learner for FrequencyLearner {
         FrequencyLearner::is_banned(self, text)
     }
 
+    fn ban_word(&mut self, text: &str) {
+        FrequencyLearner::ban_word(self, text);
+    }
+
+    fn unban_word(&mut self, text: &str) {
+        FrequencyLearner::unban_word(self, text);
+    }
+
     fn record_choice(&mut self, input: &str, reading: &str, text: &str) {
         if input.is_empty() || text.is_empty() {
             return;
