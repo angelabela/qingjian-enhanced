@@ -161,9 +161,9 @@ class QingjianInputMethodService :
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: run { android.util.Log.w("QingjianScanDiag", "result broadcast empty"); return }
-            val connection = currentInputConnection ?: run { android.util.Log.e("QingjianScanDiag", "result received but InputConnection is null; editor=${currentInputEditorInfo?.packageName}"); return }
-            android.util.Log.i("QingjianScanDiag", "result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
+            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: run { AppLog.warn("[SCAN_DIAG] result broadcast empty"); return }
+            val connection = currentInputConnection ?: run { AppLog.error("[SCAN_DIAG] result received but InputConnection is null; editor=${currentInputEditorInfo?.packageName}"); return }
+            AppLog.info("[SCAN_DIAG] result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
 
             // 不向微信/Excel 等宿主请求 8192 字符的长文窗口。自定义 InputConnection
             // 可能因此同步加载/重排整份文档；只检查光标附近的小范围，宿主调用做异常隔离。
