@@ -11,7 +11,29 @@ import org.json.JSONObject
  * 不要引擎句柄，App 与输入法都能调；出错返回空的。
  */
 object ClipboardStore {
-    fun userDir(context: Context): String = File(context.filesDir, "user").apply { mkdirs() }.path
+    /**
+     * 返回 Rust 与 Kotlin 共用的私有数据目录。不能忽略 mkdirs() 的失败：
+     * 否则 JNI 会继续把一个不存在/不可写的目录交给 Rust，最后只显示笼统的“存储不可用”。
+     */
+    fun userDir(context: Context): String {
+        val dir = File(context.filesDir, "user")
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw java.io.IOException("无法创建应用数据目录：${dir.absolutePath}")
+        }
+        if (!dir.isDirectory) {
+            throw java.io.IOException("应用数据路径不是目录：${dir.absolutePath}")
+        }
+        val probe = try {
+            File.createTempFile(".qingjian-storage-", ".check", dir)
+        } catch (error: Exception) {
+            throw java.io.IOException("应用数据目录不可写：${dir.absolutePath}；${error.message}", error)
+        }
+        if (!probe.delete()) {
+            probe.deleteOnExit()
+            throw java.io.IOException("应用数据目录写入测试成功，但临时文件无法删除：${probe.absolutePath}")
+        }
+        return dir.absolutePath
+    }
 
     fun list(context: Context, limit: Int) = clipboard(context, JSONObject().put("op", "list"), limit)
 
@@ -57,8 +79,15 @@ object ClipboardStore {
     fun phraseToTop(context: Context, index: Int) = phrases(context, JSONObject().put("op", "top").put("index", index))
 
     private fun phrases(context: Context, request: JSONObject): PhrasePage {
-        val json = runCatching { Native.phrases(userDir(context), request.toString()) }.getOrNull()
-            ?: return PhrasePage(listOf(PhraseRules.defaultGroup), emptyList(), operationSucceeded = false)
+        val json = try {
+            val dir = userDir(context)
+            Native.phrases(dir, request.toString()).also {
+                if (it == null) android.util.Log.e("qingjian-phrases", "JNI 常用语接口返回 null；目录=$dir")
+            }
+        } catch (error: Exception) {
+            android.util.Log.e("qingjian-phrases", "常用语存储目录检查失败", error)
+            null
+        } ?: return PhrasePage(listOf(PhraseRules.defaultGroup), emptyList(), operationSucceeded = false)
         val page = JSONObject(json)
         val groups = page.getJSONArray("groups")
         val phrases = page.getJSONArray("phrases")
