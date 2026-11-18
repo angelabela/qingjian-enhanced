@@ -1115,7 +1115,7 @@ class QingjianInputMethodService :
 
     /** 逐字取得无声调拼音，保留音节边界供多种简拼编码使用。 */
     private fun pinyinSyllables(text: String): List<String> =
-        text.codePoints().toArray().mapNotNull { codePoint ->
+        text.codePoints().toArray().asSequence().mapNotNull { codePoint ->
             if (!isHanCodePoint(codePoint)) return@mapNotNull null
             val raw = phraseTransliterator.transliterate(String(Character.toChars(codePoint))).lowercase()
             Normalizer.normalize(raw, Normalizer.Form.NFD)
