@@ -534,7 +534,7 @@ impl FrequencyLearner {
             let mut dual_rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
             dual_rows.sort_by(|a, b| a.0.cmp(b.0));
             for (text, entry) in dual_rows {
-                writeln!(file, "{text}\\t{:.9}\\t{:.9}\\t{}\\t{}\\t{}\\t{}",
+                writeln!(file, "{text}\t{:.9}\t{:.9}\t{}\t{}\t{}\t{}",
                     entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
             }
             Ok(())
@@ -549,7 +549,7 @@ impl FrequencyLearner {
         write_atomic(path.as_ref(), |file| {
             writeln!(file, "# 青简用户词频：词\\t选择次数")?;
             for (text, entry) in rows {
-                writeln!(file, "{text}\\t{}", entry.hits)?;
+                writeln!(file, "{text}\t{}", entry.hits)?;
             }
             Ok(())
         })?;
@@ -558,7 +558,7 @@ impl FrequencyLearner {
         write_atomic(&days_path, |file| {
             writeln!(file, "# 青简用户词频最近使用日：词\\t天数（unix 天）")?;
             for (text, day) in days {
-                writeln!(file, "{text}\\t{day}")?;
+                writeln!(file, "{text}\t{day}")?;
             }
             Ok(())
         })?;
