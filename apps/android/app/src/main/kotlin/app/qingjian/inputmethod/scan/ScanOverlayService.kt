@@ -62,6 +62,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import app.qingjian.inputmethod.R
+import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.theme.Palette
 import app.qingjian.inputmethod.panel.base.PanelIcons
 import java.util.concurrent.Executors
@@ -72,6 +73,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 不接管焦点，宿主输入框和输入法 InputConnection 保持不变。
  */
 class ScanOverlayService : Service(), LifecycleOwner {
+    /** 同时写入 Android logcat 与设置中可打包的本机诊断日志；不记录扫码文本内容。 */
+    private fun scanDiag(message: String, warning: Boolean = false) {
+        val line = "[SCAN_DIAG] $message"
+        if (warning) { AppLog.warn(line); android.util.Log.w(TAG, line) }
+        else { AppLog.info(line); android.util.Log.i(TAG, line) }
+    }
     private val lifecycleRegistry = LifecycleRegistry(this)
     override val lifecycle: Lifecycle get() = lifecycleRegistry
 
@@ -117,7 +124,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onCreate() {
         super.onCreate()
-        android.util.Log.i(TAG, "[SCAN_DIAG] onCreate pid=${android.os.Process.myPid()}")
+        scanDiag("onCreate pid=${android.os.Process.myPid()}")
         prefixEditingRequested = false
         prefixEditorHadFocus = false
         ScanPreferences.setPrefixEditorActive(false)
@@ -155,11 +162,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            android.util.Log.w(TAG, "[SCAN_DIAG] explicit ACTION_STOP received")
+            scanDiag("explicit ACTION_STOP received", warning = true)
             stopSelf()
             return START_NOT_STICKY
         }
-        android.util.Log.i(TAG, "[SCAN_DIAG] onStartCommand startId=$startId flags=$flags action=${intent?.action} shuttingDown=$shuttingDown")
+        scanDiag("onStartCommand startId=$startId flags=$flags action=${intent?.action} shuttingDown=$shuttingDown")
         return START_STICKY
     }
 
@@ -336,7 +343,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
-            setOnClickListener { android.util.Log.w(TAG, "[SCAN_DIAG] close button tapped"); finishPrefixEditing(); stopSelf() }
+            setOnClickListener { scanDiag("close button tapped", warning = true); finishPrefixEditing(); stopSelf() }
         }
         toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
         // 空白标题栏/行区域可直接拖动；按钮和输入框保留各自点击、编辑行为。
@@ -455,7 +462,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.scaleX = 0.94f
         root.scaleY = 0.94f
         windowManager.addView(root, windowParams)
-        android.util.Log.i(TAG, "[SCAN_DIAG] overlay root attached width=${windowParams.width} height=${windowParams.height} type=${windowParams.type}")
+        scanDiag("overlay root attached width=${windowParams.width} height=${windowParams.height} type=${windowParams.type}")
         // 窗口以轻微缩放+淡入出现；不改变最终窗口尺寸和触摸坐标。
         root.animate().alpha(1f).scaleX(1f).scaleY(1f)
             .setDuration(220L)
@@ -1123,7 +1130,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (shuttingDown) return
         android.os.Handler(mainLooper).post {
             if (shuttingDown) return@post
-            android.util.Log.i(TAG, "[SCAN_DIAG] broadcast scan result length=${value.length} editorPrefixActive=${ScanPreferences.isPrefixEditorActive()}")
+            scanDiag("broadcast scan result length=${value.length} editorPrefixActive=${ScanPreferences.isPrefixEditorActive()}")
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
@@ -1163,7 +1170,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
-        android.util.Log.w(TAG, "[SCAN_DIAG] onDestroy shuttingDown=$shuttingDown processing=${processing.get()} prefixEditing=$prefixEditingRequested rootAttached=${::root.isInitialized && root.isAttachedToWindow}")
+        scanDiag("onDestroy shuttingDown=$shuttingDown processing=${processing.get()} prefixEditing=$prefixEditingRequested rootAttached=${::root.isInitialized && root.isAttachedToWindow}", warning = true)
         synchronized(lifecycleGuard) { shuttingDown = true }
         prefixEditingRequested = false
         prefixEditorHadFocus = false
