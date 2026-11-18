@@ -99,10 +99,13 @@ class VoicePanel(
         isClickable = true
         isFocusable = true
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
-        if (animatedKeyboardBackground) backdrop.visibility = View.GONE else blurredKeyboard?.let(backdrop::setImageBitmap)
-        // 降低模糊半径，保留更多键盘细节；轻微降低遮罩不透明度，让底层键盘更通透。
+        blurredKeyboard?.let(backdrop::setImageBitmap)
+        // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
+        // 避免把动态背景完全遮住。普通主题则使用完整磨砂底图。
+        backdrop.alpha = if (animatedKeyboardBackground) 0.34f else 0.92f
+        backdrop.visibility = if (blurredKeyboard != null) View.VISIBLE else View.GONE
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
-            val radius = 12f * resources.displayMetrics.density
+            val radius = (if (animatedKeyboardBackground) 16f else 20f) * resources.displayMetrics.density
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -123,6 +126,21 @@ class VoicePanel(
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
+        overlay.alpha = 0f
+        overlay.scaleX = 0f
+        overlay.post {
+            if (overlay.isAttachedToWindow) {
+                overlay.pivotX = overlay.width / 2f
+                overlay.animate().cancel()
+                overlay.animate()
+                    .scaleX(1f)
+                    .alpha(1f)
+                    .setDuration(420L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.35f))
+                    .start()
+            }
+        }
         val density = resources.displayMetrics.density
         fun styleActionButton(view: TextView, label: String, action: () -> Unit) {
             view.text = label
