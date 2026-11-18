@@ -692,7 +692,7 @@ class ClipboardPanel(
                     reloadPhrases(updated)
                     actions.toast("已加入常用语「$group」")
                 } else {
-                    this.page = updated
+                    // 不把未持久化的内存结果显示成已保存的常用语。
                     actions.toast("常用语保存失败：存储不可用，未能添加")
                     invalidate()
                 }
