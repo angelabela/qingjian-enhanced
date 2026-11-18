@@ -32,7 +32,7 @@ class CandidateBarView(
     tools: List<ToolbarTool>,
     private val listener: Listener,
     fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
-    transparentBackground: Boolean = false,
+    private val transparentBackground: Boolean = false,
 ) : View(context) {
     interface Listener {
         fun onSelect(index: Int)
@@ -172,7 +172,7 @@ class CandidateBarView(
     })
 
     init {
-        setBackgroundColor(palette.surface)
+        setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.surface)
     }
 
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
@@ -295,8 +295,10 @@ class CandidateBarView(
     /** 钉在右端的 ⌄：与候选行同一高度居中，左边一道短竖线隔开。 */
     private fun drawExpand(canvas: Canvas) {
         val left = scrollX + stripWidth.toFloat()
-        expandFill.color = strip.background
-        canvas.drawRect(left, 0f, scrollX + width.toFloat(), height.toFloat(), expandFill)
+        if (!transparentBackground) {
+            expandFill.color = strip.background
+            canvas.drawRect(left, 0f, scrollX + width.toFloat(), height.toFloat(), expandFill)
+        }
         val cy = (strip.candidatesTop + height) / 2f
         canvas.drawRect(left, cy - 12 * density, left + divider.strokeWidth, cy + 12 * density, divider)
         PanelIcons.draw(canvas, PanelIcons.Icon.EXPAND, left + expandSlot / 2, cy, 24 * density, expandIcon)
