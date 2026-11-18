@@ -12,6 +12,7 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
@@ -102,6 +103,9 @@ class QingjianInputMethodService :
 
     private lateinit var candidateReranker: CandidateContextReranker
     private val candidateRerankHandler = Handler(Looper.getMainLooper())
+    // 常用语自动记忆包含拼音转换与磁盘写入，必须串行放后台，不能阻塞输入法主线程。
+    private val phraseMemoryThread = HandlerThread("qingjian-phrase-memory").apply { start() }
+    private val phraseMemoryHandler = Handler(phraseMemoryThread.looper)
     private var candidateRerankRunnable: Runnable? = null
     /** 30 秒批量落盘：只写学习表，不重置输入中的组句。 */
     private val learningFlushRunnable = object : Runnable {
@@ -321,6 +325,8 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(smsStateListener) }
         runCatching { unregisterReceiver(scanResultListener) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
+        phraseMemoryHandler.removeCallbacksAndMessages(null)
+        phraseMemoryThread.quitSafely()
         candidateRerankSequence++
         cloud.stop()
         engine.close()
@@ -760,7 +766,15 @@ class QingjianInputMethodService :
     }
 
     /** 用户确认上屏后，把连续两词及以上的短语缩写写入本机常用语词库。 */
-    override fun onPhraseCommitted(text: String) = rememberPhraseShortcuts(text)
+    override fun onPhraseCommitted(text: String) {
+        // 只在主线程读取 Core 当前输入模式并取得分词结果；逐字转拼音、组合码生成和文件写入移到后台。
+        if (text.isBlank() || composer.privateInput || composer.directInput || !composer.chinese) return
+        val pieces = runCatching { engine.textPieces(text) }.getOrElse {
+            AppLog.warn("Unable to segment phrase memory text: ${it.message}")
+            return
+        }
+        phraseMemoryHandler.post { rememberPhraseShortcuts(text, pieces) }
+    }
 
     override fun rememberStructuredToken(token: String) {
         if (::composer.isInitialized && !composer.privateInput && !composer.directInput) {
@@ -1084,9 +1098,8 @@ class QingjianInputMethodService :
      * 将用户确认上屏的中文按 Core 分词，保存所有连续二词及以上片段的逐字拼音首字母。
      * 使用常用语的本机存储，因此可随既有短语备份/恢复，并由 Core 作为个人候选召回。
      */
-    private fun rememberPhraseShortcuts(text: String) {
-        if (!::composer.isInitialized || composer.privateInput || composer.directInput || !composer.chinese || text.isBlank()) return
-        val pieces = engine.textPieces(text).filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
+    private fun rememberPhraseShortcuts(text: String, sourcePieces: List<String>) {
+        val pieces = sourcePieces.filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
         if (pieces.isEmpty()) return
         val maxCode = PhraseRules.maxCode.takeIf { it > 0 } ?: 32
         val known = ClipboardStore.phrases(this).phrases
@@ -1111,7 +1124,7 @@ class QingjianInputMethodService :
                 changed = true
             }
         }
-        if (changed) engine.reloadPhrases(ClipboardStore.userDir(this))
+        if (changed) candidateRerankHandler.post { if (::engine.isInitialized) engine.reloadPhrases(ClipboardStore.userDir(this)) }
     }
 
     private fun isHanCodePoint(codePoint: Int): Boolean =
