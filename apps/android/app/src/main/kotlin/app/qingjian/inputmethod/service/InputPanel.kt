@@ -296,11 +296,13 @@ private class FlowingKeyboardBackgroundDrawable(
         const val BACKGROUND_CYCLE_MS = 75_000L
 
         private fun colorsForStyle(style: Int): IntArray {
-            val colors = when (style.coerceIn(0, 4)) {
+            val colors = when (style.coerceIn(0, 6)) {
                 1 -> intArrayOf(0xC811B8A6.toInt(), 0xC81D8FE8.toInt(), 0xC835C6D8.toInt(), 0xC8126F9A.toInt(), 0xC811B8A6.toInt())
                 2 -> intArrayOf(0xC8FF8A4C.toInt(), 0xC8F04F8B.toInt(), 0xC8B45BE8.toInt(), 0xC8FFD166.toInt(), 0xC8FF8A4C.toInt())
                 3 -> intArrayOf(0xC82DE2C5.toInt(), 0xC843B66D.toInt(), 0xC8559BEF.toInt(), 0xC89B62FF.toInt(), 0xC82DE2C5.toInt())
                 4 -> intArrayOf(0xC8D8F3FF.toInt(), 0xC887B8E8.toInt(), 0xC8B7A6F6.toInt(), 0xC8F4E9FF.toInt(), 0xC8D8F3FF.toInt())
+                5 -> intArrayOf(0xC820164A.toInt(), 0xC82C2C78.toInt(), 0xC858287E.toInt(), 0xC81B6B9B.toInt(), 0xC820164A.toInt())
+                6 -> intArrayOf(0xC81B235A.toInt(), 0xC839397C.toInt(), 0xC85C3D8C.toInt(), 0xC82C7C91.toInt(), 0xC81B235A.toInt())
                 else -> intArrayOf(0xC82DE2C5.toInt(), 0xC83E8BFF.toInt(), 0xC89B62FF.toInt(), 0xC8FF62B5.toInt(), 0xC8FFB347.toInt(), 0xC82DE2C5.toInt())
             }
             return colors
