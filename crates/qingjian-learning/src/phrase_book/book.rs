@@ -14,6 +14,9 @@ pub const PHRASE_BOOK_FILE: &str = "phrases.json";
 /// 没指定分组时放进去的那组，总排第一。
 pub const DEFAULT_GROUP: &str = "默认";
 
+/// 自动记忆的短语可在容量紧张时优先淘汰，不占用用户手动短语的配额。
+pub const AUTO_MEMORY_GROUP: &str = "自动记忆";
+
 /// 最多存多少条。
 const MAX_PHRASES: usize = 10_000;
 
@@ -105,9 +108,24 @@ impl PhraseBook {
         self.path.is_some()
     }
 
-    /// 是否达到常用语硬上限；供请求层区分「已满」与存储故障。
+    /// 手动常用语是否达到上限。自动记忆条目不应挤占用户主动保存的名额。
     pub fn is_full(&self) -> bool {
-        self.phrases.len() >= MAX_PHRASES
+        self.manual_count() >= MAX_PHRASES
+    }
+
+    /// 当前所有常用语数量（含自动记忆）。
+    pub fn total_count(&self) -> usize {
+        self.phrases.len()
+    }
+
+    /// 自动记忆条数。
+    pub fn automatic_count(&self) -> usize {
+        self.phrases.iter().filter(|phrase| phrase.group == AUTO_MEMORY_GROUP).count()
+    }
+
+    /// 用户手动保存的条数。
+    pub fn manual_count(&self) -> usize {
+        self.phrases.iter().filter(|phrase| phrase.group != AUTO_MEMORY_GROUP).count()
     }
 
     /// 初始化存储失败时的具体原因；不包含用户短语内容。
@@ -131,8 +149,14 @@ impl PhraseBook {
         let Some(phrase) = normalize(text, group, code) else {
             return Ok(false);
         };
+        // 总容量已满时，优先淘汰最旧的自动记忆条目；绝不删除用户手动保存的短语。
+        // 新条目插在队首，因此从队尾寻找最旧的自动记忆项。
         if self.phrases.len() >= MAX_PHRASES {
-            return Ok(false);
+            if let Some(index) = self.phrases.iter().rposition(|item| item.group == AUTO_MEMORY_GROUP) {
+                self.phrases.remove(index);
+            } else {
+                return Ok(false);
+            }
         }
         self.phrases.insert(0, phrase);
         self.save()?;
