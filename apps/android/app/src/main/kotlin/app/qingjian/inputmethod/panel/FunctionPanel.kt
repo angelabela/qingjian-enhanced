@@ -161,13 +161,15 @@ class FunctionPanel(
 
     /** 背景动效样式选择；与语音动效选择页采用相同的卡片交互。 */
     private fun drawBackgroundEffectSettings(canvas: Canvas) {
-        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾")
+        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾", "魔幻粒子", "星云裂隙")
         val colors = listOf(
             intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt()),
             intArrayOf(0xFF11B8A6.toInt(), 0xFF1D8FE8.toInt(), 0xFF35C6D8.toInt()),
             intArrayOf(0xFFFF8A4C.toInt(), 0xFFF04F8B.toInt(), 0xFFB45BE8.toInt()),
             intArrayOf(0xFF2DE2C5.toInt(), 0xFF43B66D.toInt(), 0xFF9B62FF.toInt()),
             intArrayOf(0xFFD8F3FF.toInt(), 0xFF87B8E8.toInt(), 0xFFB7A6F6.toInt()),
+            intArrayOf(0xFF9CFFF0.toInt(), 0xFF8BB8FF.toInt(), 0xFFF49BFF.toInt()),
+            intArrayOf(0xFF7F8CFF.toInt(), 0xFF7DE7D9.toInt(), 0xFFD17BFF.toInt()),
         )
         val top = card.top + ink.dp(10f)
         ink.textStart(canvas, "选择一种持续流动的背景色彩", 11f, palette.gloss,
@@ -175,7 +177,8 @@ class FunctionPanel(
         val gapX = ink.dp(8f)
         val gapY = ink.dp(8f)
         val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-        val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / 3f)
+        val rows = (labels.size + 1) / 2
+        val cardHeight = minOf(ink.dp(66f), (card.height() - ink.dp(52f)) / rows)
         labels.forEachIndexed { index, label ->
             val column = index % 2
             val row = index / 2
@@ -318,7 +321,7 @@ class FunctionPanel(
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
                     val row = ((y - rowTop) / (cardHeight + gapY)).toInt()
                     val index = row * 2 + column
-                    if (row in 0..2 && index in 0..4) {
+                    if (row in 0..3 && index in 0..6) {
                         selectedBackgroundStyle = index
                         actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
                         invalidate()
