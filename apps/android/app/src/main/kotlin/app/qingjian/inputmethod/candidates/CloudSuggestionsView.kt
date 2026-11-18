@@ -89,6 +89,7 @@ class CloudSuggestionsView(
     private var shards: List<Shard> = emptyList()
     private val shardPath = Path()
     private val shardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var onTipClick: (() -> Unit)? = null
     private val items = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -96,6 +97,9 @@ class CloudSuggestionsView(
 
     init {
         isHorizontalScrollBarEnabled = false
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onTipClick?.invoke() }
         overScrollMode = OVER_SCROLL_NEVER
         clipToPadding = false
         clipToOutline = true
@@ -177,12 +181,14 @@ class CloudSuggestionsView(
                     LayoutParams.MATCH_PARENT,
                 ),
             )
-            result.setOnClickListener {
+            val clickAction: () -> Unit = {
                 hideHandler.removeCallbacks(autoHideRunnable)
                 val smart = smartSelection
                 if (smart != null) smart(suggestion) else onSelect(index)
                 scheduleAutoHide()
             }
+            onTipClick = clickAction
+            result.setOnClickListener { clickAction() }
         }
         val wasVisible = visibility == VISIBLE
         tipsContainer?.visibility = VISIBLE
@@ -226,6 +232,9 @@ class CloudSuggestionsView(
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val blurAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && wm.isCrossWindowBlurEnabled
         val container = FrameLayout(context).apply {
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { this@CloudSuggestionsView.performClick() }
             background = glassBackground(blurAvailable)
             clipToOutline = true
             elevation = 18f * density
@@ -632,8 +641,8 @@ class CloudSuggestionsView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val height = (46 * density).toInt()
-        val maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
-            .coerceAtLeast((120 * density).toInt())
+        val maxWidth = (resources.displayMetrics.widthPixels * 0.80f).toInt()
+            .coerceAtLeast(1)
         // 先按内容自然宽度测量，再限制到屏幕宽度；短联想短显示，长联想才启用横向滚动。
         items.measure(
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
