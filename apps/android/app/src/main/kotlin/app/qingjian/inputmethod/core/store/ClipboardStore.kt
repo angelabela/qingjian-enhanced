@@ -79,26 +79,54 @@ object ClipboardStore {
     fun phraseToTop(context: Context, index: Int) = phrases(context, JSONObject().put("op", "top").put("index", index))
 
     private fun phrases(context: Context, request: JSONObject): PhrasePage {
-        val json = try {
-            val dir = userDir(context)
-            Native.phrases(dir, request.toString()).also {
-                if (it == null) android.util.Log.e("qingjian-phrases", "JNI 常用语接口返回 null；目录=$dir")
-            }
+        val dir = try {
+            userDir(context)
         } catch (error: Exception) {
-            android.util.Log.e("qingjian-phrases", "常用语存储目录检查失败", error)
-            null
-        } ?: return PhrasePage(listOf(PhraseRules.defaultGroup), emptyList(), operationSucceeded = false)
-        val page = JSONObject(json)
-        val groups = page.getJSONArray("groups")
-        val phrases = page.getJSONArray("phrases")
-        return PhrasePage(
-            List(groups.length(), groups::getString),
-            List(phrases.length()) { i ->
-                val phrase = phrases.getJSONObject(i)
-                PhraseItem(i, phrase.getString("text"), phrase.getString("group"), phrase.optString("code"))
-            },
-            page.optBoolean("operation_succeeded", true),
-            page.optString("operation_error").takeIf { !it.isNullOrBlank() && it != "null" },
-        )
+            android.util.Log.e("qingjian-phrases", "常用语数据目录不可用", error)
+            return PhrasePage(
+                listOf(PhraseRules.defaultGroup), emptyList(),
+                operationSucceeded = false,
+                operationError = "数据目录检查失败：${error.message ?: error.javaClass.simpleName}",
+            )
+        }
+        val json = try {
+            Native.phrases(dir, request.toString())
+        } catch (error: Exception) {
+            android.util.Log.e("qingjian-phrases", "JNI 常用语调用异常；目录=$dir", error)
+            return PhrasePage(
+                listOf(PhraseRules.defaultGroup), emptyList(),
+                operationSucceeded = false,
+                operationError = "JNI 调用异常：${error.message ?: error.javaClass.simpleName}",
+            )
+        }
+        if (json.isNullOrBlank()) {
+            android.util.Log.e("qingjian-phrases", "JNI 常用语接口返回空结果；目录=$dir；请求=${request.optString("op")}")
+            return PhrasePage(
+                listOf(PhraseRules.defaultGroup), emptyList(),
+                operationSucceeded = false,
+                operationError = "原生存储接口返回空结果（目录：$dir）。请导出日志查看 qingjian-phrases。",
+            )
+        }
+        return try {
+            val page = JSONObject(json)
+            val groups = page.getJSONArray("groups")
+            val phrases = page.getJSONArray("phrases")
+            PhrasePage(
+                List(groups.length(), groups::getString),
+                List(phrases.length()) { i ->
+                    val phrase = phrases.getJSONObject(i)
+                    PhraseItem(i, phrase.getString("text"), phrase.getString("group"), phrase.optString("code"))
+                },
+                page.optBoolean("operation_succeeded", true),
+                page.optString("operation_error").takeIf { !it.isNullOrBlank() && it != "null" },
+            )
+        } catch (error: Exception) {
+            android.util.Log.e("qingjian-phrases", "常用语接口返回了无法解析的数据；目录=$dir", error)
+            PhrasePage(
+                listOf(PhraseRules.defaultGroup), emptyList(),
+                operationSucceeded = false,
+                operationError = "常用语数据解析失败：${error.message ?: error.javaClass.simpleName}",
+            )
+        }
     }
 }
