@@ -272,7 +272,7 @@ data class Settings(
                     pairPunctuation = prefs.getBoolean(KEY_PAIR_PUNCTUATION, true),
                     englishPairPunctuation = prefs.getBoolean(KEY_ENGLISH_PAIR_PUNCTUATION, false),
                     englishInChinese = prefs.getBoolean(KEY_ENGLISH_IN_CHINESE, true),
-                    chineseFirst = prefs.getBoolean(KEY_CHINESE_FIRST, false),
+                    chineseFirst = prefs.getBoolean(KEY_CHINESE_FIRST, true),
                     learningLanguage = learningLanguage(context),
                     traditionalVariant = prefs.getString(KEY_TRADITIONAL_VARIANT, null) ?: SettingChoices.defaultTraditionalVariant,
                     learning = prefs.getBoolean(KEY_LEARNING, true),
