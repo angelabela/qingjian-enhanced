@@ -440,8 +440,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = windowParams.x
             y = 0
-            // 不启用 FLAG_BLUR_BEHIND：它会按窗口矩形扩散模糊，越过顶部圆角。
-            // 只使用 Window.setBackgroundBlurRadius，由圆角 Window 背景限定模糊范围。
+            // 不启用 FLAG_BLUR_BEHIND；系统背景模糊的圆角形状由 Dialog decor 的均匀圆角 Outline 提供。
         }
         // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
         // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
@@ -453,8 +452,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setCancelable(false)
             window?.apply {
                 setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                // Dialog 窗口自身也必须使用带透明圆角的遮罩；只裁剪 headerView 不够，
-                // 系统 BLUR_BEHIND 仍会按矩形 Window bounds 模糊圆角外区域。
+                // Dialog 背景保持透明；系统背景模糊的几何边界由下面设置的 decor Outline 决定。
                 val roundedWindowMask = roundedHeaderMask()
                 setBackgroundDrawable(roundedWindowMask)
                 addFlags(
@@ -466,8 +464,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setDimAmount(0f)
                 setElevation(0f)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 只启用窗口背景模糊，不启用矩形范围的 BLUR_BEHIND；
-                    // Android 会按 roundedWindowMask 的圆角边界裁剪模糊区域。
+                    // 只设置一次窗口背景模糊；实际模糊形状由 show() 后的 decor Outline 提供。
                     clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                     attributes = headerWindowParams
                     setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
