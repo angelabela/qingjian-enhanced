@@ -19,7 +19,8 @@ import android.graphics.LinearGradient
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.VelocityTracker
-import android.view.animation.OvershootInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.ViewOutlineProvider
 import java.util.function.Consumer
 import android.animation.ValueAnimator
 import android.view.animation.LinearInterpolator
@@ -46,7 +47,6 @@ class CloudSuggestionsView(
 ) : HorizontalScrollView(context) {
     private val density = resources.displayMetrics.density
     private var smartSelection: ((String) -> Unit)? = null
-    private var selectionAnimating = false
     private var draggingTips = false
     private var dragCandidate = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -150,7 +150,7 @@ class CloudSuggestionsView(
             val label = TextView(context).apply {
                 text = suggestion
                 textSize = 14f
-                setTextColor(0xFF1F2937.toInt())
+                setTextColor(palette.text)
                 gravity = Gravity.CENTER_VERTICAL
                 includeFontPadding = false
                 isSingleLine = true
@@ -170,9 +170,6 @@ class CloudSuggestionsView(
                     LayoutParams.WRAP_CONTENT,
                 ),
             )
-            result.alpha = 0f
-            result.translationX = -24f * density
-            result.translationY = 0f
             items.addView(
                 result,
                 LinearLayout.LayoutParams(
@@ -181,31 +178,11 @@ class CloudSuggestionsView(
                 ),
             )
             result.setOnClickListener {
-                if (selectionAnimating) return@setOnClickListener
                 hideHandler.removeCallbacks(autoHideRunnable)
-                val select = {
-                    val smart = smartSelection
-                    if (smart != null) smart(suggestion) else onSelect(index)
-                }
-                flyIntoEditorDirection(label, suggestion) {
-                    // 点击也算一次交互：恢复卡片状态、执行上屏，然后重新开始 4 秒计时。
-                    val motion = tipsContainer ?: this
-                    motion.animate().cancel()
-                    motion.alpha = 1f
-                    motion.scaleX = 1f
-                    motion.scaleY = 1f
-                    motion.translationY = dragOffsetY
-                    select()
-                    scheduleAutoHide()
-                }
+                val smart = smartSelection
+                if (smart != null) smart(suggestion) else onSelect(index)
+                scheduleAutoHide()
             }
-            animateGlyphEntrance(label, suggestion)
-            result.animate()
-                .alpha(1f)
-                .translationX(0f)
-                .setStartDelay(position * 24L)
-                .setDuration(360L)
-                .start()
         }
         val wasVisible = visibility == VISIBLE
         tipsContainer?.visibility = VISIBLE
@@ -224,13 +201,11 @@ class CloudSuggestionsView(
         if (!wasVisible) {
             motion.alpha = 0f
             motion.translationY = dragOffsetY
-            motion.scaleX = 0.72f
-            motion.scaleY = 0.72f
-            motion.pivotX = if (tipSide == 0) 0f else motion.width.toFloat()
-            motion.pivotY = motion.height / 2f
+            motion.scaleX = 0.98f
+            motion.scaleY = 0.98f
         }
         motion.animate().alpha(1f).translationY(dragOffsetY).scaleX(1f).scaleY(1f)
-            .setDuration(420L).setInterpolator(OvershootInterpolator(1.15f)).start()
+            .setDuration(160L).setInterpolator(DecelerateInterpolator(1.1f)).start()
         scrollTo(0, 0)
         startAutoScroll()
         scheduleAutoHide()
@@ -272,14 +247,16 @@ class CloudSuggestionsView(
                 )
                 clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 setDimAmount(0f)
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                setBackgroundDrawable(glassBackground(blurAvailable))
             }
             dialog.show()
             dialog.window?.apply {
                 setLayout(LayoutParams.WRAP_CONTENT, (46f * density).toInt())
                 if (blurAvailable) setBackgroundBlurRadius((40f * density).toInt())
-                decorView.setBackgroundColor(Color.TRANSPARENT)
-                (decorView as? ViewGroup)?.clipChildren = false
+                decorView.background = glassBackground(blurAvailable)
+                decorView.clipToOutline = true
+                decorView.outlineProvider = ViewOutlineProvider.BACKGROUND
+                (decorView as? ViewGroup)?.clipChildren = true
                 decorView.post {
                     if (tipsDialog !== dialog) return@post
                     val window = dialog.window ?: return@post
@@ -378,8 +355,9 @@ class CloudSuggestionsView(
 
     private fun glassBackground(blurAvailable: Boolean) = GradientDrawable().apply {
         cornerRadius = 16f * density
-        setColor(if (blurAvailable) 0x80FFFFFF.toInt() else 0xE6FFFFFF.toInt())
-        setStroke((1f * density).toInt().coerceAtLeast(1), 0x66FFFFFF)
+        val alpha = if (blurAvailable) 0xB8 else 0xEC
+        setColor((palette.surface and 0x00FFFFFF) or (alpha shl 24))
+        setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
     }
 
     private fun scheduleAutoHide() {
@@ -446,125 +424,7 @@ class CloudSuggestionsView(
         animateWindowHide()
     }
 
-    /** 文字从吸附边整体弹入后，逐字渐显并轻微上浮。 */
-    private fun animateGlyphEntrance(label: TextView, value: String) {
-        val offsets = ArrayList<Int>()
-        var offset = 0
-        while (offset < value.length) {
-            offsets += offset
-            offset += Character.charCount(value.codePointAt(offset))
-        }
-        val baseColor = label.currentTextColor
-        fun spanAt(progress: Float): SpannableString {
-            val result = SpannableString(value)
-            val head = progress * (offsets.size + 5f)
-            offsets.forEachIndexed { index, start ->
-                val end = if (index + 1 < offsets.size) offsets[index + 1] else value.length
-                val alpha = (255f * (1f - (1f - ((head - index) / 5f).coerceIn(0f, 1f)).let { it * it * it })).toInt()
-                result.setSpan(
-                    ForegroundColorSpan((baseColor and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)),
-                    start, end, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE,
-                )
-            }
-            return result
-        }
-        label.text = spanAt(0f)
-        label.translationY = 5f * density
-        ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = (260L + offsets.size * 42L).coerceAtMost(1_150L)
-            interpolator = LinearInterpolator()
-            addUpdateListener {
-                val progress = it.animatedValue as Float
-                label.text = spanAt(progress)
-                label.translationY = 5f * density * (1f - progress)
-            }
-            start()
-        }
-    }
-
-    /**
-     * 点击后复制一层文字，从联想词位置飞向输入框所在的上方，再执行一次真实上屏回调。
-     * IME 与宿主编辑器属于不同窗口，系统不允许普通 View 跨窗口绘制；动画在 Tips 窗口内完成，
-     * 随后只调用一次原有选择回调，不伪造编辑器坐标或重复提交文字。
-     */
-    private fun flyIntoEditorDirection(source: TextView, value: String, onFinished: () -> Unit) {
-        val host = rootView as? ViewGroup
-        if (host == null || host.width <= 0 || host.height <= 0 || !isAttachedToWindow) {
-            onFinished()
-            return
-        }
-        val sourceLocation = IntArray(2)
-        val hostLocation = IntArray(2)
-        source.getLocationOnScreen(sourceLocation)
-        host.getLocationOnScreen(hostLocation)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = source.typeface
-            textSize = source.textSize
-        }
-        val glyphs = value.codePoints().toArray().map { String(Character.toChars(it)) }
-        if (glyphs.isEmpty()) {
-            onFinished()
-            return
-        }
-        selectionAnimating = true
-        // 点击时整块玻璃 Tips 也缓慢收拢，字符按顺序从卡片位置飞向输入框方向。
-        val motion = tipsContainer ?: this
-        motion.animate().cancel()
-        motion.animate()
-            .alpha(0.24f)
-            .scaleX(0.95f)
-            .scaleY(0.90f)
-            .translationY(dragOffsetY - 7f * density)
-            .setDuration(1_450L)
-            .start()
-        var cursorX = sourceLocation[0] - hostLocation[0] + source.width / 2f -
-            paint.measureText(value) / 2f
-        val startY = sourceLocation[1] - hostLocation[1] + source.height / 2f
-        var remaining = glyphs.size
-        glyphs.forEachIndexed { index, glyph ->
-            val glyphWidth = paint.measureText(glyph).coerceAtLeast(8f * density)
-            val flyer = TextView(context).apply {
-                text = glyph
-                textSize = source.textSize / resources.displayMetrics.scaledDensity
-                setTextColor(0xFF1F2937.toInt())
-                includeFontPadding = false
-                gravity = Gravity.CENTER
-                maxLines = 1
-                elevation = 12f * density
-            }
-            flyer.measure(
-                MeasureSpec.makeMeasureSpec(host.width, MeasureSpec.AT_MOST),
-                MeasureSpec.makeMeasureSpec(host.height, MeasureSpec.AT_MOST),
-            )
-            val w = flyer.measuredWidth.coerceAtLeast(glyphWidth.toInt())
-            val h = flyer.measuredHeight.coerceAtLeast((20 * density).toInt())
-            val left = cursorX + (glyphWidth - w) / 2f
-            val top = startY - h / 2f
-            flyer.layout(left.toInt(), top.toInt(), left.toInt() + w, top.toInt() + h)
-            host.overlay.add(flyer)
-            val targetX = host.width / 2f + (index - (glyphs.size - 1) / 2f) * glyphWidth * 0.72f
-            flyer.animate()
-                .translationX(targetX - left)
-                .translationY(-startY - h * 0.8f)
-                .alpha(0.08f)
-                .scaleX(0.9f)
-                .scaleY(0.9f)
-                .setStartDelay(index * 125L)
-                .setDuration(950L)
-                .withEndAction {
-                    host.overlay.remove(flyer)
-                    remaining--
-                    if (remaining == 0) {
-                        selectionAnimating = false
-                        if (isAttachedToWindow) onFinished()
-                    }
-                }
-                .start()
-            cursorX += glyphWidth
-        }
-    }
-
-    // 垂直/自由拖动整个 Tips 浮窗；吸附到键盘顶部附近时自动回到锚点。
+    // 拖动 Tips 窗口时只做平滑吸附，不使用回弹插值。
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         if (tipsDialog?.isShowing != true) return super.onInterceptTouchEvent(event)
         when (event.actionMasked) {
@@ -650,7 +510,7 @@ class CloudSuggestionsView(
                     snapAnimator?.cancel()
                     snapAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                         duration = 380L
-                        interpolator = OvershootInterpolator(0.9f)
+                        interpolator = DecelerateInterpolator(1.1f)
                         addUpdateListener {
                             val fraction = it.animatedValue as Float
                             window.attributes = window.attributes.apply {
