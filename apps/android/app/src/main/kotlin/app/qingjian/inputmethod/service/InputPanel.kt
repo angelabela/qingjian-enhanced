@@ -224,7 +224,7 @@ private class FlowingKeyboardBackgroundDrawable(
                     val path = Path()
                     for (step in 0..72) {
                         val a = step / 72.0 * Math.PI * 2.0 + t * (0.12 + orbit * 0.035) * if (orbit % 2 == 0) 1 else -1
-                        val wobble = 1.0 + 0.10 * kotlin.math.sin(a * 3.0 + t * 0.7 + orbit)
+                        val wobble = (1.0 + 0.10 * kotlin.math.sin(a * 3.0 + t * 0.7 + orbit)).toFloat()
                         val x = cx + kotlin.math.cos(a).toFloat() * orbitRadius * wobble * 1.55f
                         val y = cy + kotlin.math.sin(a).toFloat() * orbitRadius * wobble * 0.68f
                         if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -236,7 +236,7 @@ private class FlowingKeyboardBackgroundDrawable(
                 motionPaint.style = Paint.Style.FILL
                 for (particle in 0 until 42) {
                     val seed = particle * 2.399
-                    val orbit = h * (0.10 + (particle % 7) * 0.055)
+                    val orbit = h * (0.10f + (particle % 7) * 0.055f)
                     val angle = seed + t * (0.22 + (particle % 5) * 0.035) * if (particle % 2 == 0) 1 else -1
                     val pulse = (0.5 + 0.5 * kotlin.math.sin(t * 1.8 + seed)).toFloat()
                     val x = cx + kotlin.math.cos(angle).toFloat() * orbit * 1.6f
@@ -257,7 +257,7 @@ private class FlowingKeyboardBackgroundDrawable(
                     for (step in 0..80) {
                         val u = step / 80.0
                         val a = u * Math.PI * 2.4 + t * (0.11 + ribbon * 0.018) + ribbon * 0.7
-                        val radius = h * (0.08 + u * 0.30 + 0.025 * kotlin.math.sin(t * 0.35 + ribbon))
+                        val radius = h * (0.08f + u.toFloat() * 0.30f + 0.025f * kotlin.math.sin(t * 0.35 + ribbon).toFloat())
                         val x = cx + kotlin.math.cos(a).toFloat() * radius * 1.5f
                         val y = cy + kotlin.math.sin(a).toFloat() * radius * 0.65f
                         if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
