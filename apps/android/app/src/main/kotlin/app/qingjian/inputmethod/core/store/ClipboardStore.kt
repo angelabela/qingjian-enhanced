@@ -98,6 +98,7 @@ object ClipboardStore {
                 PhraseItem(i, phrase.getString("text"), phrase.getString("group"), phrase.optString("code"))
             },
             page.optBoolean("operation_succeeded", true),
+            page.optString("operation_error").takeIf { !it.isNullOrBlank() && it != "null" },
         )
     }
 }
