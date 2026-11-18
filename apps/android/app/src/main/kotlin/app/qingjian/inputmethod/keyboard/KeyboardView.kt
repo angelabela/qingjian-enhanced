@@ -156,6 +156,10 @@ class KeyboardView(
 
     private val trail = SwipeTrail(palette, resources.displayMetrics.density)
     private val flowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    // 叠加低不透明度的漫反射白雾层，形成磨砂玻璃观感；不依赖 API 31 的实时模糊能力。
+    private val frostedPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x24FFFFFF
+    }
     private val flowMatrix = Matrix()
     private var flowShader: LinearGradient? = null
 
@@ -218,6 +222,8 @@ class KeyboardView(
         flowPaint.shader = shader
         flowPaint.alpha = 210
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), flowPaint)
+        // 轻薄磨砂层柔化光影对比，同时保留按键与背景的层次。
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), frostedPaint)
         postInvalidateDelayed(40L)
     }
 
@@ -250,11 +256,11 @@ class KeyboardView(
             LinearGradient(
                 -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
                 intArrayOf(
-                    palette.board,
+                    (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
                     (palette.brand and 0x00FFFFFF) or 0x55000000,
                     (palette.accent and 0x00FFFFFF) or 0x66000000,
                     (palette.cloud and 0x00FFFFFF) or 0x44000000,
-                    palette.board,
+                    (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
                 ),
                 null,
                 Shader.TileMode.MIRROR,
