@@ -31,7 +31,7 @@ import kotlin.math.hypot
 @SuppressLint("ViewConstructor")
 class KeyboardView(
     context: Context,
-    palette: Palette,
+    private val palette: Palette,
     private val settings: Settings,
     private val listener: Listener,
 ) : View(context) {
