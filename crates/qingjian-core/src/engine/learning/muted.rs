@@ -64,6 +64,18 @@ impl Learner for MutedLearner {
         self.inner.weight(text)
     }
 
+    fn is_banned(&self, text: &str) -> bool {
+        self.inner.is_banned(text)
+    }
+
+    fn ban_word(&mut self, text: &str) {
+        self.inner.ban_word(text);
+    }
+
+    fn unban_word(&mut self, text: &str) {
+        self.inner.unban_word(text);
+    }
+
     fn record_choice(&mut self, input: &str, reading: &str, text: &str) {
         if !self.muted() {
             self.inner.record_choice(input, reading, text);
