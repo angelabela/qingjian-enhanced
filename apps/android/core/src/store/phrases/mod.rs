@@ -68,11 +68,34 @@ mod tests {
             ))
             .unwrap()
         };
-        phrases(&dir, add("一"));
-        phrases(&dir, add("二"));
+        assert!(phrases(&dir, add("一")).operation_succeeded);
+        assert!(phrases(&dir, add("二")).operation_succeeded);
         let page = phrases(&dir, PhraseRequest::Top { index: 1 });
+        assert!(page.operation_succeeded);
         assert_eq!(page.phrases[0].text, "一");
         assert_eq!(page.groups, [phrase_rules().default_group]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn refuses_to_report_success_when_phrase_file_is_corrupt() {
+        let dir = std::env::temp_dir().join(format!("qj-android-phrases-corrupt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(qingjian_learning::PHRASE_BOOK_FILE);
+        std::fs::write(&path, "{broken").unwrap();
+
+        let page = phrases(
+            &dir,
+            PhraseRequest::Add {
+                text: "测试常用语".to_owned(),
+                group: String::new(),
+                code: String::new(),
+            },
+        );
+        assert!(!page.operation_succeeded);
+        assert!(page.phrases.is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{broken");
+
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
