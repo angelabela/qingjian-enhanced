@@ -15,7 +15,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
         it.textSize = 19f * density * textScale
@@ -68,6 +68,23 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 换上新画的一帧；画不出来（null）时只铺底色。 */
     fun paint(image: StripImage?) {
+        if (transparentBackground && image != null && image.background != 0 && image.bitmap.isMutable) {
+            // Rust 候选位图以主题 surface 铺底；背景特效开启时将纯底色像素转为透明，
+            // 保留文字、图标和候选格本身，让底下的整窗流光自然透出来。
+            val bitmap = image.bitmap
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            val rgb = image.background and 0x00FFFFFF
+            var changed = false
+            for (index in pixels.indices) {
+                val pixel = pixels[index]
+                if ((pixel ushr 24) != 0 && (pixel and 0x00FFFFFF) == rgb) {
+                    pixels[index] = 0
+                    changed = true
+                }
+            }
+            if (changed) bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        }
         this.image = image
     }
 
@@ -159,8 +176,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private fun fallbackWidth(): Float = (if (preedit.isNotEmpty()) 52f * density else 8f * density) + candidates.size * 56f * density + 8f * density
 
     private fun drawFallback(canvas: Canvas, scrollX: Int, viewWidth: Int) {
-        fill.color = 0xFFF2F3F5.toInt()
-        canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        if (!transparentBackground) {
+            fill.color = 0xFFF2F3F5.toInt()
+            canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        }
         fallbackRects.clear()
         val start = if (preedit.isNotEmpty()) 52f * density else 8f * density
         if (preedit.isNotEmpty()) {
