@@ -1130,7 +1130,7 @@ class QingjianInputMethodService :
                     ClipboardStore.updatePhrase(this, phrase.index, text, chosenGroup, code)
                 }
                 if (!saved.operationSucceeded) {
-                    toast(if (text.isBlank()) "常用语内容不能为空" else "常用语保存失败，请检查存储空间和应用数据目录")
+                    toast(if (text.isBlank()) "常用语内容不能为空" else saved.operationError ?: "常用语保存失败，详细原因请查看 qingjian-phrases 日志")
                 } else {
                     ClipboardPanel.lastGroup = chosenGroup.trim().ifEmpty { PhraseRules.defaultGroup }
                     phrasesChanged()
