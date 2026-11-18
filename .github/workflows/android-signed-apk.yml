@@ -25,6 +25,7 @@ on:
       - fix/workflow-85-clipboard-longpress-phrase-storage-scan-outline
       - fix/workflow-92-phrase-storage-recovery
       - fix/workflow-94-phrase-storage-diagnostics-voice-neon
+      - fix/workflow-97-phrase-storage-diagnostics-round-voice-buttons
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
