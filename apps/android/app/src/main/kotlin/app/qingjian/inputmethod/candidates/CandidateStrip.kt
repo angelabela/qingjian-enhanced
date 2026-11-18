@@ -89,13 +89,33 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 val dr = kotlin.math.abs(((pixel shr 16) and 0xFF) - br)
                 val dg = kotlin.math.abs(((pixel shr 8) and 0xFF) - bgc)
                 val db = kotlin.math.abs((pixel and 0xFF) - bb)
-                // 精确底色完全透明；抗锯齿边缘按接近底色的程度降低 alpha，避免白边。
+                // 去除纯底色，同时对抗锯齿边缘做反底色（un-matte）还原。
+                // 旧算法只降低 alpha 却保留混入底色的 RGB，叠到动态背景后会出现
+                // 灰白描边/重影；这里先估算覆盖率，再反算前景色。
                 val distance = maxOf(dr, dg, db)
                 if (distance <= 5) {
                     pixels[index] = 0
-                } else if (distance <= 34) {
-                    val coverage = ((distance - 5) * 255 / 29).coerceIn(0, 255)
-                    pixels[index] = (alpha * coverage / 255 shl 24) or (pixel and 0x00FFFFFF)
+                } else if (distance <= 58) {
+                    val bgMax = maxOf(br, bgc, bb)
+                    val bgMin = minOf(br, bgc, bb)
+                    val coverage = if (bgMax >= 128) {
+                        maxOf(
+                            (br - ((pixel shr 16) and 0xFF)).coerceAtLeast(0) * 255 / br.coerceAtLeast(1),
+                            (bgc - ((pixel shr 8) and 0xFF)).coerceAtLeast(0) * 255 / bgc.coerceAtLeast(1),
+                            (bb - (pixel and 0xFF)).coerceAtLeast(0) * 255 / bb.coerceAtLeast(1),
+                        )
+                    } else {
+                        maxOf(
+                            (((pixel shr 16) and 0xFF) - br).coerceAtLeast(0) * 255 / (255 - br).coerceAtLeast(1),
+                            (((pixel shr 8) and 0xFF) - bgc).coerceAtLeast(0) * 255 / (255 - bgc).coerceAtLeast(1),
+                            ((pixel and 0xFF) - bb).coerceAtLeast(0) * 255 / (255 - bb).coerceAtLeast(1),
+                        )
+                    }.coerceIn(1, 255)
+                    val inverse = 255 - coverage
+                    val r = ((((pixel shr 16) and 0xFF) * 255 - br * inverse) / coverage).coerceIn(0, 255)
+                    val g = ((((pixel shr 8) and 0xFF) * 255 - bgc * inverse) / coverage).coerceIn(0, 255)
+                    val b = (((pixel and 0xFF) * 255 - bb * inverse) / coverage).coerceIn(0, 255)
+                    pixels[index] = ((alpha * coverage / 255) shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
