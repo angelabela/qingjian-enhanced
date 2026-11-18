@@ -330,8 +330,9 @@ class InputPanel(
 ) {
     // 游戏键盘一律深色：浮在游戏画面上，浅色太扎眼
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
+    private val videoBackgroundEnabled = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)
 
-    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, settings.keyboardBackgroundEffect).apply {
+    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, settings.keyboardBackgroundEffect || videoBackgroundEnabled).apply {
         setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
@@ -349,7 +350,7 @@ class InputPanel(
         )
         cloudSuggestions.setAnchorView(this)
     }
-    val keyboard = KeyboardView(context, palette, settings, keyboardListener)
+    val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled)
 
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
@@ -422,7 +423,7 @@ class InputPanel(
         // 两个角都不放键时不要那条操作条，只让出导航栏，不留一截空白（#889）
         val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
         if (settings.fullscreenAdapt && corners) {
-            addView(BottomActionsView(context, palette, inset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect))
+            addView(BottomActionsView(context, palette, inset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled))
         } else {
             setPadding(0, 0, 0, inset)
         }

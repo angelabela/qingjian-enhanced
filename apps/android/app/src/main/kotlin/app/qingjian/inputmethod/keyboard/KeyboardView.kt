@@ -30,6 +30,7 @@ class KeyboardView(
     private val palette: Palette,
     private val settings: Settings,
     private val listener: Listener,
+    transparentBackground: Boolean = settings.keyboardBackgroundEffect,
 ) : View(context) {
     enum class EditShortcut { SELECT_ALL, CUT, COPY, PASTE }
 
@@ -198,7 +199,7 @@ class KeyboardView(
     val baseHeight: Float get() = metrics.baseHeight
 
     init {
-        setBackgroundColor(if (settings.keyboardBackgroundEffect) android.graphics.Color.TRANSPARENT else palette.board)
+        setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
     fun setRows(rows: List<List<Key>>, side: Boolean = false) {
