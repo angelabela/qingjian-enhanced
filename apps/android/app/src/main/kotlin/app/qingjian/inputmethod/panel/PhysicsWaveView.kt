@@ -25,7 +25,7 @@ import kotlin.math.sqrt
 class PhysicsWaveView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
-    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS }
+    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, FLOWING_RIBBONS }
 
     var style = Style.SPRING_BARS
         set(value) { field = value; resetState(); invalidate() }
@@ -158,7 +158,7 @@ class PhysicsWaveView @JvmOverloads constructor(
             }
         }
         // 五种新增物理动效只绘制在面板中部：左右各留8%，上下收进安全区，避开底部操作按钮。
-        val compactPhysics = style.ordinal >= Style.SPRING_BARS.ordinal
+        val compactPhysics = style.ordinal >= Style.SPRING_BARS.ordinal && style != Style.FLOWING_RIBBONS
         canvas.save()
         if (compactPhysics) {
             canvas.translate(width * 0.08f, height * 0.31f)
@@ -172,6 +172,7 @@ class PhysicsWaveView @JvmOverloads constructor(
             Style.GRAVITY_BALLS -> drawBalls(canvas)
             Style.ELASTIC_STRING -> drawString(canvas)
             Style.GLOW_ORBS -> drawOrbs(canvas)
+            Style.FLOWING_RIBBONS -> drawFlowingRibbons(canvas)
         }
         canvas.restore()
         val moving = listening || smoothFft.any { it > 0.008f } ||
@@ -239,6 +240,105 @@ class PhysicsWaveView @JvmOverloads constructor(
             canvas.drawLine(x1, y1, x2, y2, paint)
         }
         paint.alpha = 255
+    }
+
+    /**
+     * 多层流体声波：复刻参考视频中的彩色半透明丝带，而不是频谱柱。
+     * 48 个真实 FFT 频带沿水平方向映射到波带包络，波形本身由多组相位错开的
+     * 连续曲线构成；静音时保留微弱呼吸，讲话时由真实频谱推动波峰。
+     */
+    private fun drawFlowingRibbons(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val centerY = h * 0.46f
+        val samples = 112
+        val layerCount = 5
+        val hueOffset = (time * 11f) % 360f
+        val palette = intArrayOf(
+            Color.rgb(255, 92, 196), Color.rgb(153, 91, 255),
+            Color.rgb(55, 157, 255), Color.rgb(35, 230, 226),
+            Color.rgb(255, 94, 126), Color.rgb(255, 193, 75)
+        )
+        for (layer in 0 until layerCount) {
+            val upper = Path()
+            val lower = Path()
+            val phase = layer * 1.17f
+            val direction = if (layer % 2 == 0) 1f else -1f
+            val layerBase = centerY + (layer - 2) * h * 0.012f
+            val points = FloatArray(samples + 1)
+            val thickness = FloatArray(samples + 1)
+            for (i in 0..samples) {
+                val u = i.toFloat() / samples
+                val x = u * w
+                val bin = (u * (smoothFft.size - 1)).coerceIn(0f, (smoothFft.size - 1).toFloat())
+                val lo = bin.toInt()
+                val hi = (lo + 1).coerceAtMost(smoothFft.lastIndex)
+                val energy = smoothFft[lo] + (smoothFft[hi] - smoothFft[lo]) * (bin - lo)
+                val envelope = (0.10f + energy * 1.35f).coerceIn(0.10f, 1.15f)
+                val edge = sin(PI.toFloat() * u).let { it * it }
+                val broad = sin(u * PI.toFloat() * (1.35f + layer * 0.11f) + time * (0.82f + layer * 0.07f) * direction + phase)
+                val detail = sin(u * PI.toFloat() * (3.1f + layer * 0.23f) - time * (1.24f + layer * 0.09f) + phase * 1.7f)
+                val ripple = sin(u * PI.toFloat() * 6.2f + time * 1.65f * direction + phase * 0.6f)
+                val audioShape = (0.38f + energy * 1.55f)
+                val displacement = (broad * 0.62f + detail * 0.27f + ripple * 0.11f) *
+                    h * 0.22f * envelope * audioShape * (0.22f + edge * 0.78f)
+                points[i] = layerBase + displacement + sin(time * 0.7f + phase) * h * 0.012f
+                thickness[i] = h * (0.010f + energy * 0.055f) * (0.35f + edge * 0.65f)
+            }
+            for (i in 0..samples) {
+                val x = w * i / samples
+                val y = points[i] - thickness[i]
+                if (i == 0) upper.moveTo(x, y) else upper.lineTo(x, y)
+            }
+            for (i in samples downTo 0) {
+                val x = w * i / samples
+                val y = points[i] + thickness[i]
+                lower.lineTo(x, y)
+            }
+            upper.addPath(lower)
+            upper.close()
+
+            val colors = IntArray(palette.size) { index ->
+                val shifted = Color.HSVToColor(floatArrayOf(
+                    (Color.red(palette[index]).toFloat() / 255f * 70f + hueOffset + index * 37f) % 360f,
+                    0.72f, 1f
+                ))
+                shifted
+            }
+            paint.shader = android.graphics.LinearGradient(
+                0f, 0f, w, 0f, colors, null, android.graphics.Shader.TileMode.CLAMP
+            )
+            paint.style = Paint.Style.FILL
+            paint.alpha = 54 + layer * 4
+            canvas.drawPath(upper, paint)
+
+            // 柔和外发光与清晰丝带边缘，让重叠处呈现玻璃薄纱层次。
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.strokeWidth = (3.2f + layer * 0.35f) * density
+            paint.alpha = 54
+            paint.maskFilter = BlurMaskFilter(7.5f * density, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawPath(upper, paint)
+            paint.maskFilter = null
+            paint.strokeWidth = 1.05f * density
+            paint.alpha = 150
+            canvas.drawPath(upper, paint)
+            paint.shader = null
+            paint.alpha = 255
+        }
+        // 中央细光轴，讲话时随整体能量轻微增强。
+        val total = smoothFft.average().toFloat().coerceIn(0f, 1f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1f * density
+        paint.color = 0x99A8EFFF.toInt()
+        paint.alpha = (55 + total * 115f).toInt()
+        paint.maskFilter = BlurMaskFilter(3.5f * density, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawLine(w * 0.035f, centerY, w * 0.965f, centerY, paint)
+        paint.maskFilter = null
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
     }
 
     private fun spectrumColor(index: Int, shift: Float, spread: Float = 2.8f): Int =
