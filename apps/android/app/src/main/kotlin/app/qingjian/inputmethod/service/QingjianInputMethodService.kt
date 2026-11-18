@@ -1124,12 +1124,16 @@ class QingjianInputMethodService :
         val editor = PhraseEditor(
             this, Palette.of(this), groups, phrase, group,
             onDone = { text, chosenGroup, code ->
-                if (phrase == null) {
+                val saved = if (phrase == null) {
                     ClipboardStore.addPhrase(this, text, chosenGroup, code)
                 } else {
                     ClipboardStore.updatePhrase(this, phrase.index, text, chosenGroup, code)
                 }
-                if (text.isNotBlank()) ClipboardPanel.lastGroup = chosenGroup.trim().ifEmpty { PhraseRules.defaultGroup }
+                if (!saved.operationSucceeded) {
+                    toast(if (text.isBlank()) "常用语内容不能为空" else "常用语保存失败，请检查存储空间和应用数据目录")
+                    return@PhraseEditor
+                }
+                ClipboardPanel.lastGroup = chosenGroup.trim().ifEmpty { PhraseRules.defaultGroup }
                 phrasesChanged()
                 closeEditor()
                 openPanel(PanelKind.PHRASES)
