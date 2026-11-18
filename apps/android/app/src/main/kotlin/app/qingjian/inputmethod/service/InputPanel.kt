@@ -169,7 +169,7 @@ private class FlowingKeyboardBackgroundDrawable(
                     for (step in 0..90) {
                         val u = step / 90f
                         val angle = u * (Math.PI * 2.6) + t * 0.52 + arm * (Math.PI * 2.0 / 5.0)
-                        val radius = h * (0.035 + u * 0.34 + kotlin.math.sin(t * 0.31 + arm).let { it * 0.018 })
+                        val radius = h * (0.035f + u * 0.34f + kotlin.math.sin(t * 0.31 + arm).toFloat() * 0.018f)
                         val x = cx + kotlin.math.cos(angle).toFloat() * radius * 1.45f
                         val y = cy + kotlin.math.sin(angle).toFloat() * radius * 0.72f
                         if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -197,7 +197,7 @@ private class FlowingKeyboardBackgroundDrawable(
                     val points = ArrayList<Pair<Float, Float>>(6)
                     for (side in 0 until 6) {
                         val a = side * Math.PI / 3.0 + t * 0.12 * if (crystal % 2 == 0) 1 else -1
-                        points.add(cx + kotlin.math.cos(a).toFloat() * radius, cy + kotlin.math.sin(a).toFloat() * radius)
+                        points.add(Pair(cx + kotlin.math.cos(a).toFloat() * radius, cy + kotlin.math.sin(a).toFloat() * radius))
                     }
                     val crystalPath = Path()
                     points.forEachIndexed { index, point ->
