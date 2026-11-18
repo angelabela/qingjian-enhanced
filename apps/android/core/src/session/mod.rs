@@ -134,6 +134,11 @@ impl Session {
         }
     }
 
+    /// 只落盘学习数据，不清空当前组句；由 Android 壳每 30 秒批量调用。
+    pub fn flush_learning(&mut self) {
+        self.engine.flush_learning();
+    }
+
     /// 输入框换了或键盘收起：丢掉组句、断开上文、学习数据落盘。
     pub fn reset(&mut self) {
         self.engine.clear();
