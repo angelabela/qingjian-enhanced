@@ -11,7 +11,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Outline
-import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
@@ -383,7 +382,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             // 全透明 drawable 在部分 Android 窗口实现中没有有效 outline，移动窗口时会露出矩形角。
             clipToOutline = true
             clipChildren = true
-            outlineProvider = topRoundedOutlineProvider(dp(16).toFloat())
+            outlineProvider = headerOutlineProvider(dp(16).toFloat())
             addView(prefixRow)
             addView(headerSpacer)
             addView(toolbar)
@@ -492,7 +491,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 decorView.translationZ = 0f
                 decorView.setLayerType(View.LAYER_TYPE_NONE, null)
                 (decorView as? ViewGroup)?.clipChildren = true
-                decorView.outlineProvider = topRoundedOutlineProvider(16f * resources.displayMetrics.density)
+                decorView.outlineProvider = headerOutlineProvider(16f * resources.displayMetrics.density)
                 decorView.invalidateOutline()
                 attributes = headerWindowParams
             }
@@ -508,7 +507,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
     }
 
-    /** 标题栏所有区域长按后都可拖动，普通点击仍交给原控件处理。 */
     /**
      * 标题栏空白区域按下即可开始跟手拖动，不再等待长按计时；
      * 子控件（模式、闪光灯、关闭、前缀输入）不挂拖动监听，点击行为互不干扰。
@@ -709,9 +707,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val window = headerDialog?.window ?: return
         runCatching {
             window.attributes = headerWindowParams
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                window.setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
-            }
             window.setLayout(headerWindowParams.width, headerWindowParams.height)
             // 窗口移动/缩放会重新布局 decor；主动刷新自定义裁剪轮廓，避免圆角外的矩形残留。
             window.decorView.invalidateOutline()
@@ -719,45 +714,28 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
     }
 
-    /**
-     * 标题栏窗口背景完全透明时，系统的 BACKGROUND outline 可能为空，clipToOutline 实际不会裁剪。
-     * 这里显式提供只有顶部圆角、底边为直线的凸路径；不改变窗口透明度，也不靠半透明遮挡。
-     */
-    /**
-     * Window 背景模糊使用窗口背景 Drawable 的 alpha 遮罩，而不是子 View 的 clipToOutline。
-     * 1/255 的非零 alpha 让系统识别圆角形状，视觉上近乎透明；圆角外 alpha 为 0。
-     */
+    /** Dialog 背景保持近乎透明；系统模糊的形状由 decor 的 headerOutlineProvider 提供。 */
     private fun roundedHeaderMask() = GradientDrawable().apply {
-        // 极低 alpha 仅用于系统背景模糊识别窗口轮廓；不在 decor 上重复绘制蒙版。
+        // 避免 Dialog 默认背景形成色块；真正的模糊裁剪轮廓由 decor Outline 决定。
         setColor(0x01000000)
         val radius = 16f * resources.displayMetrics.density
         cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
     }
 
-    private fun topRoundedOutlineProvider(radiusPx: Float): ViewOutlineProvider =
+    /**
+     * 系统窗口模糊读取 decor 的均匀圆角 Outline。
+     * 轮廓底边向下延伸一个半径，View 自身的 clipToOutline 会裁掉超出部分，
+     * 视觉上仍保持标题栏底边为直线，同时让系统模糊只认顶部圆角矩形。
+     */
+    private fun headerOutlineProvider(radiusPx: Float): ViewOutlineProvider =
         object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val width = view.width
-                val height = view.height
-                if (width <= 0 || height <= 0) {
+                if (view.width <= 0 || view.height <= 0) {
                     outline.setEmpty()
                     return
                 }
-                val radius = radiusPx.coerceAtMost(minOf(width, height) / 2f)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val path = Path().apply {
-                        moveTo(0f, radius)
-                        quadTo(0f, 0f, radius, 0f)
-                        lineTo(width - radius, 0f)
-                        quadTo(width.toFloat(), 0f, width.toFloat(), radius)
-                        lineTo(width.toFloat(), height.toFloat())
-                        lineTo(0f, height.toFloat())
-                        close()
-                    }
-                    outline.setPath(path)
-                } else {
-                    outline.setRoundRect(0, 0, width, height, radius)
-                }
+                val radius = radiusPx.coerceAtMost(view.width / 2f)
+                outline.setRoundRect(0, 0, view.width, view.height + radius.toInt(), radius)
                 outline.alpha = 1f
             }
         }
