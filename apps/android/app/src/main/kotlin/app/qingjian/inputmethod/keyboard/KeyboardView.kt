@@ -3,10 +3,6 @@ package app.qingjian.inputmethod.keyboard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.LinearGradient
-import android.graphics.Matrix
-import android.graphics.Shader
-import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
@@ -155,14 +151,6 @@ class KeyboardView(
     private val swipeOn: Boolean get() = swipeLayout && settings.swipeInput
 
     private val trail = SwipeTrail(palette, resources.displayMetrics.density)
-    private val flowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-    // 叠加低不透明度的漫反射白雾层，形成磨砂玻璃观感；不依赖 API 31 的实时模糊能力。
-    private val frostedPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x24FFFFFF
-    }
-    private val flowMatrix = Matrix()
-    private var flowShader: LinearGradient? = null
-
     /** Shift 亮着字母画成大写，锁定时 Shift 键上另画一道横线。 */
     var shift: ShiftState
         get() = painter.shift
@@ -213,20 +201,6 @@ class KeyboardView(
         setBackgroundColor(if (settings.keyboardBackgroundEffect) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
-    private fun drawFlowingBackground(canvas: Canvas) {
-        val shader = flowShader ?: return
-        val period = (width * 2L).coerceAtLeast(1L)
-        val offset = (SystemClock.uptimeMillis() % period).toFloat() - width
-        flowMatrix.setTranslate(offset, 0f)
-        shader.setLocalMatrix(flowMatrix)
-        flowPaint.shader = shader
-        flowPaint.alpha = 210
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), flowPaint)
-        // 轻薄磨砂层柔化光影对比，同时保留按键与背景的层次。
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), frostedPaint)
-        postInvalidateDelayed(40L)
-    }
-
     fun setRows(rows: List<List<Key>>, side: Boolean = false) {
         this.rows = rows
         this.side.enabled = side
@@ -252,20 +226,7 @@ class KeyboardView(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        flowShader = if (settings.keyboardBackgroundEffect && w > 0 && h > 0) {
-            LinearGradient(
-                -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
-                intArrayOf(
-                    (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
-                    (palette.brand and 0x00FFFFFF) or 0x55000000,
-                    (palette.accent and 0x00FFFFFF) or 0x66000000,
-                    (palette.cloud and 0x00FFFFFF) or 0x44000000,
-                    (palette.board and 0x00FFFFFF) or 0xB8000000.toInt(),
-                ),
-                null,
-                Shader.TileMode.MIRROR,
-            )
-        } else null
+        // 动态背景由 InputPanel 根容器统一绘制；键盘只绘制按键，避免上下两套动画重复刷新。
         relayout()
     }
 
@@ -276,7 +237,6 @@ class KeyboardView(
     }
 
     override fun onDraw(canvas: Canvas) {
-        drawFlowingBackground(canvas)
         for (slot in slots) {
             painter.drawKey(canvas, slot, down = pressed.containsValue(slot))
             painter.drawGestureHints(
