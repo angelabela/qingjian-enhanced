@@ -1131,12 +1131,12 @@ class QingjianInputMethodService :
                 }
                 if (!saved.operationSucceeded) {
                     toast(if (text.isBlank()) "常用语内容不能为空" else "常用语保存失败，请检查存储空间和应用数据目录")
-                    return@PhraseEditor
+                } else {
+                    ClipboardPanel.lastGroup = chosenGroup.trim().ifEmpty { PhraseRules.defaultGroup }
+                    phrasesChanged()
+                    closeEditor()
+                    openPanel(PanelKind.PHRASES)
                 }
-                ClipboardPanel.lastGroup = chosenGroup.trim().ifEmpty { PhraseRules.defaultGroup }
-                phrasesChanged()
-                closeEditor()
-                openPanel(PanelKind.PHRASES)
             },
             onCancel = {
                 closeEditor()
