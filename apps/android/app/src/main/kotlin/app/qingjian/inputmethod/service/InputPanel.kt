@@ -324,7 +324,7 @@ class InputPanel(
         clipToOutline = true
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val radius = 18f * context.resources.displayMetrics.density
+                val radius = 26f * context.resources.displayMetrics.density
                 val path = Path().apply {
                     moveTo(radius, 0f)
                     lineTo(view.width - radius, 0f)
@@ -418,7 +418,7 @@ class InputPanel(
                 main.draw(Canvas(bitmap))
             }
         }.getOrNull()
-        return VoicePanel(context, palette, actionLabel, actions, backdrop, VoicePanel.resolveAnimationStyle(context)).also { voice ->
+        return VoicePanel(context, palette, actionLabel, actions, backdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -430,6 +430,7 @@ class InputPanel(
 
     private fun cover(kind: PanelKind, panel: View) {
         applyFontWeight(panel)
+        (panel as? app.qingjian.inputmethod.panel.base.PanelView)?.useAnimatedBackground(settings.keyboardBackgroundEffect)
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
