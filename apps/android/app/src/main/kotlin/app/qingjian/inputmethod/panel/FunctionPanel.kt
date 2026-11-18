@@ -54,7 +54,7 @@ class FunctionPanel(
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
-                Feature(Icon.PALETTE, "键盘光影", on = settings.keyboardBackgroundEffect) {
+                Feature(if (settings.keyboardBackgroundEffect) Icon.WAVEFORM else Icon.PALETTE, "键盘光影", on = settings.keyboardBackgroundEffect) {
                     setToggle(Settings.KEY_BACKGROUND_EFFECT, !settings.keyboardBackgroundEffect)
                 },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
