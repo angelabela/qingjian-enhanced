@@ -478,7 +478,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
-                // Window 与 decor 必须使用同一张圆角 alpha 蒙版；若 decor 改成全透明矩形，系统背景模糊会失去圆角裁剪依据。
+                // Decor 的均匀圆角 Outline 决定系统模糊范围；背景 Drawable 只负责保持窗口近乎透明。
                 val roundedMask = roundedHeaderMask()
                 setBackgroundDrawable(roundedMask)
                 decorView.background = roundedMask
