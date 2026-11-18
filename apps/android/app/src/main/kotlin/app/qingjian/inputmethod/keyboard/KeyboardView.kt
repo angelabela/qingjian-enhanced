@@ -209,24 +209,6 @@ class KeyboardView(
         setBackgroundColor(if (settings.keyboardBackgroundEffect) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        flowShader = if (settings.keyboardBackgroundEffect && w > 0 && h > 0) {
-            LinearGradient(
-                -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
-                intArrayOf(
-                    palette.board,
-                    (palette.brand and 0x00FFFFFF) or 0x55000000,
-                    (palette.accent and 0x00FFFFFF) or 0x66000000,
-                    (palette.cloud and 0x00FFFFFF) or 0x44000000,
-                    palette.board,
-                ),
-                null,
-                Shader.TileMode.MIRROR,
-            )
-        } else null
-    }
-
     private fun drawFlowingBackground(canvas: Canvas) {
         val shader = flowShader ?: return
         val period = (width * 2L).coerceAtLeast(1L)
@@ -262,7 +244,24 @@ class KeyboardView(
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), metrics.height)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = relayout()
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        flowShader = if (settings.keyboardBackgroundEffect && w > 0 && h > 0) {
+            LinearGradient(
+                -w.toFloat(), 0f, w.toFloat(), h.toFloat(),
+                intArrayOf(
+                    palette.board,
+                    (palette.brand and 0x00FFFFFF) or 0x55000000,
+                    (palette.accent and 0x00FFFFFF) or 0x66000000,
+                    (palette.cloud and 0x00FFFFFF) or 0x44000000,
+                    palette.board,
+                ),
+                null,
+                Shader.TileMode.MIRROR,
+            )
+        } else null
+        relayout()
+    }
 
     private fun relayout() {
         slots = metrics.layout(rows, side.enabled, width)
