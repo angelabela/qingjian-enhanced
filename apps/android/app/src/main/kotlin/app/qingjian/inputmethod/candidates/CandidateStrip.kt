@@ -166,6 +166,20 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             fill.color = image.background
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
         }
+        // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
+        val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
+        val right = minOf(scrollX + viewWidth, bitmap.width)
+        if (right > scrollX && top < bitmap.height) {
+            src.set(scrollX, top, right, bitmap.height)
+            dst.set(src)
+            dst.offset(0, shift)
+            canvas.drawBitmap(bitmap, src, dst, null)
+        }
+        if (top > 0) {
+            src.set(0, 0, minOf(viewWidth, bitmap.width), top)
+            dst.set(scrollX, 0, scrollX + src.width(), top)
+            canvas.drawBitmap(bitmap, src, dst, null)
+        }
         // 首选候选采用轻量 Liquid Glass：主题色染色、顶部镜面高光、暗边和内层柔光。
         // 只绘制在首个候选格下方，文字仍由原渲染位图绘制，保证字色与主题候选文字完全一致。
         image.wordRect(0)?.let { original ->
@@ -173,11 +187,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             if (rect.right > scrollX && rect.left < scrollX + viewWidth) {
                 val radius = 10f * density
                 val tint = glassTint
-                val tintAlpha = if (transparentBackground) 0x52 else 0x38
+                val tintAlpha = if (transparentBackground) 0x36 else 0x28
                 val base = (tint and 0x00FFFFFF) or (tintAlpha shl 24)
                 glassFill.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.bottom,
-                    intArrayOf(0xBFFFFFFF.toInt(), base, ((tint and 0x00FFFFFF) or (0x24 shl 24))),
+                    intArrayOf(0x35FFFFFF, base, ((tint and 0x00FFFFFF) or (0x1C shl 24))),
                     floatArrayOf(0f, 0.42f, 1f), android.graphics.Shader.TileMode.CLAMP
                 )
                 canvas.drawRoundRect(rect, radius, radius, glassFill)
@@ -193,20 +207,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 glassHighlight.strokeWidth = 2.2f * density
                 canvas.drawLine(rect.left + radius * 1.2f, rect.top + 3f * density, rect.centerX(), rect.top + 3f * density, glassHighlight)
             }
-        }
-        // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
-        val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
-        val right = minOf(scrollX + viewWidth, bitmap.width)
-        if (right > scrollX && top < bitmap.height) {
-            src.set(scrollX, top, right, bitmap.height)
-            dst.set(src)
-            dst.offset(0, shift)
-            canvas.drawBitmap(bitmap, src, dst, null)
-        }
-        if (top > 0) {
-            src.set(0, 0, minOf(viewWidth, bitmap.width), top)
-            dst.set(scrollX, 0, scrollX + src.width(), top)
-            canvas.drawBitmap(bitmap, src, dst, null)
         }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
