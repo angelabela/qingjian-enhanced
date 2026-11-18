@@ -10,8 +10,6 @@ import android.graphics.Matrix
 import android.graphics.Shader
 import android.graphics.LinearGradient
 import android.graphics.drawable.Drawable
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.os.Build
 import android.view.View
@@ -63,7 +61,6 @@ private class FlowingKeyboardBackgroundDrawable(
     private var shader: LinearGradient? = null
     private var shaderWidth = 0
     private var shaderHeight = 0
-    private val handler = Handler(Looper.getMainLooper())
     private val frame = Runnable {
         invalidateSelf()
         scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
@@ -108,9 +105,6 @@ private class FlowingKeyboardBackgroundDrawable(
         canvas.drawRect(bounds, paint)
         paint.shader = null
         canvas.drawRect(bounds, frost)
-        if (!handler.hasCallbacks(frame)) {
-            scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
-        }
     }
 
     override fun setAlpha(alpha: Int) { paint.alpha = alpha }
