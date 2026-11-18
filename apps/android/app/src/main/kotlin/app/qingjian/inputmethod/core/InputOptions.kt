@@ -16,7 +16,8 @@ data class InputOptions(
     val pairPunctuation: Boolean = true,
     val englishPairPunctuation: Boolean = false,
     val englishInChinese: Boolean = true,
-    val chineseFirst: Boolean = false,
+    /** 中文模式混输时默认优先展示汉字候选；纯英文模式不受影响。 */
+    val chineseFirst: Boolean = true,
     val learningLanguage: String = SettingChoices.defaultLearningLanguage,
     /** 功能面板「繁体」开着时的字形：`taiwan` / `hongkong` / `standard`。 */
     val traditionalVariant: String = SettingChoices.defaultTraditionalVariant,
