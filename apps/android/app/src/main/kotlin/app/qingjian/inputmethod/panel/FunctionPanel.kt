@@ -139,7 +139,7 @@ class FunctionPanel(
             val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
             val y = rowTop + row * rowHeight
             val bounds = RectF(left, y + gapY / 2f, left + cardWidth, y + rowHeight - gapY / 2f)
-            val selected = (if (selectedVoiceStyle == -1) 7 else selectedVoiceStyle) == index
+            val selected = (if (selectedVoiceStyle == -1) 8 else selectedVoiceStyle) == index
 
             ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
             ink.fill.style = android.graphics.Paint.Style.STROKE
@@ -230,6 +230,29 @@ class FunctionPanel(
                 ink.fill.strokeWidth = ink.dp(1.1f)
                 canvas.drawLine(x1, y1, x2, y2, ink.fill)
             }
+            return
+        }
+        if (index == 7) {
+            val wave = android.graphics.Path()
+            for (step in 0..28) {
+                val u = step / 28f
+                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
+                val y = cy + kotlin.math.sin(u * Math.PI * 3.0).toFloat() * ink.dp(5f) +
+                    kotlin.math.sin(u * Math.PI * 6.0 + 0.8).toFloat() * ink.dp(2.2f)
+                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+            }
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
+            ink.fill.strokeWidth = ink.dp(3.2f)
+            ink.fill.color = secondary
+            ink.fill.alpha = 95
+            canvas.drawPath(wave, ink.fill)
+            ink.fill.strokeWidth = ink.dp(1.3f)
+            ink.fill.color = accent
+            ink.fill.alpha = 255
+            canvas.drawPath(wave, ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
             return
         }
         val heights = when (index) {
@@ -341,7 +364,7 @@ class FunctionPanel(
                     val row = ((y - rowTop) / rowHeight).toInt()
                     val index = row * 2 + column
                     if (row in 0 until rows && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
-                        selectedVoiceStyle = if (index == 7) -1 else index
+                        selectedVoiceStyle = if (index == 8) -1 else index
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
                     }
