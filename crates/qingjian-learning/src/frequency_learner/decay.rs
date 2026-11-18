@@ -30,19 +30,32 @@ pub fn mtime_day(path: &Path) -> u64 {
 }
 
 /// 一条会冷却的计数：值与最近一次使用的日期。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Decay {
     /// 累计次数（只被记录与撤销改动，衰减不写回它）。
     pub count: u32,
 
     /// 最近一次使用的 unix 天数。
     pub last_used: u64,
+
+    /// 双时间尺度短期 log 分（半衰期默认 3 个活跃日）。
+    pub ls: f64,
+    /// 双时间尺度长期 log 分（半衰期默认 45 个活跃日）。
+    pub ll: f64,
+    /// 最近一次有效记录的 Unix 秒时间戳。
+    pub tk: u64,
+    /// 去重后的累计命中次数。
+    pub hits: u32,
+    /// 系统种子/系统词标记，个人选择默认 false。
+    pub sys: bool,
+    /// 永久屏蔽标记。
+    pub banned: bool,
 }
 
 impl Decay {
     /// 从落盘的 (次数, 天数) 还原。
     pub fn from_parts(count: u32, last_used: u64) -> Self {
-        Self { count, last_used }
+        Self { count, last_used, ls: f64::from(count.max(1)).ln(), ll: f64::from(count.max(1)).ln(), tk: last_used.saturating_mul(86_400), hits: count, sys: false, banned: false }
     }
 
     /// 记 `times` 次，刷新最近使用日。
@@ -56,6 +69,54 @@ impl Decay {
         let removed = times.min(self.count);
         self.count -= removed;
         removed
+    }
+
+    /// 以秒为单位记录一次命中；同一词 3 秒内重复触发视为重复事件，不重复学习。
+    pub fn record_dual(&mut self, now: u64) -> bool {
+        if self.hits > 0 && now.saturating_sub(self.tk) < 3 {
+            return false;
+        }
+        self.ls = log_add(self.ls, 0.0);
+        self.ll = log_add(self.ll, 0.0);
+        self.tk = now.max(self.tk);
+        self.last_used = self.tk / 86_400;
+        self.hits = self.hits.saturating_add(1);
+        self.count = self.hits;
+        true
+    }
+
+    /// 撤销一份命中。撤销操作发生在刚刚提交后，按一份 log 质量回退。
+    pub fn unrecord_dual(&mut self) -> u32 {
+        if self.hits == 0 { return 0; }
+        self.hits -= 1;
+        self.count = self.hits;
+        self.ls = if self.hits == 0 { f64::NEG_INFINITY } else { f64::from(self.hits).ln() };
+        self.ll = self.ls;
+        1
+    }
+
+    /// 按用户方案计算双时间尺度有效值。
+    pub fn effective_dual(&self, now: u64, short_days: f64, long_days: f64) -> u32 {
+        if self.banned || self.hits == 0 { return 0; }
+        let delta = now.saturating_sub(self.tk) as f64;
+        let short_lambda = if short_days > 0.0 { std::f64::consts::LN_2 / (short_days * 86_400.0) } else { 0.0 };
+        let long_lambda = if long_days > 0.0 { std::f64::consts::LN_2 / (long_days * 86_400.0) } else { 0.0 };
+        let short = if short_days > 0.0 { (self.ls - short_lambda * delta).exp() } else { self.ls.exp() };
+        let long = if long_days > 0.0 { (self.ll - long_lambda * delta).exp() } else { self.ll.exp() };
+        (0.4 * short + 0.6 * long).round().clamp(0.0, f64::from(u32::MAX)) as u32
+    }
+
+    /// 恢复新格式字段，旧版 TSV 仍由 `from_parts` 兼容加载。
+    pub fn with_dual_fields(mut self, ls: f64, ll: f64, tk: u64, hits: u32, sys: bool, banned: bool) -> Self {
+        self.ls = ls;
+        self.ll = ll;
+        self.tk = tk;
+        self.hits = hits;
+        self.count = hits;
+        self.last_used = tk / 86_400;
+        self.sys = sys;
+        self.banned = banned;
+        self
     }
 
     /// 有效次数：`count × 2^(−间隔天数 / 半衰期)` 四舍五入。冷却到 0 的条目查询时已不起作用，
@@ -108,4 +169,12 @@ mod tests {
         assert_eq!(entry.unrecord(9), 5);
         assert_eq!(entry.count, 0);
     }
+}
+
+/// 稳定的 log(exp(a) + exp(b))。
+fn log_add(a: f64, b: f64) -> f64 {
+    if !a.is_finite() { return b; }
+    if !b.is_finite() { return a; }
+    let max = a.max(b);
+    max + ((a - max).exp() + (b - max).exp()).ln()
 }
