@@ -1,5 +1,6 @@
 package app.qingjian.inputmethod.candidates
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
@@ -39,6 +40,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     private var preedit = ""
     private var image: StripImage? = null
+    /** 背景特效模式下使用独立的透明位图，避免修改 Rust 渲染器持有的原始帧。 */
+    private var renderedBitmap: Bitmap? = null
 
     /** 当前一帧的候选，长按气泡要它们的译文。 */
     var candidates: List<Candidate> = emptyList()
@@ -68,24 +71,36 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 换上新画的一帧；画不出来（null）时只铺底色。 */
     fun paint(image: StripImage?) {
-        if (transparentBackground && image != null && image.background != 0 && image.bitmap.isMutable) {
-            // Rust 候选位图以主题 surface 铺底；背景特效开启时将纯底色像素转为透明，
-            // 保留文字、图标和候选格本身，让底下的整窗流光自然透出来。
-            val bitmap = image.bitmap
+        this.image = image
+        renderedBitmap = if (transparentBackground && image != null) {
+            // 不假设 Rust 返回的 Bitmap 可变；复制后再清理底色，避免污染渲染器缓存。
+            val source = image.bitmap
+            val bitmap = source.copy(Bitmap.Config.ARGB_8888, true)
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            val rgb = image.background and 0x00FFFFFF
-            var changed = false
+            val bg = image.background
+            val br = (bg shr 16) and 0xFF
+            val bgc = (bg shr 8) and 0xFF
+            val bb = bg and 0xFF
             for (index in pixels.indices) {
                 val pixel = pixels[index]
-                if ((pixel ushr 24) != 0 && (pixel and 0x00FFFFFF) == rgb) {
+                val alpha = pixel ushr 24
+                if (alpha == 0) continue
+                val dr = kotlin.math.abs(((pixel shr 16) and 0xFF) - br)
+                val dg = kotlin.math.abs(((pixel shr 8) and 0xFF) - bgc)
+                val db = kotlin.math.abs((pixel and 0xFF) - bb)
+                // 精确底色完全透明；抗锯齿边缘按接近底色的程度降低 alpha，避免白边。
+                val distance = maxOf(dr, dg, db)
+                if (distance <= 5) {
                     pixels[index] = 0
-                    changed = true
+                } else if (distance <= 34) {
+                    val coverage = ((distance - 5) * 255 / 29).coerceIn(0, 255)
+                    pixels[index] = (alpha * coverage / 255 shl 24) or (pixel and 0x00FFFFFF)
                 }
             }
-            if (changed) bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        }
-        this.image = image
+            bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            bitmap
+        } else null
     }
 
     fun indexAt(contentX: Float): Int {
@@ -122,10 +137,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int) {
         val image = image
         if (image == null) { drawFallback(canvas, scrollX, viewWidth); return }
-        val bitmap = image.bitmap
+        val bitmap = renderedBitmap ?: image.bitmap
         val top = image.candidatesTop.coerceIn(0, bitmap.height)
-        fill.color = image.background
-        canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        if (!transparentBackground) {
+            fill.color = image.background
+            canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        }
         // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
         val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
         val right = minOf(scrollX + viewWidth, bitmap.width)
