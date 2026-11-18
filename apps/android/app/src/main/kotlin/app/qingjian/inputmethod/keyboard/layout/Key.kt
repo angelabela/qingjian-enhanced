@@ -62,7 +62,7 @@ sealed class Key(val label: String, val weight: Float = 1f) {
     data object Backspace : Key("", 1.5f)
 
     /** 空格；数字键盘上的窄一些。 */
-    class Space(weight: Float = 3f) : Key("青简", weight)
+    class Space(weight: Float = 3f) : Key("", weight)
 
     class Enter(weight: Float = 1.75f) : Key("", weight)
 

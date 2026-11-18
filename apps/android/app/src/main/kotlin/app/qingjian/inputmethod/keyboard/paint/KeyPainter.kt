@@ -73,6 +73,8 @@ class KeyPainter(
         ink.color = labelColor
         val label = label(key)
         when {
+            key is Key.Space ->
+                KeyIcons.drawMicrophone(canvas, bounds.centerX(), bounds.centerY() - 1f * density, 20f * density, ink)
             label.isEmpty() ->
                 KeyIcons.draw(canvas, key, bounds.centerX(), bounds.centerY(), 24 * density, ink, shift)
             // 兼作大写的 `;`：上方小 Shift 图标（上滑出它），中间 `;`，下方韵母

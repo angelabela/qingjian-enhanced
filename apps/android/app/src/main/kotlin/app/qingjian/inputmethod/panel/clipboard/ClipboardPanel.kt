@@ -594,7 +594,8 @@ class ClipboardPanel(
         if (index !in clips.indices) return
         clips = ClipboardStore.remove(context, index, actions.clipboardLimit)
         app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
-        collapse()
+        // 删除当前卡片后保留列表滚动量，下一条内容自然补位，不跳回第一条。
+        collapse(resetScroll = false)
     }
 
     override fun onTap(x: Float, y: Float) {
@@ -628,9 +629,9 @@ class ClipboardPanel(
         collapse()
     }
 
-    private fun collapse() {
+    private fun collapse(resetScroll: Boolean = true) {
         expanded = -1
-        listScroll.reset()
+        if (resetScroll) listScroll.reset()
         layouts.clear()
     }
 

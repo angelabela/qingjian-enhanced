@@ -66,6 +66,7 @@ class VoicePanel(
     private val undoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
     private var touchTarget = Target.NONE
+    private var lastTargetHapticAt = 0L
     var target = Target.NONE
         private set
 
@@ -177,8 +178,9 @@ class VoicePanel(
     }
 
     fun track(screenX: Float, screenY: Float) {
+        val previous = target
         val next = targetAt(screenX, screenY)
-        if (next == target) return
+        if (next == previous) return
         target = next
         undoButton.isSelected = next == Target.CANCEL
         finishButton.isSelected = next == Target.ACTION
@@ -223,7 +225,11 @@ class VoicePanel(
         }
         animateTarget(undoButton, undoButton.isSelected)
         animateTarget(finishButton, finishButton.isSelected)
-        if (next != Target.NONE) Haptics.tap(context)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (previous == Target.NONE && next != Target.NONE && now - lastTargetHapticAt >= 260L) {
+            lastTargetHapticAt = now
+            Haptics.tap(context)
+        }
         overlay.invalidate()
     }
 

@@ -444,7 +444,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
         // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
+        root.alpha = 0f
+        root.scaleX = 0.94f
+        root.scaleY = 0.94f
         windowManager.addView(root, windowParams)
+        // 窗口以轻微缩放+淡入出现；不改变最终窗口尺寸和触摸坐标。
+        root.animate().alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(220L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(1.35f))
+            .start()
         // 预览根视图加入 Window 后再恢复快门坐标，避免首次 post 时尚未测量导致回退到默认位置。
         restoreCaptureButtonPosition()
         headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
@@ -473,7 +481,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     attributes = headerWindowParams
                 }
             }
+            headerView.alpha = 0f
             show()
+            headerView.animate().alpha(1f).setDuration(200L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.2f)).start()
             window?.apply {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
@@ -903,13 +914,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val provider = future.get()
             cameraProvider = provider
             val previewBuilder = Preview.Builder()
-                .setTargetResolution(Size(1920, 1080))
+                .setTargetResolution(Size(1280, 720))
             applyScanCaptureQuality(previewBuilder)
             val cameraPreview = previewBuilder.build().also {
                 it.setSurfaceProvider(preview.surfaceProvider)
             }
             val analysisBuilder = ImageAnalysis.Builder()
-                .setTargetResolution(Size(1920, 1080))
+                // 连续扫码无需 1080p；降低每帧内存和 ML Kit 负载，避免微信等宿主前台时的峰值内存压力。
+                .setTargetResolution(Size(1280, 720))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
@@ -920,33 +932,43 @@ class ScanOverlayService : Service(), LifecycleOwner {
             imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
                 val media = proxy.image
-                if (ocrMode) {
-                    // 拍照识图模式下不运行条码识别，释放每一帧，等待用户主动拍照。
-                    proxy.close()
-                } else if (media == null || !processing.compareAndSet(false, true)) {
-                    proxy.close()
+                if (ocrMode || media == null || !processing.compareAndSet(false, true)) {
+                    // 识图模式暂停条码分析；忙碌或无图像时也必须立即释放当前帧。
+                    runCatching { proxy.close() }
                 } else {
-                    scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
-                        .addOnSuccessListener { codes ->
-                            val output = preview.outputTransform
-                            if (output != null) {
-                                val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
-                                val roi = scanArea.boundsInView()
-                                codes.forEach { code ->
-                                    val value = code.rawValue?.trim().orEmpty()
-                                    val bounds = code.boundingBox ?: return@forEach
-                                    if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
-                                    val mapped = RectF(bounds)
-                                    transform.mapRect(mapped)
-                                    if (!roi.contains(mapped)) return@forEach
-                                    if (shouldDeliverCode(value)) deliverResult(value)
-                                }
+                    try {
+                        scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
+                            .addOnSuccessListener { codes ->
+                                // 窗口关闭或相机解绑后，迟到的识别回调不再访问 View。
+                                if (lifecycle.currentState == Lifecycle.State.DESTROYED ||
+                                    !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
+                                runCatching {
+                                    val output = preview.outputTransform ?: return@runCatching
+                                    val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
+                                    val roi = scanArea.boundsInView()
+                                    codes.forEach { code ->
+                                        val value = code.rawValue?.trim().orEmpty()
+                                        val bounds = code.boundingBox ?: return@forEach
+                                        if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
+                                        val mapped = RectF(bounds)
+                                        transform.mapRect(mapped)
+                                        if (!roi.contains(mapped)) return@forEach
+                                        if (shouldDeliverCode(value)) deliverResult(value)
+                                    }
+                                }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
                             }
-                        }
-                        .addOnCompleteListener {
-                            processing.set(false)
-                            proxy.close()
-                        }
+                            .addOnFailureListener { error ->
+                                android.util.Log.w(TAG, "Barcode frame analysis failed", error)
+                            }
+                            .addOnCompleteListener {
+                                processing.set(false)
+                                runCatching { proxy.close() }
+                            }
+                    } catch (error: Throwable) {
+                        processing.set(false)
+                        runCatching { proxy.close() }
+                        android.util.Log.e(TAG, "Unable to submit barcode frame to ML Kit", error)
+                    }
                 }
             }
             provider.unbindAll()
@@ -1303,6 +1325,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     companion object {
+        private const val TAG = "QingjianScan"
         private const val NOTIFICATION_ID = 2921
         private const val CHANNEL_ID = "qingjian_scan_overlay"
         private const val WINDOW_PREFS = "scan_overlay_window"

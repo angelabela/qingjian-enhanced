@@ -64,7 +64,7 @@ class CloudSuggestionsView(
     private var floatingStartX = 0
     private var floatingStartY = 0
     private var floatingVelocityTracker: VelocityTracker? = null
-    private var tipSide = 1
+    private var tipXRatio = 0.72f
     private var tipYRatio = 0.35f
     private var hideInProgress = false
     private var snapAnimator: ValueAnimator? = null
@@ -284,9 +284,10 @@ class CloudSuggestionsView(
                     val margin = (12f * density).toInt()
                     val minY = (40f * density).toInt()
                     val maxY = (screenH - viewHeight - 80f * density).toInt().coerceAtLeast(minY)
-                    tipSide = positionPrefs.getInt("side", 1).coerceIn(0, 1)
+                    tipXRatio = positionPrefs.getFloat("xRatio", 0.72f).coerceIn(0f, 1f)
                     tipYRatio = positionPrefs.getFloat("yRatio", 0.35f).coerceIn(0f, 1f)
-                    val x = if (tipSide == 0) margin else (screenW - viewWidth - margin).coerceAtLeast(0)
+                    val maxX = (screenW - viewWidth - margin).coerceAtLeast(margin)
+                    val x = (margin + (maxX - margin) * tipXRatio).toInt().coerceIn(margin, maxX)
                     val y = (minY + (maxY - minY) * tipYRatio).toInt().coerceIn(minY, maxY)
                     window.attributes = window.attributes.apply {
                         gravity = Gravity.TOP or Gravity.START
@@ -355,7 +356,8 @@ class CloudSuggestionsView(
         val margin = (12f * density).toInt()
         val minY = (40f * density).toInt()
         val maxY = (screenH - height - 80f * density).toInt().coerceAtLeast(minY)
-        val x = if (tipSide == 0) margin else (screenW - width - margin).coerceAtLeast(0)
+        val maxX = (screenW - width - margin).coerceAtLeast(margin)
+        val x = (margin + (maxX - margin) * tipXRatio).toInt().coerceIn(margin, maxX)
         val y = (minY + (maxY - minY) * tipYRatio).toInt().coerceIn(minY, maxY)
         window.attributes = window.attributes.apply {
             gravity = Gravity.TOP or Gravity.START
@@ -439,7 +441,7 @@ class CloudSuggestionsView(
         stopAutoScroll()
         val motion = tipsContainer ?: this
         hideInProgress = true
-        motion.pivotX = if (tipSide == 0) 0f else motion.width.toFloat()
+        motion.pivotX = motion.width / 2f
         motion.pivotY = motion.height / 2f
         motion.animate().cancel()
         motion.animate()
@@ -539,38 +541,23 @@ class CloudSuggestionsView(
                     val screenH = resources.displayMetrics.heightPixels
                     val viewW = window.decorView.width.coerceAtLeast(width)
                     val viewH = window.decorView.height.coerceAtLeast(height)
-                    val margin = (12f * density).toInt()
                     val minY = (40f * density).toInt()
                     val maxY = (screenH - viewH - 80f * density).toInt().coerceAtLeast(minY)
-                    // 以松手速度外推 0.12 秒，决定吸附到哪一侧及最终纵向位置。
-                    val projectedX = attrs.x + vx * 0.12f
-                    tipSide = if (projectedX + viewW / 2f < screenW / 2f) 0 else 1
-                    val targetX = if (tipSide == 0) margin else (screenW - viewW - margin).coerceAtLeast(0)
-                    val targetY = (attrs.y + vy * 0.12f).toInt().coerceIn(minY, maxY)
-                    val startX = attrs.x
-                    val startY = attrs.y
-                    snapAnimator?.cancel()
-                    snapAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                        duration = 380L
-                        interpolator = DecelerateInterpolator(1.1f)
-                        addUpdateListener {
-                            val fraction = it.animatedValue as Float
-                            window.attributes = window.attributes.apply {
-                                gravity = Gravity.TOP or Gravity.START
-                                x = (startX + (targetX - startX) * fraction).toInt()
-                                y = (startY + (targetY - startY) * fraction).toInt()
-                            }
-                        }
-                        addListener(object : android.animation.AnimatorListenerAdapter() {
-                            override fun onAnimationEnd(animation: android.animation.Animator) {
-                                val range = (maxY - minY).coerceAtLeast(1)
-                                tipYRatio = ((targetY - minY).toFloat() / range).coerceIn(0f, 1f)
-                                positionPrefs.edit().putInt("side", tipSide).putFloat("yRatio", tipYRatio).apply()
-                                scheduleAutoHide()
-                            }
-                        })
-                        start()
+                    // 松手只保留当前位置与纵向惯性结果，不再吸附左边或右边。
+                    val margin = (12f * density).toInt()
+                    val maxX = (screenW - viewW - margin).coerceAtLeast(margin)
+                    val maxY = (screenH - viewH - 80f * density).toInt().coerceAtLeast(minY)
+                    val targetX = (attrs.x + vx * 0.08f).toInt().coerceIn(margin, maxX)
+                    val targetY = (attrs.y + vy * 0.08f).toInt().coerceIn(minY, maxY)
+                    window.attributes = window.attributes.apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        x = targetX
+                        y = targetY
                     }
+                    tipXRatio = ((targetX - margin).toFloat() / (maxX - margin).coerceAtLeast(1)).coerceIn(0f, 1f)
+                    tipYRatio = ((targetY - minY).toFloat() / (maxY - minY).coerceAtLeast(1)).coerceIn(0f, 1f)
+                    positionPrefs.edit().putFloat("xRatio", tipXRatio).putFloat("yRatio", tipYRatio).apply()
+                    scheduleAutoHide()
                 } else {
                     scheduleAutoHide()
                 }

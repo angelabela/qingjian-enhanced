@@ -34,6 +34,39 @@ object KeyIcons {
         canvas.restore()
     }
 
+    /** 彩色话筒图标：使用独立色段绘制，避免依赖系统 Emoji 字体。 */
+    fun drawMicrophone(canvas: Canvas, cx: Float, cy: Float, size: Float, paint: Paint) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldWidth = paint.strokeWidth
+        val oldCap = paint.strokeCap
+        val oldJoin = paint.strokeJoin
+        val scale = size / 24f
+        canvas.save()
+        canvas.translate(cx - size / 2f, cy - size / 2f)
+        canvas.scale(scale, scale)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.2f
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.color = 0xFF4C9EFF.toInt()
+        canvas.drawRoundRect(9f, 3f, 15f, 15f, 3f, 3f, paint)
+        paint.color = 0xFFB36BFF.toInt()
+        canvas.drawArc(5f, 7f, 19f, 20f, 0f, 180f, false, paint)
+        paint.color = 0xFFFF8A65.toInt()
+        canvas.drawLine(12f, 20f, 12f, 22f, paint)
+        paint.color = 0xFF36CFC9.toInt()
+        canvas.drawLine(8f, 22f, 16f, 22f, paint)
+        paint.color = 0xFFFFC857.toInt()
+        canvas.drawLine(12f, 6f, 12f, 12f, paint)
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.strokeWidth = oldWidth
+        paint.strokeCap = oldCap
+        paint.strokeJoin = oldJoin
+        canvas.restore()
+    }
+
     private fun shift(p: Path) {
         p.moveTo(12f, 4f)
         p.lineTo(20f, 12.5f)
