@@ -35,6 +35,7 @@ import app.qingjian.inputmethod.clipboard.ClipboardWatcher
 import app.qingjian.inputmethod.clipboard.sync.NeonEdgeView
 import org.json.JSONObject
 import android.icu.text.Transliterator
+import android.icu.text.BreakIterator
 import java.text.Normalizer
 import app.qingjian.inputmethod.contacts.ContactsSync
 import app.qingjian.inputmethod.core.AppLog
@@ -769,11 +770,7 @@ class QingjianInputMethodService :
     override fun onPhraseCommitted(text: String) {
         // 只在主线程读取 Core 当前输入模式并取得分词结果；逐字转拼音、组合码生成和文件写入移到后台。
         if (text.isBlank() || composer.privateInput || composer.directInput || !composer.chinese) return
-        val pieces = runCatching { engine.textPieces(text) }.getOrElse {
-            AppLog.warn("Unable to segment phrase memory text: ${it.message}")
-            return
-        }
-        phraseMemoryHandler.post { rememberPhraseShortcuts(text, pieces) }
+        phraseMemoryHandler.post { rememberPhraseShortcuts(text) }
     }
 
     override fun rememberStructuredToken(token: String) {
@@ -1098,8 +1095,20 @@ class QingjianInputMethodService :
      * 将用户确认上屏的中文按 Core 分词，保存所有连续二词及以上片段的逐字拼音首字母。
      * 使用常用语的本机存储，因此可随既有短语备份/恢复，并由 Core 作为个人候选召回。
      */
-    private fun rememberPhraseShortcuts(text: String, sourcePieces: List<String>) {
-        val pieces = sourcePieces.filter { piece -> piece.any { char -> isHanCodePoint(char.code) } }
+    private fun rememberPhraseShortcuts(text: String) {
+        if (text.isBlank()) return
+        // 使用 Android ICU 中文分词器在后台切词，避免为了自动记忆再次同步调用 Core/JNI。
+        val iterator = BreakIterator.getWordInstance(java.util.Locale.CHINA)
+        iterator.setText(text)
+        val pieces = mutableListOf<String>()
+        var start = iterator.first()
+        var end = iterator.next()
+        while (end != BreakIterator.DONE) {
+            val piece = text.substring(start, end)
+            if (piece.any { char -> isHanCodePoint(char.code) }) pieces += piece
+            start = end
+            end = iterator.next()
+        }
         if (pieces.isEmpty()) return
         val maxCode = PhraseRules.maxCode.takeIf { it > 0 } ?: 32
         val known = ClipboardStore.phrases(this).phrases
