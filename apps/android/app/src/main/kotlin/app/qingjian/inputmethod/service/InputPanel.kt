@@ -481,8 +481,8 @@ class InputPanel(
         val height = source.height
         val reduced = Bitmap.createScaledBitmap(
             source,
-            (width / 7).coerceAtLeast(1),
-            (height / 7).coerceAtLeast(1),
+            (width / 5).coerceAtLeast(1),
+            (height / 5).coerceAtLeast(1),
             true,
         )
         val blurred = Bitmap.createScaledBitmap(reduced, width, height, true)

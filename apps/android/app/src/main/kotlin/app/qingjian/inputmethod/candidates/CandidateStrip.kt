@@ -220,6 +220,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx, cy, size, markPaint)
         }
         applyLeftFade(canvas, scrollX, viewWidth, (top + shift).toFloat())
+        applyRightFade(canvas, scrollX, viewWidth, (top + shift).toFloat())
         canvas.restoreToCount(layer)
     }
 
@@ -232,6 +233,22 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             floatArrayOf(0f, 1f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
         canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + viewWidth).toFloat(), barHeight, leftFadePaint)
+        leftFadePaint.shader = null
+    }
+
+
+
+    /** 右侧紧贴候选栏竖向分隔线渐隐，候选从分隔线方向进入时由透明逐渐显现。 */
+    private fun applyRightFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
+        val fadeWidth = minOf(28f * density, viewWidth.toFloat()).coerceAtLeast(1f)
+        val right = (scrollX + viewWidth).toFloat()
+        val left = right - fadeWidth
+        leftFadePaint.shader = android.graphics.LinearGradient(
+            left, 0f, right, 0f,
+            intArrayOf(0xFF000000.toInt(), 0xFF000000.toInt(), 0x00000000),
+            floatArrayOf(0f, 0.55f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(left, fadeTop.coerceIn(0f, barHeight), right, barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 

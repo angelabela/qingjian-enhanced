@@ -207,7 +207,7 @@ class CandidateBarView(
 
     /** 按当前高亮重画位图：新的一帧到了、或长按气泡换了对着的候选。 */
     private fun repaint() {
-        strip.paint(if (strip.isEmpty) null else source.render(popupIndex.coerceAtLeast(0), palette.dark, stripWidth))
+        strip.paint(if (strip.isEmpty) null else source.render(popupIndex, palette.dark, stripWidth))
         invalidate()
     }
 

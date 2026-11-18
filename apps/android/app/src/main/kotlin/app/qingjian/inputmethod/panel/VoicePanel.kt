@@ -102,10 +102,10 @@ class VoicePanel(
         blurredKeyboard?.let(backdrop::setImageBitmap)
         // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
         // 避免把动态背景完全遮住。普通主题则使用完整磨砂底图。
-        backdrop.alpha = if (animatedKeyboardBackground) 0.68f else 0.96f
+        backdrop.alpha = if (animatedKeyboardBackground) 0.82f else 1f
         backdrop.visibility = if (blurredKeyboard != null) View.VISIBLE else View.GONE
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
-            val radius = (if (animatedKeyboardBackground) 9f else 12f) * resources.displayMetrics.density
+            val radius = (if (animatedKeyboardBackground) 13.5f else 18f) * resources.displayMetrics.density
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
