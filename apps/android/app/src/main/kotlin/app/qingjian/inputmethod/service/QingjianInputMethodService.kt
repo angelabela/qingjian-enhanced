@@ -78,6 +78,7 @@ import app.qingjian.inputmethod.voice.VoiceInput
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.scan.ScanPreferences
 import app.qingjian.inputmethod.scan.ScanOverlayService
+import androidx.core.content.ContextCompat
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
@@ -257,11 +258,10 @@ class QingjianInputMethodService :
         }
         Settings.preferences(this).registerOnSharedPreferenceChangeListener(settingsListener)
         val smsFilter = IntentFilter(SmsCodeReceiver.ACTION_CODE_READY)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(smsCodeListener, smsFilter, RECEIVER_NOT_EXPORTED)
-        else registerReceiver(smsCodeListener, smsFilter)
+        // 动态广播仅允许本应用接收方处理，兼容 Android 8+，避免旧系统默认导出带来的伪造广播风险。
+        ContextCompat.registerReceiver(this, smsCodeListener, smsFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         val scanFilter = IntentFilter(ScanPreferences.ACTION_RESULT)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(scanResultListener, scanFilter, RECEIVER_NOT_EXPORTED)
-        else registerReceiver(scanResultListener, scanFilter)
+        ContextCompat.registerReceiver(this, scanResultListener, scanFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         cloud.start()
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
@@ -369,12 +369,15 @@ class QingjianInputMethodService :
         super.onStartInput(attribute, restarting)
         val nextEditorPackage = attribute.packageName
         val previousEditorPackage = lastInputEditorPackage
-        if (previousEditorPackage != null && previousEditorPackage != nextEditorPackage &&
-            ScanPreferences.isFloating(this)) {
-            // 输入法确认切换到另一个宿主 App 时，关闭上一应用遗留的扫码浮窗，避免跨应用悬挂。
+        val editingOwnScanPrefix = nextEditorPackage == packageName &&
+            ScanPreferences.isPrefixEditorActive()
+        if (!editingOwnScanPrefix && previousEditorPackage != null &&
+            previousEditorPackage != nextEditorPackage && ScanPreferences.isFloating(this)) {
+            // 前缀输入框短暂使用本应用窗口接收文字，不代表宿主已切换；真正切换宿主时才关闭扫码窗。
             stopService(Intent(this, ScanOverlayService::class.java))
         }
-        lastInputEditorPackage = nextEditorPackage
+        // 前缀编辑期间保留原宿主包名，编辑结束回到宿主时不会误触发关闭扫码窗。
+        if (!editingOwnScanPrefix) lastInputEditorPackage = nextEditorPackage
         val keepClipboard = shouldKeepClipboardPanel(attribute, restarting)
         if (isClipboardPanel() && !keepClipboard) {
             AppLog.info(
