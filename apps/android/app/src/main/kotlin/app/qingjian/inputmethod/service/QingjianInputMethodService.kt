@@ -372,7 +372,7 @@ class QingjianInputMethodService :
         if (previousEditorPackage != null && previousEditorPackage != nextEditorPackage &&
             ScanPreferences.isFloating(this)) {
             // 输入法确认切换到另一个宿主 App 时，关闭上一应用遗留的扫码浮窗，避免跨应用悬挂。
-            startService(Intent(this, ScanOverlayService::class.java).setAction(ScanOverlayService.ACTION_STOP))
+            stopService(Intent(this, ScanOverlayService::class.java))
         }
         lastInputEditorPackage = nextEditorPackage
         val keepClipboard = shouldKeepClipboardPanel(attribute, restarting)
