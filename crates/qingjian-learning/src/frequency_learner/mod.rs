@@ -387,6 +387,8 @@ impl FrequencyLearner {
         let Some(entry) = self.counts.get_mut(text) else { return false; };
         if !entry.banned { return false; }
         entry.banned = false;
+        let empty = entry.hits == 0;
+        if empty { self.counts.remove(text); }
         self.dirty = true;
         true
     }
