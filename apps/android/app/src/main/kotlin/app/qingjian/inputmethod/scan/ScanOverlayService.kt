@@ -428,12 +428,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
                 // Dialog 窗口自身也必须使用带透明圆角的遮罩；只裁剪 headerView 不够，
                 // 系统 BLUR_BEHIND 仍会按矩形 Window bounds 模糊圆角外区域。
-                val roundedWindowMask = GradientDrawable().apply {
-                    // 透明度必须为 0；alpha=1 仍会在部分系统的模糊窗口圆角外留下淡色残影。
-                    setColor(Color.TRANSPARENT)
-                    val radius = 16f * resources.displayMetrics.density
-                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-                }
+                val roundedWindowMask = roundedHeaderMask()
                 setBackgroundDrawable(roundedWindowMask)
                 addFlags(
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -459,11 +454,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
                 // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
                 decorView.setPadding(0, 0, 0, 0)
-                decorView.background = GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT)
-                    val radius = 16f * resources.displayMetrics.density
-                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-                }
+                // decor 层沿用窗口级圆角遮罩；全透明矩形 decor 会使部分系统将背景模糊扩展到矩形边界。
+                setBackgroundDrawable(roundedHeaderMask())
+                decorView.background = roundedHeaderMask()
                 // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
                 decorView.clipToOutline = true
                 decorView.elevation = 0f
@@ -701,6 +694,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
      * 标题栏窗口背景完全透明时，系统的 BACKGROUND outline 可能为空，clipToOutline 实际不会裁剪。
      * 这里显式提供只有顶部圆角、底边为直线的凸路径；不改变窗口透明度，也不靠半透明遮挡。
      */
+    /**
+     * Window 背景模糊使用窗口背景 Drawable 的 alpha 遮罩，而不是子 View 的 clipToOutline。
+     * 1/255 的非零 alpha 让系统识别圆角形状，视觉上近乎透明；圆角外 alpha 为 0。
+     */
+    private fun roundedHeaderMask() = GradientDrawable().apply {
+        setColor(0x01FFFFFF)
+        val radius = 16f * resources.displayMetrics.density
+        cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+    }
+
     private fun topRoundedOutlineProvider(radiusPx: Float): ViewOutlineProvider =
         object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
@@ -1018,7 +1021,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         torchEnabled = !torchEnabled
         activeCamera.cameraControl.enableTorch(torchEnabled)
-        torchButton.contentDescription = if (torchEnabled) "关闭手电筒" else "打开手电筒"
+        torchButton.setIcon(
+            if (torchEnabled) PanelIcons.Icon.FLASHLIGHT_ON else PanelIcons.Icon.FLASHLIGHT,
+            if (torchEnabled) "关闭手电筒" else "打开手电筒",
+        )
         torchButton.isSelected = torchEnabled
     }
 
