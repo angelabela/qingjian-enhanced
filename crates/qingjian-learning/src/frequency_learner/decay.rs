@@ -77,6 +77,7 @@ impl Decay {
 
     /// 以秒为单位记录一次命中；同一词 3 秒内重复触发视为重复事件，不重复学习。
     pub fn record_dual(&mut self, now: u64) -> bool {
+        if self.banned { return false; }
         if self.hits > 0 && now.saturating_sub(self.tk) < 3 {
             return false;
         }
