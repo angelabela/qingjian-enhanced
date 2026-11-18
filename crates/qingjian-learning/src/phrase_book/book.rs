@@ -27,6 +27,9 @@ pub struct PhraseBook {
 
     /// `None` 只在内存里记。
     path: Option<PathBuf>,
+
+    /// 只读内存模式的真实原因，供 Android 面板显示并定位设备端故障。
+    storage_error: Option<String>,
 }
 
 impl PhraseBook {
@@ -35,7 +38,7 @@ impl PhraseBook {
     pub fn open(dir: &Path) -> Self {
         if let Err(error) = std::fs::create_dir_all(dir) {
             tracing::warn!(path = %dir.display(), %error, "常用语目录不可用");
-            return Self::default();
+            return Self { storage_error: Some(format!("创建目录 {} 失败：{error}", dir.display())), ..Self::default() };
         }
         let path = dir.join(PHRASE_BOOK_FILE);
         match read_text_lossy(&path) {
@@ -58,13 +61,13 @@ impl PhraseBook {
                     let backup = dir.join(format!("{PHRASE_BOOK_FILE}.corrupt-{stamp}.bak"));
                     if let Err(backup_error) = std::fs::write(&backup, text.as_bytes()) {
                         tracing::error!(path = %backup.display(), %backup_error, "常用语损坏文件备份失败，拒绝覆盖");
-                        return Self::default();
+                        return Self { storage_error: Some(format!("备份损坏文件 {} 失败：{backup_error}", backup.display())), ..Self::default() };
                     }
                     let serialized = match serde_json::to_string_pretty(&recovered) {
                         Ok(value) => value,
                         Err(serialize_error) => {
                             tracing::error!(%serialize_error, "常用语恢复数据序列化失败");
-                            return Self::default();
+                            return Self { storage_error: Some(format!("恢复数据序列化失败：{serialize_error}")), ..Self::default() };
                         }
                     };
                     match write_atomic_str(&path, &serialized) {
@@ -79,14 +82,14 @@ impl PhraseBook {
                         }
                         Err(write_error) => {
                             tracing::error!(path = %path.display(), %write_error, "常用语恢复文件写入失败");
-                            Self::default()
+                            Self { storage_error: Some(format!("写入恢复文件 {} 失败：{write_error}", path.display())), ..Self::default() }
                         }
                     }
                 }
             },
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "常用语读不了，本次只在内存里记");
-                Self::default()
+                Self { storage_error: Some(format!("读取文件 {} 失败：{error}", path.display())), ..Self::default() }
             }
         }
     }
@@ -98,6 +101,11 @@ impl PhraseBook {
     /// 当前常用语文件是否可持久化；读入损坏/不可读时不能把内存写入误报为成功。
     pub fn can_persist(&self) -> bool {
         self.path.is_some()
+    }
+
+    /// 初始化存储失败时的具体原因；不包含用户短语内容。
+    pub fn storage_error(&self) -> Option<&str> {
+        self.storage_error.as_deref()
     }
 
     /// 出现过的分组，[`DEFAULT_GROUP`] 总在第一个，其余按第一次出现的顺序。
