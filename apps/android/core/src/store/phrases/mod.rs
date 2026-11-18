@@ -39,7 +39,7 @@ pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
                 Ok(false)
             } else {
                 let result = book.add(&text, &group, &code);
-                if matches!(result, Ok(false)) {
+                if matches!(&result, Ok(false)) {
                     operation_error = Some("常用语未添加：内容无效或数量已达到上限".to_owned());
                 }
                 result
