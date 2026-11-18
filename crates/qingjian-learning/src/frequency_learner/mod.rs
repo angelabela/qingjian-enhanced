@@ -214,7 +214,7 @@ impl FrequencyLearner {
                     banned.parse::<u8>().ok()? != 0,
                 )))();
                 if let Some((ls, ll, tk, hits, sys, banned)) = parsed
-                    && ls.is_finite() && ll.is_finite() && hits > 0
+                    && ls.is_finite() && ll.is_finite() && (hits > 0 || banned)
                 {
                     if let Some(entry) = self.counts.get_mut(*text) {
                         *entry = entry.with_dual_fields(ls, ll, tk, hits, sys, banned);
@@ -257,7 +257,8 @@ impl FrequencyLearner {
 
     /// 将词加入永久屏蔽表；屏蔽词的个性化权重始终为零。
     pub fn ban_word(&mut self, text: &str) -> bool {
-        let Some(entry) = self.counts.get_mut(text) else { return false; };
+        let now = self.now_seconds.get();
+        let entry = self.counts.entry(text.to_owned()).or_insert_with(|| Decay::from_parts(0, now / 86_400));
         if entry.banned { return false; }
         entry.banned = true;
         self.dirty = true;
@@ -383,7 +384,7 @@ impl FrequencyLearner {
     pub fn save_to(&mut self, path: impl AsRef<Path>) -> Result<(), LearningError> {
         let now = self.now_seconds.get();
         // 365 天未使用才清理记录；短期分下降不会直接删除用户学过的词。
-        self.counts.retain(|_, entry| now.saturating_sub(entry.tk) <= decay::COLD_DAYS.saturating_mul(86_400));
+        self.counts.retain(|_, entry| entry.banned || now.saturating_sub(entry.tk) <= decay::COLD_DAYS.saturating_mul(86_400));
         let mut rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
         rows.sort_by(|a, b| {
             b.1.effective_dual(now, self.short_half_life_days, self.long_half_life_days)
