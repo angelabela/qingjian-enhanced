@@ -130,8 +130,8 @@ class VoicePanel(
             view.includeFontPadding = false
             view.setPadding(0, 0, 0, 0)
             view.background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(palette.functionalKey)
-                cornerRadius = 22f * density
             }
             view.setOnClickListener {
                 // 语音面板与键盘按键共用 App 内「按键震动」开关和强度档位。
@@ -145,9 +145,9 @@ class VoicePanel(
         val actionRow = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            addView(undoButton, android.widget.LinearLayout.LayoutParams((104f * density).toInt(), (44f * density).toInt()))
-            addView(finishButton, android.widget.LinearLayout.LayoutParams((104f * density).toInt(), (44f * density).toInt()).apply {
-                marginStart = (14f * density).toInt()
+            addView(undoButton, android.widget.LinearLayout.LayoutParams((64f * density).toInt(), (64f * density).toInt()))
+            addView(finishButton, android.widget.LinearLayout.LayoutParams((64f * density).toInt(), (64f * density).toInt()).apply {
+                marginStart = (18f * density).toInt()
             })
         }
         addView(actionRow, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
@@ -183,20 +183,17 @@ class VoicePanel(
             val green = Color.rgb(7, 193, 96) // 微信绿
             val layers = arrayOf(
                 android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    cornerRadius = 24f * density
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
                     setColor(Color.TRANSPARENT)
                     setStroke((7f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x20 else 0) shl 24))
                 },
                 android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    cornerRadius = 23f * density
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
                     setColor(Color.TRANSPARENT)
                     setStroke((4f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x55 else 0) shl 24))
                 },
                 android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    cornerRadius = 22f * density
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
                     setColor(if (selected) green else palette.functionalKey)
                     setStroke((if (selected) 1.8f else 1f).times(density).toInt().coerceAtLeast(1),
                         if (selected) 0xFF8AFFB8.toInt() else 0x44FFFFFF)
@@ -233,8 +230,10 @@ class VoicePanel(
             if (view.width <= 0 || view.height <= 0) return false
             val location = IntArray(2)
             view.getLocationOnScreen(location)
-            return screenX >= location[0] && screenX < location[0] + view.width &&
-                screenY >= location[1] && screenY < location[1] + view.height
+            val radius = minOf(view.width, view.height) / 2f
+            val dx = screenX - (location[0] + view.width / 2f)
+            val dy = screenY - (location[1] + view.height / 2f)
+            return dx * dx + dy * dy <= radius * radius
         }
         return when {
             contains(undoButton) -> Target.CANCEL
