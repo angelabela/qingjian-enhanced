@@ -693,7 +693,7 @@ class ClipboardPanel(
                     actions.toast("已加入常用语「$group」")
                 } else {
                     // 不把未持久化的内存结果显示成已保存的常用语。
-                    actions.toast("常用语保存失败：存储不可用，未能添加")
+                    actions.toast("常用语保存失败：${updated.operationError ?: "底层存储拒绝写入"}")
                     invalidate()
                 }
             }
