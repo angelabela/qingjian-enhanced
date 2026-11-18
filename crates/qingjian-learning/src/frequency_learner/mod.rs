@@ -6,10 +6,11 @@ mod tables;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 
-use decay::{DEFAULT_HALF_LIFE_DAYS, Decay};
+use decay::{DEFAULT_HALF_LIFE_DAYS, DEFAULT_LONG_HALF_LIFE_DAYS, DEFAULT_SHORT_HALF_LIFE_DAYS, Decay};
 use foldhash::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use qingjian_core::sentence::{Context, UserNgram};
 use qingjian_core::storage::{read_text_lossy, write_atomic};
@@ -45,6 +46,7 @@ const USER_TYPOS_FILE: &str = "user-typos.tsv";
 /// 三张带衰减的表（词频 / 个人英文词 / 敲错表）的最近使用日侧车文件：`词\t天数` 一类。
 /// 主表保持旧格式两列 / 三列，旧版本读不到日期列也不会丢行；日期丢了就整份退回文件的修改日。
 const USER_DAYS_FILE: &str = "user-days.tsv";
+const USER_DUAL_FILE: &str = "user-frequency-dual.tsv";
 const USER_ENGLISH_DAYS_FILE: &str = "user-english-days.tsv";
 const USER_TYPOS_DAYS_FILE: &str = "user-typos-days.tsv";
 
@@ -66,6 +68,13 @@ pub struct FrequencyLearner {
 
     /// 衰减半衰期（天）；0 为不衰减。缺省 [`DEFAULT_HALF_LIFE_DAYS`]，回放调参可改。
     half_life_days: f64,
+
+    /// 主词频的双时间尺度半衰期。
+    short_half_life_days: f64,
+    long_half_life_days: f64,
+
+    /// 当前 Unix 秒，读路径使用缓存，避免候选排序时反复取系统时钟。
+    now_seconds: Cell<u64>,
 
     /// 今天的 unix 天数。读路径（`weight` 等）是 `&self`，不能每次查时钟——写路径刷新它，读路径用缓存值，
     /// 粒度是天，进程活得再久也只差一天。
@@ -125,6 +134,9 @@ impl Default for FrequencyLearner {
         Self {
             counts: HashMap::default(),
             half_life_days: DEFAULT_HALF_LIFE_DAYS,
+            short_half_life_days: DEFAULT_SHORT_HALF_LIFE_DAYS,
+            long_half_life_days: DEFAULT_LONG_HALF_LIFE_DAYS,
+            now_seconds: Cell::new(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())),
             today: Cell::new(decay::today()),
             dirty: false,
             path: None,
@@ -186,9 +198,47 @@ impl FrequencyLearner {
         }
     }
 
+    /// 加载双时间尺度字段。不存在此文件时，旧版计数已由 `load_counts` 转换为等价初始分。
+    fn load_dual(&mut self, source: &str) -> usize {
+        let mut skipped = 0;
+        for line in data_lines(source) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            if let [text, ls, ll, tk, hits, sys, banned] = fields.as_slice() {
+                let parsed = (|| Some((
+                    ls.parse::<f64>().ok()?,
+                    ll.parse::<f64>().ok()?,
+                    tk.parse::<u64>().ok()?,
+                    hits.parse::<u32>().ok()?,
+                    sys.parse::<u8>().ok()? != 0,
+                    banned.parse::<u8>().ok()? != 0,
+                )))();
+                if let Some((ls, ll, tk, hits, sys, banned)) = parsed
+                    && ls.is_finite() && ll.is_finite() && hits > 0
+                {
+                    if let Some(entry) = self.counts.get_mut(*text) {
+                        *entry = entry.with_dual_fields(ls, ll, tk, hits, sys, banned);
+                    } else {
+                        self.counts.insert((*text).to_owned(),
+                            Decay::from_parts(hits, tk / 86_400).with_dual_fields(ls, ll, tk, hits, sys, banned));
+                    }
+                } else {
+                    skipped += 1;
+                }
+            } else {
+                skipped += 1;
+            }
+        }
+        skipped
+    }
+
     /// 刷新缓存的「今天」。写路径开头调；读路径（`weight` 等，一键要查几万次）用缓存值，不查时钟。
     fn tick(&mut self) {
         self.today.set(decay::today());
+        self.now_seconds.set(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()));
+    }
+
+    fn effective_dual(&self, entry: &Decay) -> u32 {
+        entry.effective_dual(self.now_seconds.get(), self.short_half_life_days, self.long_half_life_days)
     }
 
     /// 一条带衰减计数的有效次数。
@@ -199,6 +249,8 @@ impl FrequencyLearner {
     /// 衰减半衰期（天）；0 为不衰减。回放调参用（`--tune decay-days=`）。
     pub fn set_half_life_days(&mut self, days: f64) {
         self.half_life_days = days;
+        self.long_half_life_days = days.max(0.0);
+        self.short_half_life_days = if days > 0.0 { days * 3.0 / 45.0 } else { 0.0 };
         self.tick();
     }
 
@@ -218,6 +270,11 @@ impl FrequencyLearner {
         }
         if let Some(source) = read_text_lossy(Self::days_path(&path).as_path())? {
             learner.load_days(&source);
+        }
+        let dual_path = Self::dual_path(&path);
+        if let Some(source) = read_text_lossy(&dual_path)? {
+            let skipped = learner.load_dual(&source);
+            note_skipped(&dual_path, skipped);
         }
         let words_path = Self::words_path(&path);
         if let Some(source) = read_text_lossy(&words_path)? {
@@ -271,6 +328,7 @@ impl FrequencyLearner {
         vec![
             frequency_path.to_path_buf(),
             Self::days_path(frequency_path),
+            Self::dual_path(frequency_path),
             Self::words_path(frequency_path),
             Self::ngram_path(frequency_path),
             Self::choices_path(frequency_path),
@@ -287,6 +345,10 @@ impl FrequencyLearner {
         frequency_path.with_file_name(USER_DAYS_FILE)
     }
 
+    pub(super) fn dual_path(frequency_path: &Path) -> PathBuf {
+        frequency_path.with_file_name(USER_DUAL_FILE)
+    }
+
     pub fn len(&self) -> usize {
         self.counts.len()
     }
@@ -296,21 +358,19 @@ impl FrequencyLearner {
     }
 
     pub fn save_to(&mut self, path: impl AsRef<Path>) -> Result<(), LearningError> {
-        let now = self.today.get();
-        let half_life = self.half_life_days;
-        // 衰减只影响排序权重，记录不清；真要清等冷了一年（`COLD_DAYS`），文件与内存一起
-        self.counts
-            .retain(|_, entry| now.saturating_sub(entry.last_used) <= decay::COLD_DAYS);
+        let now = self.now_seconds.get();
+        // 365 天未使用才清理记录；短期分下降不会直接删除用户学过的词。
+        self.counts.retain(|_, entry| now.saturating_sub(entry.tk) <= decay::COLD_DAYS.saturating_mul(86_400));
         let mut rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
         rows.sort_by(|a, b| {
-            b.1.effective(now, half_life)
-                .cmp(&a.1.effective(now, half_life))
+            b.1.effective_dual(now, self.short_half_life_days, self.long_half_life_days)
+                .cmp(&a.1.effective_dual(now, self.short_half_life_days, self.long_half_life_days))
                 .then_with(|| a.0.cmp(b.0))
         });
         write_atomic(path.as_ref(), |file| {
             writeln!(file, "# 青简用户词频：词\\t选择次数")?;
             for (text, entry) in rows {
-                writeln!(file, "{text}\t{}", entry.count)?;
+                writeln!(file, "{text}\t{}", entry.hits)?;
             }
             Ok(())
         })?;
@@ -318,12 +378,23 @@ impl FrequencyLearner {
         let days: Vec<(&String, u64)> = self
             .counts
             .iter()
-            .map(|(text, e)| (text, e.last_used))
+            .map(|(text, e)| (text, e.tk / 86_400))
             .collect();
         write_atomic(&days_path, |file| {
             writeln!(file, "# 青简用户词频最近使用日：词\\t天数（unix 天）")?;
             for (text, day) in days {
                 writeln!(file, "{text}\t{day}")?;
+            }
+            Ok(())
+        })?;
+        let dual_path = Self::dual_path(path.as_ref());
+        write_atomic(&dual_path, |file| {
+            writeln!(file, "# 青简双时间尺度词频：词\\tls\\tll\\ttk\\thits\\tsys\\tbanned")?;
+            let mut dual_rows: Vec<(&String, &Decay)> = self.counts.iter().collect();
+            dual_rows.sort_by(|a, b| a.0.cmp(b.0));
+            for (text, entry) in dual_rows {
+                writeln!(file, "{text}\\t{:.9}\\t{:.9}\\t{}\\t{}\\t{}\\t{}",
+                    entry.ls, entry.ll, entry.tk, entry.hits, entry.sys as u8, entry.banned as u8)?;
             }
             Ok(())
         })?;
