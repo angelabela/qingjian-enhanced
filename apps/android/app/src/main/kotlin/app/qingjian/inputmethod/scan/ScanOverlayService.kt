@@ -772,7 +772,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 if (square) "切换为自定义长方形扫描区域" else "切换为正方形扫描区域",
             )
         }
-        if (::scanArea.isInitialized) scanArea.post { if (squareScanShape == square) scanArea.setShape(square) }
+        if (::scanArea.isInitialized) scanArea.post {
+            // 强制按当前开关重建扫描框：首次创建时 squareMode 的默认值并不代表
+            // SharedPreferences 中上一次保存的形状，不能因状态值相同而跳过矩形恢复。
+            if (squareScanShape == square) scanArea.setShape(square, force = true)
+        }
     }
 
     private fun finishPrefixEditing() {
@@ -1261,8 +1265,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         fun boundsInView(): RectF = RectF(rect)
 
-        fun setShape(square: Boolean) {
-            if (width <= 0 || height <= 0 || square == squareMode) return
+        fun setShape(square: Boolean, force: Boolean = false) {
+            if (width <= 0 || height <= 0 || (!force && square == squareMode)) return
             val centerX = if (rect.isEmpty) width / 2f else rect.centerX()
             val centerY = if (rect.isEmpty) height / 2f else rect.centerY()
             if (square) {
