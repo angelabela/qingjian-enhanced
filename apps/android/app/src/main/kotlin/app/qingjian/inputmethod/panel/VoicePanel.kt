@@ -104,13 +104,14 @@ class VoicePanel(
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 语音面板自身采用液态玻璃质感：半透明冷色渐层、柔和高光和细亮边。
         val glassRadius = 26f * resources.displayMetrics.density
+        fun themedAlpha(color: Int, alpha: Int) = (color and 0x00FFFFFF) or (alpha shl 24)
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                0x55F5FBFF,
-                (palette.board and 0x00FFFFFF) or 0x55405070,
-                (palette.surface and 0x00FFFFFF) or 0x66405070,
-                0x33202A48,
+                themedAlpha(palette.surface, 0x55),
+                themedAlpha(palette.board, 0x55),
+                themedAlpha(palette.surface, 0x66),
+                themedAlpha(palette.board, 0x33),
             ),
         ).apply {
             cornerRadius = glassRadius
@@ -129,9 +130,9 @@ class VoicePanel(
             view.includeFontPadding = false
             view.setPadding(0, 0, 0, 0)
             view.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor((palette.surface and 0x00FFFFFF) or 0xE0202938.toInt())
+                setColor(palette.functionalKey)
                 cornerRadius = 22f * density
-                setStroke((1f * density).toInt().coerceAtLeast(1), 0x88FFFFFF.toInt())
+                setStroke((1f * density).toInt().coerceAtLeast(1), palette.faint)
             }
             view.setOnClickListener {
                 // 语音面板与键盘按键共用 App 内「按键震动」开关和强度档位。
