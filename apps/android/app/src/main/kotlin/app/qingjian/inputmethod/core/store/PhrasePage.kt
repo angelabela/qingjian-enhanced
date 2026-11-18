@@ -5,4 +5,5 @@ class PhrasePage(
     val groups: List<String>,
     val phrases: List<PhraseItem>,
     val operationSucceeded: Boolean = true,
+    val operationError: String? = null,
 )
