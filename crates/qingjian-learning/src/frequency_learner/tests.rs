@@ -256,9 +256,9 @@ fn dual_scale_frequency_uses_three_and_forty_five_day_half_lives() {
 #[test]
 fn dual_scale_records_deduplicate_within_three_seconds() {
     let mut entry = Decay::from_parts(0, 0);
-    assert!(entry.record_dual(100));
-    assert!(!entry.record_dual(102));
-    assert!(entry.record_dual(103));
+    assert!(entry.record_dual(100, 3.0, 45.0));
+    assert!(!entry.record_dual(102, 3.0, 45.0));
+    assert!(entry.record_dual(103, 3.0, 45.0));
     assert_eq!(entry.hits, 2);
     assert_eq!(entry.count, 2);
 }
