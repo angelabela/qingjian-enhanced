@@ -186,13 +186,13 @@ class VoicePanel(
                     shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                     cornerRadius = 24f * density
                     setColor(Color.TRANSPARENT)
-                    setStroke((7f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or (0x20 shl 24))
+                    setStroke((7f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x20 else 0) shl 24))
                 },
                 android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                     cornerRadius = 23f * density
                     setColor(Color.TRANSPARENT)
-                    setStroke((4f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or (0x55 shl 24))
+                    setStroke((4f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x55 else 0) shl 24))
                 },
                 android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.RECTANGLE
