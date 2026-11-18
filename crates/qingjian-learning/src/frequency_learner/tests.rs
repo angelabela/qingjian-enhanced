@@ -21,7 +21,7 @@ fn parse_keeps_counts_as_fresh() {
 fn records_and_round_trips_through_tsv() {
     let mut learner = FrequencyLearner::default();
     learner.record(&candidate("开发"));
-    learner.counts.get_mut("开发").unwrap().tk = 0; // 模拟超过 3 秒后再次选择
+    learner.counts.get_mut("开发").unwrap().tk = learner.now_seconds.get().saturating_sub(4); // 模拟超过 3 秒后再次选择
     learner.record(&candidate("开发"));
     learner.record(&candidate("中文"));
     assert_eq!(learner.weight("开发"), 2);
@@ -39,7 +39,7 @@ fn records_and_round_trips_through_tsv() {
     assert_eq!(restored.weight("没有"), 0);
 
     // flush 写回加载时的路径
-    restored.counts.get_mut("中文").unwrap().tk = 0;
+    restored.counts.get_mut("中文").unwrap().tk = restored.now_seconds.get().saturating_sub(4);
     restored.record(&candidate("中文"));
     restored.flush();
     assert_eq!(
@@ -151,7 +151,7 @@ fn transitions_round_trip_through_ngram_tsv() {
     assert!(learner.user_ngram().is_none());
     learner.record_transition(Context::START, "我", 1);
     learner.record_transition(Context::after("我"), "想", 1);
-    learner.bigrams.get_mut(&("我".to_owned(), "想".to_owned())).unwrap().tk = 0;
+    learner.bigrams.get_mut(&("我".to_owned(), "想".to_owned())).unwrap().tk = learner.now_seconds.get().saturating_sub(4);
     learner.record_transition(Context::after("我"), "想", 1);
     learner.record_transition(Context::after_two("我", "想"), "去", 1);
     assert_eq!(learner.user_ngram().unwrap().pair(Some("我"), "想"), 2);
@@ -160,6 +160,7 @@ fn transitions_round_trip_through_ngram_tsv() {
     let reloaded = FrequencyLearner::from_path(&path).unwrap();
     // 二元 <s>我 / 我想 / 想去，三元 <s>我想 / 我想去
     assert_eq!(reloaded.ngram_transition_count(), 5);
+    assert_eq!(reloaded.bigrams.get(&("我".to_owned(), "想".to_owned())).unwrap().hits, 2);
     assert_eq!(reloaded.user_ngram().unwrap().pair(None, "我"), 1);
     assert_eq!(reloaded.user_ngram().unwrap().count("想"), 2);
     assert_eq!(
@@ -382,7 +383,7 @@ fn weight_decays_by_half_life_and_only_year_cold_entries_are_pruned() {
 
     let mut learner = FrequencyLearner::from_path(&path).unwrap();
     learner.record(&candidate("开发"));
-    learner.counts.get_mut("开发").unwrap().tk = 0;
+    learner.counts.get_mut("开发").unwrap().tk = learner.now_seconds.get().saturating_sub(4);
     learner.record(&candidate("开发"));
     learner.record(&candidate("中文"));
     let now = learner.now_seconds.get();
