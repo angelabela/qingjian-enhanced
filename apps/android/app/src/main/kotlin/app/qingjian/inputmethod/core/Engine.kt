@@ -405,6 +405,10 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         if (ready) Native.reset(handle)
     }
 
+    fun flushLearning() {
+        if (ready) Native.flushLearning(handle)
+    }
+
     fun close() {
         closed = true
         live -= this
