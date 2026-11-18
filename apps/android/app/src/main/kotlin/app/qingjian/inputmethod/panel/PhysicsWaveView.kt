@@ -294,17 +294,14 @@ class PhysicsWaveView @JvmOverloads constructor(
             for (i in samples downTo 0) {
                 val x = w * i / samples
                 val y = points[i] + thickness[i]
-                lower.lineTo(x, y)
+                if (i == samples) lower.moveTo(x, y) else lower.lineTo(x, y)
             }
             upper.addPath(lower)
             upper.close()
 
-            val colors = IntArray(palette.size) { index ->
-                val shifted = Color.HSVToColor(floatArrayOf(
-                    (Color.red(palette[index]).toFloat() / 255f * 70f + hueOffset + index * 37f) % 360f,
-                    0.72f, 1f
-                ))
-                shifted
+            val hues = floatArrayOf(315f, 275f, 225f, 185f, 345f, 38f)
+            val colors = IntArray(hues.size) { index ->
+                Color.HSVToColor(floatArrayOf((hues[index] + hueOffset) % 360f, 0.72f, 1f))
             }
             paint.shader = android.graphics.LinearGradient(
                 0f, 0f, w, 0f, colors, null, android.graphics.Shader.TileMode.CLAMP
