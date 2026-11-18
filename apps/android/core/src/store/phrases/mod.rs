@@ -35,7 +35,7 @@ pub fn phrases(user_dir: &Path, request: PhraseRequest) -> PhrasePage {
                 operation_error = Some("常用语内容为空：请先输入文字，再点击完成".to_owned());
                 Ok(false)
             } else if book.is_full() {
-                operation_error = Some("常用语数量已达到上限（10000 条），请先删除部分条目".to_owned());
+                operation_error = Some(format!("手动常用语已达到上限（{} 条）；当前总计 {} 条，其中自动记忆 {} 条", book.manual_count(), book.total_count(), book.automatic_count()));
                 Ok(false)
             } else {
                 let result = book.add(&text, &group, &code);
