@@ -489,9 +489,9 @@ class ClipboardPanel(
                     val shouldDelete = swipeTriggered
                     val index = swipeClipIndex
                     resetSwipeTracking()
+                    parent?.requestDisallowInterceptTouchEvent(false)
                     if (shouldDelete) {
                         deleteClipAt(index)
-                        parent?.requestDisallowInterceptTouchEvent(false)
                         Haptics.tap(context)
                         invalidate()
                         return true
@@ -508,6 +508,7 @@ class ClipboardPanel(
             !showingPhrases && preview == null && qrPreview == null && list.contains(event.x, event.y)) {
             swipeTracking = true
             swipeTriggered = false
+            parent?.requestDisallowInterceptTouchEvent(true)
             swipeDownX = event.x
             swipeDownY = event.y
             val contentY = event.y - list.top + listScroll.offset
