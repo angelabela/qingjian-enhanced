@@ -1099,10 +1099,13 @@ class QingjianInputMethodService :
         if (pieces.size > 5) spans += 0 to pieces.size
         for ((start, end) in spans) {
             val phrase = pieces.subList(start, end).joinToString("")
-            val code = pinyinInitials(phrase)
-            if (code.length !in 2..maxCode || !known.add(phrase to code)) continue
-            ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
-            changed = true
+            // 同一词保存多种可输入码：全拼首字母，以及从前往后逐步展开的混合简拼。
+            // 例如“主题色”会记住 zts、zhuts、zhutis、zhutise，方便用户按习惯缩写召回。
+            for (code in pinyinShortcutVariants(phrase)) {
+                if (code.length !in 2..maxCode || !known.add(phrase to code)) continue
+                ClipboardStore.addPhrase(this, phrase, "自动记忆", code)
+                changed = true
+            }
         }
         if (changed) engine.reloadPhrases(ClipboardStore.userDir(this))
     }
@@ -1110,16 +1113,41 @@ class QingjianInputMethodService :
     private fun isHanCodePoint(codePoint: Int): Boolean =
         Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN
 
-    private fun pinyinInitials(text: String): String = buildString {
-        text.codePoints().toArray().forEach { codePoint ->
-            if (isHanCodePoint(codePoint)) {
-                val syllable = phraseTransliterator.transliterate(String(Character.toChars(codePoint)))
-                    .lowercase()
-                // 统一分解带声调的拉丁字母，再取首个 ASCII 字母；兼容 a/e/o 等元音开头的汉字。
-                val normalized = Normalizer.normalize(syllable, Normalizer.Form.NFD)
-                normalized.firstOrNull { it in 'a'..'z' }?.let { append(it) }
-            }
+    /** 逐字取得无声调拼音，保留音节边界供多种简拼编码使用。 */
+    private fun pinyinSyllables(text: String): List<String> =
+        text.codePoints().toArray().mapNotNull { codePoint ->
+            if (!isHanCodePoint(codePoint)) return@mapNotNull null
+            val raw = phraseTransliterator.transliterate(String(Character.toChars(codePoint))).lowercase()
+            Normalizer.normalize(raw, Normalizer.Form.NFD)
+                .filter { it in 'a'..'z' }
+                .takeIf(String::isNotEmpty)
         }
+
+    /**
+     * 生成逐步展开的简拼：首字母码 + 前缀音节逐个展开的混合码。
+     * 三字词“主题色”对应 zts / zhuts / zhutis / zhutise。
+     * 长句不做指数级组合，只保存逐段展开码，控制个人词库体积。
+     */
+    private fun pinyinShortcutVariants(text: String): Set<String> {
+        val syllables = pinyinSyllables(text)
+        if (syllables.isEmpty()) return emptySet()
+        val variants = linkedSetOf(syllables.joinToString("") { it.first().toString() })
+        if (syllables.size <= 6) {
+            val combinations = 1 shl syllables.size
+            for (mask in 1 until combinations) {
+                variants += syllables.mapIndexed { index, syllable ->
+                    if ((mask and (1 shl index)) != 0) syllable else syllable.first().toString()
+                }.joinToString("")
+            }
+        } else {
+            for (expanded in 1..syllables.size) {
+                variants += syllables.mapIndexed { index, syllable ->
+                    if (index < expanded) syllable else syllable.first().toString()
+                }.joinToString("")
+            }
+            variants += syllables.joinToString("")
+        }
+        return variants
     }
 
     override val clipboardLimit: Int get() = Settings.load(this).clipboardLimit
