@@ -89,8 +89,9 @@ class VoicePanel(
         }
 
     init {
-        clipChildren = true
-        clipToPadding = true
+        // 拖动选中态会向外扩展光环；父面板和按钮行均不能裁掉外扩部分。
+        clipChildren = false
+        clipToPadding = false
         // 语音面板是覆盖层：空白背景也必须消费触摸，绝不能把事件交回底层键盘。
         isClickable = true
         isFocusable = true
@@ -145,9 +146,12 @@ class VoicePanel(
         val actionRow = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
             addView(undoButton, android.widget.LinearLayout.LayoutParams((64f * density).toInt(), (64f * density).toInt()))
             addView(finishButton, android.widget.LinearLayout.LayoutParams((64f * density).toInt(), (64f * density).toInt()).apply {
-                marginStart = (18f * density).toInt()
+                // 两个圆形按钮之间留出更明显的视觉与触摸间隔。
+                marginStart = (34f * density).toInt()
             })
         }
         addView(actionRow, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply {
