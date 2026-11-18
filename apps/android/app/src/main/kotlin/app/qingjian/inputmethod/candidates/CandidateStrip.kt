@@ -16,7 +16,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
         it.textSize = 19f * density * textScale
@@ -25,6 +25,9 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         it.isFakeBoldText = fontWeight.weight >= 600
     }
     private val fill = Paint()
+    private val glassFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glassEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val glassHighlight = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
         textSize = 20f * density * textScale
@@ -162,6 +165,34 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         if (!transparentBackground) {
             fill.color = image.background
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        }
+        // 首选候选采用轻量 Liquid Glass：主题色染色、顶部镜面高光、暗边和内层柔光。
+        // 只绘制在首个候选格下方，文字仍由原渲染位图绘制，保证字色与主题候选文字完全一致。
+        image.wordRect(0)?.let { original ->
+            val rect = RectF(original).apply { offset(-scrollX.toFloat(), 0f) }
+            if (rect.right > 0f && rect.left < viewWidth) {
+                val radius = 10f * density
+                val tint = glassTint
+                val tintAlpha = if (transparentBackground) 0x52 else 0x38
+                val base = (tint and 0x00FFFFFF) or (tintAlpha shl 24)
+                glassFill.shader = android.graphics.LinearGradient(
+                    rect.left, rect.top, rect.right, rect.bottom,
+                    intArrayOf(0xBFFFFFFF.toInt(), base, (tint and 0x00FFFFFF) or 0x24 shl 24),
+                    floatArrayOf(0f, 0.42f, 1f), android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawRoundRect(rect, radius, radius, glassFill)
+                glassFill.shader = null
+                // 底部轻微暗边增加玻璃厚度；顶部高光模拟环境光反射。
+                glassEdge.color = (0x50000000)
+                glassEdge.strokeWidth = 1.1f * density
+                canvas.drawRoundRect(RectF(rect).apply { inset(0.6f * density, 0.6f * density) }, radius, radius, glassEdge)
+                glassEdge.color = 0xA8FFFFFF.toInt()
+                glassEdge.strokeWidth = 0.85f * density
+                canvas.drawLine(rect.left + radius, rect.top + 1f * density, rect.right - radius, rect.top + 1f * density, glassEdge)
+                glassHighlight.color = 0x66FFFFFF
+                glassHighlight.strokeWidth = 2.2f * density
+                canvas.drawLine(rect.left + radius * 1.2f, rect.top + 3f * density, rect.centerX(), rect.top + 3f * density, glassHighlight)
+            }
         }
         // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
         val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
