@@ -92,6 +92,9 @@ internal object Native {
 
     external fun reset(handle: Long)
 
+    /** 只落盘学习数据，不清空当前组句。 */
+    external fun flushLearning(handle: Long)
+
     /** 画最新一帧的候选条，返回尺寸与可点区域的 JSON；[highlighted] 为负不高亮，[visibleWidth] 以内的候选记成看到过（生词本次数）。画不出来返回 null。 */
     external fun renderStrip(handle: Long, highlighted: Int, scale: Float, dark: Boolean, visibleWidth: Int): String?
 
