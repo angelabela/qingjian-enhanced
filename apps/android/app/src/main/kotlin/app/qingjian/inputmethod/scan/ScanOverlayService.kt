@@ -480,7 +480,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 decorView.clipToOutline = true
                 decorView.elevation = 0f
                 decorView.translationZ = 0f
-                decorView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                decorView.setLayerType(View.LAYER_TYPE_NONE, null)
                 (decorView as? ViewGroup)?.clipChildren = true
                 decorView.outlineProvider = topRoundedOutlineProvider(16f * resources.displayMetrics.density)
                 decorView.invalidateOutline()
@@ -761,7 +761,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 if (wide) "切换为方形扫描区域" else "切换为长方形扫描区域",
             )
         }
-        if (::scanArea.isInitialized) scanArea.setWideShape(wide)
+        if (::scanArea.isInitialized) scanArea.post { if (wideScanShape == wide) scanArea.setWideShape(wide) }
     }
 
     private fun finishPrefixEditing() {
