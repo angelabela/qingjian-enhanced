@@ -964,12 +964,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val mapped = RectF(bounds)
                                     transform.mapRect(mapped)
                                     if (!roi.contains(mapped)) return@forEach
-                                    val now = android.os.SystemClock.elapsedRealtime()
-                                    val previous = lastDeliveredAt[value]
-                                    if (previous == null || now - previous >= DUPLICATE_SUPPRESS_MS) {
-                                        lastDeliveredAt[value] = now
-                                        deliverResult(value)
-                                    }
+                                    if (shouldDeliverCode(value)) deliverResult(value)
                                 }
                             }
                         }
@@ -1076,6 +1071,24 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (torchEnabled) "关闭手电筒" else "打开手电筒",
         )
         torchButton.isSelected = torchEnabled
+    }
+
+    /**
+     * 抑制连续帧重复结果，并限制缓存容量；持续扫描大量不同条码时不会无限增长。
+     * 同一条码在抑制窗口内不刷新时间戳，避免连续命中导致永远无法再次提交。
+     */
+    private fun shouldDeliverCode(value: String): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = lastDeliveredAt[value]
+        if (previous != null && now - previous < DUPLICATE_SUPPRESS_MS) return false
+        lastDeliveredAt[value] = now
+        if (lastDeliveredAt.size > MAX_TRACKED_CODES) {
+            val cutoff = now - DUPLICATE_CACHE_TTL_MS
+            lastDeliveredAt.entries.removeAll { it.value < cutoff }
+            val excess = lastDeliveredAt.size - MAX_TRACKED_CODES
+            if (excess > 0) lastDeliveredAt.keys.take(excess).forEach(lastDeliveredAt::remove)
+        }
+        return true
     }
 
     private fun deliverResult(value: String) {
@@ -1328,5 +1341,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val KEY_SQUARE_SCAN_SHAPE = "square_scan_shape"
         const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_SCAN_OVERLAY"
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
+        private const val DUPLICATE_CACHE_TTL_MS = 15_000L
+        private const val MAX_TRACKED_CODES = 128
     }
 }
