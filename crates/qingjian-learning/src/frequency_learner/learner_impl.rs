@@ -46,19 +46,22 @@ fn lookup_choice(choices: &HashMap<String, HashMap<String, u32>>, key: &str, tex
 impl Learner for FrequencyLearner {
     fn record(&mut self, candidate: &Candidate) {
         self.tick();
-        let now = self.today.get();
-        self.counts
+        let now = self.now_seconds.get();
+        let entry = self.counts
             .entry(candidate.text.clone())
-            .or_insert_with(|| Decay::from_parts(0, now))
-            .record(1, now);
-        self.dirty = true;
-        tracing::debug!(text = %candidate.text, "记录用户选择");
+            .or_insert_with(|| Decay::from_parts(0, now / 86_400));
+        if entry.record_dual(now) {
+            self.dirty = true;
+            tracing::debug!(text = %candidate.text, hits = entry.hits, "记录双时间尺度用户选择");
+        }
     }
 
     fn weight(&self, text: &str) -> u32 {
-        self.counts
-            .get(text)
-            .map_or(0, |entry| self.effective(entry))
+        self.counts.get(text).map_or(0, |entry| self.effective_dual(entry))
+    }
+
+    fn is_banned(&self, text: &str) -> bool {
+        FrequencyLearner::is_banned(self, text)
     }
 
     fn record_choice(&mut self, input: &str, reading: &str, text: &str) {
@@ -88,8 +91,8 @@ impl Learner for FrequencyLearner {
     fn unrecord(&mut self, text: &str) {
         self.tick();
         if let Some(entry) = self.counts.get_mut(text) {
-            entry.unrecord(1);
-            if entry.count == 0 {
+            entry.unrecord_dual();
+            if entry.hits == 0 {
                 self.counts.remove(text);
             }
             self.dirty = true;
