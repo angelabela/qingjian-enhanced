@@ -166,50 +166,82 @@ class QingjianInputMethodService :
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: run { AppLog.warn("[SCAN_DIAG] result broadcast empty"); return }
-            val connection = currentInputConnection ?: run { AppLog.error("[SCAN_DIAG] result received but InputConnection is null; editor=${currentInputEditorInfo?.packageName}"); return }
-            AppLog.info("[SCAN_DIAG] result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
+            val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+                ?: run { AppLog.warn("[SCAN_DIAG] result broadcast empty"); return }
+            commitScanResult(value, intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false), 0)
+        }
+    }
 
-            // 不向微信/Excel 等宿主请求 8192 字符的长文窗口。自定义 InputConnection
-            // 可能因此同步加载/重排整份文档；只检查光标附近的小范围，宿主调用做异常隔离。
-            val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-            val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-            if (before.contains(value) || after.contains(value)) { AppLog.info("[SCAN_DIAG] duplicate result ignored editor=${currentInputEditorInfo?.packageName}"); return }
+    /**
+     * 悬浮扫码结果可能恰好落在宿主切换焦点、InputConnection 短暂为空的窗口期。
+     * 不把第一次广播直接丢弃：短间隔重试，且每次先检查光标附近文本，避免重复上屏。
+     */
+    private fun commitScanResult(value: String, enter: Boolean, attempt: Int) {
+        val connection = currentInputConnection
+        if (connection == null) {
+            if (attempt < SCAN_COMMIT_RETRIES) {
+                AppLog.warn("[SCAN_DIAG] InputConnection unavailable; retry scan commit attempt=${attempt + 1}")
+                Handler(mainLooper).postDelayed({ commitScanResult(value, enter, attempt + 1) }, SCAN_COMMIT_RETRY_MS)
+            } else {
+                AppLog.error("[SCAN_DIAG] scan commit abandoned: InputConnection stayed null")
+            }
+            return
+        }
+        AppLog.info("[SCAN_DIAG] result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
+        val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+        if (before.contains(value) || after.contains(value)) {
+            AppLog.info("[SCAN_DIAG] duplicate result ignored editor=${currentInputEditorInfo?.packageName}")
+            return
+        }
 
-            val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
-            try {
-                var committed = runCatching { composer.commitExternalText(value, connection) }.getOrDefault(false)
-                if (!committed) {
-                    val alreadyInserted = runCatching {
-                        connection.getTextBeforeCursor(value.length, 0)?.toString()?.endsWith(value) == true
-                    }.getOrDefault(false)
-                    committed = alreadyInserted || runCatching { connection.commitText(value, 1) }.getOrDefault(false)
+        val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
+        var committed = false
+        try {
+            committed = runCatching { composer.commitExternalText(value, connection) }.getOrDefault(false)
+            if (!committed) {
+                val alreadyInserted = runCatching {
+                    connection.getTextBeforeCursor(value.length, 0)?.toString()?.endsWith(value) == true
+                }.getOrDefault(false)
+                committed = alreadyInserted || runCatching { connection.commitText(value, 1) }.getOrDefault(false)
+            }
+            if (!committed) {
+                if (attempt < SCAN_COMMIT_RETRIES) {
+                    AppLog.warn("[SCAN_DIAG] host rejected scan text; retry attempt=${attempt + 1} editor=${currentInputEditorInfo?.packageName}")
+                    Handler(mainLooper).postDelayed({ commitScanResult(value, enter, attempt + 1) }, SCAN_COMMIT_RETRY_MS)
+                } else {
+                    AppLog.error("[SCAN_DIAG] scan commit failed after retries editor=${currentInputEditorInfo?.packageName}")
                 }
-                if (!committed) {
-                    android.util.Log.w("QingjianScan", "Host rejected scan text: ${currentInputEditorInfo?.packageName}")
-                    return
-                }
+                return
+            }
 
-                runCatching {
-                    getSystemService(ClipboardManager::class.java)
-                        .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
-                }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
+            runCatching {
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+            }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
 
-                if (intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false)) {
-                    val newlineCommitted = runCatching { composer.commitExternalText("\n", connection) }.getOrDefault(false)
-                    if (!newlineCommitted) {
-                        runCatching {
-                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-                            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-                        }
+            if (enter) {
+                val newlineCommitted = runCatching { composer.commitExternalText("\n", connection) }.getOrDefault(false)
+                if (!newlineCommitted) {
+                    runCatching {
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
                     }
                 }
-            } catch (error: Throwable) {
-                android.util.Log.e("QingjianScan", "Failed to write scan result through host InputConnection", error)
-            } finally {
-                if (batchStarted) runCatching { connection.endBatchEdit() }
             }
+        } catch (error: Throwable) {
+            android.util.Log.e("QingjianScan", "Failed to write scan result through host InputConnection", error)
+            if (attempt < SCAN_COMMIT_RETRIES) {
+                Handler(mainLooper).postDelayed({ commitScanResult(value, enter, attempt + 1) }, SCAN_COMMIT_RETRY_MS)
+            }
+        } finally {
+            if (batchStarted) runCatching { connection.endBatchEdit() }
         }
+    }
+
+    private companion object {
+        const val SCAN_COMMIT_RETRIES = 4
+        const val SCAN_COMMIT_RETRY_MS = 180L
     }
 
     private var neon: NeonEdgeView? = null
