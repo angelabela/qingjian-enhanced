@@ -258,16 +258,17 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // 旧逻辑把完整译文重复画进每一个 hit rect，导致词性/译文重叠和残影。
         val annotationOffsets = HashMap<Pair<Int, Int>, Int>()
         image.hits.filter { it.sense != null }.forEach { hit ->
-            if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEach
             val senseIndex = hit.sense ?: return@forEach
+            val key = hit.candidate to senseIndex
+            val segmentIndex = annotationOffsets[key] ?: 0
+            annotationOffsets[key] = segmentIndex + 1
+            // 即使该段当前滚出视口，也必须推进序号，避免可见的后一段错配成词性。
+            if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEach
             val sense = candidates.getOrNull(hit.candidate)?.senses?.getOrNull(senseIndex) ?: return@forEach
             val segments = buildList {
                 sense.pos?.takeIf { it.isNotBlank() }?.let { add("$it ") }
                 if (sense.text.isNotEmpty()) add(sense.text)
             }
-            val key = hit.candidate to senseIndex
-            val segmentIndex = annotationOffsets[key] ?: 0
-            annotationOffsets[key] = segmentIndex + 1
             val segment = segments.getOrNull(segmentIndex) ?: return@forEach
             // 注释在 Rust 层只保留布局/命中区域，实际字形仅由 Android 绘制一次。
             textStyles.drawReplacing(canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS, eraseUnderlay = false)
