@@ -103,7 +103,7 @@ class VoicePanel(
         // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
         // 避免把动态背景完全遮住。普通主题则使用完整磨砂底图。
         // Opaque frosted-glass overlay; remove the translucent wash.
-        backdrop.alpha = if (animatedKeyboardBackground) 0.78f else 1f
+        backdrop.alpha = if (animatedKeyboardBackground) 0.94f else 1f
         backdrop.visibility = if (blurredKeyboard != null) View.VISIBLE else View.GONE
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
             val radius = 24f * resources.displayMetrics.density
@@ -116,10 +116,10 @@ class VoicePanel(
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                themedAlpha(palette.surface, 0x58),
-                themedAlpha(palette.board, 0x48),
-                themedAlpha(palette.surface, 0x58),
-                themedAlpha(palette.board, 0x48),
+                themedAlpha(palette.surface, 0xA8),
+                themedAlpha(palette.board, 0x98),
+                themedAlpha(palette.surface, 0xA8),
+                themedAlpha(palette.board, 0x98),
             ),
         ).apply {
             cornerRadius = glassRadius
