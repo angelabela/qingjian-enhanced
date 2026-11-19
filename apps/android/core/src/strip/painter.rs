@@ -1,6 +1,6 @@
 //! 候选条的画笔：记住最新一帧要显示的内容，壳要画时按宽度倍数与深浅色出一张位图。
 
-use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, Theme};
+use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, TextSizes, Theme};
 
 use super::{StripHit, StripMeta, has_emoji, preedit, rows, visible_indices};
 use crate::appearance;
@@ -54,8 +54,14 @@ impl StripPainter {
     pub fn set_appearance(&mut self, theme: &str, text_scale: f32, candidate_weight: u16) {
         let sized = |dark: bool| {
             let theme = appearance::theme(theme, dark);
+            let base_sizes = appearance::text_sizes(&theme, text_scale);
+            // 译文是较细小的辅助信息；略微提高字号，减少低分辨率屏幕上的发虚感。
+            let sizes = TextSizes {
+                candidate: base_sizes.candidate,
+                annotation: theme.theme_size("annotation").map(|size| size * text_scale * 1.12),
+            };
             theme
-                .with_text_sizes(appearance::text_sizes(&theme, text_scale))
+                .with_text_sizes(sizes)
                 .with_candidate_weight(Some(candidate_weight))
                 .with_animations(false)
         };
