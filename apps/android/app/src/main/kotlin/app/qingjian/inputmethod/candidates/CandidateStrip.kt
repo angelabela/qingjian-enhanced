@@ -53,6 +53,15 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         strokeWidth = 3.5f * density
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
     }
+    private val eraseCandidateFill = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.TRANSPARENT
+        textSize = 20f * density * textScale
+        textAlign = Paint.Align.CENTER
+        typeface = fontWeight.typeface
+        isFakeBoldText = fontWeight.weight >= 600
+        style = Paint.Style.FILL
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+    }
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
         textSize = 20f * density * textScale
@@ -230,6 +239,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             canvas.clipRect(word.left - scrollX, word.top + shift, word.right - scrollX, word.bottom + shift)
             // Rust 字体的字形在原位擦除；描边扩大一点，避免旧字边缘残留形成重影。
             canvas.drawText(value, x, baseline, eraseCandidateText)
+            canvas.drawText(value, x, baseline, eraseCandidateFill)
             canvas.drawText(value, x, baseline, candidateText)
             canvas.restore()
         }
