@@ -230,61 +230,84 @@ class KeyPainter(
 
     /** 带底影与顶部柔和高光的圆角键帽；不改变原有按键形状。 */
     private fun drawPlate(canvas: Canvas, bounds: RectF, color: Int) {
+        // Paint.color 会覆盖 Paint.alpha；之前先设置 alpha、再设置 color，导致滑块值
+        // 被颜色赋值重置为 255，按键透明度看起来完全没有变化。
         fill.shader = null
-        fill.alpha = (keyBackgroundAlpha.coerceIn(0f, 1f) * 255).toInt()
-        fill.color = palette.keyShadow
+        fill.style = Paint.Style.FILL
+        fill.color = scaleAlpha(palette.keyShadow, keyBackgroundAlpha)
         canvas.drawRoundRect(
             bounds.left, bounds.top + metrics.shadowOffset,
             bounds.right, bounds.bottom + metrics.shadowOffset,
             metrics.radius, metrics.radius, fill,
         )
+
         if (keySkin == Settings.KeySkin.ORIGINAL) {
-            fill.color = color
+            fill.color = scaleAlpha(color, keyBackgroundAlpha)
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
-            fill.alpha = 255
             if (keyBackgroundFrosted) {
-                fill.color = 0x24FFFFFF
+                // 玻璃雾面层使用真正带 alpha 的颜色，不依赖 Paint.alpha 的残留状态。
+                fill.color = scaleAlpha(0x50FFFFFF, keyBackgroundAlpha)
                 canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+                fill.color = scaleAlpha(0x30FFFFFF, keyBackgroundAlpha)
+                val inset = 1f * density
+                val highlight = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.top + bounds.height() * 0.42f)
+                canvas.drawRoundRect(highlight, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
             }
             return
         }
-        // 液态玻璃键帽：半透明主题色渐层、顶部宽高光、底部反射与细描边。
-        // 保留原 bounds 和圆角，不改变按键命中区域或键盘布局。
-        val top = withAlpha(lighten(color, 1.28f), 0xB8)
-        val bottom = withAlpha(darken(color, 0.86f), 0xE0)
+
+        // 液态玻璃键帽：渐层、高光、反射和描边都乘以同一透明度，避免只有底色变化。
+        val top = scaleAlpha(withAlpha(lighten(color, 1.28f), 0xB8), keyBackgroundAlpha)
+        val bottom = scaleAlpha(withAlpha(darken(color, 0.86f), 0xE0), keyBackgroundAlpha)
         fill.shader = LinearGradient(bounds.left, bounds.top, bounds.left, bounds.bottom, top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
         fill.shader = null
 
         val inset = 1.2f * density
         val innerRadius = (metrics.radius - inset).coerceAtLeast(1f)
-        // 顶部玻璃反光，透明度从上到下自然减弱。
         fill.shader = LinearGradient(
             bounds.left, bounds.top + inset, bounds.left, bounds.top + bounds.height() * 0.48f,
-            intArrayOf(0x72FFFFFF, 0x28FFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP,
+            intArrayOf(
+                scaleAlpha(0x72FFFFFF, keyBackgroundAlpha),
+                scaleAlpha(0x28FFFFFF, keyBackgroundAlpha),
+                scaleAlpha(0x00FFFFFF, keyBackgroundAlpha),
+            ), null, Shader.TileMode.CLAMP,
         )
         val shine = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.top + bounds.height() * 0.48f)
         canvas.drawRoundRect(shine, innerRadius, innerRadius, fill)
         fill.shader = null
 
-        // 底部轻微反射与玻璃边缘高光，避免塑料感。
-        fill.shader = LinearGradient(bounds.left, bounds.bottom - bounds.height() * 0.24f, bounds.left, bounds.bottom,
-            0x00FFFFFF, 0x30FFFFFF, Shader.TileMode.CLAMP)
+        fill.shader = LinearGradient(
+            bounds.left, bounds.bottom - bounds.height() * 0.24f, bounds.left, bounds.bottom,
+            scaleAlpha(0x00FFFFFF, keyBackgroundAlpha),
+            scaleAlpha(0x30FFFFFF, keyBackgroundAlpha),
+            Shader.TileMode.CLAMP,
+        )
         val reflection = RectF(bounds.left + inset, bounds.bottom - bounds.height() * 0.24f, bounds.right - inset, bounds.bottom - inset)
         canvas.drawRoundRect(reflection, innerRadius, innerRadius, fill)
         fill.shader = null
+
         fill.style = Paint.Style.STROKE
         fill.strokeWidth = 0.8f * density
-        fill.color = 0x88FFFFFF.toInt()
-        canvas.drawRoundRect(bounds.left + inset / 2, bounds.top + inset / 2, bounds.right - inset / 2, bounds.bottom - inset / 2,
-            (metrics.radius - inset / 2).coerceAtLeast(1f), (metrics.radius - inset / 2).coerceAtLeast(1f), fill)
+        fill.color = scaleAlpha(0x88FFFFFF.toInt(), keyBackgroundAlpha)
+        canvas.drawRoundRect(
+            bounds.left + inset / 2, bounds.top + inset / 2,
+            bounds.right - inset / 2, bounds.bottom - inset / 2,
+            (metrics.radius - inset / 2).coerceAtLeast(1f),
+            (metrics.radius - inset / 2).coerceAtLeast(1f), fill,
+        )
         fill.style = Paint.Style.FILL
-        fill.color = color
-        fill.alpha = 255
+
         if (keyBackgroundFrosted) {
-            fill.color = 0x24FFFFFF
+            fill.color = scaleAlpha(0x50FFFFFF, keyBackgroundAlpha)
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
         }
+    }
+
+    private fun scaleAlpha(color: Int, factor: Float): Int {
+        val original = (color ushr 24) and 0xFF
+        val alpha = (original * factor.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
+        return (color and 0x00FFFFFF) or (alpha shl 24)
     }
 
     private fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or ((alpha and 0xFF) shl 24)
