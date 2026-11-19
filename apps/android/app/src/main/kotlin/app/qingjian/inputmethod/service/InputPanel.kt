@@ -343,7 +343,11 @@ class InputPanel(
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
     private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
 
-    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, transparentBackground).apply {
+    val candidateTextStyleConfig = app.qingjian.inputmethod.candidates.CandidateTextStyleEngine.Config.forPreset(
+        palette.text, settings.fontWeight, settings.candidateTextPreset,
+    )
+    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener,
+        settings.fontWeight, transparentBackground, candidateTextStyleConfig).apply {
         setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
