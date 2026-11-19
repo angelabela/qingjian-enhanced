@@ -23,6 +23,7 @@ class KeyPainter(
     private val fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
     private var keyBackgroundAlpha: Float = 1f,
     private var keyBackgroundFrosted: Boolean = false,
+    private val textEffectPreset: Settings.TextEffectPreset = Settings.TextEffectPreset.STANDARD,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -323,7 +324,43 @@ class KeyPainter(
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
         ink.textSize = sp * density * scaleOf(sp)
         ink.color = color
-        canvas.drawText(value, cx, cy - (ink.descent() + ink.ascent()) / 2, ink)
+        ink.shader = null
+        ink.style = Paint.Style.FILL
+        ink.clearShadowLayer()
+        ink.isFakeBoldText = fontWeight.weight >= 600
+        val baseline = cy - (ink.descent() + ink.ascent()) / 2
+        when (textEffectPreset) {
+            Settings.TextEffectPreset.STANDARD -> canvas.drawText(value, cx, baseline, ink)
+            Settings.TextEffectPreset.BOLD_DEPTH -> {
+                ink.isFakeBoldText = true
+                ink.setShadowLayer(1.2f * density, 0f, 1f * density, 0x66000000)
+                canvas.drawText(value, cx, baseline, ink)
+            }
+            Settings.TextEffectPreset.SOFT_GLOW -> {
+                ink.setShadowLayer(5f * density, 0f, 0f, color)
+                canvas.drawText(value, cx, baseline, ink)
+            }
+            Settings.TextEffectPreset.NEON_OUTLINE -> {
+                ink.setShadowLayer(3f * density, 0f, 0f, color)
+                ink.style = Paint.Style.STROKE
+                ink.strokeWidth = 1.15f * density
+                canvas.drawText(value, cx, baseline, ink)
+                ink.style = Paint.Style.FILL
+                canvas.drawText(value, cx, baseline, ink)
+            }
+            Settings.TextEffectPreset.COLOR_GRADIENT -> {
+                val measured = ink.measureText(value).coerceAtLeast(1f)
+                ink.shader = LinearGradient(cx - measured / 2f, baseline - ink.textSize,
+                    cx + measured / 2f, baseline, intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()),
+                    null, Shader.TileMode.CLAMP)
+                canvas.drawText(value, cx, baseline, ink)
+                ink.shader = null
+            }
+        }
+        ink.style = Paint.Style.FILL
+        ink.shader = null
+        ink.clearShadowLayer()
+        ink.isFakeBoldText = fontWeight.weight >= 600
     }
 
     /** 同 [text]，放不下 [maxWidth] 就缩小字号（双拼韵母一个键可能有两三个）。 */
