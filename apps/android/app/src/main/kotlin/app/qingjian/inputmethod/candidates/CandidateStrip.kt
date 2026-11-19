@@ -106,6 +106,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             return frame.bitmap.width + 12f * density + extra.size * 38f * density
         }
 
+    fun setAdaptiveTextColor(color: Int?) = textStyles.setAdaptiveTextColor(color)
+
     fun show(preedit: String, candidates: List<Candidate>) {
         this.preedit = preedit
         this.candidates = candidates
@@ -330,16 +332,17 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
-        // 左边缘从视口起点立即进入渐隐，确保拖动后首个候选不会顶在边框上；
-        // 渐隐区加宽到约 52dp，并在前段保持透明、后段平滑恢复，避免只出现轻微变暗。
-        val inset = minOf(2f * density, viewWidth * 0.02f)
-        val fadeWidth = minOf(52f * density, (viewWidth - inset).coerceAtLeast(1f))
+        // 在候选内容图层上做 DST_IN 遮罩。左边缘从完全透明平滑过渡到不透明，
+        // 渐隐宽度扩大到 72dp；不依赖文字命中框宽度，拖动/惯性滚动时都逐帧生效。
+        val fadeWidth = minOf(72f * density, viewWidth.toFloat()).coerceAtLeast(1f)
+        val left = scrollX.toFloat()
+        val right = (scrollX + viewWidth).toFloat()
         leftFadePaint.shader = android.graphics.LinearGradient(
-            scrollX.toFloat(), 0f, scrollX + inset + fadeWidth, 0f,
-            intArrayOf(0x00000000, 0x00000000, 0xAA000000.toInt(), 0xFF000000.toInt()),
-            floatArrayOf(0f, 0.12f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            left, 0f, left + fadeWidth, 0f,
+            intArrayOf(0x00000000, 0x00000000, 0x99000000.toInt(), 0xFF000000.toInt()),
+            floatArrayOf(0f, 0.22f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + inset + fadeWidth).coerceAtMost((scrollX + viewWidth).toFloat()), barHeight, leftFadePaint)
+        canvas.drawRect(left, fadeTop.coerceIn(0f, barHeight), minOf(left + fadeWidth, right), barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 
