@@ -59,7 +59,7 @@ class CandidateTextStyleEngine(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
                 preedit = Style(color, 0.72f, weight.weight),
-                gloss = Style(color, 0.68f, 400),
+                gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
 
@@ -116,19 +116,36 @@ class CandidateTextStyleEngine(
         val x = rect.centerX()
         val originalSize = paint.textSize
         // 词组可能比单字宽很多：在当前候选格内等比缩小文字，避免裁掉半个字。
-        val availableWidth = (rect.width() - 8f * density).coerceAtLeast(1f)
+        // 文字必须完整落在候选格内：同时按宽度和高度缩放，不再设置 62% 的硬下限，
+        // 否则较长词组即使缩小后仍会被 clipRect 从左右两侧裁掉。
+        val availableWidth = (rect.width() - 2f * density).coerceAtLeast(1f)
+        val availableHeight = (rect.height() - 2f * density).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
-        if (measuredWidth > availableWidth && measuredWidth > 0f) {
-            paint.textSize = (originalSize * availableWidth / measuredWidth).coerceAtLeast(originalSize * 0.62f)
-        }
+        val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
+        val fitScale = minOf(
+            1f,
+            availableWidth / measuredWidth.coerceAtLeast(1f),
+            availableHeight / measuredHeight,
+        )
+        paint.textSize = (originalSize * fitScale).coerceAtLeast(originalSize * 0.28f)
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
         canvas.clipRect(rect)
-        clearPaint.textSize = eraseSize
+        // 位图底层的候选字来自 Rust strip_cell：候选字号为 19dp，注释为 11.5dp。
+        // 按原渲染字号擦除，而不是用上层新字号擦，避免旧字形残留形成双层重影。
+        clearPaint.textSize = when (role) {
+            Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
+            Role.PREEDIT -> baseTextSize * 0.60f
+            Role.GLOSS -> baseTextSize * 0.575f
+        }
         clearPaint.textAlign = Paint.Align.CENTER
-        clearPaint.typeface = paint.typeface
+        clearPaint.typeface = android.graphics.Typeface.create(
+            "sans-serif",
+            if (defaultWeight.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+        )
+        clearPaint.isFakeBoldText = defaultWeight.weight >= 600
         clearPaint.style = Paint.Style.STROKE
-        clearPaint.strokeWidth = 3.5f * density
+        clearPaint.strokeWidth = 4f * density
         canvas.drawText(text, x, baseline, clearPaint)
         clearPaint.style = Paint.Style.FILL
         canvas.drawText(text, x, baseline, clearPaint)
