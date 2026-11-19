@@ -343,7 +343,10 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         val width = meta.getInt("width")
         val height = meta.getInt("height")
         if (width <= 0 || height <= 0) return null
-        val bytes = width * height * 4
+        // 先用 Long 计算缓冲区大小，防止乘法溢出后分配错误尺寸。
+        val byteCount = width.toLong() * height.toLong() * 4L
+        if (byteCount <= 0L || byteCount > Int.MAX_VALUE) return null
+        val bytes = byteCount.toInt()
         val buffer = stripBuffer?.takeIf { it.capacity() >= bytes }
             ?: ByteBuffer.allocateDirect(bytes).also { stripBuffer = it }
         if (!Native.copyStrip(handle, buffer)) return null
