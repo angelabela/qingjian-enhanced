@@ -129,8 +129,8 @@ class CloudSuggestionsView(
             hideTips()
             return
         }
-        // 云联想始终只呈现最相关的一条，避免 Tips 变成第二条候选栏。
-        candidates.take(1).forEachIndexed { position, (index, suggestion) ->
+        // 本地联想可呈现最多三条可选续写，云端结果仍由调用方按需控制数量。
+        candidates.take(3).forEachIndexed { position, (index, suggestion) ->
             val result = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
