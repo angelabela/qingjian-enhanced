@@ -34,6 +34,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
     }
+    /** 清除旧拼音整行字形；只清字形区域，保留透明背景/主题底色。 */
+    private val clearPreeditPaint = Paint().apply {
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+    }
     /** 正常候选文字由 Android 原生字体重新绘制；字号、字重与键盘文字设置保持一致。 */
     private val candidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = candidateTextColor
@@ -239,9 +243,22 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
             textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role, eraseUnderlay = false)
         }
-        // 拼音行按 Rust 提供的字符边界定位，逐字原生重绘，不改变光标命中区域。
+        // 拼音数据可能比上一帧短或字符宽度发生变化。先清理整条旧拼音绘制带，
+        // 再按当前 preeditEdges 重绘，避免旧字母/拼音残影留在新字符之间。
         val codePoints = preedit.codePoints().toArray()
         val edges = image.preeditEdges
+        if (top > 0 && preedit.isNotEmpty()) {
+            val clearTop = image.preeditTop.coerceIn(0f, top.toFloat())
+            val clearBottom = image.preeditBottom.coerceIn(clearTop, top.toFloat())
+            if (clearBottom > clearTop) {
+                canvas.drawRect(scrollX.toFloat(), clearTop, (scrollX + contentViewWidth).toFloat(), clearBottom, clearPreeditPaint)
+                if (!transparentBackground) {
+                    fill.color = image.background
+                    canvas.drawRect(scrollX.toFloat(), clearTop, (scrollX + contentViewWidth).toFloat(), clearBottom, fill)
+                }
+            }
+        }
+        // 拼音行按 Rust 提供的字符边界定位，逐字原生重绘，不改变光标命中区域。
         if (codePoints.isNotEmpty() && edges.size >= codePoints.size + 1) {
             val topY = image.preeditTop
             val bottomY = image.preeditBottom.coerceAtLeast(topY + 1f)
@@ -253,26 +270,29 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 textStyles.drawReplacing(canvas, glyph, RectF(left, topY, rightEdge, bottomY), CandidateTextStyleEngine.Role.PREEDIT)
             }
         }
-        // 释义由 Candidate.senses 提供文本，Rust hit rect 提供每一条释义的位置。
-        // Rust annotation 按 POS 与译文拆成多个独立文本节点；每个节点都有自己的 hit rect。
-        // 旧逻辑把完整译文重复画进每一个 hit rect，导致词性/译文重叠和残影。
-        val annotationOffsets = HashMap<Pair<Int, Int>, Int>()
-        image.hits.filter { it.sense != null }.forEach { hit ->
-            val senseIndex = hit.sense ?: return@forEach
-            val key = hit.candidate to senseIndex
-            val segmentIndex = annotationOffsets[key] ?: 0
-            annotationOffsets[key] = segmentIndex + 1
-            // 即使该段当前滚出视口，也必须推进序号，避免可见的后一段错配成词性。
-            if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEach
-            val sense = candidates.getOrNull(hit.candidate)?.senses?.getOrNull(senseIndex) ?: return@forEach
-            val segments = buildList {
-                sense.pos?.takeIf { it.isNotBlank() }?.let { add("$it ") }
-                if (sense.text.isNotEmpty()) add(sense.text)
+        // 释义由 Candidate.senses 提供文本，Rust hit rect 只提供布局位置。
+        // 一个 sense 可能被布局成「词性+译文」两个 hit，也可能只有一个合并 hit；
+        // 先按 sense 分组，再按实际 hit 数量决定合并或拆分，避免只有词性、英文释义丢失。
+        image.hits.filter { it.sense != null }
+            .groupBy { it.candidate to it.sense!! }
+            .forEach { (key, hits) ->
+                val candidateIndex = key.first
+                val senseIndex = key.second
+                val sense = candidates.getOrNull(candidateIndex)?.senses?.getOrNull(senseIndex) ?: return@forEach
+                val pos = sense.pos?.trim().orEmpty()
+                val gloss = sense.text.trim()
+                if (pos.isEmpty() && gloss.isEmpty()) return@forEach
+                val segments = if (hits.size == 1) {
+                    listOf(listOf(pos, gloss).filter { it.isNotEmpty() }.joinToString("  "))
+                } else {
+                    listOfNotNull(pos.takeIf { it.isNotEmpty() }?.plus(" "), gloss.takeIf { it.isNotEmpty() })
+                }
+                hits.forEachIndexed { segmentIndex, hit ->
+                    if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEachIndexed
+                    val segment = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
+                    textStyles.drawReplacing(canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS, eraseUnderlay = false)
+                }
             }
-            val segment = segments.getOrNull(segmentIndex) ?: return@forEach
-            // 注释在 Rust 层只保留布局/命中区域，实际字形仅由 Android 绘制一次。
-            textStyles.drawReplacing(canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS, eraseUnderlay = false)
-        }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
         val extraStart = bitmap.width + 12f * density
