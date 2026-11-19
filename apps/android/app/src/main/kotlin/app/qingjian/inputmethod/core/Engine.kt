@@ -343,7 +343,10 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         val width = meta.getInt("width")
         val height = meta.getInt("height")
         if (width <= 0 || height <= 0) return null
-        val bytes = width * height * 4
+        // JNI 尺寸来自 Rust 渲染器；用 Long 计算并限制异常分配，防止整数溢出或 OOM。
+        val byteCount = width.toLong() * height.toLong() * 4L
+        if (byteCount <= 0L || byteCount > 64L * 1024L * 1024L) return null
+        val bytes = byteCount.toInt()
         val buffer = stripBuffer?.takeIf { it.capacity() >= bytes }
             ?: ByteBuffer.allocateDirect(bytes).also { stripBuffer = it }
         if (!Native.copyStrip(handle, buffer)) return null
