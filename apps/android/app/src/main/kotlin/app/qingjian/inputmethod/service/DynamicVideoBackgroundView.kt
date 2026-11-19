@@ -80,7 +80,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         try {
             var total = 0f
             var count = 0
-            for (y in 0 until sample.height) for (x in 0 until sample.width) {
+            for (y in 0 until minOf(sample.height, 3)) for (x in 0 until sample.width) {
                 val pixel = sample.getPixel(x, y)
                 val r = android.graphics.Color.red(pixel) / 255f
                 val g = android.graphics.Color.green(pixel) / 255f
