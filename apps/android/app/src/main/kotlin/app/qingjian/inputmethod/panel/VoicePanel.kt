@@ -103,7 +103,7 @@ class VoicePanel(
         // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
         // 避免把动态背景完全遮住。普通主题则使用完整磨砂底图。
         // Opaque frosted-glass overlay; remove the translucent wash.
-        backdrop.alpha = 1f
+        backdrop.alpha = if (animatedKeyboardBackground) 0.78f else 1f
         backdrop.visibility = if (blurredKeyboard != null) View.VISIBLE else View.GONE
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
             val radius = 24f * resources.displayMetrics.density
@@ -116,26 +116,26 @@ class VoicePanel(
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                themedAlpha(palette.surface, 0xD9),
-                themedAlpha(palette.board, 0xCC),
-                themedAlpha(palette.surface, 0xD9),
-                themedAlpha(palette.board, 0xCC),
+                themedAlpha(palette.surface, 0x58),
+                themedAlpha(palette.board, 0x48),
+                themedAlpha(palette.surface, 0x58),
+                themedAlpha(palette.board, 0x48),
             ),
         ).apply {
             cornerRadius = glassRadius
-            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x61FFFFFF)
+            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x75FFFFFF)
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
         overlay.alpha = 0f
-        overlay.scaleX = 0f
+        overlay.scaleX = 1f
         overlay.post {
             if (overlay.isAttachedToWindow) {
                 overlay.pivotX = overlay.width / 2f
                 overlay.animate().cancel()
                 overlay.animate()
-                    .scaleX(0.9f)
+                    .scaleX(1f)
                     .alpha(1f)
                     .setDuration(680L)
                     .setInterpolator(android.view.animation.DecelerateInterpolator(1.15f))
