@@ -344,7 +344,7 @@ class FunctionPanel(
     }
 
 
-    /** 五套文字效果预设；候选区与键盘区独立存储，切换范围不会覆盖另一边。 */
+    /** 六套文字效果预设；候选区与键盘区独立存储，切换范围不会覆盖另一边。 */
     private fun textLuminance(color: Int): Float {
         fun channel(value: Int): Float {
             val c = value / 255f
