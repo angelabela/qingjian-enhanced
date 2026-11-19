@@ -108,8 +108,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     fun setAdaptiveTextColor(color: Int?) {
         textStyles.setAdaptiveTextColor(color)
-        extraText.color = color ?: markColor
-        fallbackText.color = color ?: markColor
+        extraText.color = color ?: candidateText.color
+        fallbackText.color = color ?: candidateText.color
     }
 
     fun show(preedit: String, candidates: List<Candidate>) {
