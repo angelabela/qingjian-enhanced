@@ -21,8 +21,8 @@ class KeyPainter(
     private val textScale: Float,
     private val keySkin: Settings.KeySkin = Settings.KeySkin.ORIGINAL,
     private val fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
-    private val keyBackgroundAlpha: Float = 1f,
-    private val keyBackgroundFrosted: Boolean = false,
+    private var keyBackgroundAlpha: Float = 1f,
+    private var keyBackgroundFrosted: Boolean = false,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -39,6 +39,11 @@ class KeyPainter(
         strokeWidth = 1.5f * density
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+    }
+
+    fun setKeySurface(alpha: Float, frosted: Boolean) {
+        keyBackgroundAlpha = alpha.coerceIn(0f, 1f)
+        keyBackgroundFrosted = frosted
     }
 
     var shift = ShiftState.OFF
