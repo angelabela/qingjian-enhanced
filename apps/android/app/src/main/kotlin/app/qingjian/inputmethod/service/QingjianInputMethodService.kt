@@ -666,7 +666,7 @@ class QingjianInputMethodService :
      * 输入停顿后触发本地联想/整句续写。只追加用户点击的续写，不替换或自动提交已有文字。
      * 请求带序号与上下文二次校验，防止慢推理结果覆盖用户后续输入。
      */
-    private fun scheduleLocalAiSuggestions(before: String, currentPanel: KeyboardPanel) {
+    private fun scheduleLocalAiSuggestions(before: String, currentPanel: InputPanel) {
         val request = ++localAiSuggestionSequence
         if (before.length < 3 || composer.privateInput || composer.directInput ||
             currentInputEditorInfo?.wantsPrivacy() == true || !LocalAiModelManager.isInstalled(this)
