@@ -7,7 +7,6 @@ import android.graphics.Canvas
 import android.graphics.RectF
 import android.view.MotionEvent
 import app.qingjian.inputmethod.background.DynamicBackgroundActivity
-import app.qingjian.inputmethod.panel.base.PanelIcons
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.settings.Settings
 
@@ -38,7 +37,7 @@ class DynamicBackgroundPanel(
     }
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, null, PanelIcons.Icon.SETTINGS)
+        drawHeader(canvas, null)
         ink.text(canvas, "动态视频背景", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
@@ -89,7 +88,6 @@ class DynamicBackgroundPanel(
     override fun onBack() = actions.openPanel(PanelKind.FUNCTIONS)
 
     override fun onTap(x: Float, y: Float) {
-        if (isRightIcon(x, y)) return
         if (!card.contains(x, y)) return
         val contentY = y - card.top - ink.dp(8f) + scroll.offset
         val index = (contentY / rowHeight).toInt()
