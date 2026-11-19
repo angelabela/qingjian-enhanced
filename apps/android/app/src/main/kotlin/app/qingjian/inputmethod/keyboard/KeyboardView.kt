@@ -204,6 +204,11 @@ class KeyboardView(
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
+    fun setKeySurface(alpha: Float, frosted: Boolean) {
+        painter.setKeySurface(alpha, frosted)
+        invalidate()
+    }
+
     fun setRows(rows: List<List<Key>>, side: Boolean = false) {
         this.rows = rows
         this.side.enabled = side
