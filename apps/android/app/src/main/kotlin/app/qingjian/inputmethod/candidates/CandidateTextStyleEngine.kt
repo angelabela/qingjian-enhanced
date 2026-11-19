@@ -103,7 +103,6 @@ class CandidateTextStyleEngine(
         canvas.drawText(text, x, baseline, clearPaint)
         clearPaint.style = Paint.Style.FILL
         canvas.drawText(text, x, baseline, clearPaint)
-        style.strokeColor?.let { /* placeholder */ }
         if (paint.textSize > 0f) {
             val style = config.style(role)
             style.strokeColor?.let { color ->
