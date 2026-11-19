@@ -440,6 +440,19 @@ class InputPanel(
         if (!settings.fullscreenAdapt || !corners) setPadding(0, 0, 0, inset)
     }
 
+    /** 只替换视频/亮度层，保留键盘、候选栏和当前打开的子面板实例。 */
+    fun refreshDynamicBackground() {
+        val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean("video_enabled", false)
+        val mode = prefs.getInt("video_mode", 2).coerceIn(0, 2)
+        val uri = if (enabled && mode != 1) prefs.getString("video_uri", null) else null
+        val alpha = prefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
+        val brightness = prefs.getInt("video_brightness", 100).coerceIn(0, 200)
+        val blur = if (prefs.getBoolean("video_frosted", true)) prefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
+        stack.updateVideoBackground(uri, alpha, brightness, blur)
+        root.invalidate()
+    }
+
     /** 云联想以浮动 Tips 显示；没有候选时连输入法顶部的占位行也一并隐藏。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) {
         // Tips 在独立悬浮窗口中显示；输入法布局里不再保留 46dp 占位行。
@@ -629,11 +642,23 @@ class InputPanel(
         videoBrightness: Int,
         videoBlur: Int,
     ) : FrameLayout(context) {
-        private val videoBackground = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur) }
-        private val videoTint = videoUri?.let {
+        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur) }
+        private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
+
+        fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
+            videoBackground?.let { removeView(it); it.release() }
+            videoTint?.let(::removeView)
+            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur) }
+            videoTint = makeVideoTint(context, uri, brightness)
+            videoBackground?.let { addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
+            videoTint?.let { addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
+            invalidate()
+        }
+
+        private fun makeVideoTint(context: Context, uri: String?, brightness: Int): View? = uri?.let {
             View(context).apply {
-                val amount = (kotlin.math.abs(videoBrightness - 100) / 100f * 0.55f).coerceIn(0f, 0.55f)
-                setBackgroundColor(if (videoBrightness < 100) Color.BLACK else Color.WHITE)
+                val amount = (kotlin.math.abs(brightness - 100) / 100f * 0.55f).coerceIn(0f, 0.55f)
+                setBackgroundColor(if (brightness < 100) Color.BLACK else Color.WHITE)
                 alpha = amount
             }
         }
