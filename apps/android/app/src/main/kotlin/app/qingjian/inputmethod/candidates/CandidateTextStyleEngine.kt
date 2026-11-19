@@ -79,7 +79,7 @@ class CandidateTextStyleEngine(
                         shadowColor = color, shadowRadiusDp = 3f,
                     )
                     Settings.TextEffectPreset.CONTRAST_OUTLINE -> style.copy(
-                        strokeColor = if (relativeLuminance(color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE,
+                        strokeColor = android.graphics.Color.WHITE,
                         strokeWidthDp = 1.35f,
                     )
                     Settings.TextEffectPreset.COLOR_GRADIENT -> style
@@ -199,7 +199,7 @@ class CandidateTextStyleEngine(
                 canvas.drawText(text, x, baseline, stroke)
             }
         }
-        if (config.preset == Settings.TextEffectPreset.COLOR_GRADIENT) {
+        if (config.preset == Settings.TextEffectPreset.COLOR_GRADIENT && adaptiveTextColor == null) {
             paint.shader = android.graphics.LinearGradient(
                 rect.left, rect.top, rect.right, rect.bottom,
                 intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()),
