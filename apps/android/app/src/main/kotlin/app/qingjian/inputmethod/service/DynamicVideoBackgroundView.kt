@@ -35,13 +35,36 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             media.isLooping = true
             media.setVolume(0f, 0f)
             media.setOnPreparedListener { ready ->
-                if (player !== ready) return@setOnPreparedListener
+                if (player !== ready || !isAvailable || output?.isValid != true) {
+                    releasePlayer()
+                    return@setOnPreparedListener
+                }
                 prepared = true
-                runCatching { ready.start() }
+                runCatching {
+                    ready.setVolume(0f, 0f)
+                    ready.start()
+                    invalidate()
+                }.onFailure {
+                    android.util.Log.w("QingjianVideoBg", "Unable to start prepared background video", it)
+                    releasePlayer()
+                }
             }
-            media.setOnErrorListener { _, _, _ -> releasePlayer(); true }
+            media.setOnInfoListener { ready, what, _ ->
+                if (player === ready && what == MediaPlayer.MEDIA_INFO_BUFFERING_END && prepared && !ready.isPlaying) {
+                    runCatching { ready.start() }
+                }
+                false
+            }
+            media.setOnErrorListener { _, what, extra ->
+                android.util.Log.w("QingjianVideoBg", "MediaPlayer error what=$what extra=$extra")
+                releasePlayer()
+                true
+            }
             media.prepareAsync()
-        } catch (_: Exception) { releasePlayer() }
+        } catch (error: Exception) {
+            android.util.Log.w("QingjianVideoBg", "Unable to prepare background video", error)
+            releasePlayer()
+        }
     }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) = Unit
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
