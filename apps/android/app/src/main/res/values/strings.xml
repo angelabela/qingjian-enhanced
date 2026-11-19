@@ -426,7 +426,7 @@
     <string name="page_local_ai">本地 AI 引擎</string>
     <string name="local_ai_installed">模型已下载</string>
     <string name="local_ai_not_installed">尚未下载模型</string>
-    <string name="local_ai_settings_summary">模型按需手动下载。下载后可在本机运行离线文本测试；模型尚未接入键盘候选主流程，不影响现有输入与云端功能。</string>
+    <string name="local_ai_settings_summary">模型按需手动下载。加载后可参与候选语义排序、本地智能联想与整句续写；所有生成内容均由用户点击后上屏，模型不可用时保留原有输入与云端功能。</string>
     <string name="local_ai_model_section">本地模型</string>
     <string name="local_ai_model_name">Qwen3-0.6B · INT4</string>
     <string name="local_ai_model_details">约 328 MiB · 上下文 4096 · Apache-2.0</string>
