@@ -34,6 +34,7 @@ on:
       - fix/workflow-252-keycap-candidate-video-controls
       - fix/workflow-327-voice-gesture-glass-model-manifest
       - fix/workflow-328-key-gesture-hints-settings
+      - fix/workflow-343-stability-scan-strip-voice
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
