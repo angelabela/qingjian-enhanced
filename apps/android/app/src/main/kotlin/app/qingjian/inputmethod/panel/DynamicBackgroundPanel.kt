@@ -112,7 +112,10 @@ class DynamicBackgroundPanel(
                 val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
-                if (kotlin.math.abs(y - railY) <= ink.dp(12f) && x in left..right) setSliderValue(index, x)
+                if (kotlin.math.abs(y - railY) <= ink.dp(12f) && x in left..right) {
+                    setSliderValue(index, x)
+                    notifyChanged()
+                }
             }
         }
     }
