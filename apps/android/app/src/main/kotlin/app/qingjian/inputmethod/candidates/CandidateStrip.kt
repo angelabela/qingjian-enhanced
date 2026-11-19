@@ -17,7 +17,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
@@ -32,6 +32,26 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val glassHighlight = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+    }
+    /** 正常候选文字由 Android 原生字体重新绘制；字号、字重与键盘文字设置保持一致。 */
+    private val candidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = candidateTextColor
+        textSize = 20f * density * textScale
+        textAlign = Paint.Align.CENTER
+        typeface = fontWeight.typeface
+        isFakeBoldText = fontWeight.weight >= 600
+        subpixelText = true
+    }
+    /** 用稍粗的 CLEAR 字形擦掉 Rust 位图中的旧字形，不动候选格底色、分隔线和译文。 */
+    private val eraseCandidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.TRANSPARENT
+        textSize = 20f * density * textScale
+        textAlign = Paint.Align.CENTER
+        typeface = fontWeight.typeface
+        isFakeBoldText = fontWeight.weight >= 600
+        style = Paint.Style.STROKE
+        strokeWidth = 3.5f * density
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
     }
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
@@ -195,6 +215,23 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             src.set(0, 0, minOf(contentViewWidth, bitmap.width), top)
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
+        }
+        // 正常候选：保留 Rust 的布局、格子底色、译文与 hit rect，只替换位图里的文字字形。
+        // 原始字符串本来就在 candidates 中，因此不需要新增 JNI 字符串接口。
+        candidates.forEachIndexed { index, candidate ->
+            if (image.emoji.contains(index)) return@forEachIndexed
+            val word = image.wordRect(index) ?: return@forEachIndexed
+            if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
+            val value = candidate.text
+            if (value.isEmpty()) return@forEachIndexed
+            val x = word.centerX() - scrollX
+            val baseline = word.centerY() + shift - (candidateText.ascent() + candidateText.descent()) / 2f
+            canvas.save()
+            canvas.clipRect(word.left - scrollX, word.top + shift, word.right - scrollX, word.bottom + shift)
+            // Rust 字体的字形在原位擦除；描边扩大一点，避免旧字边缘残留形成重影。
+            canvas.drawText(value, x, baseline, eraseCandidateText)
+            canvas.drawText(value, x, baseline, candidateText)
+            canvas.restore()
         }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
