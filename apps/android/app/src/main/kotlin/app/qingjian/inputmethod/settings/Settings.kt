@@ -107,6 +107,7 @@ data class Settings(
         BOLD_DEPTH("加粗立体"),
         SOFT_GLOW("柔光发亮"),
         NEON_OUTLINE("描边霓虹"),
+        CONTRAST_OUTLINE("反差描边"),
         COLOR_GRADIENT("渐变彩色");
 
         companion object {
