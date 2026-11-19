@@ -85,9 +85,11 @@ class KeyboardSettingsActivity : PageActivity() {
             ),
             ui.group(
                 "自定义按键与手势",
-                customGestureKeyPicker(settings),
-                customGestureActionPicker("按键上滑", Settings.KEY_CUSTOM_GESTURE_UP, settings.customGestureUp),
-                customGestureActionPicker("按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN, settings.customGestureDown),
+                listOf(
+                    customGestureKeyPicker(settings),
+                    customGestureActionPicker("按键上滑", Settings.KEY_CUSTOM_GESTURE_UP, settings.customGestureUp),
+                    customGestureActionPicker("按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN, settings.customGestureDown),
+                ),
                 footer = "先选择要配置的按键，再分别设置上滑和下滑动作。选择“沿用默认”不会覆盖该按键原有行为。",
             ),
             ui.group(
