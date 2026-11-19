@@ -39,23 +39,6 @@ class ScanSettingsActivity : PageActivity() {
                 rebuild()
             },
             ui.toggle(
-                "全屏扫码",
-                "使用独立全屏页面进行持续扫码",
-                mode != ScanPreferences.MODE_FLOATING,
-                null,
-            ) { enabled ->
-                prefs.edit().putString(
-                    ScanPreferences.KEY_MODE,
-                    if (enabled) ScanPreferences.MODE_FULL else ScanPreferences.MODE_FLOATING,
-                ).apply()
-                if (enabled) {
-                    // 切换到全屏扫码时同步关闭旧的悬浮窗口。
-                    stopService(android.content.Intent(this, app.qingjian.inputmethod.scan.ScanOverlayService::class.java)
-                        .setAction(app.qingjian.inputmethod.scan.ScanOverlayService.ACTION_STOP))
-                }
-                rebuild()
-            },
-            ui.toggle(
                 R.string.scan_auto_enter_title,
                 R.string.scan_auto_enter_note,
                 prefs.getBoolean(ScanPreferences.KEY_AUTO_ENTER, false),

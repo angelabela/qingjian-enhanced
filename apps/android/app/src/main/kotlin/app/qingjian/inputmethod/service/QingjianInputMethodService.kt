@@ -201,60 +201,52 @@ class QingjianInputMethodService :
             return
         }
         AppLog.info("[SCAN_DIAG] result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
-        val before = runCatching { connection.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-        val after = runCatching { connection.getTextAfterCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
-        if (before.contains(value) || after.contains(value)) {
-            AppLog.info("[SCAN_DIAG] duplicate result ignored editor=${currentInputEditorInfo?.packageName}")
+        val before = runCatching { connection.getTextBeforeCursor(256, 0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { connection.getTextAfterCursor(256, 0)?.toString().orEmpty() }.getOrDefault("")
+        // 只把光标紧邻、且左右为边界的完整串号视为重复。不能用 contains：
+        // D8097F-ZTEGD867A245 后面再扫 ZTEGD867A245，短串是长串的后缀但不是重复扫描。
+        fun isCodeChar(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == '.'
+        val beforeDuplicate = before.endsWith(value) &&
+            (before.length == value.length || !isCodeChar(before[before.length - value.length - 1]))
+        val afterDuplicate = after.startsWith(value) &&
+            (after.length == value.length || !isCodeChar(after[value.length]))
+        if (beforeDuplicate || afterDuplicate) {
+            AppLog.info("[SCAN_DIAG] exact adjacent duplicate ignored editor=${currentInputEditorInfo?.packageName}")
             return
         }
 
-        val batchStarted = runCatching { connection.beginBatchEdit() }.getOrDefault(false)
-        var committed = false
-        try {
-            committed = runCatching { composer.commitExternalText(value, connection) }.getOrDefault(false)
-            if (!committed) {
-                val alreadyInserted = runCatching {
-                    connection.getTextBeforeCursor(value.length, 0)?.toString()?.endsWith(value) == true
-                }.getOrDefault(false)
-                committed = alreadyInserted || runCatching { connection.commitText(value, 1) }.getOrDefault(false)
-            }
-            if (!committed) {
-                if (attempt < SCAN_COMMIT_RETRIES) {
-                    AppLog.warn("[SCAN_DIAG] host rejected scan text; retry attempt=${attempt + 1} editor=${currentInputEditorInfo?.packageName}")
-                    Handler(mainLooper).postDelayed({ commitScanResult(value, enter, attempt + 1) }, SCAN_COMMIT_RETRY_MS)
-                } else {
-                    AppLog.error("[SCAN_DIAG] scan commit failed after retries editor=${currentInputEditorInfo?.packageName}")
-                }
-                return
-            }
-
-            runCatching {
-                getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
-            }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
-
-            if (enter) {
-                val newlineCommitted = runCatching { composer.commitExternalText("\n", connection) }.getOrDefault(false)
-                if (!newlineCommitted) {
-                    runCatching {
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-                        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-                    }
-                }
-            }
-        } catch (error: Throwable) {
-            android.util.Log.e("QingjianScan", "Failed to write scan result through host InputConnection", error)
+        // 扫码是外部文本注入，不走 Composer 的编辑历史快照。
+        // 微信输入框、Excel 单元格等宿主对文本快照支持不一致，直接 commitText 并隔离 Binder 异常。
+        val committed = runCatching { connection.commitText(value, 1) }
+            .onFailure { AppLog.error("[SCAN_DIAG] commitText threw editor=${currentInputEditorInfo?.packageName}: ${it.javaClass.simpleName}") }
+            .getOrDefault(false)
+        if (!committed) {
             if (attempt < SCAN_COMMIT_RETRIES) {
+                AppLog.warn("[SCAN_DIAG] host rejected scan text; retry attempt=${attempt + 1} editor=${currentInputEditorInfo?.packageName}")
                 Handler(mainLooper).postDelayed({ commitScanResult(value, enter, attempt + 1) }, SCAN_COMMIT_RETRY_MS)
+            } else {
+                AppLog.error("[SCAN_DIAG] scan commit failed after retries editor=${currentInputEditorInfo?.packageName}")
             }
-        } finally {
-            if (batchStarted) runCatching { connection.endBatchEdit() }
+            return
+        }
+
+        runCatching {
+            getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+        }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
+
+        if (enter) {
+            val newlineCommitted = runCatching { connection.commitText("\n", 1) }.getOrDefault(false)
+            if (!newlineCommitted) runCatching {
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            }
         }
     }
 
     private companion object {
-        const val SCAN_COMMIT_RETRIES = 4
-        const val SCAN_COMMIT_RETRY_MS = 180L
+        const val SCAN_COMMIT_RETRIES = 10
+        const val SCAN_COMMIT_RETRY_MS = 220L
     }
 
     private var neon: NeonEdgeView? = null

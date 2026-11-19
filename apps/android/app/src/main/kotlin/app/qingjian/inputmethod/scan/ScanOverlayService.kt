@@ -993,9 +993,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
                                     val roi = scanArea.boundsInView()
                                     codes.forEach { code ->
-                                        val value = code.rawValue?.trim().orEmpty()
+                                        val rawValue = code.rawValue
+                                        val value = rawValue?.trim().orEmpty()
                                         val bounds = code.boundingBox ?: return@forEach
-                                        if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
+                                        if (value.isBlank()) {
+                                            scanDiag("barcode candidate has empty rawValue format=${code.format} bounds=${bounds.width()}x${bounds.height()}", warning = true)
+                                            return@forEach
+                                        }
+                                        if (!ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
                                         val mapped = RectF(bounds)
                                         transform.mapRect(mapped)
                                         // 扫码框边缘的条码允许部分进入识别区；只要求条码中心落在框内，
@@ -1166,9 +1171,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
      */
     private fun shouldDeliverCode(value: String): Boolean {
         val now = android.os.SystemClock.elapsedRealtime()
-        val previous = lastDeliveredAt[value]
+        // 按完整原始内容去重，不使用前缀/后缀包含关系。
+        val exactKey = value
+        val previous = lastDeliveredAt[exactKey]
         if (previous != null && now - previous < DUPLICATE_SUPPRESS_MS) return false
-        lastDeliveredAt[value] = now
+        lastDeliveredAt[exactKey] = now
         if (lastDeliveredAt.size > MAX_TRACKED_CODES) {
             val cutoff = now - DUPLICATE_CACHE_TTL_MS
             lastDeliveredAt.entries.removeAll { it.value < cutoff }

@@ -95,6 +95,10 @@ data class Settings(
     val spaceSwipeDown: GestureAction,
     val symbolsSwipeUp: GestureAction,
     val symbolsSwipeDown: GestureAction,
+    /** 用户选择一个按键，并分别为上滑、下滑指定动作。 */
+    val customGestureKey: String = "NONE",
+    val customGestureUp: GestureAction = GestureAction.DEFAULT,
+    val customGestureDown: GestureAction = GestureAction.DEFAULT,
     /** 键盘底板上的光影流动背景特效。 */
     val keyboardBackgroundEffect: Boolean = false,
     /** 流动背景配色样式；0 为极光，1–4 为海洋、日落、翡翠、冰晶，5–6 为魔幻粒子与星云裂隙。 */
@@ -238,6 +242,9 @@ data class Settings(
         const val KEY_SPACE_SWIPE_DOWN = "gesture_space_down"
         const val KEY_SYMBOLS_SWIPE_UP = "gesture_symbols_up"
         const val KEY_SYMBOLS_SWIPE_DOWN = "gesture_symbols_down"
+        const val KEY_CUSTOM_GESTURE_KEY = "custom_gesture_key"
+        const val KEY_CUSTOM_GESTURE_UP = "custom_gesture_up"
+        const val KEY_CUSTOM_GESTURE_DOWN = "custom_gesture_down"
         const val KEY_BACKGROUND_EFFECT = "keyboard_background_effect"
         const val KEY_BACKGROUND_STYLE = "keyboard_background_style"
         const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
@@ -341,6 +348,9 @@ data class Settings(
                 spaceSwipeDown = GestureAction.of(prefs.getString(KEY_SPACE_SWIPE_DOWN, null)),
                 symbolsSwipeUp = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_UP, null)),
                 symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
+                customGestureKey = prefs.getString(KEY_CUSTOM_GESTURE_KEY, "NONE") ?: "NONE",
+                customGestureUp = GestureAction.of(prefs.getString(KEY_CUSTOM_GESTURE_UP, null)),
+                customGestureDown = GestureAction.of(prefs.getString(KEY_CUSTOM_GESTURE_DOWN, null)),
                 keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
                 keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 6),
                 candidateTextPreset = TextEffectPreset.of(prefs.getString(KEY_CANDIDATE_TEXT_PRESET, null)),

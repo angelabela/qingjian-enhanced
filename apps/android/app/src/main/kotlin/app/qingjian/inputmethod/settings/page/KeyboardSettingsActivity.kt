@@ -84,16 +84,11 @@ class KeyboardSettingsActivity : PageActivity() {
                 },
             ),
             ui.group(
-                R.string.gesture_custom_section,
-                gesturePicker(R.string.gesture_enter_up, Settings.KEY_ENTER_SWIPE_UP, settings.enterSwipeUp),
-                gesturePicker(R.string.gesture_enter_down, Settings.KEY_ENTER_SWIPE_DOWN, settings.enterSwipeDown),
-                gesturePicker(R.string.gesture_backspace_up, Settings.KEY_BACKSPACE_SWIPE_UP, settings.backspaceSwipeUp),
-                gesturePicker(R.string.gesture_backspace_down, Settings.KEY_BACKSPACE_SWIPE_DOWN, settings.backspaceSwipeDown),
-                gesturePicker(R.string.gesture_space_up, Settings.KEY_SPACE_SWIPE_UP, settings.spaceSwipeUp),
-                gesturePicker(R.string.gesture_space_down, Settings.KEY_SPACE_SWIPE_DOWN, settings.spaceSwipeDown),
-                gesturePicker(R.string.gesture_symbols_up, Settings.KEY_SYMBOLS_SWIPE_UP, settings.symbolsSwipeUp),
-                gesturePicker(R.string.gesture_symbols_down, Settings.KEY_SYMBOLS_SWIPE_DOWN, settings.symbolsSwipeDown),
-                footer = R.string.gesture_custom_note,
+                "自定义按键与手势",
+                customGestureKeyPicker(settings),
+                customGestureActionPicker("按键上滑", Settings.KEY_CUSTOM_GESTURE_UP, settings.customGestureUp),
+                customGestureActionPicker("按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN, settings.customGestureDown),
+                footer = "先选择要配置的按键，再分别设置上滑和下滑动作。选择“沿用默认”不会覆盖该按键原有行为。",
             ),
             ui.group(
                 null,
@@ -122,8 +117,29 @@ class KeyboardSettingsActivity : PageActivity() {
         }
     }
 
-    /** 单个按键方向的自定义动作；设置写入后输入法服务会即时重建键盘。 */
-    private fun gesturePicker(title: Int, key: String, current: Settings.GestureAction): View {
+    private data class GestureKeyOption(val id: String, val label: String)
+
+    private fun gestureKeyOptions(): List<GestureKeyOption> = buildList {
+        add(GestureKeyOption("NONE", "不指定"))
+        add(GestureKeyOption("SPACE", "空格键"))
+        add(GestureKeyOption("ENTER", "回车键"))
+        add(GestureKeyOption("BACKSPACE", "删除键"))
+        add(GestureKeyOption("SYMBOLS", "符号键"))
+        add(GestureKeyOption("SHIFT", "Shift 键"))
+        add(GestureKeyOption("LANGUAGE", "中英文切换键"))
+        ('A'..'Z').forEach { add(GestureKeyOption("LETTER_$it", "$it 键")) }
+    }
+
+    private fun customGestureKeyPicker(settings: Settings): View {
+        val options = gestureKeyOptions()
+        val selected = options.indexOfFirst { it.id == settings.customGestureKey }.coerceAtLeast(0)
+        return ui.picker("选择自定义按键", options[selected].label, options.map { it.label }, selected) { index ->
+            prefs.edit().putString(Settings.KEY_CUSTOM_GESTURE_KEY, options[index].id).apply()
+            rebuild()
+        }
+    }
+
+    private fun customGestureActionPicker(title: String, key: String, current: Settings.GestureAction): View {
         val options = Settings.GestureAction.entries
         return ui.picker(title, current.label, options.map { it.label }, options.indexOf(current)) { index ->
             prefs.edit().putString(key, options[index].name).apply()

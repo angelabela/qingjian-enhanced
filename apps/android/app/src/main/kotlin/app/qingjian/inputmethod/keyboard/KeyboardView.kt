@@ -482,12 +482,29 @@ class KeyboardView(
         }
     }
 
-    private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction = when {
-        key is Key.Enter -> if (upward) settings.enterSwipeUp else settings.enterSwipeDown
-        key == Key.Backspace -> if (upward) settings.backspaceSwipeUp else settings.backspaceSwipeDown
-        key is Key.Space -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
-        key is Key.Symbols -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
-        else -> Settings.GestureAction.DEFAULT
+    private fun matchesCustomGestureKey(key: Key): Boolean = when (settings.customGestureKey) {
+        "SPACE" -> key is Key.Space
+        "ENTER" -> key is Key.Enter
+        "BACKSPACE" -> key == Key.Backspace
+        "SYMBOLS" -> key is Key.Symbols
+        "SHIFT" -> key == Key.Shift
+        "LANGUAGE" -> key == Key.Language
+        else -> settings.customGestureKey.startsWith("LETTER_") &&
+            (key as? Key.Letter)?.char?.uppercaseChar()?.let { settings.customGestureKey == "LETTER_$it" } == true
+    }
+
+    private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction {
+        if (matchesCustomGestureKey(key)) {
+            val custom = if (upward) settings.customGestureUp else settings.customGestureDown
+            if (custom != Settings.GestureAction.DEFAULT) return custom
+        }
+        return when {
+            key is Key.Enter -> if (upward) settings.enterSwipeUp else settings.enterSwipeDown
+            key == Key.Backspace -> if (upward) settings.backspaceSwipeUp else settings.backspaceSwipeDown
+            key is Key.Space -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
+            key is Key.Symbols -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
+            else -> Settings.GestureAction.DEFAULT
+        }
     }
 
     /** 键面提示显示实际生效的动作；默认手势也显示，显式选择 NONE 则隐藏。 */
