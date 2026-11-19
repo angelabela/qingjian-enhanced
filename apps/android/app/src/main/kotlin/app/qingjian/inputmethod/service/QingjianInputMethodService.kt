@@ -95,6 +95,9 @@ class QingjianInputMethodService :
     private var lastInputEditorPackage: String? = null
     private var lastInputEditorFieldId: Int? = null
     private var quickAiSequence = 0
+    private val quickAiHandler = Handler(Looper.getMainLooper())
+    private var quickAiLoadingRunnable: Runnable? = null
+    private var quickAiLoadingConnection: InputConnection? = null
 
     override val selectionActive: Boolean get() = hasActiveSelection
 
@@ -378,12 +381,15 @@ class QingjianInputMethodService :
         phraseMemoryHandler.removeCallbacksAndMessages(null)
         phraseMemoryThread.quitSafely()
         candidateRerankSequence++
+        stopQuickAiLoading(clearText = true)
+        quickAiHandler.removeCallbacksAndMessages(null)
         cloud.stop()
         engine.close()
         super.onDestroy()
     }
 
     override fun onCreateInputView(): View {
+        val viewBuildStartedAt = android.os.SystemClock.elapsedRealtime()
         // 键盘重建，开着的语音面板跟着没了
         voice.cancel()
         val target = game.target()
@@ -404,7 +410,8 @@ class QingjianInputMethodService :
         }
         composer.englishCandidates = settings.englishCandidates
         engine.setAppearance(settings.theme, settings.candidateFontSize / 20f, settings.fontWeight.weight)
-        cloud.sync(settings)
+        // 云配置由 Engine.onReady 与 CloudServices 配置监听器同步；这里不再重复解密/装配，
+        // 避免输入法首次显示键盘时在主线程做额外配置工作。
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
         composer.applyScheme()
         val panelToRestore = reopenPanel ?: activePanelState?.takeIf { it == PanelKind.DYNAMIC_BACKGROUND || isClipboardPanel(it) }
@@ -432,6 +439,7 @@ class QingjianInputMethodService :
         val glow = NeonEdgeView(this)
         neon = glow
         panel.addOverlay(glow)
+        AppLog.info("input view ready in ${android.os.SystemClock.elapsedRealtime() - viewBuildStartedAt}ms engineReady=${engine.ready}")
         return panel.view
     }
 
@@ -464,6 +472,8 @@ class QingjianInputMethodService :
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
+        // 输入目标变化时清除旧输入框里的 AI 动画，防止异步结果写入新输入框。
+        stopQuickAiLoading(clearText = true)
         // 在系统切换 InputConnection 前取消语音会话，防止迟到 AI 回复写入新输入框。
         voice.cancel()
         super.onStartInput(attribute, restarting)
@@ -475,10 +485,12 @@ class QingjianInputMethodService :
         val editingOwnScanPrefix = nextEditorPackage == packageName && ScanPreferences.isPrefixEditorActive()
         val targetChanged = previousEditorPackage != null &&
             (previousEditorPackage != nextEditorPackage || (previousFieldId != null && previousFieldId != nextFieldId))
-        if (!editingOwnScanPrefix && targetChanged && ScanPreferences.isFloating(this)) {
+        if (!restarting && !editingOwnScanPrefix && targetChanged && ScanPreferences.isFloating(this)) {
             AppLog.info("[SCAN_DIAG] stop floating scanner: input target changed $previousEditorPackage/$previousFieldId -> $nextEditorPackage/$nextFieldId")
+            // 直接停止已运行的前台悬浮服务；不要为了发送 ACTION_STOP 再 startService，
+            // Android 12+ 可能因此触发前台服务启动限制并影响输入法生命周期。
             runCatching {
-                startService(Intent(this, ScanOverlayService::class.java).setAction(ScanOverlayService.ACTION_STOP))
+                stopService(Intent(this, ScanOverlayService::class.java))
             }.onFailure { AppLog.warn("[SCAN_DIAG] unable to stop floating scanner: ${it.message}") }
         }
         if (!editingOwnScanPrefix) {
@@ -819,47 +831,117 @@ class QingjianInputMethodService :
         }
     }
 
+    /** 输入框优先；输入框为空时才读取系统剪贴板最新的纯文本内容。 */
+    private fun quickAiSource(connection: InputConnection): String {
+        val fieldText = (
+            connection.getTextBeforeCursor(3000, 0)?.toString().orEmpty() +
+                connection.getSelectedText(0)?.toString().orEmpty() +
+                connection.getTextAfterCursor(1500, 0)?.toString().orEmpty()
+            ).trim()
+        if (fieldText.isNotBlank()) return fieldText.takeLast(4500)
+        return runCatching {
+            val clip = getSystemService(ClipboardManager::class.java)?.primaryClip ?: return@runCatching ""
+            if (clip.itemCount <= 0) return@runCatching ""
+            clip.getItemAt(0).coerceToText(this).toString().trim().takeLast(4500)
+        }.getOrDefault("")
+    }
+
+    /** 在输入框光标处用 composing span 显示动态状态；生成结果会直接替换这段提示。 */
+    private fun showQuickAiLoading(connection: InputConnection) {
+        stopQuickAiLoading(clearText = true)
+        // 先结束用户正在编辑的临时 composing 区，再建立独立的 AI 状态区，避免覆盖拼音预编辑。
+        runCatching { connection.finishComposingText() }
+        quickAiLoadingConnection = connection
+        val frames = arrayOf("✦ AI 正在生成", "✦ AI 正在生成 ·", "✦ AI 正在生成 · ·", "✦ AI 正在生成 · · ·")
+        var frame = 0
+        val animation = object : Runnable {
+            override fun run() {
+                if (quickAiLoadingConnection !== connection) return
+                runCatching { connection.setComposingText(frames[frame], 1) }
+                frame = (frame + 1) % frames.size
+                quickAiHandler.postDelayed(this, 420L)
+            }
+        }
+        quickAiLoadingRunnable = animation
+        animation.run()
+    }
+
+    /** 成功时以结果替换动画提示；失败/切换输入框时清除提示，不留下残字。 */
+    private fun stopQuickAiLoading(clearText: Boolean, connection: InputConnection? = quickAiLoadingConnection) {
+        quickAiLoadingRunnable?.let(quickAiHandler::removeCallbacks)
+        quickAiLoadingRunnable = null
+        val active = quickAiLoadingConnection
+        quickAiLoadingConnection = null
+        val target = connection ?: active
+        if (clearText && target != null) runCatching { target.commitText("", 1) }
+    }
+
+    private fun finishQuickAiGeneration(connection: InputConnection, text: String?, error: String?) {
+        if (quickAiLoadingConnection !== connection) return
+        quickAiLoadingRunnable?.let(quickAiHandler::removeCallbacks)
+        quickAiLoadingRunnable = null
+        quickAiLoadingConnection = null
+        val committed = runCatching { connection.commitText(text.orEmpty(), 1) }.getOrDefault(false)
+        if (text.isNullOrBlank()) {
+            toast(error ?: "AI 没有生成可用内容")
+        } else if (!committed) {
+            toast("AI 结果上屏失败")
+        }
+    }
+
     private fun runQuickAiChat() {
         val connection = currentInputConnection ?: run { toast("当前没有可用的输入框"); return }
         val info = currentInputEditorInfo ?: run { toast("无法识别当前输入框"); return }
-        if (composer.privateInput || composer.directInput || (info.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0) { toast("当前输入框不支持 AI 快捷生成"); return }
-        val contextText = (connection.getTextBeforeCursor(3000, 0)?.toString().orEmpty() +
-            connection.getSelectedText(0)?.toString().orEmpty() +
-            connection.getTextAfterCursor(1500, 0)?.toString().orEmpty()).trim()
-        if (contextText.isBlank()) { toast("请先在输入框输入聊天上下文"); return }
+        if (composer.privateInput || composer.directInput || info.wantsPrivacy() ||
+            (info.inputType and android.text.InputType.TYPE_MASK_VARIATION) in setOf(
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+            )
+        ) { toast("当前输入框不支持 AI 快捷生成"); return }
+        val contextText = quickAiSource(connection)
+        if (contextText.isBlank()) { toast("输入框和剪贴板都没有可用内容"); return }
         val targetPackage = info.packageName
         val targetField = info.fieldId
         val sequence = ++quickAiSequence
+        showQuickAiLoading(connection)
         aiChat.suggestReplies(contextText) { result ->
             if (sequence != quickAiSequence) return@suggestReplies
             val current = currentInputEditorInfo
             if (current == null || current.packageName != targetPackage || current.fieldId != targetField || currentInputConnection !== connection) return@suggestReplies
             result.onSuccess { replies ->
                 val reply = replies.firstOrNull()?.trim().orEmpty()
-                if (reply.isNotEmpty()) runCatching { connection.commitText(reply, 1) }.onFailure { toast("AI 回复上屏失败") }
-            }.onFailure { toast(it.message ?: "AI 对话生成失败") }
+                finishQuickAiGeneration(connection, reply.takeIf(String::isNotEmpty), if (reply.isEmpty()) "AI 对话没有生成可用内容" else null)
+            }.onFailure { finishQuickAiGeneration(connection, null, it.message ?: "AI 对话生成失败") }
         }
     }
 
     private fun runQuickAiExpression() {
         val connection = currentInputConnection ?: run { toast("当前没有可用的输入框"); return }
         val info = currentInputEditorInfo ?: run { toast("无法识别当前输入框"); return }
-        if (composer.privateInput || composer.directInput || (info.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0) { toast("当前输入框不支持 AI 快捷生成"); return }
-        val contextText = (connection.getTextBeforeCursor(3000, 0)?.toString().orEmpty() +
-            connection.getSelectedText(0)?.toString().orEmpty() +
-            connection.getTextAfterCursor(1500, 0)?.toString().orEmpty()).trim()
-        if (contextText.isBlank()) { toast("请先在输入框输入需要优化的内容"); return }
+        if (composer.privateInput || composer.directInput || info.wantsPrivacy() ||
+            (info.inputType and android.text.InputType.TYPE_MASK_VARIATION) in setOf(
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+            )
+        ) { toast("当前输入框不支持 AI 快捷生成"); return }
+        val contextText = quickAiSource(connection)
+        if (contextText.isBlank()) { toast("输入框和剪贴板都没有可用内容"); return }
         val targetPackage = info.packageName
         val targetField = info.fieldId
         val sequence = ++quickAiSequence
+        showQuickAiLoading(connection)
         aiExpression.generate(contextText) { result ->
             if (sequence != quickAiSequence) return@generate
             val current = currentInputEditorInfo
             if (current == null || current.packageName != targetPackage || current.fieldId != targetField || currentInputConnection !== connection) return@generate
             result.onSuccess { groups ->
                 val expression = groups.firstNotNullOfOrNull { group -> group.items.firstOrNull()?.trim()?.takeIf(String::isNotEmpty) }.orEmpty()
-                if (expression.isNotEmpty()) runCatching { connection.commitText(expression, 1) }.onFailure { toast("AI 情景表达上屏失败") }
-            }.onFailure { toast(it.message ?: "AI 情景表达生成失败") }
+                finishQuickAiGeneration(connection, expression.takeIf(String::isNotEmpty), if (expression.isEmpty()) "AI 情景表达没有生成可用内容" else null)
+            }.onFailure { finishQuickAiGeneration(connection, null, it.message ?: "AI 情景表达生成失败") }
         }
     }
 

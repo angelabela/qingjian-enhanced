@@ -958,7 +958,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             val analysisBuilder = ImageAnalysis.Builder()
                 // 分析帧提升到 720p，改善小型二维码和细条形码的有效像素；仍只处理最新帧。
-                .setTargetResolution(Size(1280, 720))
+                .setTargetResolution(Size(1920, 1080))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
@@ -1438,7 +1438,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
         private const val DUPLICATE_CACHE_TTL_MS = 15_000L
         private const val MAX_TRACKED_CODES = 128
-        private const val CAMERA_WARMUP_MS = 850L
+        private const val CAMERA_WARMUP_MS = 300L
         private const val STABLE_HIT_WINDOW_MS = 900L
         private const val STABLE_HIT_COUNT = 2
     }
