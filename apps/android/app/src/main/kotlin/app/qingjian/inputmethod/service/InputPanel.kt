@@ -40,6 +40,7 @@ import app.qingjian.inputmethod.panel.AiExpressionPanel
 import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.ContextToolsPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
+import app.qingjian.inputmethod.panel.DynamicBackgroundPanel
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.panel.PanelKind
@@ -333,13 +334,17 @@ class InputPanel(
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
     private val dynamicBackgroundPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
     private val videoBackgroundEnabled = dynamicBackgroundPrefs.getBoolean("video_enabled", false)
-    private val videoBackgroundUri = if (videoBackgroundEnabled) dynamicBackgroundPrefs.getString("video_uri", null) else null
+    private val videoBackgroundMode = dynamicBackgroundPrefs.getInt("video_mode", 2).coerceIn(0, 2)
+    private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("video_frosted", true)
+    private val videoBackgroundUri = if (videoBackgroundEnabled && videoBackgroundMode != 1) dynamicBackgroundPrefs.getString("video_uri", null) else null
+    private val backgroundEffectActive = settings.keyboardBackgroundEffect && (!videoBackgroundEnabled || videoBackgroundMode != 0)
+    private val transparentBackground = backgroundEffectActive || videoBackgroundUri != null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
-    private val videoBackgroundBlur = dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30)
+    private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
 
-    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, settings.keyboardBackgroundEffect || videoBackgroundEnabled).apply {
-        setBackgroundColor(if (settings.keyboardBackgroundEffect || videoBackgroundEnabled) Color.TRANSPARENT else palette.board)
+    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, transparentBackground).apply {
+        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
@@ -356,7 +361,7 @@ class InputPanel(
         )
         cloudSuggestions.setAnchorView(this)
     }
-    val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled)
+    val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = transparentBackground)
 
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
@@ -380,7 +385,7 @@ class InputPanel(
         addView(keyboard)
         val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
         if (!floating && settings.fullscreenAdapt && corners) {
-            addView(BottomActionsView(context, palette, bottomInset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled))
+            addView(BottomActionsView(context, palette, bottomInset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = transparentBackground))
         }
     }
 
@@ -392,7 +397,7 @@ class InputPanel(
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        background = if (settings.keyboardBackgroundEffect) {
+        background = if (backgroundEffectActive) {
             FlowingKeyboardBackgroundDrawable(palette, settings.keyboardBackgroundStyle)
         } else {
             android.graphics.drawable.ColorDrawable(palette.board)
@@ -456,6 +461,7 @@ class InputPanel(
         val header = bar.barHeight
         val panel = when (kind) {
             PanelKind.FUNCTIONS -> FunctionPanel(context, palette, actions, header, settings)
+            PanelKind.DYNAMIC_BACKGROUND -> DynamicBackgroundPanel(context, palette, actions, header)
             PanelKind.KEYBOARDS -> KeyboardPickerPanel(context, palette, actions, header, settings.layout)
             PanelKind.TOOLBAR -> ToolbarPanel(context, palette, actions, header, settings.toolbar)
             PanelKind.SYMBOLS, PanelKind.EMOJI -> CatalogPanel(
@@ -515,7 +521,7 @@ class InputPanel(
                 null
             }
         }
-        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect || videoBackgroundEnabled).also { voice ->
+        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), transparentBackground).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -527,7 +533,7 @@ class InputPanel(
 
     private fun cover(kind: PanelKind, panel: View) {
         applyFontWeight(panel)
-        (panel as? app.qingjian.inputmethod.panel.base.PanelView)?.useAnimatedBackground(settings.keyboardBackgroundEffect)
+        (panel as? app.qingjian.inputmethod.panel.base.PanelView)?.useAnimatedBackground(transparentBackground)
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
         if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
