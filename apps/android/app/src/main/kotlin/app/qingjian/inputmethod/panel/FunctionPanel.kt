@@ -38,6 +38,12 @@ class FunctionPanel(
 
     private var voiceEffectPage = false
     private var backgroundEffectPage = false
+    private var textEffectPage = false
+    /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
+    private var selectedTextTarget = 0
+    private var selectedTextPreset = Settings.TextEffectPreset.of(
+        Settings.preferences(context).getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null).let { it }
+    )
     private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
     private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
@@ -61,6 +67,16 @@ class FunctionPanel(
                     selectedBackgroundStyle = if (backgroundEffectEnabled) settings.keyboardBackgroundStyle else -1
                     backgroundEffectPage = true
                     voiceEffectPage = false
+                    textEffectPage = false
+                    invalidate()
+                },
+                Feature(Icon.PALETTE, "文字效果") {
+                    selectedTextTarget = 0
+                    selectedTextPreset = Settings.TextEffectPreset.of(
+                        Settings.preferences(context).getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
+                    textEffectPage = true
+                    voiceEffectPage = false
+                    backgroundEffectPage = false
                     invalidate()
                 },
                 Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
@@ -107,7 +123,7 @@ class FunctionPanel(
     private val knob = RectF()
     // 两个动效选择页共用竖向惯性滚动，内容始终裁切在面板卡片内部。
     private val effectScroll = scrollable(false) { x, y ->
-        (voiceEffectPage || backgroundEffectPage) &&
+        (voiceEffectPage || backgroundEffectPage || textEffectPage) &&
             x >= card.left && x <= card.right &&
             y >= card.top + ink.dp(38f) && y <= card.bottom - ink.dp(6f)
     }
@@ -115,15 +131,22 @@ class FunctionPanel(
     private val columns = 5
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage) null else tabs, Icon.SETTINGS)
+        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage || textEffectPage) null else tabs, Icon.SETTINGS)
         if (voiceEffectPage) {
             ink.text(canvas, "语音面板动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         } else if (backgroundEffectPage) {
             ink.text(canvas, "键盘背景动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        } else if (textEffectPage) {
+            ink.text(canvas, "文字效果", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         }
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
-        if (tabs.selected == 0) { if (voiceEffectPage) drawVoiceEffectSettings(canvas) else if (backgroundEffectPage) drawBackgroundEffectSettings(canvas) else drawFeatures(canvas) } else drawToggles(canvas)
+        if (tabs.selected == 0) {
+            if (voiceEffectPage) drawVoiceEffectSettings(canvas)
+            else if (backgroundEffectPage) drawBackgroundEffectSettings(canvas)
+            else if (textEffectPage) drawTextEffectSettings(canvas)
+            else drawFeatures(canvas)
+        } else drawToggles(canvas)
     }
 
     private fun cellWidth() = card.width() / columns
@@ -320,6 +343,74 @@ class FunctionPanel(
         }
     }
 
+
+    /** 五套文字效果预设；候选区与键盘区独立存储，切换范围不会覆盖另一边。 */
+    private fun drawTextEffectSettings(canvas: Canvas) {
+        val top = card.top + ink.dp(8f)
+        ink.textStart(canvas, "选择作用区域，下面的效果只应用于该区域", 11f, palette.gloss,
+            card.left + ink.dp(14f), top + ink.dp(18f), card.right - ink.dp(12f))
+        val targetTop = top + ink.dp(28f)
+        val gap = ink.dp(8f)
+        val targetWidth = (card.width() - ink.dp(28f) - gap) / 2f
+        listOf("候选区", "键盘区").forEachIndexed { index, label ->
+            val bounds = RectF(card.left + ink.dp(14f) + index * (targetWidth + gap), targetTop,
+                card.left + ink.dp(14f) + index * (targetWidth + gap) + targetWidth, targetTop + ink.dp(36f))
+            val selected = selectedTextTarget == index
+            ink.round(canvas, bounds, 10f, if (selected) palette.brand else palette.functionalKey)
+            ink.text(canvas, label, 12f, if (selected) palette.onBrand else palette.text, bounds.centerX(), bounds.centerY())
+        }
+        val labels = Settings.TextEffectPreset.entries
+        val rowTop = targetTop + ink.dp(48f)
+        val rowStep = ink.dp(64f)
+        val viewportBottom = card.bottom - ink.dp(8f)
+        effectScroll.max = (labels.size * rowStep - (viewportBottom - rowTop)).coerceAtLeast(0f)
+        canvas.save()
+        canvas.clipRect(card.left, rowTop, card.right, viewportBottom)
+        canvas.translate(0f, -effectScroll.offset)
+        labels.forEachIndexed { index, preset ->
+            val bounds = RectF(card.left + ink.dp(12f), rowTop + index * rowStep,
+                card.right - ink.dp(12f), rowTop + index * rowStep + ink.dp(54f))
+            val selected = selectedTextPreset == preset
+            ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.3f else 0.6f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, 11f, 11f, ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            val sample = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = ink.dp(17f)
+                textAlign = android.graphics.Paint.Align.CENTER
+                color = palette.text
+                typeface = android.graphics.Typeface.DEFAULT
+            }
+            val sampleX = bounds.left + ink.dp(55f)
+            val sampleY = bounds.centerY() + ink.dp(6f)
+            when (preset) {
+                Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
+                Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, palette.brand)
+                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = palette.brand }
+                Settings.TextEffectPreset.COLOR_GRADIENT -> sample.shader = android.graphics.LinearGradient(sampleX - ink.dp(25f), 0f, sampleX + ink.dp(25f), 0f,
+                    intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+                else -> Unit
+            }
+            canvas.drawText("青简 Aa", sampleX, sampleY, sample)
+            if (preset == Settings.TextEffectPreset.NEON_OUTLINE) {
+                sample.style = android.graphics.Paint.Style.FILL
+                sample.color = palette.text
+                canvas.drawText("青简 Aa", sampleX, sampleY, sample)
+            }
+            sample.clearShadowLayer()
+            sample.shader = null
+            ink.textStart(canvas, preset.label, 13f, if (selected) palette.brand else palette.text,
+                bounds.left + ink.dp(105f), bounds.centerY() + ink.dp(4f), bounds.right - ink.dp(35f))
+            if (selected) {
+                ink.fill.color = palette.brand
+                canvas.drawCircle(bounds.right - ink.dp(14f), bounds.centerY(), ink.dp(3f), ink.fill)
+            }
+        }
+        canvas.restore()
+    }
+
     private fun drawFeatures(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
         features.forEachIndexed { i, feature ->
@@ -373,13 +464,35 @@ class FunctionPanel(
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
-            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage) tabs.indexAt(x)?.let {
+            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage && !textEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
                 voiceEffectPage = false
             }
 
             !card.contains(x, y) -> Unit
+            tabs.selected == 0 && textEffectPage -> {
+                val targetTop = card.top + ink.dp(8f + 28f)
+                val gap = ink.dp(8f)
+                val targetWidth = (card.width() - ink.dp(28f) - gap) / 2f
+                if (y in targetTop..(targetTop + ink.dp(36f))) {
+                    selectedTextTarget = if (x < card.centerX()) 0 else 1
+                    selectedTextPreset = Settings.TextEffectPreset.of(Settings.preferences(context).getString(
+                        if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, null))
+                    effectScroll.offset = 0f
+                    invalidate()
+                    return
+                }
+                val rowTop = targetTop + ink.dp(48f)
+                val rowStep = ink.dp(64f)
+                val index = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
+                val preset = Settings.TextEffectPreset.entries.getOrNull(index)
+                if (preset != null && y >= rowTop - effectScroll.offset) {
+                    selectedTextPreset = preset
+                    actions.setChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
+                    invalidate()
+                }
+            }
             tabs.selected == 0 && backgroundEffectPage -> {
                 val controlTop = card.bottom - ink.dp(76f)
                 val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
@@ -450,9 +563,10 @@ class FunctionPanel(
     }
 
     override fun onBack() {
-        if (voiceEffectPage || backgroundEffectPage) {
+        if (voiceEffectPage || backgroundEffectPage || textEffectPage) {
             voiceEffectPage = false
             backgroundEffectPage = false
+            textEffectPage = false
             invalidate()
         } else {
             super.onBack()
