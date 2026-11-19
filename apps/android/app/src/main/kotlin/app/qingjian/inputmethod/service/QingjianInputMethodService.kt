@@ -163,6 +163,16 @@ class QingjianInputMethodService :
         }
     }
 
+    /** 视频背景设置变化后重建视频/光效层；若设置子面板仍打开则留在原位置。 */
+    private val dynamicBackgroundListener = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (activePanelState == PanelKind.DYNAMIC_BACKGROUND) {
+                reopenPanel = PanelKind.DYNAMIC_BACKGROUND
+            }
+            setInputView(onCreateInputView())
+        }
+    }
+
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
@@ -341,6 +351,12 @@ class QingjianInputMethodService :
         )
         val scanFilter = IntentFilter(ScanPreferences.ACTION_RESULT)
         ContextCompat.registerReceiver(this, scanResultListener, scanFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(
+            this,
+            dynamicBackgroundListener,
+            IntentFilter(app.qingjian.inputmethod.background.DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         cloud.start()
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
@@ -357,6 +373,7 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(smsCodeListener) }
         runCatching { unregisterReceiver(smsStateListener) }
         runCatching { unregisterReceiver(scanResultListener) }
+        runCatching { unregisterReceiver(dynamicBackgroundListener) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
         phraseMemoryHandler.removeCallbacksAndMessages(null)
         phraseMemoryThread.quitSafely()
@@ -390,8 +407,8 @@ class QingjianInputMethodService :
         cloud.sync(settings)
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
         composer.applyScheme()
-        val panelToRestore = reopenPanel ?: activePanelState?.takeIf(::isClipboardPanel)
-            ?: this.panel?.openPanel?.takeIf(::isClipboardPanel)
+        val panelToRestore = reopenPanel ?: activePanelState?.takeIf { it == PanelKind.DYNAMIC_BACKGROUND || isClipboardPanel(it) }
+            ?: this.panel?.openPanel?.takeIf { it == PanelKind.DYNAMIC_BACKGROUND || isClipboardPanel(it) }
         val panel = InputPanel(
             this, settings, this,
             stripSource = { highlighted, dark, visibleWidth -> engine.renderStrip(highlighted, dark, visibleWidth) },
