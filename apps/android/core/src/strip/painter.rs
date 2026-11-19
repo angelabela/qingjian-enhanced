@@ -58,7 +58,7 @@ impl StripPainter {
             // 译文是较细小的辅助信息；略微提高字号，减少低分辨率屏幕上的发虚感。
             let sizes = TextSizes {
                 candidate: base_sizes.candidate,
-                annotation: theme.theme_size("annotation").map(|size| size * text_scale * 1.20),
+                annotation: theme.theme_size("annotation").map(|size| size * text_scale * 1.25),
             };
             theme
                 .with_text_sizes(sizes)
