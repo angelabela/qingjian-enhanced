@@ -42,6 +42,9 @@
     </queries>
 
     <application
+        <!-- GPU 后端可选依赖；无 OpenCL 的设备会自动回退 CPU。 -->
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
         android:name=".QingjianApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -87,6 +90,7 @@
         <activity android:name=".settings.page.KeyboardSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.ClipboardSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.CloudSettingsActivity" android:exported="false" />
+        <activity android:name=".settings.page.LocalAiSettingsActivity" android:exported="false" />
         <activity android:name=".settings.page.AppearanceActivity" android:exported="false" />
         <activity android:name=".settings.page.AboutActivity" android:exported="false" />
         <activity android:name=".settings.page.StatsActivity" android:exported="false" />
