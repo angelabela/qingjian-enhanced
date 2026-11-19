@@ -422,4 +422,26 @@
     <string name="section_cloud_uses">用在哪里</string>
     <string name="stats_quality">打字质量</string>
     <string name="cloud_uses_note">快捷翻译和翻译选中的文字也用这里的服务。</string>
+
+    <string name="page_local_ai">本地 AI 引擎</string>
+    <string name="local_ai_installed">模型已下载</string>
+    <string name="local_ai_not_installed">尚未下载模型</string>
+    <string name="local_ai_settings_summary">模型按需手动下载。下载后可在本机运行离线文本测试；模型尚未接入键盘候选主流程，不影响现有输入与云端功能。</string>
+    <string name="local_ai_model_section">本地模型</string>
+    <string name="local_ai_model_name">Qwen3-0.6B · INT4</string>
+    <string name="local_ai_model_details">约 328 MiB · 上下文 4096 · Apache-2.0</string>
+    <string name="local_ai_download">下载本地模型</string>
+    <string name="local_ai_test">加载并进行离线测试</string>
+    <string name="local_ai_delete">删除本地模型</string>
+    <string name="local_ai_status_section">运行状态</string>
+    <string name="local_ai_status_not_downloaded">模型尚未下载。下载后即可进行本地推理测试。</string>
+    <string name="local_ai_status_ready">模型文件已通过大小和 SHA-256 校验。</string>
+    <string name="local_ai_downloading">正在下载：%1$d%%</string>
+    <string name="local_ai_loading">正在后台加载模型并测试…</string>
+    <string name="local_ai_download_done">模型下载完成，文件校验通过。</string>
+    <string name="local_ai_test_done">离线测试完成：%1$s</string>
+    <string name="local_ai_delete_confirm">确定删除已下载的本地模型？删除后需要重新下载。</string>
+    <string name="local_ai_deleted">本地模型已删除。</string>
+    <string name="local_ai_download_failed">模型下载失败：%1$s</string>
+    <string name="local_ai_test_failed">模型测试失败：%1$s</string>
 </resources>
