@@ -251,6 +251,7 @@ class CandidateBarView(
             if (!transparentBackground) {
                 canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
             }
+            Unit
         }
     }
 
