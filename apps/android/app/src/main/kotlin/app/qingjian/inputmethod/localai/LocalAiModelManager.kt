@@ -14,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import org.json.JSONArray
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.runBlocking
 
@@ -23,12 +24,13 @@ import kotlinx.coroutines.runBlocking
  */
 object LocalAiModelManager {
     const val MODEL_FILE_NAME = "Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm"
-    private const val MODEL_URL =
-        "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm"
-    private const val EXPECTED_SIZE = 344_686_592L
-    private const val EXPECTED_SHA256 =
-        "96491bb0f78fa68098bf8f1d3628194c97041aff7894f8cc29303b3acdb877a9"
+    private const val MODEL_REPO = "litert-community/Qwen3-0.6B"
+    private const val MODEL_MANIFEST_URL =
+        "https://huggingface.co/api/models/litert-community/Qwen3-0.6B/tree/main?recursive=false&expand=true"
     private const val CONNECT_TIMEOUT_MS = 30_000
+    private const val PREFS = "local_ai_model"
+    private const val KEY_VERIFIED_SIZE = "verified_model_size"
+    private const val KEY_VERIFIED_SHA256 = "verified_model_sha256"
     private const val READ_TIMEOUT_MS = 60_000
 
     private val downloadExecutor = Executors.newSingleThreadExecutor { task ->
@@ -44,7 +46,46 @@ object LocalAiModelManager {
 
     fun isInstalled(context: Context): Boolean {
         val file = modelFile(context)
-        return file.isFile && file.length() == EXPECTED_SIZE
+        return file.isFile && file.length() > 0L
+    }
+
+    private data class ModelManifest(val size: Long, val sha256: String, val revision: String)
+
+    /** 每次下载前读取 Hugging Face 当前文件元数据，避免模型更新后 APK 内的旧大小/哈希清单失效。 */
+    private fun fetchModelManifest(): ModelManifest {
+        val connection = (URL(MODEL_MANIFEST_URL).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "Qingjian-Android")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            check(connection.responseCode == HttpURLConnection.HTTP_OK) {
+                "无法读取模型官方清单：HTTP " + connection.responseCode
+            }
+            val entries = JSONArray(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+            for (index in 0 until entries.length()) {
+                val entry = entries.optJSONObject(index) ?: continue
+                if (entry.optString("path") != MODEL_FILE_NAME) continue
+                val lfs = entry.optJSONObject("lfs")
+                val size = entry.optLong("size", lfs?.optLong("size", 0L) ?: 0L)
+                val hash = lfs?.optString("sha256").orEmpty().ifBlank {
+                    lfs?.optString("oid").orEmpty().removePrefix("sha256:")
+                }
+                val revision = entry.optJSONObject("last_commit")
+                    ?.optString("oid")
+                    ?.takeIf { it.matches(Regex("[0-9a-fA-F]{40}")) }
+                    ?: "main"
+                check(size > 0L && hash.matches(Regex("[0-9a-fA-F]{64}"))) {
+                    "官方清单缺少模型文件大小或 SHA-256"
+                }
+                return ModelManifest(size, hash.lowercase(), revision)
+            }
+            error("官方清单中找不到模型文件：$MODEL_FILE_NAME")
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun download(
@@ -60,15 +101,21 @@ object LocalAiModelManager {
             val result = runCatching {
                 directory.mkdirs()
                 check(directory.isDirectory) { "无法创建模型目录" }
-                if (destination.isFile && destination.length() == EXPECTED_SIZE &&
-                    sha256(destination) == EXPECTED_SHA256
+                val manifest = fetchModelManifest()
+                if (destination.isFile && destination.length() == manifest.size &&
+                    sha256(destination).equals(manifest.sha256, ignoreCase = true)
                 ) {
+                    appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putLong(KEY_VERIFIED_SIZE, manifest.size)
+                        .putString(KEY_VERIFIED_SHA256, manifest.sha256)
+                        .apply()
                     return@runCatching destination
                 }
                 destination.delete()
                 partial.delete()
 
-                val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
+                val modelUrl = "https://huggingface.co/$MODEL_REPO/resolve/${manifest.revision}/$MODEL_FILE_NAME"
+                val connection = (URL(modelUrl).openConnection() as HttpURLConnection).apply {
                     connectTimeout = CONNECT_TIMEOUT_MS
                     readTimeout = READ_TIMEOUT_MS
                     instanceFollowRedirects = true
@@ -80,10 +127,7 @@ object LocalAiModelManager {
                     check(connection.responseCode == HttpURLConnection.HTTP_OK) {
                         "模型服务器返回 HTTP " + connection.responseCode
                     }
-                    val total = connection.contentLengthLong
-                    if (total > 0L) {
-                        check(total == EXPECTED_SIZE) { "模型文件大小与官方清单不一致" }
-                    }
+                    // 不使用重定向/CDN 返回的 Content-Length 作硬性判断；最终以官方清单与实际落盘字节数、SHA-256 为准。
                     val digest = MessageDigest.getInstance("SHA-256")
                     var copied = 0L
                     var lastPercent = -1
@@ -96,7 +140,7 @@ object LocalAiModelManager {
                                 output.write(buffer, 0, count)
                                 digest.update(buffer, 0, count)
                                 copied += count
-                                val percent = ((copied * 100L) / EXPECTED_SIZE).toInt().coerceIn(0, 100)
+                                val percent = ((copied * 100L) / manifest.size).toInt().coerceIn(0, 100)
                                 if (percent != lastPercent) {
                                     lastPercent = percent
                                     mainHandler.post { onProgress(percent) }
@@ -105,12 +149,18 @@ object LocalAiModelManager {
                             output.flush()
                         }
                     }
-                    check(copied == EXPECTED_SIZE) { "下载不完整：收到 " + copied + " 字节" }
+                    check(copied == manifest.size) {
+                        "模型文件大小校验失败：官方 " + manifest.size + " 字节，实际 " + copied + " 字节"
+                    }
                     val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
-                    check(actualHash.equals(EXPECTED_SHA256, ignoreCase = true)) {
-                        "SHA-256 校验失败，已删除损坏文件"
+                    check(actualHash.equals(manifest.sha256, ignoreCase = true)) {
+                        "模型 SHA-256 与官方清单不一致，已删除损坏文件"
                     }
                     check(partial.renameTo(destination)) { "模型文件保存失败" }
+                    appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putLong(KEY_VERIFIED_SIZE, manifest.size)
+                        .putString(KEY_VERIFIED_SHA256, manifest.sha256)
+                        .apply()
                     destination
                 } finally {
                     connection.disconnect()
@@ -126,11 +176,16 @@ object LocalAiModelManager {
         inferenceExecutor.execute {
             val result = runCatching {
                 val file = modelFile(appContext)
-                check(file.isFile && file.length() == EXPECTED_SIZE) {
-                    "模型文件不存在或大小不正确，请重新下载"
+                val verified = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val expectedSize = verified.getLong(KEY_VERIFIED_SIZE, 0L)
+                val expectedHash = verified.getString(KEY_VERIFIED_SHA256, null).orEmpty()
+                check(file.isFile && expectedSize > 0L && file.length() == expectedSize) {
+                    "模型文件不存在或未通过官方大小校验，请联网重新下载"
                 }
-                check(sha256(file) == EXPECTED_SHA256) {
-                    "模型 SHA-256 校验失败，请删除后重新下载"
+                check(expectedHash.matches(Regex("[0-9a-fA-F]{64}")) &&
+                    sha256(file).equals(expectedHash, ignoreCase = true)
+                ) {
+                    "模型 SHA-256 校验失败，请联网重新下载"
                 }
                 val prompt = "请只用简体中文回复：青简本地 AI 已成功运行。"
                 val gpuResult = runCatching {
@@ -152,7 +207,12 @@ object LocalAiModelManager {
         val file = modelFile(context)
         val partial = File(file.parentFile, MODEL_FILE_NAME + ".part")
         partial.delete()
-        return !file.exists() || file.delete()
+        val deleted = !file.exists() || file.delete()
+        if (deleted) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(KEY_VERIFIED_SIZE)
+            .remove(KEY_VERIFIED_SHA256)
+            .apply()
+        return deleted
     }
 
     private fun inferOnce(file: File, cacheDir: File, backend: Backend, prompt: String): String {
