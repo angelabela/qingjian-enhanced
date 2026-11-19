@@ -336,17 +336,20 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
-        // 在候选内容图层上做 DST_IN 遮罩。左边缘从完全透明平滑过渡到不透明，
-        // 渐隐宽度扩大到 72dp；不依赖文字命中框宽度，拖动/惯性滚动时都逐帧生效。
-        val fadeWidth = minOf(72f * density, viewWidth.toFloat()).coerceAtLeast(1f)
+        // DST_IN 必须覆盖整个候选内容视口，而不是只画渐变带：
+        // 否则宽字/拼音的其余像素不受遮罩，滑过左侧后会在渐变带外重新露出。
+        // Shader 在渐变带之后由 CLAMP 保持不透明，既完整裁切左缘，也不影响可视区正文。
+        val fadeWidth = minOf(96f * density, viewWidth.toFloat()).coerceAtLeast(1f)
         val left = scrollX.toFloat()
         val right = (scrollX + viewWidth).toFloat()
+        val top = 0f
         leftFadePaint.shader = android.graphics.LinearGradient(
             left, 0f, left + fadeWidth, 0f,
-            intArrayOf(0x00000000, 0x00000000, 0x99000000.toInt(), 0xFF000000.toInt()),
-            floatArrayOf(0f, 0.22f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            intArrayOf(0x00000000, 0x00000000, 0x55000000, 0xFF000000.toInt()),
+            floatArrayOf(0f, 0.12f, 0.62f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRect(left, fadeTop.coerceIn(0f, barHeight), minOf(left + fadeWidth, right), barHeight, leftFadePaint)
+        // 遮罩从候选栏顶端覆盖到底端，拼音行和候选行使用同一边界，不留未遮罩的字符区域。
+        canvas.drawRect(left, top, right, barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 
