@@ -92,6 +92,34 @@ class VoicePanel(
             overlay.invalidate()
         }
 
+    private fun glassButtonBackground(selected: Boolean): android.graphics.drawable.Drawable {
+        val density = resources.displayMetrics.density
+        val tint = if (selected) Color.rgb(7, 193, 96) else palette.functionalKey
+        fun alpha(color: Int, value: Int) = (color and 0x00FFFFFF) or (value.coerceIn(0, 255) shl 24)
+        val shadow = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(0x30000000)
+        }
+        val body = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(alpha(Color.WHITE, 0x52), alpha(tint, 0xC8), alpha(tint, 0xA8)),
+        ).apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setStroke((1.2f * density).toInt().coerceAtLeast(1), alpha(Color.WHITE, if (selected) 0xD8 else 0xA8))
+        }
+        val highlight = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(alpha(Color.WHITE, if (selected) 0x58 else 0x48), 0x10FFFFFF, 0x00FFFFFF),
+        ).apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(shadow, body, highlight)).apply {
+            setLayerInset(0, 0, (3f * density).toInt(), 0, 0)
+            setLayerInset(1, (1f * density).toInt(), 0, (1f * density).toInt(), (2f * density).toInt())
+            setLayerInset(2, (3f * density).toInt(), (2f * density).toInt(), (3f * density).toInt(), (5f * density).toInt())
+        }
+    }
+
     init {
         // 拖动选中态会向外扩展光环；父面板和按钮行均不能裁掉外扩部分。
         clipChildren = false
@@ -150,34 +178,6 @@ class VoicePanel(
             }
         }
         val density = resources.displayMetrics.density
-        fun glassButtonBackground(selected: Boolean): android.graphics.drawable.Drawable {
-            val density = resources.displayMetrics.density
-            val tint = if (selected) Color.rgb(7, 193, 96) else palette.functionalKey
-            fun alpha(color: Int, value: Int) = (color and 0x00FFFFFF) or (value.coerceIn(0, 255) shl 24)
-            val shadow = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x30000000)
-            }
-            val body = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(alpha(Color.WHITE, 0x52), alpha(tint, 0xC8), alpha(tint, 0xA8)),
-            ).apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setStroke((1.2f * density).toInt().coerceAtLeast(1), alpha(Color.WHITE, if (selected) 0xD8 else 0xA8))
-            }
-            val highlight = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(alpha(Color.WHITE, if (selected) 0x58 else 0x48), 0x10FFFFFF, 0x00FFFFFF),
-            ).apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-            }
-            return android.graphics.drawable.LayerDrawable(arrayOf(shadow, body, highlight)).apply {
-                setLayerInset(0, 0, (3f * density).toInt(), 0, 0)
-                setLayerInset(1, (1f * density).toInt(), 0, (1f * density).toInt(), (2f * density).toInt())
-                setLayerInset(2, (3f * density).toInt(), (2f * density).toInt(), (3f * density).toInt(), (5f * density).toInt())
-            }
-        }
-
         fun styleActionButton(view: TextView, label: String, action: () -> Unit) {
             view.text = label
             view.textSize = 14f
@@ -238,29 +238,16 @@ class VoicePanel(
         undoButton.isSelected = next == Target.CANCEL
         finishButton.isSelected = next == Target.ACTION
         fun targetBackground(selected: Boolean): android.graphics.drawable.Drawable {
+            val glass = glassButtonBackground(selected)
+            if (!selected) return glass
             val density = resources.displayMetrics.density
-            val green = Color.rgb(7, 193, 96) // 微信绿
-            val layers = arrayOf(
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(Color.TRANSPARENT)
-                    setStroke((7f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x20 else 0) shl 24))
-                },
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(Color.TRANSPARENT)
-                    setStroke((4f * density).toInt().coerceAtLeast(1), (green and 0x00FFFFFF) or ((if (selected) 0x55 else 0) shl 24))
-                },
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(if (selected) green else palette.functionalKey)
-                    setStroke((if (selected) 1.8f else 1f).times(density).toInt().coerceAtLeast(1),
-                        if (selected) 0xFF8AFFB8.toInt() else 0x44FFFFFF)
-                },
-            )
-            return android.graphics.drawable.LayerDrawable(layers).apply {
-                setLayerInset(0, (-5f * density).toInt(), (-5f * density).toInt(), (-5f * density).toInt(), (-5f * density).toInt())
-                setLayerInset(1, (-2f * density).toInt(), (-2f * density).toInt(), (-2f * density).toInt(), (-2f * density).toInt())
+            val halo = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.TRANSPARENT)
+                setStroke((5f * density).toInt().coerceAtLeast(1), 0x5507C160)
+            }
+            return android.graphics.drawable.LayerDrawable(arrayOf(halo, glass)).apply {
+                setLayerInset(0, (-4f * density).toInt(), (-4f * density).toInt(), (-4f * density).toInt(), (-4f * density).toInt())
             }
         }
         fun animateTarget(view: TextView, selected: Boolean) {
