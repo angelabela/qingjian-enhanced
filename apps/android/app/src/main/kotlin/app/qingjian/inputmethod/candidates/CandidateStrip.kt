@@ -330,13 +330,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
-        // 左边缘先留出安全距离，再在其内侧完成渐隐，避免文字贴边才突然消失。
-        val inset = minOf(8f * density, viewWidth * 0.12f)
-        val fadeWidth = minOf(34f * density, (viewWidth - inset).coerceAtLeast(1f))
+        // 左边缘从视口起点立即进入渐隐，确保拖动后首个候选不会顶在边框上；
+        // 渐隐区加宽到约 52dp，并在前段保持透明、后段平滑恢复，避免只出现轻微变暗。
+        val inset = minOf(2f * density, viewWidth * 0.02f)
+        val fadeWidth = minOf(52f * density, (viewWidth - inset).coerceAtLeast(1f))
         leftFadePaint.shader = android.graphics.LinearGradient(
             scrollX.toFloat(), 0f, scrollX + inset + fadeWidth, 0f,
-            intArrayOf(0x00000000, 0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt()),
-            floatArrayOf(0f, 0.18f, 0.82f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            intArrayOf(0x00000000, 0x00000000, 0xAA000000.toInt(), 0xFF000000.toInt()),
+            floatArrayOf(0f, 0.12f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
         canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + inset + fadeWidth).coerceAtMost((scrollX + viewWidth).toFloat()), barHeight, leftFadePaint)
         leftFadePaint.shader = null
