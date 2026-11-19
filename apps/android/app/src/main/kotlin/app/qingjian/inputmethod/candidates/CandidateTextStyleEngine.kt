@@ -58,7 +58,7 @@ class CandidateTextStyleEngine(
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.72f, weight.weight),
+                preedit = Style(color, 0.80f, weight.weight),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
@@ -78,6 +78,10 @@ class CandidateTextStyleEngine(
                         strokeColor = color, strokeWidthDp = 1.15f,
                         shadowColor = color, shadowRadiusDp = 3f,
                     )
+                    Settings.TextEffectPreset.CONTRAST_OUTLINE -> style.copy(
+                        strokeColor = if (relativeLuminance(color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE,
+                        strokeWidthDp = 1.35f,
+                    )
                     Settings.TextEffectPreset.COLOR_GRADIENT -> style
                 }
                 return Config(styled(base.firstCandidate), styled(base.candidate), styled(base.preedit),
@@ -86,6 +90,7 @@ class CandidateTextStyleEngine(
         }
     }
 
+    private var adaptiveTextColor: Int? = null
     private val paints = Role.entries.associateWith { role ->
         TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(this, config.style(role)) }
     }
@@ -109,7 +114,22 @@ class CandidateTextStyleEngine(
         }
     }
 
+    fun setAdaptiveTextColor(color: Int?) {
+        adaptiveTextColor = color
+        paints.forEach { (role, paint) -> paint.color = color ?: config.style(role).color }
+    }
+
     fun paint(role: Role): TextPaint = paints.getValue(role)
+
+    private fun relativeLuminance(color: Int): Float {
+        fun channel(value: Int): Float {
+            val c = value / 255f
+            return if (c <= 0.04045f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+        }
+        return 0.2126f * channel(android.graphics.Color.red(color)) +
+            0.7152f * channel(android.graphics.Color.green(color)) +
+            0.0722f * channel(android.graphics.Color.blue(color))
+    }
 
     /** 清除旧位图字形并按指定角色重绘；调用方需在已绘制 Rust 位图的 saveLayer 内使用。 */
     fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role, eraseUnderlay: Boolean = true) {
@@ -124,7 +144,10 @@ class CandidateTextStyleEngine(
         val availableHeight = (rect.height() - 2f * density).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
-        val fitScale = minOf(
+        val fitScale = if (role == Role.PREEDIT) {
+            // 拼音按统一字号绘制：窄字母 i/l/j/r/t 不再因 Rust 单字命中框较窄而被缩小。
+            minOf(1f, availableHeight / measuredHeight)
+        } else minOf(
             1f,
             availableWidth / measuredWidth.coerceAtLeast(1f),
             availableHeight / measuredHeight,
@@ -133,7 +156,12 @@ class CandidateTextStyleEngine(
         paint.textSize = originalSize * fitScale
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
-        canvas.clipRect(rect)
+        val clipRect = if (role == Role.PREEDIT) {
+            val minGlyphWidth = baseTextSize * 0.58f
+            val extra = ((minGlyphWidth - rect.width()).coerceAtLeast(0f)) / 2f
+            RectF(rect.left - extra, rect.top, rect.right + extra, rect.bottom)
+        } else rect
+        canvas.clipRect(clipRect)
         // 仅拼音行仍保留 Rust 字形，需要擦除后覆盖；候选词和注释已在 Rust 主题层关闭文字绘制，
         // 不再用 CLEAR 擦背景，避免把高亮底色擦出透明洞。
         if (eraseUnderlay) {
@@ -158,7 +186,10 @@ class CandidateTextStyleEngine(
         }
         if (paint.textSize > 0f) {
             val style = config.style(role)
-            style.strokeColor?.let { color ->
+            val strokeColor = if (config.preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
+                if (relativeLuminance(adaptiveTextColor ?: style.color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            } else style.strokeColor
+            strokeColor?.let { color ->
                 val stroke = TextPaint(paint).apply {
                     this.color = color
                     this.style = Paint.Style.STROKE
