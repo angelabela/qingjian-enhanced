@@ -429,6 +429,8 @@ class QingjianInputMethodService :
         )
         this.panel = panel
         showKeyboard()
+        // 延后到首帧之后同步设置，既保留 cloudPredict 等开关的即时生效，也不阻塞键盘首屏显示。
+        Handler(mainLooper).post { if (engine.ready) cloud.sync(settings) }
         showSideItems(emptyList())
         panelToRestore?.let(panel::open)
         reopenPanel = null
