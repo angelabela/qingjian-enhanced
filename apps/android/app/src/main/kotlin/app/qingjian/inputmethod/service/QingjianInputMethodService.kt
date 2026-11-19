@@ -280,6 +280,7 @@ class QingjianInputMethodService :
     private lateinit var voice: VoiceInput
     private val smartInfo by lazy { SmartInfoProvider(this) }
     private var smartInfoSequence = 0
+    private var localAiSuggestionSequence = 0
 
     /** 返回键关了面板，它的抬起也要吞掉。 */
     private var backConsumed = false
@@ -375,6 +376,7 @@ class QingjianInputMethodService :
         phraseMemoryHandler.removeCallbacksAndMessages(null)
         phraseMemoryThread.quitSafely()
         candidateRerankSequence++
+        localAiSuggestionSequence++
         stopQuickAiLoading(clearText = true)
         quickAiHandler.removeCallbacksAndMessages(null)
         cloud.stop()
@@ -636,7 +638,7 @@ class QingjianInputMethodService :
         val trigger = SmartInfoProvider.TRIGGERS.firstOrNull { before.endsWith(it) }
         if (trigger == null) {
             smartInfoSequence++
-            currentPanel.showSmartSuggestions(emptyList()) {}
+            scheduleLocalAiSuggestions(before, currentPanel)
             return
         }
         val request = ++smartInfoSequence
@@ -658,6 +660,51 @@ class QingjianInputMethodService :
                 }
             }
         }
+    }
+
+    /**
+     * 输入停顿后触发本地联想/整句续写。只追加用户点击的续写，不替换或自动提交已有文字。
+     * 请求带序号与上下文二次校验，防止慢推理结果覆盖用户后续输入。
+     */
+    private fun scheduleLocalAiSuggestions(before: String, currentPanel: KeyboardPanel) {
+        val request = ++localAiSuggestionSequence
+        if (before.length < 3 || composer.privateInput || composer.directInput ||
+            currentInputEditorInfo?.wantsPrivacy() == true || !LocalAiModelManager.isInstalled(this)
+        ) {
+            currentPanel.showSmartSuggestions(emptyList()) {}
+            return
+        }
+        candidateRerankHandler.postDelayed({
+            if (request != localAiSuggestionSequence || panel !== currentPanel ||
+                editor != null || currentPanel.openPanel != null || shownPreedit.isNotEmpty()
+            ) return@postDelayed
+            val liveConnection = currentInputConnection ?: return@postDelayed
+            val liveBefore = runCatching {
+                liveConnection.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+            }.getOrDefault("")
+            if (liveBefore != before) return@postDelayed
+            LocalAiModelManager.generateSuggestions(this, before) { result ->
+                if (request != localAiSuggestionSequence || panel !== currentPanel ||
+                    currentInputConnection !== liveConnection || editor != null ||
+                    currentPanel.openPanel != null || shownPreedit.isNotEmpty()
+                ) return@generateSuggestions
+                val latest = runCatching {
+                    currentInputConnection?.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                }.getOrDefault("")
+                if (latest != before) return@generateSuggestions
+                val suggestions = result.getOrDefault(emptyList())
+                currentPanel.showSmartSuggestions(suggestions) { selected ->
+                    if (selected.isBlank() || request != localAiSuggestionSequence) return@showSmartSuggestions
+                    val connection = currentInputConnection ?: return@showSmartSuggestions
+                    val currentText = runCatching {
+                        connection.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                    }.getOrDefault("")
+                    if (currentText != before) return@showSmartSuggestions
+                    connection.commitText(selected, 1)
+                    currentPanel.showSmartSuggestions(emptyList()) {}
+                }
+            }
+        }, 750L)
     }
 
     // 编辑条开着时打的字进编辑条
