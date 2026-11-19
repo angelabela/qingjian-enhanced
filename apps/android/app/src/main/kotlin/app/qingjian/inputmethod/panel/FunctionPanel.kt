@@ -479,7 +479,7 @@ class FunctionPanel(
                     selectedTextTarget = if (x < card.centerX()) 0 else 1
                     selectedTextPreset = Settings.TextEffectPreset.of(Settings.preferences(context).getString(
                         if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, null))
-                    effectScroll.offset = 0f
+                    effectScroll.reset()
                     invalidate()
                     return
                 }
