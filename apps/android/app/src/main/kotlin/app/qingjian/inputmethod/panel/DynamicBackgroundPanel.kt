@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.panel.base.PanelIcons
 import app.qingjian.inputmethod.panel.base.PanelView
+import app.qingjian.inputmethod.settings.Settings
 
 /** 动态视频背景设置直接嵌入常用功能子面板；设置写入后通知输入法重建背景层。 */
 @SuppressLint("ViewConstructor")
@@ -92,7 +93,15 @@ class DynamicBackgroundPanel(
         val index = (contentY / rowHeight).toInt()
         when (index) {
             0 -> update { putBoolean(DynamicBackgroundActivity.KEY_ENABLED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) }
-            1 -> update { putInt(DynamicBackgroundActivity.KEY_MODE, (prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) + 1) % 3) }
+            1 -> {
+                val nextMode = (prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) + 1) % 3
+                prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, nextMode).apply()
+                // 选择仅光效或视频与光效叠加时自动打开原有键盘光影；仅视频时关闭它。
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_BACKGROUND_EFFECT, nextMode != 0)
+                    .apply()
+                notifyChanged()
+            }
             2 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
             in 3..5 -> {
                 val left = card.left + ink.dp(18f)
