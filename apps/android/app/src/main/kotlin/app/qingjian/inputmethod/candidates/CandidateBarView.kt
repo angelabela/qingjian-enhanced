@@ -67,6 +67,7 @@ class CandidateBarView(
     }
 
     private val density = resources.displayMetrics.density
+    private var adaptiveVideoTextColor: Int? = null
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 64f * density * maxOf(1f, textScale)
     private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.board, palette.text, candidateTextStyles)
@@ -105,9 +106,17 @@ class CandidateBarView(
 
     /** 视频背景帧亮度变化时，自动切换候选文字的高对比颜色。 */
     fun setVideoBackgroundLuminance(luminance: Float) {
-        val adaptive = if (luminance >= 0.52f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-        strip.setAdaptiveTextColor(adaptive)
-        invalidate()
+        val current = adaptiveVideoTextColor
+        val next = when (current) {
+            android.graphics.Color.BLACK -> if (luminance < 0.44f) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+            android.graphics.Color.WHITE -> if (luminance > 0.58f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            else -> if (luminance >= 0.52f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+        }
+        if (next != current) {
+            adaptiveVideoTextColor = next
+            strip.setAdaptiveTextColor(next)
+            invalidate()
+        }
     }
 
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
