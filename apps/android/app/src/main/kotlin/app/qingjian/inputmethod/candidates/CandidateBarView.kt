@@ -68,7 +68,7 @@ class CandidateBarView(
     private val density = resources.displayMetrics.density
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 64f * density * maxOf(1f, textScale)
-    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.board, palette.text)
+    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.board, palette.text, candidateTextStyles)
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
@@ -227,7 +227,7 @@ class CandidateBarView(
         strip.isEmpty && notice != null -> toolbar.drawNotice(canvas, width, notice!!.first)
         strip.isEmpty -> toolbar.draw(canvas, width)
         else -> {
-            strip.draw(canvas, scrollX, stripWidth)
+            strip.draw(canvas, scrollX, stripWidth, popupIndex)
             drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
             // 候选条与键盘之间一道细线，分出层次；滚动时线不跟着走
