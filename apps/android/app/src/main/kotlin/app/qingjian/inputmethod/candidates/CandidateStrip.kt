@@ -40,7 +40,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
-        subpixelText = true
+        isSubpixelText = true
     }
     /** 用稍粗的 CLEAR 字形擦掉 Rust 位图中的旧字形，不动候选格底色、分隔线和译文。 */
     private val eraseCandidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
