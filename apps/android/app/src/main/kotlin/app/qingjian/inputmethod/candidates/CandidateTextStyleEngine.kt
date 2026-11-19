@@ -92,6 +92,13 @@ class CandidateTextStyleEngine(
         if (text.isEmpty() || rect.isEmpty) return
         val paint = paint(role)
         val x = rect.centerX()
+        val originalSize = paint.textSize
+        // 词组可能比单字宽很多：在当前候选格内等比缩小文字，避免裁掉半个字。
+        val availableWidth = (rect.width() - 8f * density).coerceAtLeast(1f)
+        val measuredWidth = paint.measureText(text)
+        if (measuredWidth > availableWidth && measuredWidth > 0f) {
+            paint.textSize = (originalSize * availableWidth / measuredWidth).coerceAtLeast(originalSize * 0.62f)
+        }
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
         canvas.clipRect(rect)
@@ -116,6 +123,7 @@ class CandidateTextStyleEngine(
             }
         }
         canvas.drawText(text, x, baseline, paint)
+        paint.textSize = originalSize
         canvas.restore()
     }
 }
