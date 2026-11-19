@@ -337,7 +337,7 @@ class InputPanel(
     private val videoBackgroundMode = dynamicBackgroundPrefs.getInt("video_mode", 2).coerceIn(0, 2)
     private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("video_frosted", true)
     private val videoBackgroundUri = if (videoBackgroundEnabled && videoBackgroundMode != 1) dynamicBackgroundPrefs.getString("video_uri", null) else null
-    private val backgroundEffectActive = settings.keyboardBackgroundEffect && (!videoBackgroundEnabled || videoBackgroundMode != 0)
+    private val backgroundEffectActive = settings.keyboardBackgroundEffect && (videoBackgroundUri == null || videoBackgroundMode != 0)
     private val transparentBackground = backgroundEffectActive || videoBackgroundUri != null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
