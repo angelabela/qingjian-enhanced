@@ -87,8 +87,16 @@ class KeyboardSettingsActivity : PageActivity() {
                 "自定义按键与手势",
                 listOf(
                     customGestureKeyPicker(settings),
-                    customGestureActionPicker("按键上滑", Settings.KEY_CUSTOM_GESTURE_UP, settings.customGestureUp),
-                    customGestureActionPicker("按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN, settings.customGestureDown),
+                    customGestureActionPicker(
+                        "按键上滑", Settings.KEY_CUSTOM_GESTURE_UP,
+                        displayedGestureAction(settings, effectiveGestureKey(settings), upward = true),
+                        effectiveGestureKey(settings),
+                    ),
+                    customGestureActionPicker(
+                        "按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN,
+                        displayedGestureAction(settings, effectiveGestureKey(settings), upward = false),
+                        effectiveGestureKey(settings),
+                    ),
                 ),
                 footer = "先选择要配置的按键，再分别设置上滑和下滑动作。选择“沿用默认”不会覆盖该按键原有行为。",
             ),
@@ -132,19 +140,54 @@ class KeyboardSettingsActivity : PageActivity() {
         ('A'..'Z').forEach { add(GestureKeyOption("LETTER_$it", "$it 键")) }
     }
 
+    /** 已有固定按键手势时，默认把它作为当前配置对象显示，避免页面重开后落回“不指定”。 */
+    private fun effectiveGestureKey(settings: Settings): String {
+        if (settings.customGestureKey != "NONE") return settings.customGestureKey
+        return listOf(
+            "SPACE" to (settings.spaceSwipeUp to settings.spaceSwipeDown),
+            "ENTER" to (settings.enterSwipeUp to settings.enterSwipeDown),
+            "BACKSPACE" to (settings.backspaceSwipeUp to settings.backspaceSwipeDown),
+            "SYMBOLS" to (settings.symbolsSwipeUp to settings.symbolsSwipeDown),
+        ).firstOrNull { (_, actions) ->
+            actions.first != Settings.GestureAction.DEFAULT || actions.second != Settings.GestureAction.DEFAULT
+        }?.first ?: "NONE"
+    }
+
+    private fun displayedGestureAction(settings: Settings, selectedKey: String, upward: Boolean): Settings.GestureAction {
+        if (settings.customGestureKey != "NONE") {
+            return if (upward) settings.customGestureUp else settings.customGestureDown
+        }
+        return when (selectedKey) {
+            "SPACE" -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
+            "ENTER" -> if (upward) settings.enterSwipeUp else settings.enterSwipeDown
+            "BACKSPACE" -> if (upward) settings.backspaceSwipeUp else settings.backspaceSwipeDown
+            "SYMBOLS" -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
+            else -> if (upward) settings.customGestureUp else settings.customGestureDown
+        }
+    }
+
     private fun customGestureKeyPicker(settings: Settings): View {
         val options = gestureKeyOptions()
-        val selected = options.indexOfFirst { it.id == settings.customGestureKey }.coerceAtLeast(0)
+        val selectedKey = effectiveGestureKey(settings)
+        val selected = options.indexOfFirst { it.id == selectedKey }.coerceAtLeast(0)
         return ui.picker("选择自定义按键", options[selected].label, options.map { it.label }, selected) { index ->
             prefs.edit().putString(Settings.KEY_CUSTOM_GESTURE_KEY, options[index].id).apply()
             rebuild()
         }
     }
 
-    private fun customGestureActionPicker(title: String, key: String, current: Settings.GestureAction): View {
+    private fun customGestureActionPicker(
+        title: String,
+        key: String,
+        current: Settings.GestureAction,
+        selectedKey: String,
+    ): View {
         val options = Settings.GestureAction.entries
         return ui.picker(title, current.label, options.map { it.label }, options.indexOf(current)) { index ->
-            prefs.edit().putString(key, options[index].name).apply()
+            prefs.edit()
+                .putString(Settings.KEY_CUSTOM_GESTURE_KEY, selectedKey)
+                .putString(key, options[index].name)
+                .apply()
             rebuild()
         }
     }
