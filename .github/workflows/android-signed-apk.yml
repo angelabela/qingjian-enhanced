@@ -32,6 +32,7 @@ on:
       - fix/workflow-145-scan-lifecycle-keyboard-flow-voice-freeze
       - fix/210-candidate-video-glass-voice-ring
       - fix/workflow-252-keycap-candidate-video-controls
+      - fix/workflow-327-voice-gesture-glass-model-manifest
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
