@@ -22,7 +22,7 @@ class DynamicBackgroundPanel(
     private val prefs = context.getSharedPreferences(DynamicBackgroundActivity.PREFS, Context.MODE_PRIVATE)
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
-    private var sliderDragged = false
+    private var sliderTouchIndex = -1
     private val rowHeight get() = ink.dp(66f)
     private val labels = listOf("启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度", "导入或更换视频")
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
@@ -119,30 +119,45 @@ class DynamicBackgroundPanel(
         }
     }
 
+    private fun setSliderValue(index: Int, x: Float) {
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val value = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+        prefs.edit().apply {
+            when (index) {
+                3 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
+                4 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
+                else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+            }
+        }.apply()
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val handled = super.onTouchEvent(event)
-        if (event.actionMasked == MotionEvent.ACTION_MOVE && card.contains(event.x, event.y)) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y)) {
             val index = ((event.y - card.top - ink.dp(8f) + scroll.offset) / rowHeight).toInt()
             if (index in 3..5) {
-                val left = card.left + ink.dp(18f)
-                val right = card.right - ink.dp(18f)
-                val value = ((event.x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
-                prefs.edit().apply {
-                    when (index) {
-                        3 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
-                        4 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
-                        else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
-                    }
-                }.apply()
-                sliderDragged = true
+                sliderTouchIndex = index
+                setSliderValue(index, event.x)
                 invalidate()
+                return true
             }
         }
-        if (event.actionMasked == MotionEvent.ACTION_UP && sliderDragged) {
-            sliderDragged = false
-            context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
+        if (sliderTouchIndex >= 0) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    setSliderValue(sliderTouchIndex, event.x)
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    setSliderValue(sliderTouchIndex, event.x)
+                    sliderTouchIndex = -1
+                    context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
+                    invalidate()
+                }
+            }
+            return true
         }
-        return handled
+        return super.onTouchEvent(event)
     }
 }
