@@ -233,10 +233,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
             val value = candidate.text
             if (value.isEmpty()) return@forEachIndexed
-            val x = word.centerX() - scrollX
+            val x = word.centerX()
             val baseline = word.centerY() + shift - (candidateText.ascent() + candidateText.descent()) / 2f
             canvas.save()
-            canvas.clipRect(word.left - scrollX, word.top + shift, word.right - scrollX, word.bottom + shift)
+            canvas.clipRect(word.left, word.top + shift, word.right, word.bottom + shift)
             // Rust 字体的字形在原位擦除；描边扩大一点，避免旧字边缘残留形成重影。
             canvas.drawText(value, x, baseline, eraseCandidateText)
             canvas.drawText(value, x, baseline, eraseCandidateFill)
