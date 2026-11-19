@@ -125,21 +125,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                     pixels[index] = ((alpha * coverage / 255) shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
-            // 视频背景模式下，将译文颜色统一提升为高亮白色；只替换与主题 gloss 色接近的像素，
-            // 保留抗锯齿 alpha，避免把候选高亮底色、拼音和其它主题色一并改掉。
-            val gr = (glossColor shr 16) and 0xFF
-            val gg = (glossColor shr 8) and 0xFF
-            val gb = glossColor and 0xFF
-            for (index in pixels.indices) {
-                val pixel = pixels[index]
-                val alpha = pixel ushr 24
-                if (alpha == 0) continue
-                val r = (pixel shr 16) and 0xFF
-                val g = (pixel shr 8) and 0xFF
-                val b = pixel and 0xFF
-                val distance = maxOf(kotlin.math.abs(r - gr), kotlin.math.abs(g - gg), kotlin.math.abs(b - gb))
-                if (distance <= 42) pixels[index] = (alpha shl 24) or 0x00F7FBFF
-            }
+            // 保留 Rust 主题渲染器输出的释义颜色；动态背景只处理背景透明像素，
+            // 不再强制改成白色，避免候选文字脱离当前 App 主题。
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             bitmap
         } else null
