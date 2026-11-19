@@ -133,39 +133,52 @@ class KeyPainter(
 
     }
 
-    /** 所有手势提示统一贴角：上滑在左上，下滑在右下，方向与动作一一对应。 */
+    /** 手势提示直接显示在键帽内：上滑靠上、下滑靠下；优先完整文字，确实放不下才换语义图标。 */
     fun drawGestureHints(canvas: Canvas, slot: KeySlot, upLabel: String?, downLabel: String?) {
         if (upLabel == null && downLabel == null) return
         val b = slot.bounds
-        val inset = 8f * density
         val onBrand = slot.key is Key.Enter
-        val hintWidth = (b.width() * 0.52f - 10f * density).coerceAtLeast(10f * density)
-        if (upLabel != null) drawGestureHint(canvas, b.left + inset, b.top + inset, upLabel, upward = true, rightAligned = false, onBrand = onBrand, maxLabelWidth = hintWidth)
-        if (downLabel != null) drawGestureHint(canvas, b.right - inset, b.bottom - inset, downLabel, upward = false, rightAligned = true, onBrand = onBrand, maxLabelWidth = hintWidth)
+        val hintWidth = (b.width() - 8f * density).coerceAtLeast(10f * density)
+        if (upLabel != null) {
+            drawGestureHint(
+                canvas, b.centerX(), b.top + 11f * density, upLabel,
+                upward = true, onBrand = onBrand, maxLabelWidth = hintWidth,
+            )
+        }
+        if (downLabel != null) {
+            drawGestureHint(
+                canvas, b.centerX(), b.bottom - 4f * density, downLabel,
+                upward = false, onBrand = onBrand, maxLabelWidth = hintWidth,
+            )
+        }
     }
 
     private fun drawGestureHint(
         canvas: Canvas,
         x: Float,
-        y: Float,
+        baseline: Float,
         label: String,
         upward: Boolean,
-        rightAligned: Boolean,
         onBrand: Boolean,
         maxLabelWidth: Float,
     ) {
-        val baseline = y + 3f * density
-        val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
         ink.typeface = fontTypeface
-        ink.textSize = 9f * density
-        val useText = ink.measureText(label) <= maxLabelWidth
-        val shown = if (useText) label else gestureHintSymbol(label, upward)
-        ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
-        ink.textSize = (if (useText) 9f else 12f) * density
-        // 提示文案放不下时改用语义图标，避免挤压键面字母或与邻键重叠。
+        ink.textAlign = Paint.Align.CENTER
+        ink.textSize = 8.5f * density
+        val arrow = if (upward) "↑" else "↓"
+        val fullText = "$arrow$label"
+        val useText = ink.measureText(fullText) <= maxLabelWidth
+        val symbolText = "$arrow${gestureHintSymbol(label, upward)}"
+        val shown = when {
+            useText -> fullText
+            ink.measureText(symbolText) <= maxLabelWidth -> symbolText
+            else -> arrow
+        }
+        ink.textSize = (if (useText) 8.5f else 11f) * density
+        // 只有完整动作文字超出键帽可用宽度时才退化为图标。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
-        canvas.drawText(shown, textX, baseline, ink)
+        canvas.drawText(shown, x, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
     }
 
