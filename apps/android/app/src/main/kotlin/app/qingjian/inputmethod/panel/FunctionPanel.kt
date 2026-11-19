@@ -133,7 +133,7 @@ class FunctionPanel(
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(34f)
-        val viewportBottom = card.bottom - ink.dp(8f)
+        val viewportBottom = card.bottom - ink.dp(92f)
         val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
         val rowStep = ink.dp(64f)
         val itemHeight = ink.dp(56f)
@@ -228,6 +228,25 @@ class FunctionPanel(
             }
         }
         canvas.restore()
+        val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+        val controlTop = card.bottom - ink.dp(76f)
+        val alpha = prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100)
+        val frosted = prefs.getBoolean("keyboard_key_frosted", false)
+        ink.textStart(canvas, "按键透明度", 11f, palette.text, card.left + ink.dp(14f), controlTop + ink.dp(13f), card.right - ink.dp(80f))
+        ink.text(canvas, "$alpha%", 11f, palette.brand, card.right - ink.dp(28f), controlTop + ink.dp(13f))
+        val left = card.left + ink.dp(14f)
+        val right = card.right - ink.dp(14f)
+        ink.fill.color = palette.functionalKey
+        ink.fill.strokeWidth = ink.dp(3f)
+        ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+        canvas.drawLine(left, controlTop + ink.dp(31f), right, controlTop + ink.dp(31f), ink.fill)
+        ink.fill.color = palette.brand
+        canvas.drawLine(left, controlTop + ink.dp(31f), left + (right - left) * alpha / 100f, controlTop + ink.dp(31f), ink.fill)
+        ink.textStart(canvas, "按键磨砂效果", 11f, palette.text, card.left + ink.dp(14f), controlTop + ink.dp(62f), card.right - ink.dp(92f))
+        ink.round(canvas, RectF(card.right - ink.dp(68f), controlTop + ink.dp(48f), card.right - ink.dp(16f), controlTop + ink.dp(72f)), 12f,
+            if (frosted) palette.brand else palette.functionalKey)
+        ink.text(canvas, if (frosted) "开" else "关", 10f, if (frosted) palette.onBrand else palette.text,
+            card.right - ink.dp(42f), controlTop + ink.dp(60f))
     }
 
     /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
@@ -357,9 +376,22 @@ class FunctionPanel(
 
             !card.contains(x, y) -> Unit
             tabs.selected == 0 && backgroundEffectPage -> {
+                val controlTop = card.bottom - ink.dp(76f)
+                val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+                if (y >= controlTop + ink.dp(44f)) {
+                    prefs.edit().putBoolean("keyboard_key_frosted", !prefs.getBoolean("keyboard_key_frosted", false)).apply()
+                    invalidate()
+                    return
+                }
+                if (y >= controlTop && y < controlTop + ink.dp(44f)) {
+                    val value = ((x - card.left - ink.dp(14f)) / (card.width() - ink.dp(28f)).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    prefs.edit().putInt("keyboard_key_alpha", (value * 100).toInt()).apply()
+                    invalidate()
+                    return
+                }
                 val rowTop = card.top + ink.dp(10f + 26f)
                 val rowStep = ink.dp(74f)
-                val viewportBottom = card.bottom - ink.dp(8f)
+                val viewportBottom = card.bottom - ink.dp(92f)
                 val gapX = ink.dp(8f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
                 if (y in rowTop..viewportBottom) {
