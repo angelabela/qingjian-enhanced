@@ -95,8 +95,25 @@ data class Settings(
     val keyboardBackgroundEffect: Boolean = false,
     /** 流动背景配色样式；0 为极光，1–4 为海洋、日落、翡翠、冰晶，5–6 为魔幻粒子与星云裂隙。 */
     val keyboardBackgroundStyle: Int = 0,
+    /** 候选区与键盘区分别保存文字效果预设。 */
+    val candidateTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
+    val keyboardTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
+
+    /** 文字效果预设；只作用于候选区或键盘区，不影响整个面板。 */
+    enum class TextEffectPreset(val label: String) {
+        STANDARD("标准清晰"),
+        BOLD_DEPTH("加粗立体"),
+        SOFT_GLOW("柔光发亮"),
+        NEON_OUTLINE("描边霓虹"),
+        COLOR_GRADIENT("渐变彩色");
+
+        companion object {
+            fun of(value: String?): TextEffectPreset =
+                entries.firstOrNull { it.name == value } ?: STANDARD
+        }
+    }
 
     /** 键盘界面文字粗细。用系统 sans-serif 字族，兼容 Android 9 及以上。 */
     enum class FontWeight(val label: String, val family: String, val style: Int, val weight: Int) {
@@ -216,6 +233,8 @@ data class Settings(
         const val KEY_SYMBOLS_SWIPE_DOWN = "gesture_symbols_down"
         const val KEY_BACKGROUND_EFFECT = "keyboard_background_effect"
         const val KEY_BACKGROUND_STYLE = "keyboard_background_style"
+        const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
+        const val KEY_KEYBOARD_TEXT_PRESET = "keyboard_text_preset"
 
         /** 没选过时的主题，同 PC 的缺省主题。 */
         const val DEFAULT_THEME = "qingjian"
@@ -313,6 +332,8 @@ data class Settings(
                 symbolsSwipeDown = GestureAction.of(prefs.getString(KEY_SYMBOLS_SWIPE_DOWN, null)),
                 keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
                 keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 6),
+                candidateTextPreset = TextEffectPreset.of(prefs.getString(KEY_CANDIDATE_TEXT_PRESET, null)),
+                keyboardTextPreset = TextEffectPreset.of(prefs.getString(KEY_KEYBOARD_TEXT_PRESET, null)),
             )
         }
     }
