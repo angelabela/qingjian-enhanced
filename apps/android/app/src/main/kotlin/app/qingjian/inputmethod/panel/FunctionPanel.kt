@@ -56,15 +56,13 @@ class FunctionPanel(
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
-                Feature(if (settings.keyboardBackgroundEffect) Icon.WAVEFORM else Icon.PALETTE, "键盘光影", on = settings.keyboardBackgroundEffect) {
-                    setToggle(Settings.KEY_BACKGROUND_EFFECT, !settings.keyboardBackgroundEffect)
-                },
-                Feature(Icon.PALETTE, "背景样式", on = settings.keyboardBackgroundEffect) {
+                Feature(if (settings.keyboardBackgroundEffect) Icon.WAVEFORM else Icon.PALETTE, "背景光效", on = settings.keyboardBackgroundEffect) {
+                    selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
                     backgroundEffectPage = true
                     voiceEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "动态背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
+                Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
@@ -369,8 +367,14 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
                     if (row in 0 until 4 && index in 0..6) {
-                        selectedBackgroundStyle = index
-                        actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
+                        if (selectedBackgroundStyle == index && settings.keyboardBackgroundEffect) {
+                            selectedBackgroundStyle = -1
+                            actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, false)
+                        } else {
+                            selectedBackgroundStyle = index
+                            actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
+                            actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, true)
+                        }
                         invalidate()
                     }
                 }
