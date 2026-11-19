@@ -16,7 +16,7 @@ class LocalAiSettingsActivity : PageActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::ui.isInitialized && !busy) rebuild()
+        if (!busy) rebuild()
     }
 
     override fun content(): List<View> {
