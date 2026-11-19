@@ -39,6 +39,7 @@ import android.icu.text.BreakIterator
 import java.text.Normalizer
 import app.qingjian.inputmethod.contacts.ContactsSync
 import app.qingjian.inputmethod.core.AppLog
+import app.qingjian.inputmethod.localai.LocalAiModelManager
 import app.qingjian.inputmethod.core.Engine
 import app.qingjian.inputmethod.core.InputOptions
 import app.qingjian.inputmethod.core.frame.Candidate
@@ -370,6 +371,7 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(scanResultListener) }
         runCatching { unregisterReceiver(dynamicBackgroundListener) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
+        LocalAiModelManager.releaseRuntime()
         phraseMemoryHandler.removeCallbacksAndMessages(null)
         phraseMemoryThread.quitSafely()
         candidateRerankSequence++
@@ -709,25 +711,31 @@ class QingjianInputMethodService :
         val requestSequence = candidateRerankSequence
         val editorPackage = currentInputEditorInfo?.packageName
         val task = Runnable {
-            candidateReranker.rerank(before, after, preedit, candidateTexts) { ranked ->
-                if (ranked == null || requestSequence != candidateRerankSequence ||
-                    shownPreedit != preedit || shownCandidates.map { it.text } != candidateTexts ||
-                    currentInputEditorInfo?.packageName != editorPackage
-                ) return@rerank
-
-                val liveInput = currentInputConnection ?: return@rerank
-                val liveBefore = runCatching { liveInput.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
-                val liveAfter = runCatching { liveInput.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
-                if (liveBefore != before || liveAfter != after) return@rerank
-
-                val remaining = candidates.indices.toMutableList()
-                val order = ranked.mapNotNull { value ->
-                    remaining.firstOrNull { candidateTexts[it] == value }?.also { remaining.remove(it) }
-                } + remaining
-                if (order.size != candidates.size || order == candidates.indices.toList()) return@rerank
-                candidateIndexMap = order
-                shownCandidates = order.map(candidates::get)
-                renderShownComposition(preedit, shownCandidates)
+            val applyRanking: (List<String>?) -> Unit = { ranked ->
+                if (ranked != null && requestSequence == candidateRerankSequence &&
+                    shownPreedit == preedit && shownCandidates.map { it.text } == candidateTexts &&
+                    currentInputEditorInfo?.packageName == editorPackage
+                ) {
+                    val liveInput = currentInputConnection
+                    val liveBefore = runCatching { liveInput?.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
+                    val liveAfter = runCatching { liveInput?.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
+                    if (liveBefore == before && liveAfter == after) {
+                        val remaining = candidates.indices.toMutableList()
+                        val order = ranked.mapNotNull { value ->
+                            remaining.firstOrNull { candidateTexts[it] == value }?.also { remaining.remove(it) }
+                        } + remaining
+                        if (order.size == candidates.size && order != candidates.indices.toList()) {
+                            candidateIndexMap = order
+                            shownCandidates = order.map(candidates::get)
+                            renderShownComposition(preedit, shownCandidates)
+                        }
+                    }
+                }
+            }
+            // 本地模型优先；不可用或输出不合规时再回退原有云端重排。
+            LocalAiModelManager.rerankCandidates(this, before, after, preedit, candidateTexts) { localRanked ->
+                if (localRanked != null) applyRanking(localRanked)
+                else candidateReranker.rerank(before, after, preedit, candidateTexts, applyRanking)
             }
         }
         candidateRerankRunnable = task
