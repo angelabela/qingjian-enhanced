@@ -24,12 +24,12 @@ class LocalAiSettingsActivity : PageActivity() {
         val installed = snapshot.installed
         val runtimeDetails = buildString {
             append("模型文件：").append(if (installed) "已校验" else "未安装")
-            append("\\n引擎状态：").append(snapshot.state)
-            append("\\n推理设备：").append(snapshot.backend)
-            append("\\n最近推理：").append(if (snapshot.lastInferenceMs > 0) "${snapshot.lastInferenceMs} ms" else "暂无记录")
-            append("\\n成功次数：").append(snapshot.successCount)
+            append("\n引擎状态：").append(snapshot.state)
+            append("\n推理设备：").append(snapshot.backend)
+            append("\n最近推理：").append(if (snapshot.lastInferenceMs > 0) "${snapshot.lastInferenceMs} ms" else "暂无记录")
+            append("\n成功次数：").append(snapshot.successCount)
             append(" · 失败次数：").append(snapshot.failureCount)
-            if (snapshot.lastError.isNotBlank()) append("\\n最近错误：").append(snapshot.lastError)
+            if (snapshot.lastError.isNotBlank()) append("\n最近错误：").append(snapshot.lastError)
         }
         val downloadValue = when {
             busy && statusMessage.startsWith("download:") ->
