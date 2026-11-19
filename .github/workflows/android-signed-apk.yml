@@ -30,6 +30,7 @@ on:
       - fix/voice-swipe-phrases-dual-frequency
       - fix/workflow-145-scan-lifecycle-keyboard-flow-voice-freeze
       - fix/210-candidate-video-glass-voice-ring
+      - fix/workflow-252-keycap-candidate-video-controls
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
