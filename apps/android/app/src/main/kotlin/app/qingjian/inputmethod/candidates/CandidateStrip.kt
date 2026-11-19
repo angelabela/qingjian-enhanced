@@ -18,6 +18,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  */
 class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
+    private val glossColor = markColor
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
         it.textSize = 19f * density * textScale
         it.textAlign = Paint.Align.CENTER
@@ -124,6 +125,21 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                     pixels[index] = ((alpha * coverage / 255) shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
+            // 视频背景模式下，将译文颜色统一提升为高亮白色；只替换与主题 gloss 色接近的像素，
+            // 保留抗锯齿 alpha，避免把候选高亮底色、拼音和其它主题色一并改掉。
+            val gr = (glossColor shr 16) and 0xFF
+            val gg = (glossColor shr 8) and 0xFF
+            val gb = glossColor and 0xFF
+            for (index in pixels.indices) {
+                val pixel = pixels[index]
+                val alpha = pixel ushr 24
+                if (alpha == 0) continue
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                val distance = maxOf(kotlin.math.abs(r - gr), kotlin.math.abs(g - gg), kotlin.math.abs(b - gb))
+                if (distance <= 42) pixels[index] = (alpha shl 24) or 0x00F7FBFF
+            }
             bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             bitmap
         } else null
@@ -177,6 +193,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         if (!transparentBackground) {
             fill.color = image.background
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
+        } else {
+            // 译文区使用近不透明深色衬底，确保白色释义不受视频每帧明暗变化影响。
+            // 仅覆盖候选行下部，主候选文字和视频画面仍保持原有通透感。
+            val glossTop = top + (bitmap.height - top) * 0.62f
+            fill.color = 0xED101820.toInt()
+            canvas.drawRect(scrollX.toFloat(), glossTop, (scrollX + contentViewWidth).toFloat(), barHeight, fill)
         }
         // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
         val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
