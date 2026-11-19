@@ -38,7 +38,8 @@ class FunctionPanel(
 
     private var voiceEffectPage = false
     private var backgroundEffectPage = false
-    private var selectedBackgroundStyle = settings.keyboardBackgroundStyle
+    private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
+    private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
 
     private fun smsMonitoringEnabled(): Boolean =
@@ -56,8 +57,8 @@ class FunctionPanel(
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
-                Feature(if (settings.keyboardBackgroundEffect) Icon.WAVEFORM else Icon.PALETTE, "背景光效", on = settings.keyboardBackgroundEffect) {
-                    selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
+                Feature(if (backgroundEffectEnabled) Icon.WAVEFORM else Icon.PALETTE, "背景光效", on = backgroundEffectEnabled) {
+                    selectedBackgroundStyle = if (backgroundEffectEnabled) settings.keyboardBackgroundStyle else -1
                     backgroundEffectPage = true
                     voiceEffectPage = false
                     invalidate()
@@ -82,7 +83,11 @@ class FunctionPanel(
             )
         }
 
-    fun refreshState() = invalidate()
+    fun refreshState() {
+        backgroundEffectEnabled = Settings.preferences(context).getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect)
+        if (!backgroundEffectEnabled) selectedBackgroundStyle = -1
+        invalidate()
+    }
 
     private val toggles
         get() = listOf(
@@ -401,11 +406,13 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
                     if (row in 0 until 4 && index in 0..6) {
-                        if (selectedBackgroundStyle == index && settings.keyboardBackgroundEffect) {
+                        if (selectedBackgroundStyle == index && backgroundEffectEnabled) {
                             selectedBackgroundStyle = -1
+                            backgroundEffectEnabled = false
                             actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, false)
                         } else {
                             selectedBackgroundStyle = index
+                            backgroundEffectEnabled = true
                             actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
                             actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, true)
                         }
