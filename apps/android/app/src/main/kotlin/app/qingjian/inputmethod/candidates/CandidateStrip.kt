@@ -212,7 +212,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val image = image
         if (image == null) {
             drawFallback(canvas, scrollX, contentViewWidth)
-            applyLeftFade(canvas, scrollX, contentViewWidth, if (preedit.isNotEmpty()) barHeight * 0.42f else 0f)
+            applyLeftFade(canvas, scrollX, contentViewWidth, if (preedit.isNotEmpty()) barHeight * 0.42f else 0f, leftInset)
             canvas.restoreToCount(layer)
             return
         }
@@ -329,27 +329,25 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val cy = word.top + shift + size * 0.85f
             PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx, cy, size, markPaint)
         }
-        applyLeftFade(canvas, scrollX, contentViewWidth, (top + shift).toFloat())
+        applyLeftFade(canvas, scrollX, contentViewWidth, (top + shift).toFloat(), leftInset)
         applyRightFade(canvas, scrollX, contentViewWidth, (top + shift).toFloat())
         canvas.restoreToCount(layer)
     }
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
-    private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
-        // DST_IN 必须覆盖整个候选内容视口，而不是只画渐变带：
-        // 否则宽字/拼音的其余像素不受遮罩，滑过左侧后会在渐变带外重新露出。
-        // Shader 在渐变带之后由 CLAMP 保持不透明，既完整裁切左缘，也不影响可视区正文。
-        val fadeWidth = minOf(96f * density, viewWidth.toFloat()).coerceAtLeast(1f)
-        val left = scrollX.toFloat()
-        val right = (scrollX + viewWidth).toFloat()
-        val top = 0f
+    private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float, leftInset: Float) {
+        // 渐变仅覆盖候选栏最左侧窄边缘，并向左移到视图物理边界；
+        // 左侧留白不再被长渐变带覆盖，首个候选词不会被遮掉。
+        val fadeWidth = minOf(12f * density, viewWidth.toFloat() + leftInset).coerceAtLeast(1f)
+        val left = scrollX.toFloat() - leftInset
+        val right = scrollX.toFloat() + viewWidth
         leftFadePaint.shader = android.graphics.LinearGradient(
             left, 0f, left + fadeWidth, 0f,
-            intArrayOf(0x00000000, 0x00000000, 0x55000000, 0xFF000000.toInt()),
-            floatArrayOf(0f, 0.12f, 0.62f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            intArrayOf(0x00000000, 0xFF000000.toInt()),
+            floatArrayOf(0f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        // 遮罩从候选栏顶端覆盖到底端，拼音行和候选行使用同一边界，不留未遮罩的字符区域。
-        canvas.drawRect(left, top, right, barHeight, leftFadePaint)
+        // DST_IN 覆盖整个候选视口，渐变区之外保持完全可见。
+        canvas.drawRect(left, 0f, right, barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 

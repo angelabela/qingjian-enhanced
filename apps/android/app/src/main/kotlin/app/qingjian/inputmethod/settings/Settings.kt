@@ -23,6 +23,8 @@ data class Settings(
     val keyPopup: Boolean,
     /** 键面字号档（#826），与候选字号分开。 */
     val keyTextSize: TextSize,
+    /** 键面字号（sp），滑动范围 1–50；旧版分档设置仅用于首次迁移。 */
+    val keyFontSize: Int = 20,
     /** 键帽质感主题；只改变颜色与高光，不改变原有按键轮廓。 */
     val keySkin: KeySkin = KeySkin.ORIGINAL,
     /** 候选出繁体（字形按 [InputOptions.traditionalVariant]）。 */
@@ -79,6 +81,8 @@ data class Settings(
     val appearance: Appearance,
     /** 候选字号档。 */
     val textSize: TextSize,
+    /** 候选字号（sp），滑动范围 1–50；旧版分档设置仅用于首次迁移。 */
+    val candidateFontSize: Int = 20,
     /** 输入法键盘界面字体粗细；只影响文字笔画，不改变字号与按键尺寸。 */
     val fontWeight: FontWeight,
     /** 工具栏中间那排放的工具，按勾的先后排（#777）。 */
@@ -175,6 +179,8 @@ data class Settings(
         const val KEY_HAPTIC_STRENGTH = "haptic_strength"
         const val KEY_POPUP = "key_popup"
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
+        const val KEY_KEY_FONT_SIZE = "key_font_size"
+        const val KEY_CANDIDATE_FONT_SIZE = "candidate_font_size"
         const val KEY_KEY_SKIN = "key_skin"
         const val KEY_TRADITIONAL = "traditional"
         const val KEY_LANGUAGE = "language"
@@ -258,6 +264,8 @@ data class Settings(
 
         fun load(context: Context): Settings {
             val prefs = preferences(context)
+            val legacyKeyTextSize = TextSize.of(prefs.getString(KEY_KEY_TEXT_SIZE, null))
+            val legacyCandidateTextSize = TextSize.of(prefs.getString(KEY_TEXT_SIZE, null))
             return Settings(
                 layout = Layout.entries.firstOrNull { it.name == prefs.getString(KEY_LAYOUT, null) }
                     ?: Layout.QWERTY,
@@ -268,7 +276,8 @@ data class Settings(
                 haptic = prefs.getBoolean(KEY_HAPTIC, true),
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
-                keyTextSize = TextSize.of(prefs.getString(KEY_KEY_TEXT_SIZE, null)),
+                keyTextSize = legacyKeyTextSize,
+                keyFontSize = prefs.getInt(KEY_KEY_FONT_SIZE, (legacyKeyTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 keySkin = when (prefs.getString(KEY_KEY_SKIN, null)) {
                     "JADE" -> KeySkin.EMERALD
                     else -> KeySkin.entries.firstOrNull { it.name == prefs.getString(KEY_KEY_SKIN, null) } ?: KeySkin.ORIGINAL
@@ -320,7 +329,8 @@ data class Settings(
                 contactDetails = prefs.getBoolean(KEY_CONTACT_DETAILS, true),
                 theme = prefs.getString(KEY_THEME, null) ?: DEFAULT_THEME,
                 appearance = Appearance.of(prefs.getString(KEY_APPEARANCE, null)),
-                textSize = TextSize.of(prefs.getString(KEY_TEXT_SIZE, null)),
+                textSize = legacyCandidateTextSize,
+                candidateFontSize = prefs.getInt(KEY_CANDIDATE_FONT_SIZE, (legacyCandidateTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 fontWeight = FontWeight.of(prefs.getString(KEY_FONT_WEIGHT, null)),
                 toolbar = ToolbarTool.parse(prefs.getString(KEY_TOOLBAR, null)),
                 enterSwipeUp = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_UP, null)),

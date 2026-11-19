@@ -8,6 +8,8 @@ import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import android.graphics.Canvas
 import android.graphics.RectF
+import android.view.MotionEvent
+import kotlin.math.roundToInt
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
@@ -47,6 +49,9 @@ class FunctionPanel(
     private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
     private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
+    private var voiceGlassStrength = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+        .getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
+    private var adjustingVoiceGlass = false
 
     private fun smsMonitoringEnabled(): Boolean =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -161,7 +166,7 @@ class FunctionPanel(
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(34f)
-        val viewportBottom = card.bottom - ink.dp(8f)
+        val viewportBottom = card.bottom - ink.dp(82f)
         val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
         val rowStep = ink.dp(64f)
         val itemHeight = ink.dp(56f)
@@ -198,6 +203,23 @@ class FunctionPanel(
             }
         }
         canvas.restore()
+
+        // 固定在样式列表下方的磨砂强度滑动条（1–50），拖动时即时保存。
+        val labelY = card.bottom - ink.dp(50f)
+        ink.textStart(canvas, "语音面板磨砂强度", 12f, palette.text,
+            card.left + ink.dp(16f), labelY, card.right - ink.dp(64f))
+        ink.text(canvas, "$voiceGlassStrength/50", 11f, palette.gloss,
+            card.right - ink.dp(32f), labelY)
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val y = card.bottom - ink.dp(22f)
+        val track = RectF(left, y - ink.dp(2f), right, y + ink.dp(2f))
+        ink.round(canvas, track, 2f, palette.faint)
+        val progressX = left + (right - left) * ((voiceGlassStrength - 1) / 49f)
+        val progress = RectF(left, y - ink.dp(2f), progressX, y + ink.dp(2f))
+        ink.round(canvas, progress, 2f, palette.brand)
+        ink.fill.color = palette.brand
+        canvas.drawCircle(progressX, y, ink.dp(6f), ink.fill)
     }
 
     /** 背景动效样式选择；内容超过可视区时在卡片内部滚动，不再挤出面板。 */
@@ -476,6 +498,42 @@ class FunctionPanel(
         canvas.drawCircle(kx, cy, ink.dp(10f), ink.fill)
     }
 
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (voiceEffectPage && tabs.selected == 0) {
+            val sliderTop = card.bottom - ink.dp(68f)
+            if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+                card.contains(event.x, event.y) && event.y >= sliderTop
+            ) {
+                adjustingVoiceGlass = true
+                updateVoiceGlassStrength(event.x)
+                return true
+            }
+            if (adjustingVoiceGlass) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> updateVoiceGlassStrength(event.x)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        updateVoiceGlassStrength(event.x)
+                        adjustingVoiceGlass = false
+                    }
+                }
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun updateVoiceGlassStrength(x: Float) {
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+        val value = (1 + fraction * 49f).roundToInt().coerceIn(1, 50)
+        if (value == voiceGlassStrength) return
+        voiceGlassStrength = value
+        context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
+            .putInt(VoicePanel.PREF_GLASS_STRENGTH, value).apply()
+        invalidate()
+    }
+
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
@@ -551,7 +609,7 @@ class FunctionPanel(
             tabs.selected == 0 && voiceEffectPage -> {
                 val rowTop = card.top + ink.dp(8f + 34f)
                 val rowStep = ink.dp(64f)
-                val viewportBottom = card.bottom - ink.dp(92f)
+                val viewportBottom = card.bottom - ink.dp(82f)
                 val gapX = ink.dp(7f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
                 if (y in rowTop..viewportBottom) {

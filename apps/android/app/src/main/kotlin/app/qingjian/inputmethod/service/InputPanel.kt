@@ -346,7 +346,7 @@ class InputPanel(
     val candidateTextStyleConfig = app.qingjian.inputmethod.candidates.CandidateTextStyleEngine.Config.forPreset(
         palette.text, settings.fontWeight, settings.candidateTextPreset,
     )
-    val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener,
+    val bar = CandidateBarView(context, palette, settings.candidateFontSize / 20f, stripSource, settings.toolbar, barListener,
         settings.fontWeight, transparentBackground, candidateTextStyleConfig).apply {
         setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
     }
@@ -516,13 +516,14 @@ class InputPanel(
     }
 
     /** 生成跨 Android 版本一致的磨砂底图：先缩小再高质量放大，避免依赖仅部分设备生效的 RenderEffect。 */
-    private fun blurVoiceBackdrop(source: Bitmap): Bitmap {
+    private fun blurVoiceBackdrop(source: Bitmap, strength: Int): Bitmap {
         val width = source.width
         val height = source.height
+        val scale = 1f + (strength.coerceIn(1, 50) - 1) / 49f * 5f
         val reduced = Bitmap.createScaledBitmap(
             source,
-            (width / 5).coerceAtLeast(1),
-            (height / 5).coerceAtLeast(1),
+            (width / scale).toInt().coerceAtLeast(1),
+            (height / scale).toInt().coerceAtLeast(1),
             true,
         )
         val blurred = Bitmap.createScaledBitmap(reduced, width, height, true)
@@ -543,13 +544,15 @@ class InputPanel(
                 stack.draw(Canvas(bitmap))
             }
         }.getOrNull()
+        val voicePrefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+        val glassStrength = voicePrefs.getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
         val frostedBackdrop = backdrop?.let { bitmap ->
-            runCatching { blurVoiceBackdrop(bitmap) }.getOrElse {
+            runCatching { blurVoiceBackdrop(bitmap, glassStrength) }.getOrElse {
                 if (!bitmap.isRecycled) bitmap.recycle()
                 null
             }
         }
-        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), transparentBackground).also { voice ->
+        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), transparentBackground, glassStrength).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))

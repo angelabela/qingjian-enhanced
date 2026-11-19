@@ -54,8 +54,12 @@ class AppearanceActivity : PageActivity() {
             ),
             ui.group(
                 null,
-                ui.segmentedRow(R.string.section_text_size, TextSize.entries.map { getString(it.label) }, settings.textSize.ordinal) {
-                    prefs.edit().putString(Settings.KEY_TEXT_SIZE, TextSize.entries[it].key).apply()
+                ui.slider(
+                    R.string.section_text_size, null,
+                    1, 50, settings.candidateFontSize, step = 1,
+                    format = { it.toString() + "sp" },
+                ) {
+                    prefs.edit().putInt(Settings.KEY_CANDIDATE_FONT_SIZE, it).apply()
                     rebuild()
                 },
                 footer = R.string.text_size_note,
@@ -78,7 +82,7 @@ class AppearanceActivity : PageActivity() {
     /** 当前主题、外观与字号下的候选条和键盘，候选条按实际大小画。 */
     private fun preview(settings: Settings, dark: Boolean): View {
         val density = resources.displayMetrics.density
-        val strip = Themes.preview(settings.theme, dark, density, settings.textSize.scale, settings.fontWeight.weight)
+        val strip = Themes.preview(settings.theme, dark, density, settings.candidateFontSize / 20f, settings.fontWeight.weight)
         return framed(ThemePreview(this, strip, Palette.of(settings.theme, dark), aspect = 0.42f, keyRadiusDp = 6f), selected = false)
     }
 

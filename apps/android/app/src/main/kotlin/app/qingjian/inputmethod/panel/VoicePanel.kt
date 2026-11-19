@@ -34,6 +34,7 @@ class VoicePanel(
     private val blurredKeyboard: Bitmap? = null,
     private val animationStyle: Int = 0,
     private val animatedKeyboardBackground: Boolean = false,
+    private val glassStrength: Int = DEFAULT_GLASS_STRENGTH,
 ) : FrameLayout(context) {
 
     interface Actions {
@@ -105,8 +106,9 @@ class VoicePanel(
         // Opaque frosted-glass overlay; remove the translucent wash.
         backdrop.alpha = if (animatedKeyboardBackground) 0.94f else 1f
         backdrop.visibility = if (blurredKeyboard != null) View.VISIBLE else View.GONE
+        val strength = glassStrength.coerceIn(1, 50)
         if (Build.VERSION.SDK_INT >= 31 && blurredKeyboard != null) {
-            val radius = 24f * resources.displayMetrics.density
+            val radius = (1.5f + strength * 0.56f) * resources.displayMetrics.density
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -115,14 +117,17 @@ class VoicePanel(
         fun themedAlpha(color: Int, alpha: Int) = (color and 0x00FFFFFF) or (alpha shl 24)
         scrim.background = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = glassRadius
-            setColor(themedAlpha(palette.board, 0xA0))
+            val tintAlpha = (0x40 + strength * 96 / 50).coerceIn(0x40, 0xA0)
+            setColor(themedAlpha(palette.board, tintAlpha))
             setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x45FFFFFF)
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         val glassHighlight = View(context).apply {
+            val topAlpha = (8 + strength * 40 / 50).coerceIn(0, 0x30)
+            val middleAlpha = (4 + strength * 20 / 50).coerceIn(0, 0x18)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0x30FFFFFF, 0x12FFFFFF, 0x00FFFFFF),
+                intArrayOf((topAlpha shl 24) or 0x00FFFFFF, (middleAlpha shl 24) or 0x00FFFFFF, 0x00FFFFFF),
             ).apply { cornerRadius = glassRadius }
             isClickable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -302,6 +307,8 @@ class VoicePanel(
     companion object {
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
+        const val PREF_GLASS_STRENGTH = "voice_glass_strength"
+        const val DEFAULT_GLASS_STRENGTH = 40
         val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {

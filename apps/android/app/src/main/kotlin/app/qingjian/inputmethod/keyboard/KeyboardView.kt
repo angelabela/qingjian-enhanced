@@ -79,7 +79,7 @@ class KeyboardView(
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
-    private val painter = KeyPainter(palette, metrics, settings.keyTextSize.scale, settings.keySkin, settings.fontWeight,
+    private val painter = KeyPainter(palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.fontWeight,
         keyBackgroundAlpha, keyBackgroundFrosted, settings.keyboardTextPreset)
     private val side = SideColumn(metrics.density) { item ->
         tapFeedback()
@@ -259,8 +259,10 @@ class KeyboardView(
         if (flicking == null) trail.draw(canvas)
         if (flicking != null) {
             // 上滑出的是哪个字放在气泡里；`;` 兼大写那个键划出的是 Shift，键本身亮着就够了
-            val label = if (flicking.key == Key.Backspace) context.getString(R.string.flick_clear_bubble) else flicking.key.flick
-            label?.let { painter.drawBubble(canvas, flicking, width, it) }
+            // 删除键的上下滑仍执行原动作，但不再弹出「清除」浮动提示。
+            if (flicking.key != Key.Backspace) {
+                flicking.key.flick?.let { painter.drawBubble(canvas, flicking, width, it) }
+            }
         } else if (settings.keyPopup) {
             pressed.values.filter { it.key.poppable && !choicePopup.showing }.forEach { painter.drawBubble(canvas, it, width) }
         }

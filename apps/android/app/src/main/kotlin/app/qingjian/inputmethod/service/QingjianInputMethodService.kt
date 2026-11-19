@@ -401,7 +401,7 @@ class QingjianInputMethodService :
             if (gameSettings?.glosses == false) options.copy(learningLanguage = InputOptions.LEARNING_OFF) else options
         }
         composer.englishCandidates = settings.englishCandidates
-        engine.setAppearance(settings.theme, settings.textSize.scale, settings.fontWeight.weight)
+        engine.setAppearance(settings.theme, settings.candidateFontSize / 20f, settings.fontWeight.weight)
         cloud.sync(settings)
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
         composer.applyScheme()

@@ -37,8 +37,12 @@ class KeyboardSettingsActivity : PageActivity() {
             ui.group(
                 R.string.section_keys,
                 hapticRow(settings),
-                ui.segmentedRow(R.string.key_text_size_title, TextSize.entries.map { getString(it.label) }, settings.keyTextSize.ordinal) {
-                    prefs.edit().putString(Settings.KEY_KEY_TEXT_SIZE, TextSize.entries[it].key).apply()
+                ui.slider(
+                    R.string.key_text_size_title, null,
+                    1, 50, settings.keyFontSize, step = 1,
+                    format = { it.toString() + "sp" },
+                ) {
+                    prefs.edit().putInt(Settings.KEY_KEY_FONT_SIZE, it).apply()
                     rebuild()
                 },
                 ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
