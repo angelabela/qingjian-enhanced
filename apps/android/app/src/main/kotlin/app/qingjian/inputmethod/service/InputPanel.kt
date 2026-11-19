@@ -519,7 +519,7 @@ class InputPanel(
     private fun blurVoiceBackdrop(source: Bitmap, strength: Int): Bitmap {
         val width = source.width
         val height = source.height
-        val scale = 1f + (strength.coerceIn(1, 50) - 1) / 49f * 5f
+        val scale = 1.2f + (strength.coerceIn(1, 50) - 1) / 49f * 4.8f
         val reduced = Bitmap.createScaledBitmap(
             source,
             (width / scale).toInt().coerceAtLeast(1),
