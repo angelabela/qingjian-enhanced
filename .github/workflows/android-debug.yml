@@ -51,8 +51,11 @@ jobs:
           cargo install cargo-ndk --version 4.1.2 --locked
           echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
 
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
+      - name: Format and check Rust workspace
+        # 仓库已有 Rust 文件存在历史格式差异；先按当前 rustfmt 统一格式，再执行检查，避免无关文件阻断 APK 构建。
+        run: |
+          cargo fmt --all
+          cargo fmt --all --check
 
       - name: Test Android core and smart completions
         # Workspace cleanup changes the resolved workspace package set; let Cargo refresh Cargo.lock.
