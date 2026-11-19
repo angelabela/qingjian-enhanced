@@ -139,7 +139,8 @@ class CandidateTextStyleEngine(
         if (eraseUnderlay) {
             clearPaint.textSize = when (role) {
                 Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
-                Role.PREEDIT -> baseTextSize * 0.60f
+                // Rust strip_top 使用 annotation 字号（12dp × 1.25），约为基础候选字号的 0.75。
+                Role.PREEDIT -> baseTextSize * 0.75f
                 Role.GLOSS -> baseTextSize * 0.575f
             }
             clearPaint.textAlign = Paint.Align.CENTER
