@@ -227,6 +227,7 @@ object LocalAiModelManager {
             return
         }
         inferenceExecutor.execute {
+            val started = System.nanoTime()
             val ranked = runCatching {
                 val file = modelFile(appContext)
                 check(file.isFile && file.length() > 0L) { "本地模型文件不可用" }
@@ -258,6 +259,7 @@ object LocalAiModelManager {
                         it.toSet() == candidates.toSet()
                 }
             }.getOrNull()
+            recordInference(started, ranked != null, if (ranked == null) "候选重排未返回有效结果" else null)
             mainHandler.post { onComplete(ranked) }
         }
     }
