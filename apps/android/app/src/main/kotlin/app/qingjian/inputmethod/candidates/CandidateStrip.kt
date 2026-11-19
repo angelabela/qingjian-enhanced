@@ -106,7 +106,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             return frame.bitmap.width + 12f * density + extra.size * 38f * density
         }
 
-    fun setAdaptiveTextColor(color: Int?) = textStyles.setAdaptiveTextColor(color)
+    fun setAdaptiveTextColor(color: Int?) {
+        textStyles.setAdaptiveTextColor(color)
+        extraText.color = color ?: markColor
+        fallbackText.color = color ?: markColor
+    }
 
     fun show(preedit: String, candidates: List<Candidate>) {
         this.preedit = preedit
