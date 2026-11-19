@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import android.view.WindowManager
 import android.content.res.ColorStateList
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
@@ -23,6 +24,10 @@ class DynamicBackgroundActivity : Activity() {
         super.onCreate(savedInstanceState)
         val appSettings = Settings.load(this)
         val palette = Palette.of(appSettings.theme, appSettings.appearance.dark(this))
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.statusBarColor = palette.board
+        window.navigationBarColor = palette.board
+        window.decorView.systemUiVisibility = if (appSettings.appearance.dark(this)) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(18))
@@ -65,6 +70,36 @@ class DynamicBackgroundActivity : Activity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) prefs.edit().putInt(KEY_ALPHA, progress).apply()
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+            })
+        })
+        root.addView(TextView(this).apply {
+            text = "背景亮度"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(SeekBar(this).apply {
+            progressTintList = ColorStateList.valueOf(palette.brand)
+            thumbTintList = ColorStateList.valueOf(palette.brand)
+            max = 200; progress = prefs.getInt(KEY_BRIGHTNESS, 100).coerceIn(0, 200)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser) prefs.edit().putInt(KEY_BRIGHTNESS, progress).apply()
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+            })
+        })
+        root.addView(TextView(this).apply {
+            text = "背景模糊程度"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(SeekBar(this).apply {
+            progressTintList = ColorStateList.valueOf(palette.brand)
+            thumbTintList = ColorStateList.valueOf(palette.brand)
+            max = 30; progress = prefs.getInt(KEY_BLUR, 8).coerceIn(0, 30)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser) prefs.edit().putInt(KEY_BLUR, progress).apply()
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
                 override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
@@ -117,6 +152,8 @@ class DynamicBackgroundActivity : Activity() {
         const val KEY_URI = "video_uri"
         const val KEY_ENABLED = "video_enabled"
         const val KEY_ALPHA = "video_alpha"
+        const val KEY_BRIGHTNESS = "video_brightness"
+        const val KEY_BLUR = "video_blur"
         const val REQUEST_VIDEO = 731
     }
 }
