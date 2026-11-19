@@ -304,7 +304,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             intArrayOf(0x00000000, 0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt()),
             floatArrayOf(0f, 0.18f, 0.82f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + inset + fadeWidth).coerceAtMost(scrollX + viewWidth), barHeight, leftFadePaint)
+        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + inset + fadeWidth).coerceAtMost((scrollX + viewWidth).toFloat()), barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 
