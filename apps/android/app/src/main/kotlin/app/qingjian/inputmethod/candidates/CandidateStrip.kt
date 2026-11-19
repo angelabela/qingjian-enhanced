@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import kotlin.math.roundToInt
 import android.text.TextPaint
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.core.frame.Candidate
@@ -165,7 +166,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int) {
         val layer = canvas.saveLayer(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, null)
-        val leftInset = viewWidth * 0.05f
+        val leftInset = (viewWidth * 0.05f).roundToInt().toFloat()
         canvas.translate(leftInset, 0f)
         val contentViewWidth = (viewWidth - leftInset).toInt().coerceAtLeast(1)
         val image = image
