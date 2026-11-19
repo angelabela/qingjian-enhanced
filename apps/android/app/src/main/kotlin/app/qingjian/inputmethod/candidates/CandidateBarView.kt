@@ -103,6 +103,13 @@ class CandidateBarView(
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
+    /** 视频背景帧亮度变化时，自动切换候选文字的高对比颜色。 */
+    fun setVideoBackgroundLuminance(luminance: Float) {
+        val adaptive = if (luminance >= 0.52f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+        strip.setAdaptiveTextColor(adaptive)
+        invalidate()
+    }
+
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
     /** 工具栏位置上的一句提示与点它要做的事；null 是没有提示。几秒后、出候选或点过就收起。 */
     private var notice: Pair<String, () -> Unit>? = null
