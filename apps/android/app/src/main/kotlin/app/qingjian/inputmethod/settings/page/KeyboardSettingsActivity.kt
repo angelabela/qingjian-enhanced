@@ -153,16 +153,37 @@ class KeyboardSettingsActivity : PageActivity() {
         }?.first ?: "NONE"
     }
 
+    /** 设置栏显示所选按键真正生效的动作：自定义动作优先；沿用默认时回退到该键原有手势。 */
     private fun displayedGestureAction(settings: Settings, selectedKey: String, upward: Boolean): Settings.GestureAction {
-        if (settings.customGestureKey != "NONE") {
-            return if (upward) settings.customGestureUp else settings.customGestureDown
+        val custom = if (settings.customGestureKey == selectedKey) {
+            if (upward) settings.customGestureUp else settings.customGestureDown
+        } else {
+            Settings.GestureAction.DEFAULT
         }
-        return when (selectedKey) {
+        if (custom != Settings.GestureAction.DEFAULT) return custom
+
+        val builtIn = when (selectedKey) {
             "SPACE" -> if (upward) settings.spaceSwipeUp else settings.spaceSwipeDown
             "ENTER" -> if (upward) settings.enterSwipeUp else settings.enterSwipeDown
             "BACKSPACE" -> if (upward) settings.backspaceSwipeUp else settings.backspaceSwipeDown
             "SYMBOLS" -> if (upward) settings.symbolsSwipeUp else settings.symbolsSwipeDown
-            else -> if (upward) settings.customGestureUp else settings.customGestureDown
+            else -> Settings.GestureAction.DEFAULT
+        }
+        if (builtIn != Settings.GestureAction.DEFAULT) return builtIn
+
+        // 同步显示键盘实际提供的内置手势，避免设置栏显示“沿用默认”却看不到真实动作。
+        return when {
+            selectedKey == "BACKSPACE" && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
+            selectedKey == "BACKSPACE" && settings.flickClear && !upward -> Settings.GestureAction.RESTORE_CLEAR
+            selectedKey == "SPACE" && !upward -> Settings.GestureAction.OPEN_CLIPBOARD
+            selectedKey.startsWith("LETTER_") && !upward -> when (selectedKey.removePrefix("LETTER_")) {
+                "Z" -> Settings.GestureAction.SELECT_ALL
+                "X" -> Settings.GestureAction.CUT
+                "C" -> Settings.GestureAction.COPY
+                "V" -> Settings.GestureAction.PASTE
+                else -> Settings.GestureAction.DEFAULT
+            }
+            else -> Settings.GestureAction.DEFAULT
         }
     }
 
