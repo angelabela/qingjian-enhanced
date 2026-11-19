@@ -133,7 +133,7 @@ class FunctionPanel(
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(34f)
-        val viewportBottom = card.bottom - ink.dp(92f)
+        val viewportBottom = card.bottom - ink.dp(8f)
         val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
         val rowStep = ink.dp(64f)
         val itemHeight = ink.dp(56f)
@@ -192,7 +192,7 @@ class FunctionPanel(
         val itemHeight = ink.dp(64f)
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(26f)
-        val viewportBottom = card.bottom - ink.dp(8f)
+        val viewportBottom = card.bottom - ink.dp(92f)
         val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
         effectScroll.max = (rows * rowStep - viewportHeight).coerceAtLeast(0f)
         val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
@@ -380,12 +380,14 @@ class FunctionPanel(
                 val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
                 if (y >= controlTop + ink.dp(44f)) {
                     prefs.edit().putBoolean("keyboard_key_frosted", !prefs.getBoolean("keyboard_key_frosted", false)).apply()
+                    context.sendBroadcast(Intent(app.qingjian.inputmethod.background.DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
                     invalidate()
                     return
                 }
                 if (y >= controlTop && y < controlTop + ink.dp(44f)) {
                     val value = ((x - card.left - ink.dp(14f)) / (card.width() - ink.dp(28f)).coerceAtLeast(1f)).coerceIn(0f, 1f)
                     prefs.edit().putInt("keyboard_key_alpha", (value * 100).toInt()).apply()
+                    context.sendBroadcast(Intent(app.qingjian.inputmethod.background.DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
                     invalidate()
                     return
                 }
@@ -414,7 +416,7 @@ class FunctionPanel(
             tabs.selected == 0 && voiceEffectPage -> {
                 val rowTop = card.top + ink.dp(8f + 34f)
                 val rowStep = ink.dp(64f)
-                val viewportBottom = card.bottom - ink.dp(8f)
+                val viewportBottom = card.bottom - ink.dp(92f)
                 val gapX = ink.dp(7f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
                 if (y in rowTop..viewportBottom) {
