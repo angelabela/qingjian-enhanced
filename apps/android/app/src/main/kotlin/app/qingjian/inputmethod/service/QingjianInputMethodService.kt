@@ -634,7 +634,7 @@ class QingjianInputMethodService :
     private fun refreshSmartInfoSuggestions() {
         val currentPanel = panel ?: return
         if (editor != null || currentPanel.openPanel != null || shownPreedit.isNotEmpty()) return
-        val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
+        val before = currentInputConnection?.getTextBeforeCursor(96, 0)?.toString().orEmpty()
         val trigger = SmartInfoProvider.TRIGGERS.firstOrNull { before.endsWith(it) }
         if (trigger == null) {
             smartInfoSequence++
