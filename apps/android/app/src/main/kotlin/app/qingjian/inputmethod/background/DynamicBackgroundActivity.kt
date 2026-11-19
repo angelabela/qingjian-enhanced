@@ -22,10 +22,11 @@ class DynamicBackgroundActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_VIDEO) return
         if (resultCode == RESULT_OK) {
-            val uri: Uri? = data?.data
-            if (uri != null) {
+            val result = data
+            val uri: Uri? = result?.data
+            if (uri != null && result != null) {
                 runCatching {
-                    val readFlag = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    val readFlag = result.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
                     contentResolver.takePersistableUriPermission(uri, readFlag)
                     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                         .putString(KEY_URI, uri.toString())
