@@ -17,7 +17,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight)) {
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
