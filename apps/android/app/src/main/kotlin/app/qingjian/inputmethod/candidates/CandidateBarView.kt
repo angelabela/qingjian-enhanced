@@ -241,7 +241,7 @@ class CandidateBarView(
         popup.showing -> onPopupTouch(event)
         else -> {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                onPreedit = !strip.isEmpty && strip.caretAt(event.x, event.y) >= 0
+                onPreedit = !strip.isEmpty && strip.caretAt(event.x - stripWidth * 0.05f, event.y) >= 0
                 dragCaret = -1
                 // 长按一触发 GestureDetector 就不再给拖动；按在拼音行上先停一停再拖也要跟
                 gestures.setIsLongpressEnabled(!onPreedit)
