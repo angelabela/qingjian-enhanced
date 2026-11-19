@@ -43,7 +43,6 @@ class KeyboardSettingsActivity : PageActivity() {
                     format = { it.toString() + "sp" },
                 ) {
                     prefs.edit().putInt(Settings.KEY_KEY_FONT_SIZE, it).apply()
-                    rebuild()
                 },
                 ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
                     prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
