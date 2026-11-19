@@ -116,14 +116,14 @@ class VoicePanel(
         scrim.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                themedAlpha(palette.surface, 0xA8),
-                themedAlpha(palette.board, 0x98),
-                themedAlpha(palette.surface, 0xA8),
+                themedAlpha(palette.board, 0xA8),
+                themedAlpha(palette.board, 0x90),
+                themedAlpha(palette.surface, 0x88),
                 themedAlpha(palette.board, 0x98),
             ),
         ).apply {
             cornerRadius = glassRadius
-            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x75FFFFFF)
+            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x45FFFFFF)
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
