@@ -573,6 +573,15 @@ class KeyboardView(
                 return
             }
             flickDirection = if (vertical > 0f) 1 else -1
+            if (key is Key.Space) {
+                // 自定义空格上下滑优先于长按语音、剪贴板和光标手势。
+                timer.removeCallbacks(spaceHold)
+                if (voiceMode) listener.onVoiceRelease(cancel = true)
+                spacePointer = -1
+                cursorMode = false
+                voiceMode = false
+                clipboardMode = false
+            }
         } else if ((vertical > 0f && flickDirection < 0) || (vertical < 0f && flickDirection > 0)) {
             // 方向一旦确定就不允许中途反向，避免误触发。
             flickBroken = true
@@ -705,7 +714,7 @@ class KeyboardView(
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
         // 空格键明显向下滑时打开剪贴板；优先于横向挪光标，且不依赖「空格移动光标」设置。
-        if (!cursorMode && settings.spaceSwipeDown == Settings.GestureAction.DEFAULT &&
+        if (!cursorMode && gestureAction(Key.Space(), upward = false) == Settings.GestureAction.DEFAULT &&
             dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
             clipboardMode = true
             timer.removeCallbacks(spaceHold)

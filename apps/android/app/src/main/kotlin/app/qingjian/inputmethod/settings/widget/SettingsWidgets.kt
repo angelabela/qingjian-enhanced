@@ -153,6 +153,31 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         addView(chevron())
     }
 
+    /** 字符串标题版跳转行，供动态生成的自定义设置项使用。 */
+    fun link(title: String, value: String?, onClick: () -> Unit) = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(ROW_HEIGHT_DP)
+        setPadding(dp(16), dp(8), dp(12), dp(8))
+        background = pressable()
+        setOnClickListener { onClick() }
+        addView(text(title, 16f, colors.text), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        value?.let { addView(valueText(it)) }
+        addView(chevron())
+    }
+
+    /** 字符串标题版单选设置项。 */
+    fun picker(title: String, value: String, options: List<String>, selected: Int, onPick: (Int) -> Unit) =
+        link(title, value) {
+            AlertDialog.Builder(context)
+                .setTitle(title)
+                .setSingleChoiceItems(options.toTypedArray(), selected) { dialog, which ->
+                    dialog.dismiss()
+                    onPick(which)
+                }
+                .show()
+        }
+
     /** tab 页顶栏的标题：居中，与二级页同一个字号。 */
     fun pageTitle(title: Int) = FrameLayout(context).apply {
         minimumHeight = dp(BAR_HEIGHT_DP)
