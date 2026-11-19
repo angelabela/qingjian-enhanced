@@ -31,6 +31,8 @@ class KeyboardView(
     private val settings: Settings,
     private val listener: Listener,
     transparentBackground: Boolean = settings.keyboardBackgroundEffect,
+    keyBackgroundAlpha: Float = 1f,
+    keyBackgroundFrosted: Boolean = false,
 ) : View(context) {
     enum class EditShortcut { SELECT_ALL, CUT, COPY, PASTE }
 
@@ -77,7 +79,7 @@ class KeyboardView(
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
-    private val painter = KeyPainter(palette, metrics, settings.keyTextSize.scale, settings.keySkin, settings.fontWeight)
+    private val painter = KeyPainter(palette, metrics, settings.keyTextSize.scale, settings.keySkin, settings.fontWeight, keyBackgroundAlpha, keyBackgroundFrosted)
     private val side = SideColumn(metrics.density) { item ->
         tapFeedback()
         listener.onSideItem(item)
