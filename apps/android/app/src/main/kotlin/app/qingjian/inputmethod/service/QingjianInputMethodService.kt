@@ -163,13 +163,11 @@ class QingjianInputMethodService :
         }
     }
 
-    /** 视频背景设置变化后重建视频/光效层；若设置子面板仍打开则留在原位置。 */
+    /** 视频背景设置变化只更新现有背景层，绝不重建输入视图或当前设置面板。 */
     private val dynamicBackgroundListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            if (activePanelState == PanelKind.DYNAMIC_BACKGROUND) {
-                reopenPanel = PanelKind.DYNAMIC_BACKGROUND
-            }
-            setInputView(onCreateInputView())
+            panel?.refreshDynamicBackground()
+            panel?.refreshFunctions()
         }
     }
 
