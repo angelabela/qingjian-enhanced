@@ -264,7 +264,7 @@ class CandidateBarView(
     private fun smartActionAt(index: Int, text: String, contentX: Float, y: Float): String? {
         val actions = smartActions(text)
         if (actions.isEmpty()) return null
-        val rect = strip.wordRect(index)?.apply { offset(width * 0.05f, 0f) } ?: return null
+        val rect = strip.wordRect(index)?.apply { offset(stripWidth * 0.05f, 0f) } ?: return null
         // 快捷按钮固定在候选格底部的独立操作行，不再压在候选文字上。
         val cy = rect.bottom - 9f * density
         if (y !in (cy - 9f * density)..(cy + 9f * density)) return null
@@ -278,7 +278,7 @@ class CandidateBarView(
     private fun drawSmartActions(canvas: Canvas) {
         strip.candidates.forEachIndexed { index, candidate ->
             val actions = smartActions(candidate.text)
-            val rect = strip.wordRect(index)?.apply { offset(width * 0.05f, 0f) } ?: return@forEachIndexed
+            val rect = strip.wordRect(index)?.apply { offset(stripWidth * 0.05f, 0f) } ?: return@forEachIndexed
             actions.forEachIndexed { i, action ->
                 val cx = rect.right - (11f + i * 21f) * density - scrollX
                 val cy = rect.bottom - 9f * density
@@ -309,7 +309,7 @@ class CandidateBarView(
      * 拼音行按视图坐标画、不随候选滚动；新的一帧到了缝的位置会变，所以每次按手指重新找。
      */
     private fun dragCaret(x: Float) {
-        val caret = strip.caretNear(x - width * 0.05f)
+        val caret = strip.caretNear(x - stripWidth * 0.05f)
         if (caret < 0 || caret == dragCaret) return
         dragCaret = caret
         Haptics.tap(context)
@@ -322,13 +322,13 @@ class CandidateBarView(
             return
         }
         // 拼音行钉在视口上，不随候选滚动，按视图坐标查
-        val caret = strip.caretAt(x - width * 0.05f, y)
+        val caret = strip.caretAt(x - stripWidth * 0.05f, y)
         if (caret >= 0) {
             listener.onMoveCaret(caret)
             return
         }
         if (!strip.isEmpty) {
-            strip.indexAt(x + scrollX - width * 0.05f).takeIf { it >= 0 }?.let { index ->
+            strip.indexAt(x + scrollX - stripWidth * 0.05f).takeIf { it >= 0 }?.let { index ->
                 val text = strip.candidates.getOrNull(index)?.text.orEmpty()
                 smartActionAt(index, text, x + scrollX, y)?.let { action ->
                     listener.onSmartAction(text, action)
@@ -358,7 +358,7 @@ class CandidateBarView(
      */
     private fun openTranslations(event: MotionEvent) {
         if (event.x >= stripWidth) return
-        val index = strip.indexAt(event.x + scrollX - width * 0.05f)
+        val index = strip.indexAt(event.x + scrollX - stripWidth * 0.05f)
         val candidate = strip.candidates.getOrNull(index) ?: return
         val senses = candidate.senses
         if (senses.isEmpty() && !candidate.forgettable) return
