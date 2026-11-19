@@ -14,6 +14,9 @@ import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -895,20 +898,48 @@ class QingjianInputMethodService :
         }.getOrDefault("")
     }
 
+    /** 为快捷 AI 等待提示绘制平滑流动的紫-蓝-粉渐变；只作用于这段 composing 文本。 */
+    private fun quickAiLoadingFrame(phase: Int): CharSequence {
+        val label = "✦ AI 正在生成"
+        val colors = intArrayOf(
+            0xFF8B72FF.toInt(),
+            0xFF42B8F5.toInt(),
+            0xFFFF78B7.toInt(),
+            0xFF8B72FF.toInt(),
+        )
+        return SpannableString(label).apply {
+            label.forEachIndexed { index, char ->
+                if (char.isWhitespace()) return@forEachIndexed
+                val position = (((index.toFloat() / (label.length - 1)) + phase * 0.035f) % 1f) * (colors.size - 1)
+                val segment = position.toInt().coerceIn(0, colors.size - 2)
+                val fraction = position - segment
+                val start = colors[segment]
+                val end = colors[segment + 1]
+                fun channel(shift: Int): Int {
+                    val a = (start ushr shift) and 0xFF
+                    val b = (end ushr shift) and 0xFF
+                    return (a + (b - a) * fraction).toInt().coerceIn(0, 255)
+                }
+                val color = android.graphics.Color.rgb(channel(16), channel(8), channel(0))
+                setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+    }
+
     /** 在输入框光标处用 composing span 显示动态状态；生成结果会直接替换这段提示。 */
     private fun showQuickAiLoading(connection: InputConnection) {
         stopQuickAiLoading(clearText = true)
         // 先结束用户正在编辑的临时 composing 区，再建立独立的 AI 状态区，避免覆盖拼音预编辑。
         runCatching { connection.finishComposingText() }
         quickAiLoadingConnection = connection
-        val frames = arrayOf("✦ AI 正在生成", "✦ AI 正在生成 ·", "✦ AI 正在生成 · ·", "✦ AI 正在生成 · · ·")
-        var frame = 0
+        var phase = 0
         val animation = object : Runnable {
             override fun run() {
                 if (quickAiLoadingConnection !== connection) return
-                runCatching { connection.setComposingText(frames[frame], 1) }
-                frame = (frame + 1) % frames.size
-                quickAiHandler.postDelayed(this, 420L)
+                runCatching { connection.setComposingText(quickAiLoadingFrame(phase), 1) }
+                phase = (phase + 1) % 1000
+                // 140ms 平缓推进色带，避免高频刷新输入框或产生明显闪烁。
+                quickAiHandler.postDelayed(this, 140L)
             }
         }
         quickAiLoadingRunnable = animation
