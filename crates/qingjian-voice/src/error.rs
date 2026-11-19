@@ -19,6 +19,9 @@ pub enum VoiceError {
     #[error("connection closed before the final result")]
     Closed,
 
+    #[error("recognizer returned an empty final result")]
+    EmptyResult,
+
     #[error("no final result within {0} ms")]
     Timeout(u64),
 
@@ -47,6 +50,7 @@ impl VoiceError {
             } => "语音识别服务繁忙，稍后再试".to_owned(),
             Self::Server { code, .. } => format!("语音识别出错（{code}）"),
             Self::Timeout(_) => "语音识别没有回应，检查网络".to_owned(),
+            Self::EmptyResult => "没有识别到语音内容，请再说一次".to_owned(),
             Self::Protocol(_) => "语音识别服务的回复看不懂".to_owned(),
         }
     }
