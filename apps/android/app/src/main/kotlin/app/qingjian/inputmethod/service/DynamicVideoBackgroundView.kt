@@ -5,13 +5,24 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.view.Surface
 import android.view.TextureView
+import android.os.Build
+import android.graphics.RenderEffect
+import android.graphics.Shader
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
-internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float) : TextureView(context), TextureView.SurfaceTextureListener {
+internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
     private var player: MediaPlayer? = null
     private var output: Surface? = null
     private var prepared = false
-    init { isOpaque = false; this.alpha = alpha.coerceIn(0f, 1f); surfaceTextureListener = this }
+    init {
+        isOpaque = false
+        this.alpha = alpha.coerceIn(0f, 1f)
+        if (Build.VERSION.SDK_INT >= 31 && blurRadiusDp > 0) {
+            val radius = blurRadiusDp * resources.displayMetrics.density
+            setRenderEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
+        }
+        surfaceTextureListener = this
+    }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
         releasePlayer()
         val target = Surface(surface)
