@@ -86,6 +86,11 @@ class CandidateBarView(
 
     private val popup = ChoicePopup(this, palette)
 
+    private val divider = Paint().apply {
+        color = palette.faint
+        strokeWidth = maxOf(1f, density * 0.7f)
+    }
+
     /** 候选右端 ⌄ 那一格的宽；候选滚到它底下为止。 */
     private val expandSlot = 46f * density
     private val expandFill = Paint()
@@ -242,6 +247,10 @@ class CandidateBarView(
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
             drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
+            // 视频背景模式下候选栏与键盘共用同一动态画面，不绘制底部分界线。
+            if (!transparentBackground) {
+                canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
+            }
         }
     }
 
