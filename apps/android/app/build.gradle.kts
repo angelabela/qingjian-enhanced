@@ -130,6 +130,8 @@ tasks.named("preBuild") {
 
 
 dependencies {
+    // 本地 AI：LiteRT-LM 0.19.0 支持 Qwen3-0.6B INT4 的 Android GPU/CPU 推理。
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.0")
     // 260：持续相机预览与本机条码识别（不上传扫描内容）
     implementation("androidx.activity:activity:1.10.1")
     implementation("androidx.camera:camera-camera2:1.4.2")
