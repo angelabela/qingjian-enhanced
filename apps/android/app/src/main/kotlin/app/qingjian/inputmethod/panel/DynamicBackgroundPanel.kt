@@ -86,6 +86,8 @@ class DynamicBackgroundPanel(
         canvas.restore()
     }
 
+    override fun onBack() = actions.openPanel(PanelKind.FUNCTIONS)
+
     override fun onTap(x: Float, y: Float) {
         if (isRightIcon(x, y)) return
         if (!card.contains(x, y)) return
