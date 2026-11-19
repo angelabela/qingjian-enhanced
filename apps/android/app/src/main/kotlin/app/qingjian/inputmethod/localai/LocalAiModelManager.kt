@@ -129,14 +129,19 @@ object LocalAiModelManager {
                 check(file.isFile && file.length() == EXPECTED_SIZE) {
                     "模型文件不存在或大小不正确，请重新下载"
                 }
+                check(sha256(file) == EXPECTED_SHA256) {
+                    "模型 SHA-256 校验失败，请删除后重新下载"
+                }
                 val prompt = "请只用简体中文回复：青简本地 AI 已成功运行。"
                 val gpuResult = runCatching {
-                    inferOnce(file, appContext.cacheDir, Backend.GPU(), prompt)
+                    inferOnce(file, appContext.cacheDir, Backend.GPU(), prompt).also {
+                        check(it.isNotBlank()) { "GPU 后端没有返回文本" }
+                    }
                 }
                 gpuResult.getOrElse {
-                    inferOnce(file, appContext.cacheDir, Backend.CPU(), prompt)
-                }.also { reply ->
-                    check(reply.isNotBlank()) { "模型没有返回文本" }
+                    inferOnce(file, appContext.cacheDir, Backend.CPU(), prompt).also { reply ->
+                        check(reply.isNotBlank()) { "CPU 后端没有返回文本" }
+                    }
                 }
             }
             mainHandler.post { onComplete(result) }
@@ -165,16 +170,17 @@ object LocalAiModelManager {
             // 若 initialize 抛错，不调用 close；LiteRT-LM 要求仅关闭已成功初始化的 Engine。
             candidate.initialize()
             engine = candidate
-            conversation = candidate.createConversation(
+            val activeConversation = candidate.createConversation(
                 ConversationConfig(
                     systemInstruction = Contents.of(
                         "你是青简输入法的本地中文助手。回答简洁、准确，只输出用户需要的内容。",
                     ),
                 ),
             )
+            conversation = activeConversation
             val output = StringBuilder()
             runBlocking {
-                conversation.sendMessageAsync(prompt).collect { chunk ->
+                activeConversation.sendMessageAsync(prompt).collect { chunk ->
                     output.append(chunk.toString())
                 }
             }
