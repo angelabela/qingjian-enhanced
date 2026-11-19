@@ -156,10 +156,11 @@ class KeyPainter(
     ) {
         val baseline = y + 3f * density
         val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
-        val useText = ink.measureText(label).let { it <= maxLabelWidth }
+        ink.typeface = fontTypeface
+        ink.textSize = 9f * density
+        val useText = ink.measureText(label) <= maxLabelWidth
         val shown = if (useText) label else gestureHintSymbol(label, upward)
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
-        ink.typeface = fontTypeface
         ink.textSize = (if (useText) 9f else 12f) * density
         // 提示文案放不下时改用语义图标，避免挤压键面字母或与邻键重叠。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
