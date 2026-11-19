@@ -60,7 +60,6 @@ class AppearanceActivity : PageActivity() {
                     format = { it.toString() + "sp" },
                 ) {
                     prefs.edit().putInt(Settings.KEY_CANDIDATE_FONT_SIZE, it).apply()
-                    rebuild()
                 },
                 footer = R.string.text_size_note,
             ),
