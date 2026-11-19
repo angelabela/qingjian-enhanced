@@ -42,9 +42,6 @@
     </queries>
 
     <application
-        <!-- GPU 后端可选依赖；无 OpenCL 的设备会自动回退 CPU。 -->
-        <uses-native-library android:name="libvndksupport.so" android:required="false" />
-        <uses-native-library android:name="libOpenCL.so" android:required="false" />
         android:name=".QingjianApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
