@@ -150,6 +150,34 @@ class VoicePanel(
             }
         }
         val density = resources.displayMetrics.density
+        fun glassButtonBackground(selected: Boolean): android.graphics.drawable.Drawable {
+            val density = resources.displayMetrics.density
+            val tint = if (selected) Color.rgb(7, 193, 96) else palette.functionalKey
+            fun alpha(color: Int, value: Int) = (color and 0x00FFFFFF) or (value.coerceIn(0, 255) shl 24)
+            val shadow = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x30000000)
+            }
+            val body = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(alpha(Color.WHITE, 0x52), alpha(tint, 0xC8), alpha(tint, 0xA8)),
+            ).apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setStroke((1.2f * density).toInt().coerceAtLeast(1), alpha(Color.WHITE, if (selected) 0xD8 else 0xA8))
+            }
+            val highlight = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(alpha(Color.WHITE, if (selected) 0x58 else 0x48), 0x10FFFFFF, 0x00FFFFFF),
+            ).apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+            }
+            return android.graphics.drawable.LayerDrawable(arrayOf(shadow, body, highlight)).apply {
+                setLayerInset(0, 0, (3f * density).toInt(), 0, 0)
+                setLayerInset(1, (1f * density).toInt(), 0, (1f * density).toInt(), (2f * density).toInt())
+                setLayerInset(2, (3f * density).toInt(), (2f * density).toInt(), (3f * density).toInt(), (5f * density).toInt())
+            }
+        }
+
         fun styleActionButton(view: TextView, label: String, action: () -> Unit) {
             view.text = label
             view.textSize = 14f
@@ -159,10 +187,7 @@ class VoicePanel(
             view.isFocusable = true
             view.includeFontPadding = false
             view.setPadding(0, 0, 0, 0)
-            view.background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(palette.functionalKey)
-            }
+            view.background = glassButtonBackground(selected = false)
             view.setOnClickListener {
                 // 语音面板与键盘按键共用 App 内「按键震动」开关和强度档位。
                 Haptics.tap(context)
