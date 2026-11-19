@@ -33,6 +33,7 @@ class CandidateBarView(
     private val listener: Listener,
     fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
     private val transparentBackground: Boolean = false,
+    private val candidateTextStyles: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(palette.text, fontWeight),
 ) : View(context) {
     interface Listener {
         fun onSelect(index: Int)
