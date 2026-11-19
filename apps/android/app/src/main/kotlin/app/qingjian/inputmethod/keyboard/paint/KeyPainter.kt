@@ -348,6 +348,18 @@ class KeyPainter(
                 ink.style = Paint.Style.FILL
                 canvas.drawText(value, cx, baseline, ink)
             }
+            Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
+                val luminance = (0.2126f * android.graphics.Color.red(color) +
+                    0.7152f * android.graphics.Color.green(color) +
+                    0.0722f * android.graphics.Color.blue(color)) / 255f
+                ink.color = if (luminance > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                ink.style = Paint.Style.STROKE
+                ink.strokeWidth = 1.35f * density
+                canvas.drawText(value, cx, baseline, ink)
+                ink.color = color
+                ink.style = Paint.Style.FILL
+                canvas.drawText(value, cx, baseline, ink)
+            }
             Settings.TextEffectPreset.COLOR_GRADIENT -> {
                 val measured = ink.measureText(value).coerceAtLeast(1f)
                 ink.shader = LinearGradient(cx - measured / 2f, baseline - ink.textSize,
