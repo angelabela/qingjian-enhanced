@@ -23,7 +23,7 @@ class DynamicBackgroundPanel(
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
     private val rowHeight get() = ink.dp(66f)
-    private val labels = listOf("启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度", "导入或更换视频")
+    private val labels = listOf("启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度", "键盘按键透明度", "键盘按键磨砂", "导入或更换视频")
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
 
     private fun notifyChanged() {
@@ -38,7 +38,7 @@ class DynamicBackgroundPanel(
 
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, null)
-        ink.text(canvas, "动态视频背景", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        ink.text(canvas, "视频背景", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
         val top = card.top + ink.dp(8f)
@@ -57,19 +57,22 @@ class DynamicBackgroundPanel(
                 3 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
                 4 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
                 5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
+                6 -> "${prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100)}%"
+                7 -> if (prefs.getBoolean("keyboard_key_frosted", false)) "开启" else "关闭"
                 else -> if (prefs.getString(DynamicBackgroundActivity.KEY_URI, null) == null) "尚未导入" else "已导入视频 · 点击更换"
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
             ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
-            if (index in 3..5) {
+            if (index in 3..6) {
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
                 val cy = y + ink.dp(49f)
-                val max = if (index == 3) 100f else if (index == 4) 200f else 30f
+                val max = if (index == 4) 200f else if (index == 5) 30f else 100f
                 val current = when (index) {
                     3 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
                     4 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
-                    else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
+                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
+                    else -> prefs.getInt("keyboard_key_alpha", 100)
                 }.coerceIn(0, max.toInt())
                 ink.fill.color = palette.functionalKey
                 ink.fill.strokeWidth = ink.dp(4f)
@@ -103,7 +106,8 @@ class DynamicBackgroundPanel(
                 notifyChanged()
             }
             2 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
-            in 3..5 -> {
+            7 -> update { putBoolean("keyboard_key_frosted", !prefs.getBoolean("keyboard_key_frosted", false)) }
+            in 3..6 -> {
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
                 val value = (((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f))
@@ -111,11 +115,12 @@ class DynamicBackgroundPanel(
                     when (index) {
                         3 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
                         4 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
-                        else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+                        5 -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+                        else -> putInt("keyboard_key_alpha", (value * 100).toInt())
                     }
                 }
             }
-            6 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            8 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
@@ -127,7 +132,8 @@ class DynamicBackgroundPanel(
             when (index) {
                 3 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
                 4 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
-                else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+                5 -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+                else -> putInt("keyboard_key_alpha", (value * 100).toInt())
             }
         }.apply()
     }
@@ -136,7 +142,7 @@ class DynamicBackgroundPanel(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y)) {
             val index = ((event.y - card.top - ink.dp(8f) + scroll.offset) / rowHeight).toInt()
-            if (index in 3..5) {
+            if (index in 3..6) {
                 sliderTouchIndex = index
                 setSliderValue(index, event.x)
                 invalidate()
