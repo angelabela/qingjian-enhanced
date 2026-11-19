@@ -369,6 +369,8 @@ class InputPanel(
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
 
+    private val bottomInset = navigationBarHeight(context)
+
     // 云联想使用独立悬浮 Tips，不加入垂直布局、不挤占候选栏和键盘高度。
     private val main = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -387,8 +389,6 @@ class InputPanel(
         clipToPadding = false
     }
 
-    /** 建视图时量到的导航栏高度；用户换导航方式（手势 ↔ 三键）后会过时，见 [stale]。 */
-    private val bottomInset = navigationBarHeight(context)
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
