@@ -180,12 +180,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         if (!transparentBackground) {
             fill.color = image.background
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
-        } else {
-            // 译文区使用近不透明深色衬底，确保白色释义不受视频每帧明暗变化影响。
-            // 仅覆盖候选行下部，主候选文字和视频画面仍保持原有通透感。
-            val glossTop = top + (bitmap.height - top) * 0.62f
-            fill.color = (glassTint and 0x00FFFFFF) or (0xC8 shl 24)
-            canvas.drawRect(scrollX.toFloat(), glossTop, (scrollX + contentViewWidth).toFloat(), barHeight, fill)
         }
         // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
         val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
