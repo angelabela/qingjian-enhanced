@@ -110,7 +110,7 @@ class CandidateTextStyleEngine(
     fun paint(role: Role): TextPaint = paints.getValue(role)
 
     /** 清除旧位图字形并按指定角色重绘；调用方需在已绘制 Rust 位图的 saveLayer 内使用。 */
-    fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role, eraseSize: Float = baseTextSize) {
+    fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role) {
         if (text.isEmpty() || rect.isEmpty) return
         val paint = paint(role)
         val x = rect.centerX()
@@ -146,9 +146,10 @@ class CandidateTextStyleEngine(
         clearPaint.isFakeBoldText = defaultWeight.weight >= 600
         clearPaint.style = Paint.Style.STROKE
         clearPaint.strokeWidth = 4f * density
-        canvas.drawText(text, x, baseline, clearPaint)
+        val eraseBaseline = rect.centerY() - (clearPaint.ascent() + clearPaint.descent()) / 2f
+        canvas.drawText(text, x, eraseBaseline, clearPaint)
         clearPaint.style = Paint.Style.FILL
-        canvas.drawText(text, x, baseline, clearPaint)
+        canvas.drawText(text, x, eraseBaseline, clearPaint)
         if (paint.textSize > 0f) {
             val style = config.style(role)
             style.strokeColor?.let { color ->
