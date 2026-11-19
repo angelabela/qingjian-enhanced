@@ -361,7 +361,10 @@ class InputPanel(
         )
         cloudSuggestions.setAnchorView(this)
     }
-    val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = transparentBackground)
+    private val keyBackgroundAlpha = dynamicBackgroundPrefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
+    private val keyBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("keyboard_key_frosted", false)
+    val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = transparentBackground,
+        keyBackgroundAlpha = keyBackgroundAlpha, keyBackgroundFrosted = keyBackgroundFrosted)
 
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
@@ -646,7 +649,7 @@ class InputPanel(
         private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
 
         fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
-            videoBackground?.let { removeView(it); it.release() }
+            videoBackground?.let { removeView(it) }
             videoTint?.let(::removeView)
             videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur) }
             videoTint = makeVideoTint(context, uri, brightness)
