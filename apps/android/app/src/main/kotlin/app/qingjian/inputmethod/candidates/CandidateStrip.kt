@@ -237,7 +237,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
-            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role)
+            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role, eraseUnderlay = false)
         }
         // 拼音行按 Rust 提供的字符边界定位，逐字原生重绘，不改变光标命中区域。
         val codePoints = preedit.codePoints().toArray()
@@ -254,10 +254,23 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
         }
         // 释义由 Candidate.senses 提供文本，Rust hit rect 提供每一条释义的位置。
+        // Rust annotation 按 POS 与译文拆成多个独立文本节点；每个节点都有自己的 hit rect。
+        // 旧逻辑把完整译文重复画进每一个 hit rect，导致词性/译文重叠和残影。
+        val annotationOffsets = HashMap<Pair<Int, Int>, Int>()
         image.hits.filter { it.sense != null }.forEach { hit ->
             if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEach
-            val gloss = candidates.getOrNull(hit.candidate)?.senses?.getOrNull(hit.sense!!)?.text ?: return@forEach
-            textStyles.drawReplacing(canvas, gloss, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS)
+            val senseIndex = hit.sense ?: return@forEach
+            val sense = candidates.getOrNull(hit.candidate)?.senses?.getOrNull(senseIndex) ?: return@forEach
+            val segments = buildList {
+                sense.pos?.takeIf { it.isNotBlank() }?.let { add("$it ") }
+                if (sense.text.isNotEmpty()) add(sense.text)
+            }
+            val key = hit.candidate to senseIndex
+            val segmentIndex = annotationOffsets[key] ?: 0
+            annotationOffsets[key] = segmentIndex + 1
+            val segment = segments.getOrNull(segmentIndex) ?: return@forEach
+            // 注释在 Rust 层只保留布局/命中区域，实际字形仅由 Android 绘制一次。
+            textStyles.drawReplacing(canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS, eraseUnderlay = false)
         }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()

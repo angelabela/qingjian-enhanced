@@ -96,6 +96,8 @@ class CandidateTextStyleEngine(
 
     private fun applyStyle(paint: TextPaint, style: Style) {
         paint.color = style.color
+        // 绘制坐标统一使用候选格中心；测量与绘制必须共享同一对齐方式。
+        paint.textAlign = Paint.Align.CENTER
         paint.alpha = style.alpha.coerceIn(0, 255)
         paint.textSize = baseTextSize * style.sizeScale.coerceIn(0.5f, 2.5f)
         paint.typeface = android.graphics.Typeface.create(style.typefaceFamily, if (style.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
@@ -110,7 +112,7 @@ class CandidateTextStyleEngine(
     fun paint(role: Role): TextPaint = paints.getValue(role)
 
     /** 清除旧位图字形并按指定角色重绘；调用方需在已绘制 Rust 位图的 saveLayer 内使用。 */
-    fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role) {
+    fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role, eraseUnderlay: Boolean = true) {
         if (text.isEmpty() || rect.isEmpty) return
         val paint = paint(role)
         val x = rect.centerX()
@@ -127,29 +129,32 @@ class CandidateTextStyleEngine(
             availableWidth / measuredWidth.coerceAtLeast(1f),
             availableHeight / measuredHeight,
         )
-        paint.textSize = (originalSize * fitScale).coerceAtLeast(originalSize * 0.28f)
+        // 不设置缩放下限：极长词组也必须完整落入候选格，不能再被硬裁切。
+        paint.textSize = originalSize * fitScale
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
         canvas.clipRect(rect)
-        // 位图底层的候选字来自 Rust strip_cell：候选字号为 19dp，注释为 11.5dp。
-        // 按原渲染字号擦除，而不是用上层新字号擦，避免旧字形残留形成双层重影。
-        clearPaint.textSize = when (role) {
-            Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
-            Role.PREEDIT -> baseTextSize * 0.60f
-            Role.GLOSS -> baseTextSize * 0.575f
+        // 仅拼音行仍保留 Rust 字形，需要擦除后覆盖；候选词和注释已在 Rust 主题层关闭文字绘制，
+        // 不再用 CLEAR 擦背景，避免把高亮底色擦出透明洞。
+        if (eraseUnderlay) {
+            clearPaint.textSize = when (role) {
+                Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
+                Role.PREEDIT -> baseTextSize * 0.60f
+                Role.GLOSS -> baseTextSize * 0.575f
+            }
+            clearPaint.textAlign = Paint.Align.CENTER
+            clearPaint.typeface = android.graphics.Typeface.create(
+                "sans-serif",
+                if (defaultWeight.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+            )
+            clearPaint.isFakeBoldText = defaultWeight.weight >= 600
+            clearPaint.style = Paint.Style.STROKE
+            clearPaint.strokeWidth = 4f * density
+            val eraseBaseline = rect.centerY() - (clearPaint.ascent() + clearPaint.descent()) / 2f
+            canvas.drawText(text, x, eraseBaseline, clearPaint)
+            clearPaint.style = Paint.Style.FILL
+            canvas.drawText(text, x, eraseBaseline, clearPaint)
         }
-        clearPaint.textAlign = Paint.Align.CENTER
-        clearPaint.typeface = android.graphics.Typeface.create(
-            "sans-serif",
-            if (defaultWeight.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
-        )
-        clearPaint.isFakeBoldText = defaultWeight.weight >= 600
-        clearPaint.style = Paint.Style.STROKE
-        clearPaint.strokeWidth = 4f * density
-        val eraseBaseline = rect.centerY() - (clearPaint.ascent() + clearPaint.descent()) / 2f
-        canvas.drawText(text, x, eraseBaseline, clearPaint)
-        clearPaint.style = Paint.Style.FILL
-        canvas.drawText(text, x, eraseBaseline, clearPaint)
         if (paint.textSize > 0f) {
             val style = config.style(role)
             style.strokeColor?.let { color ->
