@@ -156,13 +156,39 @@ class KeyPainter(
         val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
         ink.typeface = fontTypeface
-        ink.textSize = 9f * density
-        // 所有按键统一只显示文字：无手势图标、无粗体、无阴影。
-        ink.color = if (onBrand) labelColorForBrand() else secondaryColor
+        val maxLabelWidth = (slotHintWidth * 0.52f - 10f * density).coerceAtLeast(10f * density)
+        val useText = ink.measureText(label) <= maxLabelWidth
+        val shown = if (useText) label else gestureHintSymbol(label, upward)
+        ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
         ink.typeface = fontTypeface
+        ink.textSize = (if (useText) 9f else 12f) * density
+        // 提示文案放不下时改用语义图标，避免挤压键面字母或与邻键重叠。
+        ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
-        canvas.drawText(label, textX, baseline, ink)
+        canvas.drawText(shown, textX, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
+    }
+
+    private val slotHintWidth: Float
+        get() = metrics.keyWidth
+
+    private fun gestureHintSymbol(label: String, upward: Boolean): String = when (label) {
+        "清空输入", "删除一个字" -> "⌫"
+        "撤销清空", "撤销" -> "↶"
+        "重做" -> "↷"
+        "打开剪贴板" -> "▤"
+        "全选" -> "▣"
+        "剪切" -> "✂"
+        "复制" -> "▢"
+        "粘贴" -> "▣"
+        "打开符号面板" -> "⌘"
+        "选择皮肤" -> "◈"
+        "执行回车" -> "↵"
+        "切换中英文" -> "文"
+        "打开扫码" -> "▦"
+        "AI 对话一键生成" -> "✧"
+        "AI 情景表达一键生成" -> "✦"
+        else -> if (upward) "↑" else "↓"
     }
 
     /** 按下的键上方放大显示 [text]（缺省是键面的字，上滑时是要出的那个）；顶排的气泡会画到候选条上。 */
