@@ -46,7 +46,11 @@ object LocalAiModelManager {
 
     fun isInstalled(context: Context): Boolean {
         val file = modelFile(context)
-        return file.isFile && file.length() > 0L
+        val verified = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val expectedSize = verified.getLong(KEY_VERIFIED_SIZE, 0L)
+        val expectedHash = verified.getString(KEY_VERIFIED_SHA256, null).orEmpty()
+        return file.isFile && expectedSize > 0L && file.length() == expectedSize &&
+            expectedHash.matches(Regex("[0-9a-fA-F]{64}"))
     }
 
     private data class ModelManifest(val size: Long, val sha256: String, val revision: String)
