@@ -396,7 +396,7 @@ class InputPanel(
         }
     }
 
-    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur).apply {
+    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
         clipChildren = false
         clipToPadding = false
     }
@@ -656,14 +656,15 @@ class InputPanel(
         videoAlpha: Float,
         videoBrightness: Int,
         videoBlur: Int,
+        private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
-        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur) }
+        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
         private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
 
         fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
             videoBackground?.let { removeView(it) }
             videoTint?.let(::removeView)
-            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur) }
+            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply { onAverageLuminance = onVideoLuminance } }
             videoTint = makeVideoTint(context, uri, brightness)
             videoBackground?.let { addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
             videoTint?.let { addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
