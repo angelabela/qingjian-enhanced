@@ -110,22 +110,24 @@ class VoicePanel(
             backdrop.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
         }
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        // 语音面板自身采用液态玻璃质感：半透明冷色渐层、柔和高光和细亮边。
+        // 与键帽「磨砂效果」统一：半透明主题底层、白色雾面层、顶部柔光与细描边。
         val glassRadius = 26f * resources.displayMetrics.density
         fun themedAlpha(color: Int, alpha: Int) = (color and 0x00FFFFFF) or (alpha shl 24)
-        scrim.background = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                themedAlpha(palette.keyShadow, 0x60),
-                themedAlpha(palette.board, 0x90),
-                themedAlpha(palette.keyShadow, 0x48),
-                themedAlpha(palette.board, 0x88),
-            ),
-        ).apply {
+        scrim.background = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = glassRadius
+            setColor(themedAlpha(palette.board, 0x50))
             setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x45FFFFFF)
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        val glassHighlight = View(context).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x30FFFFFF, 0x12FFFFFF, 0x00FFFFFF),
+            ).apply { cornerRadius = glassRadius }
+            isClickable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        addView(glassHighlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
         overlay.alpha = 0f
