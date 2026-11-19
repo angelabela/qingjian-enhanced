@@ -139,8 +139,9 @@ class KeyPainter(
         val b = slot.bounds
         val inset = 8f * density
         val onBrand = slot.key is Key.Enter
-        if (upLabel != null) drawGestureHint(canvas, b.left + inset, b.top + inset, upLabel, upward = true, rightAligned = false, onBrand = onBrand)
-        if (downLabel != null) drawGestureHint(canvas, b.right - inset, b.bottom - inset, downLabel, upward = false, rightAligned = true, onBrand = onBrand)
+        val hintWidth = (b.width() * 0.52f - 10f * density).coerceAtLeast(10f * density)
+        if (upLabel != null) drawGestureHint(canvas, b.left + inset, b.top + inset, upLabel, upward = true, rightAligned = false, onBrand = onBrand, maxLabelWidth = hintWidth)
+        if (downLabel != null) drawGestureHint(canvas, b.right - inset, b.bottom - inset, downLabel, upward = false, rightAligned = true, onBrand = onBrand, maxLabelWidth = hintWidth)
     }
 
     private fun drawGestureHint(
@@ -151,13 +152,11 @@ class KeyPainter(
         upward: Boolean,
         rightAligned: Boolean,
         onBrand: Boolean,
+        maxLabelWidth: Float,
     ) {
         val baseline = y + 3f * density
         val textX = if (rightAligned) x - 5.5f * density else x + 5.5f * density
-        ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
-        ink.typeface = fontTypeface
-        val maxLabelWidth = (slotHintWidth * 0.52f - 10f * density).coerceAtLeast(10f * density)
-        val useText = ink.measureText(label) <= maxLabelWidth
+        val useText = ink.measureText(label).let { it <= maxLabelWidth }
         val shown = if (useText) label else gestureHintSymbol(label, upward)
         ink.textAlign = if (rightAligned) Paint.Align.RIGHT else Paint.Align.LEFT
         ink.typeface = fontTypeface
@@ -168,9 +167,6 @@ class KeyPainter(
         canvas.drawText(shown, textX, baseline, ink)
         ink.textAlign = Paint.Align.CENTER
     }
-
-    private val slotHintWidth: Float
-        get() = metrics.keyWidth
 
     private fun gestureHintSymbol(label: String, upward: Boolean): String = when (label) {
         "清空输入", "删除一个字" -> "⌫"
