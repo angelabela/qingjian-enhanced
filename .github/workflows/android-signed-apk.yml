@@ -1,4 +1,5 @@
 name: android-signed-apk
+# Workflow 252: persistent-signature validation for keycap transparency and video-panel fixes.
 
 on:
   push:
