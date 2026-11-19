@@ -64,7 +64,7 @@ class FunctionPanel(
                     voiceEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "动态背景") { context.startActivity(Intent(context, app.qingjian.inputmethod.background.DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                Feature(Icon.WAVEFORM, "动态背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
