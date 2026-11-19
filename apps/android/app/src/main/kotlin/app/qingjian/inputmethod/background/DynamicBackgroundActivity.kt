@@ -42,7 +42,7 @@ class DynamicBackgroundActivity : Activity() {
             text = "动态视频背景"; textSize = 22f; setTextColor(palette.text)
         })
         root.addView(TextView(this).apply {
-            text = "导入无声 MP4，设置键盘背景透明度。视频只在键盘显示时播放。"
+            text = "导入无声 MP4，并调节视频透明度、亮度与模糊程度。视频只在键盘显示时播放。"
             textSize = 13f; setTextColor(palette.faint); setPadding(0, dp(8), 0, dp(18))
         })
         status = TextView(this).apply {
@@ -61,7 +61,7 @@ class DynamicBackgroundActivity : Activity() {
             }
         }, matchWrap())
         root.addView(TextView(this).apply {
-            text = "视频透明度"; setTextColor(0xFFE8ECF5.toInt()); setPadding(0, dp(18), 0, dp(4))
+            text = "视频透明度（0–100%）"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
         })
         root.addView(SeekBar(this).apply {
             progressTintList = ColorStateList.valueOf(palette.brand)
@@ -76,7 +76,7 @@ class DynamicBackgroundActivity : Activity() {
             })
         })
         root.addView(TextView(this).apply {
-            text = "背景亮度"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
+            text = "背景亮度（100%为原始亮度）"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
         })
         root.addView(SeekBar(this).apply {
             progressTintList = ColorStateList.valueOf(palette.brand)
@@ -91,7 +91,7 @@ class DynamicBackgroundActivity : Activity() {
             })
         })
         root.addView(TextView(this).apply {
-            text = "背景模糊程度"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
+            text = "背景模糊程度（0–30 dp）"; setTextColor(palette.text); setPadding(0, dp(18), 0, dp(4))
         })
         root.addView(SeekBar(this).apply {
             progressTintList = ColorStateList.valueOf(palette.brand)
