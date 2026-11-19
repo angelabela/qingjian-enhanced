@@ -345,6 +345,16 @@ class FunctionPanel(
 
 
     /** 五套文字效果预设；候选区与键盘区独立存储，切换范围不会覆盖另一边。 */
+    private fun textLuminance(color: Int): Float {
+        fun channel(value: Int): Float {
+            val c = value / 255f
+            return if (c <= 0.04045f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+        }
+        return 0.2126f * channel(android.graphics.Color.red(color)) +
+            0.7152f * channel(android.graphics.Color.green(color)) +
+            0.0722f * channel(android.graphics.Color.blue(color))
+    }
+
     private fun drawTextEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
         ink.textStart(canvas, "选择作用区域，下面的效果只应用于该区域", 11f, palette.gloss,
@@ -389,12 +399,17 @@ class FunctionPanel(
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
                 Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, palette.brand)
                 Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = palette.brand }
+                Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
+                    sample.style = android.graphics.Paint.Style.STROKE
+                    sample.strokeWidth = ink.dp(1.4f)
+                    sample.color = if (textLuminance(palette.text) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                }
                 Settings.TextEffectPreset.COLOR_GRADIENT -> sample.shader = android.graphics.LinearGradient(sampleX - ink.dp(25f), 0f, sampleX + ink.dp(25f), 0f,
                     intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
                 else -> Unit
             }
             canvas.drawText("青简 Aa", sampleX, sampleY, sample)
-            if (preset == Settings.TextEffectPreset.NEON_OUTLINE) {
+            if (preset == Settings.TextEffectPreset.NEON_OUTLINE || preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
                 sample.style = android.graphics.Paint.Style.FILL
                 sample.color = palette.text
                 canvas.drawText("青简 Aa", sampleX, sampleY, sample)
