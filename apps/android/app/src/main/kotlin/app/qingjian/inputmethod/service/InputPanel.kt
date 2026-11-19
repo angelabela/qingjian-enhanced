@@ -453,6 +453,14 @@ class InputPanel(
         val brightness = prefs.getInt("video_brightness", 100).coerceIn(0, 200)
         val blur = if (prefs.getBoolean("video_frosted", true)) prefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
         stack.updateVideoBackground(uri, alpha, brightness, blur)
+        val keyAlpha = prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
+        val keyFrosted = prefs.getBoolean("keyboard_key_frosted", false)
+        keyboard.setKeySurface(keyAlpha, keyFrosted)
+        val settingsPrefs = Settings.preferences(context)
+        val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
+            (!enabled || mode != 0)
+        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
+        root.background = if (effectEnabled) FlowingKeyboardBackgroundDrawable(palette, style) else android.graphics.drawable.ColorDrawable(palette.board)
         root.invalidate()
     }
 
