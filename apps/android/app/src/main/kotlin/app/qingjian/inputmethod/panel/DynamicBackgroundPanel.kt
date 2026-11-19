@@ -59,7 +59,7 @@ class DynamicBackgroundPanel(
                 else -> if (prefs.getString(DynamicBackgroundActivity.KEY_URI, null) == null) "尚未导入" else "已导入视频 · 点击更换"
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
-            ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(18f), y + ink.dp(22f), align = android.graphics.Paint.Align.RIGHT)
+            ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
             if (index in 3..5) {
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
@@ -125,8 +125,11 @@ class DynamicBackgroundPanel(
                         else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
                     }
                 }.apply()
-                notifyChanged()
+                invalidate()
             }
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
         }
         return handled
     }
