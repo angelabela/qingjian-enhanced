@@ -331,7 +331,7 @@ object LocalAiModelManager {
         val conversation = activeEngine.createConversation(
             ConversationConfig(
                 systemInstruction = Contents.of(
-                    "你是青简输入法的本地中文候选排序器，只遵循当前任务的输出格式要求。",
+                    "你是青简输入法的本地中文模型，只遵循当前请求的任务和输出格式。",
                 ),
             ),
         )
@@ -359,6 +359,7 @@ object LocalAiModelManager {
     fun runOfflineSmokeTest(context: Context, onComplete: (Result<String>) -> Unit) {
         val appContext = context.applicationContext
         inferenceExecutor.execute {
+            val started = System.nanoTime()
             val result = runCatching {
                 val file = modelFile(appContext)
                 val verified = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -377,15 +378,7 @@ object LocalAiModelManager {
                 check(reply.isNotBlank()) { "本地模型没有返回文本" }
                 "后端：$runtimeBackend；回复：$reply"
             }
-            if (result.isSuccess) {
-                successfulInferences++
-                runtimeState = "运行正常"
-                lastRuntimeError = ""
-            } else {
-                failedInferences++
-                runtimeState = "加载/推理失败"
-                lastRuntimeError = result.exceptionOrNull()?.message.orEmpty().take(240)
-            }
+            recordInference(started, result.isSuccess, result.exceptionOrNull()?.message)
             mainHandler.post { onComplete(result) }
         }
     }
