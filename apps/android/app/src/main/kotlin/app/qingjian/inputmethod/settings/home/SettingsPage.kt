@@ -24,6 +24,8 @@ import app.qingjian.inputmethod.settings.page.CloudSettingsActivity
 import app.qingjian.inputmethod.settings.page.DictionariesActivity
 import app.qingjian.inputmethod.settings.page.InputSettingsActivity
 import app.qingjian.inputmethod.settings.page.KeyboardSettingsActivity
+import app.qingjian.inputmethod.settings.page.LocalAiSettingsActivity
+import app.qingjian.inputmethod.localai.LocalAiModelManager
 import app.qingjian.inputmethod.settings.page.VoiceSettingsActivity
 import app.qingjian.inputmethod.settings.page.ScanSettingsActivity
 import app.qingjian.inputmethod.settings.page.PermissionSettingsActivity
@@ -45,6 +47,7 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
         ImeState.of(activity), settings.layout, settings.theme, settings.appearance, settings.inputOptions.learningLanguage,
         settings.recordClipboard, settings.clipboardLimit, ClipboardSync.enabled(activity),
         CloudConfig.load(activity).ready, VoiceConfig.load(activity).provider,
+        LocalAiModelManager.isInstalled(activity),
         ScanPreferences.isFloating(activity),
         activity.getSharedPreferences(ScanPreferences.PREFS, Activity.MODE_PRIVATE).getBoolean(ScanPreferences.KEY_AUTO_ENTER, false),
         activity.getSharedPreferences(ScanPreferences.PREFS, Activity.MODE_PRIVATE).getBoolean(ScanPreferences.KEY_VIBRATE, true),
@@ -94,6 +97,13 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                 ui.entry(Icon.GLOBE, R.string.page_clipboard_sync, activity.getString(if (ClipboardSync.enabled(activity)) R.string.value_on else R.string.value_off)) {
                     open(ClipboardSyncActivity::class.java)
                 },
+            ))
+            addView(ui.group(
+                "本地 AI",
+                listOf(ui.entry(Icon.TUNE, R.string.page_local_ai, activity.getString(if (LocalAiModelManager.isInstalled(activity)) R.string.local_ai_installed else R.string.local_ai_not_installed)) {
+                    open(LocalAiSettingsActivity::class.java)
+                }),
+                footer = activity.getString(R.string.local_ai_settings_summary),
             ))
             addView(ui.group(
                 R.string.section_online,
