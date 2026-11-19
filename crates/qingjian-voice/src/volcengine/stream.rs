@@ -111,7 +111,16 @@ impl Stream {
                     Incoming::Response { last, payload } => {
                         let reply: Reply = serde_json::from_slice(&payload).unwrap_or_default();
                         if last {
-                            let text = reply.text().to_owned();
+                            let response_text = reply.text().trim();
+                            // 服务端偶尔返回空 final；优先保留最近一次非空 partial。
+                            let text = if response_text.is_empty() {
+                                self.last_text.trim().to_owned()
+                            } else {
+                                response_text.to_owned()
+                            };
+                            if text.is_empty() {
+                                return Err(VoiceError::EmptyResult);
+                            }
                             let _ = self.events.send(TranscriptEvent::Final(text));
                             let _ = socket.close(None);
                             return Ok(());
@@ -127,10 +136,26 @@ impl Stream {
                     }
                     Incoming::Other => {}
                 },
-                Ok(Message::Close(_)) => return Err(VoiceError::Closed),
+                Ok(Message::Close(_)) => {
+                    // 用户已结束录音、服务端却在 final 前关闭时，提交最后一次有效 partial。
+                    if deadline.is_some() && !self.last_text.trim().is_empty() {
+                        let _ = self.events.send(TranscriptEvent::Final(self.last_text.trim().to_owned()));
+                        return Ok(());
+                    }
+                    return Err(VoiceError::Closed);
+                },
                 Ok(_) => {}
                 Err(tungstenite::Error::Io(error))
                     if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+                Err(tungstenite::Error::Io(error))
+                    if error.kind() == ErrorKind::UnexpectedEof
+                        && deadline.is_some()
+                        && !self.last_text.trim().is_empty() =>
+                {
+                    tracing::warn!("语音连接在 final 前关闭，使用最后一次有效 partial");
+                    let _ = self.events.send(TranscriptEvent::Final(self.last_text.trim().to_owned()));
+                    return Ok(());
+                }
                 Err(error) => return Err(error.into()),
             }
             if deadline.is_some_and(|deadline| Instant::now() > deadline) {
