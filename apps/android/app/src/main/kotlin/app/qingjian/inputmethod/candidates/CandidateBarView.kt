@@ -68,7 +68,7 @@ class CandidateBarView(
     private val density = resources.displayMetrics.density
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 64f * density * maxOf(1f, textScale)
-    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.brand)
+    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.board)
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
