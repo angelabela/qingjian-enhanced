@@ -193,7 +193,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     fun caretNear(x: Float): Int = image?.caretNear(x) ?: -1
 
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
-    fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int) {
+    fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int, selectedIndex: Int = -1) {
         val layer = canvas.saveLayer(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, null)
         val leftInset = (viewWidth * 0.05f).roundToInt().toFloat()
         canvas.translate(leftInset, 0f)
@@ -225,23 +225,37 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
         }
-        // 正常候选：保留 Rust 的布局、格子底色、译文与 hit rect，只替换位图里的文字字形。
-        // 原始字符串本来就在 candidates 中，因此不需要新增 JNI 字符串接口。
+        // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
             if (image.emoji.contains(index)) return@forEachIndexed
             val word = image.wordRect(index) ?: return@forEachIndexed
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
-            val value = candidate.text
-            if (value.isEmpty()) return@forEachIndexed
-            val x = word.centerX()
-            val baseline = word.centerY() + shift - (candidateText.ascent() + candidateText.descent()) / 2f
-            canvas.save()
-            canvas.clipRect(word.left, word.top + shift, word.right, word.bottom + shift)
-            // Rust 字体的字形在原位擦除；描边扩大一点，避免旧字边缘残留形成重影。
-            canvas.drawText(value, x, baseline, eraseCandidateText)
-            canvas.drawText(value, x, baseline, eraseCandidateFill)
-            canvas.drawText(value, x, baseline, candidateText)
-            canvas.restore()
+            val role = when {
+                index == selectedIndex -> CandidateTextStyleEngine.Role.SELECTED
+                index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else -> CandidateTextStyleEngine.Role.CANDIDATE
+            }
+            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role)
+        }
+        // 拼音行按 Rust 提供的字符边界定位，逐字原生重绘，不改变光标命中区域。
+        val codePoints = preedit.codePoints().toArray()
+        val edges = image.preeditEdges
+        if (codePoints.isNotEmpty() && edges.size >= codePoints.size + 1) {
+            val topY = image.preeditTop
+            val bottomY = image.preeditBottom.coerceAtLeast(topY + 1f)
+            for (i in codePoints.indices) {
+                val left = edges[i]
+                val rightEdge = edges[i + 1]
+                if (rightEdge < scrollX || left > scrollX + contentViewWidth) continue
+                val glyph = String(Character.toChars(codePoints[i]))
+                textStyles.drawReplacing(canvas, glyph, RectF(left, topY, rightEdge, bottomY), CandidateTextStyleEngine.Role.PREEDIT)
+            }
+        }
+        // 释义由 Candidate.senses 提供文本，Rust hit rect 提供每一条释义的位置。
+        image.hits.filter { it.sense != null }.forEach { hit ->
+            if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEach
+            val gloss = candidates.getOrNull(hit.candidate)?.senses?.getOrNull(hit.sense!!)?.text ?: return@forEach
+            textStyles.drawReplacing(canvas, gloss, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS)
         }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
