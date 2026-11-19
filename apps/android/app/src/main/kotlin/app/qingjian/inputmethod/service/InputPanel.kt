@@ -335,9 +335,11 @@ class InputPanel(
     private val videoBackgroundEnabled = dynamicBackgroundPrefs.getBoolean("video_enabled", false)
     private val videoBackgroundUri = if (videoBackgroundEnabled) dynamicBackgroundPrefs.getString("video_uri", null) else null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
+    private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
+    private val videoBackgroundBlur = dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30)
 
     val bar = CandidateBarView(context, palette, settings.textSize.scale, stripSource, settings.toolbar, barListener, settings.fontWeight, settings.keyboardBackgroundEffect || videoBackgroundEnabled).apply {
-        setBackgroundColor(if (settings.keyboardBackgroundEffect) Color.TRANSPARENT else palette.board)
+        setBackgroundColor(if (settings.keyboardBackgroundEffect || videoBackgroundEnabled) Color.TRANSPARENT else palette.board)
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
@@ -374,9 +376,13 @@ class InputPanel(
         clipToPadding = false
         addView(bar)
         addView(keyboard)
+        val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
+        if (!floating && settings.fullscreenAdapt && corners) {
+            addView(BottomActionsView(context, palette, bottomInset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled))
+        }
     }
 
-    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha).apply {
+    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur).apply {
         clipChildren = false
         clipToPadding = false
     }
@@ -426,11 +432,7 @@ class InputPanel(
         if (floating) return@apply
         // 两个角都不放键时不要那条操作条，只让出导航栏，不留一截空白（#889）
         val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
-        if (settings.fullscreenAdapt && corners) {
-            addView(BottomActionsView(context, palette, inset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = settings.keyboardBackgroundEffect || videoBackgroundEnabled))
-        } else {
-            setPadding(0, 0, 0, inset)
-        }
+        if (!settings.fullscreenAdapt || !corners) setPadding(0, 0, 0, inset)
     }
 
     /** 云联想以浮动 Tips 显示；没有候选时连输入法顶部的占位行也一并隐藏。 */
@@ -501,10 +503,10 @@ class InputPanel(
         // 先把当前键盘画成一张底图，再由 VoicePanel 做背景模糊和深色染色；
         // 不直接改键盘视图本身，语音结束后原键盘可立即恢复交互。
         val backdrop = runCatching {
-            val w = main.width
-            val h = main.height
+            val w = stack.width
+            val h = stack.height
             if (w <= 0 || h <= 0) null else Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
-                main.draw(Canvas(bitmap))
+                stack.draw(Canvas(bitmap))
             }
         }.getOrNull()
         val frostedBackdrop = backdrop?.let { bitmap ->
@@ -513,7 +515,7 @@ class InputPanel(
                 null
             }
         }
-        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect).also { voice ->
+        return VoicePanel(context, palette, actionLabel, actions, frostedBackdrop, VoicePanel.resolveAnimationStyle(context), settings.keyboardBackgroundEffect || videoBackgroundEnabled).also { voice ->
             applyFontWeight(voice)
             voiceView = voice
             stack.addView(voice, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -613,11 +615,28 @@ class InputPanel(
         }
     }
 
-    private class Stack(context: Context, private val main: View, videoUri: String?, videoAlpha: Float) : FrameLayout(context) {
-        private val videoBackground = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha) }
+    private class Stack(
+        context: Context,
+        private val main: View,
+        videoUri: String?,
+        videoAlpha: Float,
+        videoBrightness: Int,
+        videoBlur: Int,
+    ) : FrameLayout(context) {
+        private val videoBackground = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur) }
+        private val videoTint = videoUri?.let {
+            View(context).apply {
+                val amount = (kotlin.math.abs(videoBrightness - 100) / 100f * 0.55f).coerceIn(0f, 0.55f)
+                setBackgroundColor(if (videoBrightness < 100) Color.BLACK else Color.WHITE)
+                alpha = amount
+            }
+        }
 
         init {
             videoBackground?.let {
+                addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
+            }
+            videoTint?.let {
                 addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
             }
             // The keyboard content must be a child of the overlay container.
@@ -636,7 +655,7 @@ class InputPanel(
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
-                if (child is DynamicVideoBackgroundView) {
+                if (child === videoBackground || child === videoTint) {
                     child.measure(widthMeasureSpec, height)
                     continue
                 }
