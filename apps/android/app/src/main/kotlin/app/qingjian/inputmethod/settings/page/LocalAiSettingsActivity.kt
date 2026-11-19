@@ -14,8 +14,23 @@ class LocalAiSettingsActivity : PageActivity() {
     private var progress = 0
     private var statusMessage = ""
 
+    override fun onResume() {
+        super.onResume()
+        if (::ui.isInitialized && !busy) rebuild()
+    }
+
     override fun content(): List<View> {
-        val installed = LocalAiModelManager.isInstalled(this)
+        val snapshot = LocalAiModelManager.runtimeSnapshot(this)
+        val installed = snapshot.installed
+        val runtimeDetails = buildString {
+            append("模型文件：").append(if (installed) "已校验" else "未安装")
+            append("\\n引擎状态：").append(snapshot.state)
+            append("\\n推理设备：").append(snapshot.backend)
+            append("\\n最近推理：").append(if (snapshot.lastInferenceMs > 0) "${snapshot.lastInferenceMs} ms" else "暂无记录")
+            append("\\n成功次数：").append(snapshot.successCount)
+            append(" · 失败次数：").append(snapshot.failureCount)
+            if (snapshot.lastError.isNotBlank()) append("\\n最近错误：").append(snapshot.lastError)
+        }
         val downloadValue = when {
             busy && statusMessage.startsWith("download:") ->
                 getString(R.string.local_ai_downloading, progress)
@@ -40,12 +55,19 @@ class LocalAiSettingsActivity : PageActivity() {
                 if (!busy && installed) confirmDelete()
             },
             ui.text(
-                statusMessage.takeUnless { it.startsWith("download:") || it.startsWith("test:") }
-                    ?: getString(R.string.local_ai_status_not_downloaded),
+                runtimeDetails,
                 14f,
                 ui.colors.secondary,
             ).apply {
                 setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12))
+            },
+            ui.text(
+                statusMessage.takeUnless { it.startsWith("download:") || it.startsWith("test:") }
+                    ?: if (installed) "模型已下载；引擎是否加载以实际推理状态为准。" else getString(R.string.local_ai_status_not_downloaded),
+                13f,
+                ui.colors.secondary,
+            ).apply {
+                setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(12))
             },
         )
         return listOf(
