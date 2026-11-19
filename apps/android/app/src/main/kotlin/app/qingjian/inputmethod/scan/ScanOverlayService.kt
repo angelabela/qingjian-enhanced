@@ -7,6 +7,8 @@ import android.app.Dialog
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.Manifest
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -115,6 +117,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private val lifecycleGuard = Any()
     private val clientsClosed = AtomicBoolean(false)
     @Volatile private var shuttingDown = false
+    @Volatile private var startupFailed = false
     private var analysisUseCase: ImageAnalysis? = null
     // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
     private val lastDeliveredAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -135,7 +138,27 @@ class ScanOverlayService : Service(), LifecycleOwner {
         prefixEditorHadFocus = false
         ScanPreferences.setPrefixEditorActive(false)
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        // Android 14+ 要求启动 camera 类型前台服务时已授予 CAMERA；Android 16 还会校验启动时机。
+        // 权限或系统资格不满足时安全退出，不能让 SecurityException 杀掉输入法进程。
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            scanDiag("camera foreground service not started: CAMERA permission missing", warning = true)
+            startupFailed = true
+            stopSelf()
+            return
+        }
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (error: SecurityException) {
+            scanDiag("camera foreground service rejected: ${error.javaClass.simpleName}: ${error.message}", warning = true)
+            startupFailed = true
+            stopSelf()
+            return
+        } catch (error: RuntimeException) {
+            scanDiag("camera foreground service startup failed: ${error.javaClass.simpleName}: ${error.message}", warning = true)
+            startupFailed = true
+            stopSelf()
+            return
+        }
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -167,6 +190,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (startupFailed) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_STOP) {
             scanDiag("explicit ACTION_STOP received", warning = true)
             stopSelf()
