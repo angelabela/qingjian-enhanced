@@ -430,6 +430,10 @@ class KeyboardView(
     /** 只有从 Z/X/C/V 键开始并明显向下滑动才触发编辑操作；水平偏移过大则交还原手势。 */
     private fun trackEditShortcut(event: MotionEvent) {
         if (editPointer < 0 || editTriggered || editAction == null) return
+        val sourceKey = pressed[editPointer]?.key ?: return
+        // 用户为 Z/X/C/V 配了下滑动作时，自定义手势优先于旧的编辑快捷手势。
+        // NONE 也必须接管方向，表示明确关闭，而不是退回旧动作。
+        if (matchesCustomGestureKey(sourceKey) && settings.customGestureDown != Settings.GestureAction.DEFAULT) return
         val at = event.findPointerIndex(editPointer)
         if (at < 0) return
         val dx = event.getX(at) - editStartX
@@ -533,8 +537,8 @@ class KeyboardView(
     private fun flickable(key: Key): Boolean {
         val up = gestureAction(key, upward = true)
         val down = gestureAction(key, upward = false)
-        val custom = (up != Settings.GestureAction.DEFAULT && up != Settings.GestureAction.NONE) ||
-            (down != Settings.GestureAction.DEFAULT && down != Settings.GestureAction.NONE)
+        // NONE 是显式禁用，但仍要接管该方向，防止落回按键原生动作。
+        val custom = up != Settings.GestureAction.DEFAULT || down != Settings.GestureAction.DEFAULT
         return custom || (key as? Key.Letter)?.flickShift == true ||
             (settings.flickSymbols && key.flick != null) ||
             (settings.flickClear && key == Key.Backspace)
@@ -548,6 +552,9 @@ class KeyboardView(
      */
     private fun trackFlick(event: MotionEvent) {
         if (flickSlot == null || flickBroken) return
+        // 长按空格已经进入语音模式后，所有移动都交给语音面板的撤销/完成命中检测，
+        // 不再被空格上下滑手势抢占并提前关闭面板。
+        if (flickSlot?.key is Key.Space && voiceMode) return
         val at = event.findPointerIndex(flickPointer)
         if (at < 0 || choicePopup.showing) return
         for (h in 0 until event.historySize) followFlick(event.getHistoricalX(at, h), event.getHistoricalY(at, h))
@@ -565,7 +572,7 @@ class KeyboardView(
         val key = flickSlot?.key ?: return
         val isBackspace = key == Key.Backspace
         val downAction = gestureAction(key, upward = false)
-        val allowsDown = isBackspace || (downAction != Settings.GestureAction.DEFAULT && downAction != Settings.GestureAction.NONE)
+        val allowsDown = isBackspace || downAction != Settings.GestureAction.DEFAULT
         if (flickDirection == 0) {
             if (side > abs(vertical) * FLICK_SLOPE || vertical == 0f || (vertical < 0f && !allowsDown)) {
                 flickBroken = true
