@@ -42,6 +42,7 @@ import androidx.camera.camera2.interop.Camera2Interop
 import android.hardware.camera2.CaptureRequest
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
@@ -66,6 +67,7 @@ import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.theme.Palette
 import app.qingjian.inputmethod.panel.base.PanelIcons
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -116,6 +118,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var analysisUseCase: ImageAnalysis? = null
     // 同一条码在连续视频帧中会反复命中，短时间内只广播和震动一次。
     private val lastDeliveredAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** 首次命中先暂存，要求相邻视频帧重复识别到同一内容且位置稳定后才提交，过滤单帧误读。 */
+    private data class StableBarcodeHit(val lastAt: Long, val count: Int, val centerX: Float, val centerY: Float)
+    private val stableBarcodeHits = java.util.concurrent.ConcurrentHashMap<String, StableBarcodeHit>()
+    @Volatile private var cameraWarmupUntil = 0L
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
@@ -951,11 +957,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 it.setSurfaceProvider(preview.surfaceProvider)
             }
             val analysisBuilder = ImageAnalysis.Builder()
-                // 分析帧降至 640×480，预览保留 720p，降低办公软件前台时的内存峰值。
-                .setTargetResolution(Size(640, 480))
+                // 分析帧提升到 720p，改善小型二维码和细条形码的有效像素；仍只处理最新帧。
+                .setTargetResolution(Size(1280, 720))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            Camera2Interop.Extender(analysisBuilder)
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
             analysisUseCase = analysis
             val capture = ImageCapture.Builder()
@@ -979,6 +984,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 if (lifecycle.currentState == Lifecycle.State.DESTROYED ||
                                     !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
                                 runCatching {
+                                    // 相机刚绑定时等待预览首帧、自动曝光和对焦稳定，避免打开窗口的第一帧误读。
+                                    if (android.os.SystemClock.elapsedRealtime() < cameraWarmupUntil) return@runCatching
                                     val output = preview.outputTransform ?: run {
                                         scanDiag("preview output transform not ready; wait next analysis frame")
                                         return@runCatching
@@ -994,7 +1001,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                         // 扫码框边缘的条码允许部分进入识别区；只要求条码中心落在框内，
                                         // 避免首次识别因检测框略超出边界而被整条丢弃。
                                         if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
-                                        scanDiag("barcode candidate accepted center=" + mapped.centerX().toInt() + "," + mapped.centerY().toInt())
+                                        // 必须连续两帧读到相同内容，且码框位置基本稳定，才认为结果可靠。
+                                        if (!hasStableBarcode(value, mapped.centerX(), mapped.centerY())) return@forEach
+                                        scanDiag("stable barcode accepted center=" + mapped.centerX().toInt() + "," + mapped.centerY().toInt())
                                         if (shouldDeliverCode(value)) deliverResult(value)
                                     }
                                 }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
@@ -1017,6 +1026,19 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             provider.unbindAll()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis, capture)
+            cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
+            // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
+            preview.post {
+                if (shuttingDown || preview.width <= 0 || preview.height <= 0) return@post
+                runCatching {
+                    val roi = scanArea.boundsInView()
+                    val point = preview.meteringPointFactory.createPoint(roi.centerX(), roi.centerY())
+                    val action = FocusMeteringAction.Builder(point)
+                        .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                        .build()
+                    camera?.cameraControl?.startFocusAndMetering(action)
+                }.onFailure { android.util.Log.w(TAG, "Initial scan focus request failed", it) }
+            }
             torchButton.isEnabled = camera?.cameraInfo?.hasFlashUnit() == true
             torchButton.alpha = if (torchButton.isEnabled) 1f else 0.4f
             torchButton.contentDescription = if (torchButton.isEnabled) "打开手电筒" else "当前摄像头没有闪光灯"
@@ -1116,6 +1138,26 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (torchEnabled) "关闭手电筒" else "打开手电筒",
         )
         torchButton.isSelected = torchEnabled
+    }
+
+    /**
+     * 对同一内容做跨帧确认，要求短时间内连续两帧命中且中心位置稳定。
+     * 单帧 ML Kit 偶发的错误字符不会直接写入输入框。
+     */
+    private fun hasStableBarcode(value: String, centerX: Float, centerY: Float): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = stableBarcodeHits[value]
+        val tolerance = (minOf(preview.width, preview.height) * 0.10f).coerceAtLeast(24f)
+        val stable = previous != null &&
+            now - previous.lastAt <= STABLE_HIT_WINDOW_MS &&
+            kotlin.math.hypot((centerX - previous.centerX).toDouble(), (centerY - previous.centerY).toDouble()) <= tolerance
+        val count = if (stable) previous!!.count + 1 else 1
+        stableBarcodeHits[value] = StableBarcodeHit(now, count, centerX, centerY)
+        if (stableBarcodeHits.size > MAX_TRACKED_CODES) {
+            val cutoff = now - DUPLICATE_CACHE_TTL_MS
+            stableBarcodeHits.entries.removeAll { it.value.lastAt < cutoff }
+        }
+        return count >= STABLE_HIT_COUNT
     }
 
     /**
@@ -1396,5 +1438,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val DUPLICATE_SUPPRESS_MS = 1_500L
         private const val DUPLICATE_CACHE_TTL_MS = 15_000L
         private const val MAX_TRACKED_CODES = 128
+        private const val CAMERA_WARMUP_MS = 850L
+        private const val STABLE_HIT_WINDOW_MS = 900L
+        private const val STABLE_HIT_COUNT = 2
     }
 }
