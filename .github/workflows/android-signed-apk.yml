@@ -33,6 +33,7 @@ on:
       - fix/210-candidate-video-glass-voice-ring
       - fix/workflow-252-keycap-candidate-video-controls
       - fix/workflow-327-voice-gesture-glass-model-manifest
+      - fix/workflow-328-key-gesture-hints-settings
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
