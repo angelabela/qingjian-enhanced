@@ -221,7 +221,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             dst.offset(0, shift)
             canvas.drawBitmap(bitmap, src, dst, null)
         }
-        if (top > 0) {
+        // 没有正在编辑的拼音时，不绘制 Rust 位图上一次留下的字母行。
+        if (top > 0 && preedit.isNotEmpty()) {
             src.set(0, 0, minOf(contentViewWidth, bitmap.width), top)
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
@@ -295,13 +296,15 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 滚动内容在视口左边缘渐隐，不允许候选文字直接越过屏幕边界。 */
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float) {
-        val fadeWidth = minOf(28f * density, viewWidth.toFloat()).coerceAtLeast(1f)
+        // 左边缘先留出安全距离，再在其内侧完成渐隐，避免文字贴边才突然消失。
+        val inset = minOf(8f * density, viewWidth * 0.12f)
+        val fadeWidth = minOf(34f * density, (viewWidth - inset).coerceAtLeast(1f))
         leftFadePaint.shader = android.graphics.LinearGradient(
-            scrollX.toFloat(), 0f, scrollX + fadeWidth, 0f,
-            intArrayOf(0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt()),
-            floatArrayOf(0f, 1f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            scrollX.toFloat(), 0f, scrollX + inset + fadeWidth, 0f,
+            intArrayOf(0x00000000, 0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt()),
+            floatArrayOf(0f, 0.18f, 0.82f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + viewWidth).toFloat(), barHeight, leftFadePaint)
+        canvas.drawRect(scrollX.toFloat(), fadeTop.coerceIn(0f, barHeight), (scrollX + inset + fadeWidth).coerceAtMost(scrollX + viewWidth), barHeight, leftFadePaint)
         leftFadePaint.shader = null
     }
 
