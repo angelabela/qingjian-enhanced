@@ -305,8 +305,27 @@ object LocalAiModelManager {
         }
     }
 
-    /** 在推理专用线程加载并复用 Engine；GPU 初始化失败时自动退回 CPU。 */
+    /** 在推理专用线程加载并复用 Engine；GPU 初始化或实际推理失败时自动退回 CPU。 */
     private fun inferWithRuntime(file: File, cacheDir: File, prompt: String): String {
+        fun infer(engine: Engine): String {
+            val conversation = engine.createConversation(
+                ConversationConfig(
+                    systemInstruction = Contents.of(
+                        "你是青简输入法的本地中文模型，只遵循当前请求的任务和输出格式。",
+                    ),
+                ),
+            )
+            try {
+                val output = StringBuilder()
+                runBlocking {
+                    conversation.sendMessageAsync(prompt).collect { chunk -> output.append(chunk.toString()) }
+                }
+                return output.toString().trim()
+            } finally {
+                conversation.close()
+            }
+        }
+
         val activeEngine = runtimeEngine ?: run {
             runtimeState = "正在加载模型"
             val gpu = Engine(
@@ -322,28 +341,45 @@ object LocalAiModelManager {
                     EngineConfig(modelPath = file.absolutePath, backend = Backend.CPU(), cacheDir = cacheDir.absolutePath),
                 )
                 cpu.initialize()
-                runtimeBackend = "CPU（GPU 回退）"
+                runtimeBackend = "CPU（GPU 初始化失败回退）"
                 cpu
             }
             runtimeEngine = initialized
             runtimeState = "已加载，等待推理"
             initialized
         }
-        val conversation = activeEngine.createConversation(
-            ConversationConfig(
-                systemInstruction = Contents.of(
-                    "你是青简输入法的本地中文模型，只遵循当前请求的任务和输出格式。",
-                ),
-            ),
-        )
-        try {
-            val output = StringBuilder()
-            runBlocking {
-                conversation.sendMessageAsync(prompt).collect { chunk -> output.append(chunk.toString()) }
+
+        return try {
+            infer(activeEngine)
+        } catch (gpuError: Throwable) {
+            // 某些设备 GPU Engine.initialize() 会成功，但真正执行算子时才因缺少 OpenCL 报错。
+            // 这类错误也必须回退，不能让每次联想/补全都重复失败。
+            if (!runtimeBackend.startsWith("GPU")) throw gpuError
+            lastRuntimeError = "GPU 推理失败，正在切换 CPU：" + (gpuError.message ?: "未知错误")
+            runCatching { activeEngine.close() }
+            runtimeEngine = null
+
+            val cpu = Engine(
+                EngineConfig(modelPath = file.absolutePath, backend = Backend.CPU(), cacheDir = cacheDir.absolutePath),
+            )
+            var cpuInitialized = false
+            try {
+                cpu.initialize()
+                cpuInitialized = true
+                runtimeEngine = cpu
+                runtimeBackend = "CPU（GPU 推理失败回退）"
+                runtimeState = "CPU 已加载，等待推理"
+                infer(cpu)
+            } catch (cpuError: Throwable) {
+                if (cpuInitialized) runCatching { cpu.close() }
+                if (runtimeEngine === cpu) runtimeEngine = null
+                runtimeState = "推理失败"
+                runtimeBackend = "CPU（GPU 回退失败）"
+                throw IllegalStateException(
+                    "GPU 推理失败（${gpuError.message ?: "未知错误"}）；CPU 回退也失败（${cpuError.message ?: "未知错误"}）",
+                    cpuError,
+                )
             }
-            return output.toString().trim()
-        } finally {
-            conversation.close()
         }
     }
 
