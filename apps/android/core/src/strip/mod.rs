@@ -13,10 +13,10 @@ pub use self::meta::StripMeta;
 pub use self::painter::StripPainter;
 
 /// 译文一行最宽（点），超出的截断加省略号；与主题里候选条的译文字号一起定。
-const MAX_GLOSS_WIDTH: f32 = 120.0;
+const MAX_GLOSS_WIDTH: f32 = 136.0;
 
 /// 候选条译文的字号（点），与主题 `strip_cell` 里的一致，截断时量宽度用。
-const GLOSS_SIZE: f32 = 11.5;
+const GLOSS_SIZE: f32 = 13.0;
 
 /// 每个候选只带第一条译文（词性 + 释义），长的截断；更多的译文在长按气泡里。`text_scale` 是设置里的字号档，宽度与字号一起放大。
 fn visible_indices(candidates: &[FrameCandidate]) -> Vec<usize> {
