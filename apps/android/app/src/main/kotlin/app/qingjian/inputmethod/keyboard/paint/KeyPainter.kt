@@ -21,6 +21,8 @@ class KeyPainter(
     private val textScale: Float,
     private val keySkin: Settings.KeySkin = Settings.KeySkin.ORIGINAL,
     private val fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
+    private val keyBackgroundAlpha: Float = 1f,
+    private val keyBackgroundFrosted: Boolean = false,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -224,6 +226,7 @@ class KeyPainter(
     /** 带底影与顶部柔和高光的圆角键帽；不改变原有按键形状。 */
     private fun drawPlate(canvas: Canvas, bounds: RectF, color: Int) {
         fill.shader = null
+        fill.alpha = (keyBackgroundAlpha.coerceIn(0f, 1f) * 255).toInt()
         fill.color = palette.keyShadow
         canvas.drawRoundRect(
             bounds.left, bounds.top + metrics.shadowOffset,
@@ -233,6 +236,11 @@ class KeyPainter(
         if (keySkin == Settings.KeySkin.ORIGINAL) {
             fill.color = color
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+            fill.alpha = 255
+            if (keyBackgroundFrosted) {
+                fill.color = 0x24FFFFFF
+                canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+            }
             return
         }
         // 液态玻璃键帽：半透明主题色渐层、顶部宽高光、底部反射与细描边。
@@ -267,6 +275,11 @@ class KeyPainter(
             (metrics.radius - inset / 2).coerceAtLeast(1f), (metrics.radius - inset / 2).coerceAtLeast(1f), fill)
         fill.style = Paint.Style.FILL
         fill.color = color
+        fill.alpha = 255
+        if (keyBackgroundFrosted) {
+            fill.color = 0x24FFFFFF
+            canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
+        }
     }
 
     private fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or ((alpha and 0xFF) shl 24)
