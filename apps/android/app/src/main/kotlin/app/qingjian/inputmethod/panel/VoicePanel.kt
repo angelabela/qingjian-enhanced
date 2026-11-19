@@ -115,7 +115,7 @@ class VoicePanel(
         fun themedAlpha(color: Int, alpha: Int) = (color and 0x00FFFFFF) or (alpha shl 24)
         scrim.background = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = glassRadius
-            setColor(themedAlpha(palette.board, 0x50))
+            setColor(themedAlpha(palette.board, 0xA0))
             setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), 0x45FFFFFF)
         }
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -131,7 +131,7 @@ class VoicePanel(
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
         overlay.alpha = 0f
-        overlay.scaleX = 1f
+        overlay.scaleX = 0.12f
         overlay.post {
             if (overlay.isAttachedToWindow) {
                 overlay.pivotX = overlay.width / 2f
@@ -139,8 +139,8 @@ class VoicePanel(
                 overlay.animate()
                     .scaleX(1f)
                     .alpha(1f)
-                    .setDuration(680L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.15f))
+                    .setDuration(1080L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.05f))
                     .start()
             }
         }
