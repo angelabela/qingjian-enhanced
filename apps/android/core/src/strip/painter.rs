@@ -105,6 +105,20 @@ impl StripPainter {
         scale: f32,
         dark: bool,
     ) -> Result<StripMeta, AndroidError> {
+        // 空帧不进入栅格渲染器，避免特定布局下构造 0×N Pixmap。
+        if self.content.rows.is_empty()
+            && self.content.preedit.is_none()
+            && self.content.status.is_none()
+        {
+            self.last = None;
+            return Ok(StripMeta {
+                width: 0, height: 0, candidates_top: 0, background: 0,
+                hits: Vec::new(), preedit_edges: Vec::new(),
+                preedit_top: 0.0, preedit_bottom: 0.0, emoji: Vec::new(),
+            });
+        }
+        // 非有限或非正密度不传入像素尺寸换算。
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
         self.content.highlighted = highlighted.and_then(|original| {
             self.candidate_indices
                 .iter()
@@ -114,11 +128,21 @@ impl StripPainter {
         let rendered = self
             .renderer
             .render(&self.content, Layout::Strip, theme, scale)?;
+        let width = rendered.pixmap.width();
+        let height = rendered.pixmap.height();
+        if width == 0 || height == 0 {
+            self.last = None;
+            return Ok(StripMeta {
+                width: 0, height: 0, candidates_top: 0, background: 0,
+                hits: Vec::new(), preedit_edges: Vec::new(),
+                preedit_top: 0.0, preedit_bottom: 0.0, emoji: Vec::new(),
+            });
+        }
         let offset = (rendered.content_x, rendered.content_y);
         let background = theme.variable("surface").map_or(0, appearance::argb);
         let meta = StripMeta {
-            width: rendered.pixmap.width(),
-            height: rendered.pixmap.height(),
+            width,
+            height,
             candidates_top: rendered.candidates_top(),
             background,
             hits: rendered
