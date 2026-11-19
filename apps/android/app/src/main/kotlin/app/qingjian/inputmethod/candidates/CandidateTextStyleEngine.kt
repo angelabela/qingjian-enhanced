@@ -44,6 +44,7 @@ class CandidateTextStyleEngine(
         val preedit: Style,
         val gloss: Style,
         val selected: Style,
+        val preset: Settings.TextEffectPreset = Settings.TextEffectPreset.STANDARD,
     ) {
         fun style(role: Role): Style = when (role) {
             Role.FIRST_CANDIDATE -> firstCandidate
@@ -61,6 +62,27 @@ class CandidateTextStyleEngine(
                 gloss = Style(color, 0.68f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
+
+            fun forPreset(color: Int, weight: Settings.FontWeight, preset: Settings.TextEffectPreset): Config {
+                val base = defaults(color, weight)
+                fun styled(style: Style): Style = when (preset) {
+                    Settings.TextEffectPreset.STANDARD -> style
+                    Settings.TextEffectPreset.BOLD_DEPTH -> style.copy(
+                        sizeScale = style.sizeScale * 1.04f, weight = maxOf(700, style.weight),
+                        shadowColor = 0x66000000, shadowRadiusDp = 1.2f, shadowDyDp = 1f,
+                    )
+                    Settings.TextEffectPreset.SOFT_GLOW -> style.copy(
+                        shadowColor = color, shadowRadiusDp = 5f, shadowDxDp = 0f, shadowDyDp = 0f,
+                    )
+                    Settings.TextEffectPreset.NEON_OUTLINE -> style.copy(
+                        strokeColor = color, strokeWidthDp = 1.15f,
+                        shadowColor = color, shadowRadiusDp = 3f,
+                    )
+                    Settings.TextEffectPreset.COLOR_GRADIENT -> style
+                }
+                return Config(styled(base.firstCandidate), styled(base.candidate), styled(base.preedit),
+                    styled(base.gloss), styled(base.selected), preset)
+            }
         }
     }
 
@@ -122,7 +144,15 @@ class CandidateTextStyleEngine(
                 canvas.drawText(text, x, baseline, stroke)
             }
         }
+        if (config.preset == Settings.TextEffectPreset.COLOR_GRADIENT) {
+            paint.shader = android.graphics.LinearGradient(
+                rect.left, rect.top, rect.right, rect.bottom,
+                intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP,
+            )
+        }
         canvas.drawText(text, x, baseline, paint)
+        paint.shader = null
         paint.textSize = originalSize
         canvas.restore()
     }
