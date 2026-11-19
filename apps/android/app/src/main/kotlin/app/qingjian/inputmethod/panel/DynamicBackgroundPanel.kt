@@ -21,6 +21,7 @@ class DynamicBackgroundPanel(
     private val prefs = context.getSharedPreferences(DynamicBackgroundActivity.PREFS, Context.MODE_PRIVATE)
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
+    private var sliderDragged = false
     private val rowHeight get() = ink.dp(66f)
     private val labels = listOf("启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度", "导入或更换视频")
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
@@ -125,10 +126,12 @@ class DynamicBackgroundPanel(
                         else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
                     }
                 }.apply()
+                sliderDragged = true
                 invalidate()
             }
         }
-        if (event.actionMasked == MotionEvent.ACTION_UP) {
+        if (event.actionMasked == MotionEvent.ACTION_UP && sliderDragged) {
+            sliderDragged = false
             context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
         }
         return handled
