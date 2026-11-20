@@ -42,7 +42,7 @@ class FunctionPanel(
     private var backgroundEffectPage = false
     private var textEffectPage = false
     private var aiLoadingEffectPage = false
-    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
+    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 14)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
     private var selectedTextTarget = 0
     private var selectedTextPreset = Settings.TextEffectPreset.of(
@@ -53,6 +53,8 @@ class FunctionPanel(
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
     private var voiceGlassStrength = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
         .getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
+    private var selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+        .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
     private var adjustingVoiceGlass = false
 
     private fun smsMonitoringEnabled(): Boolean =
@@ -127,6 +129,8 @@ class FunctionPanel(
         selectedAiLoadingStyle = prefs.getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
         selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
+        selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
         if (!backgroundEffectEnabled) selectedBackgroundStyle = -1
         invalidate()
     }
@@ -190,7 +194,8 @@ class FunctionPanel(
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
         val rows = (labels.size + 1) / 2
         val rowTop = top + ink.dp(34f)
-        val viewportBottom = card.bottom - ink.dp(82f)
+        // 底部预留频谱渐变选择器与磨砂强度滑动条，样式列表独立滚动。
+        val viewportBottom = card.bottom - ink.dp(136f)
         val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
         val rowStep = ink.dp(64f)
         val itemHeight = ink.dp(56f)
@@ -227,6 +232,35 @@ class FunctionPanel(
             }
         }
         canvas.restore()
+
+        // 频谱渐变颜色：默认彩虹 + 五套独立配色，点击后立即写入语音偏好设置。
+        val gradientLabelY = card.bottom - ink.dp(126f)
+        ink.textStart(canvas, "频谱渐变颜色", 10.5f, palette.gloss,
+            card.left + ink.dp(14f), gradientLabelY, card.right - ink.dp(10f))
+        val swatchLeft = card.left + ink.dp(12f)
+        val swatchRight = card.right - ink.dp(12f)
+        val swatchGap = ink.dp(4f)
+        val swatchWidth = (swatchRight - swatchLeft - swatchGap * 5f) / 6f
+        val swatchTop = card.bottom - ink.dp(119f)
+        val swatchBottom = card.bottom - ink.dp(96f)
+        PhysicsWaveView.SPECTRUM_GRADIENT_COLORS.forEachIndexed { index, stops ->
+            val left = swatchLeft + index * (swatchWidth + swatchGap)
+            val bounds = RectF(left, swatchTop, left + swatchWidth, swatchBottom)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selectedVoiceSpectrumGradient == index) 1.5f else 0.55f)
+            ink.fill.color = if (selectedVoiceSpectrumGradient == index) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(5f), ink.dp(5f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            val inset = ink.dp(2f)
+            ink.fill.shader = android.graphics.LinearGradient(bounds.left + inset, 0f, bounds.right - inset, 0f,
+                stops, null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset),
+                ink.dp(4f), ink.dp(4f), ink.fill)
+            ink.fill.shader = null
+            ink.text(canvas, listOf("默认", "海洋", "日落", "极光", "霓虹", "冰晶")[index], 8.5f,
+                if (selectedVoiceSpectrumGradient == index) palette.brand else palette.gloss,
+                bounds.centerX(), card.bottom - ink.dp(85f))
+        }
 
         // 固定在样式列表下方的磨砂强度滑动条（1–50），拖动时即时保存。
         val labelY = card.bottom - ink.dp(50f)
@@ -510,10 +544,12 @@ class FunctionPanel(
         val labels = listOf(
             "345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字", "渐变 + 光点 + 扫光组合",
             "单色呼吸文字", "银灰金属流光", "白色下划线扫光", "单色光点脉冲", "打字机光标闪烁",
+            "极光呼吸光带", "星尘流光点阵", "液态霓虹脉冲", "全息扫描光束", "数字矩阵闪烁",
         )
         val descriptions = listOf(
             "紫蓝粉平滑流动", "霓虹色与柔和彩色底光", "完整彩虹色带持续流动", "单色光点呼吸，文字清晰", "渐变文字叠加光点与扫光",
             "灰白亮度缓慢呼吸", "银灰明暗连续流动", "单色文字与移动下划线", "单色圆点柔和脉冲", "末尾光标明暗闪烁",
+            "青绿蓝紫色雾状流动", "星点闪烁并沿文字掠过", "液态色带与明暗脉冲", "彩色高光逐字扫描", "绿色数字与矩阵脉冲",
         )
         val colors = listOf(
             intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
@@ -526,6 +562,11 @@ class FunctionPanel(
             intArrayOf(0xFFB8BEC7.toInt(), 0xFFE9EDF1.toInt(), 0xFFB8BEC7.toInt()),
             intArrayOf(0xFF8A929A.toInt(), 0xFFF2F4F6.toInt(), 0xFF8A929A.toInt()),
             intArrayOf(0xFF7C858E.toInt(), 0xFFE7EBEF.toInt(), 0xFF7C858E.toInt()),
+            intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt()),
+            intArrayOf(0xFFC7D7FF.toInt(), 0xFF8BA7FF.toInt(), 0xFFFFFFFF.toInt()),
+            intArrayOf(0xFF00E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF4FC8.toInt()),
+            intArrayOf(0xFFF6E7FF.toInt(), 0xFF6DE7FF.toInt(), 0xFFA88BFF.toInt()),
+            intArrayOf(0xFF49FF88.toInt(), 0xFFA8FFB9.toInt(), 0xFF2BCA70.toInt()),
         )
         ink.textStart(canvas, "仅改变 AI 一键生成时输入框内的等待提示", 11f, palette.gloss,
             card.left + ink.dp(14f), card.top + ink.dp(24f), card.right - ink.dp(12f))
@@ -675,7 +716,7 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val col = if (x < card.left + ink.dp(10f) + itemWidth) 0 else 1
                     val index = row * 2 + col
-                    if (index in 0 until 10) {
+                    if (index in 0 until 15) {
                         selectedAiLoadingStyle = index
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_AI_LOADING_EFFECT, index).apply()
@@ -746,9 +787,24 @@ class FunctionPanel(
                 }
             }
             tabs.selected == 0 && voiceEffectPage -> {
+                val swatchTop = card.bottom - ink.dp(119f)
+                val swatchBottom = card.bottom - ink.dp(84f)
+                if (y in swatchTop..swatchBottom) {
+                    val left = card.left + ink.dp(12f)
+                    val gap = ink.dp(4f)
+                    val itemWidth = (card.width() - ink.dp(24f) - gap * 5f) / 6f
+                    val index = ((x - left) / (itemWidth + gap)).toInt()
+                    if (index in 0..5) {
+                        selectedVoiceSpectrumGradient = index
+                        context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
+                            .putInt(VoicePanel.PREF_SPECTRUM_GRADIENT, index).apply()
+                        invalidate()
+                    }
+                    return
+                }
                 val rowTop = card.top + ink.dp(8f + 34f)
                 val rowStep = ink.dp(64f)
-                val viewportBottom = card.bottom - ink.dp(82f)
+                val viewportBottom = card.bottom - ink.dp(136f)
                 val gapX = ink.dp(7f)
                 val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
                 if (y in rowTop..viewportBottom) {
