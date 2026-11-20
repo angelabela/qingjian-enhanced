@@ -44,9 +44,12 @@ class FloatingMascotService : Service() {
     private var lastDragY = 0
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == MascotTextAccessibilityService.ACTION_APP_CONTEXT) {
-                mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_HINT).orEmpty().ifBlank { intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty() })
-            } else mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
+            when (intent.action) {
+                MascotTextAccessibilityService.ACTION_APP_CONTEXT -> mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_HINT).orEmpty().ifBlank { intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty() })
+                MascotTextAccessibilityService.ACTION_COPY_RESULT -> mascotView?.showCopyResult(intent.getBooleanExtra(MascotTextAccessibilityService.EXTRA_COPY_SUCCESS, false))
+                Intent.ACTION_SCREEN_OFF -> mascotView?.visibility = View.GONE
+                Intent.ACTION_USER_PRESENT -> mascotView?.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -85,7 +88,7 @@ class FloatingMascotService : Service() {
                 stopSelf(); return
             }
         }
-        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT) }
+        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT); addAction(MascotTextAccessibilityService.ACTION_COPY_RESULT) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenReceiver, filter)
         receiverRegistered = true
@@ -97,11 +100,11 @@ class FloatingMascotService : Service() {
             return START_NOT_STICKY
         }
         when (intent?.action) {
-            ACTION_SHOW_TIPS -> {
+            ACTION_SHOW_TIPS, ACTION_SHOW_INFO_TIPS -> {
                 pendingTipColors = intent
                 val labels = intent.getStringArrayListExtra(EXTRA_TIP_LABELS).orEmpty()
                 val indexes = intent.getIntegerArrayListExtra(EXTRA_TIP_INDEXES).orEmpty()
-                showTips(labels, indexes)
+                showTips(labels, indexes, intent.action == ACTION_SHOW_INFO_TIPS, intent.getStringExtra(EXTRA_TIP_TRIGGER).orEmpty())
                 pendingTipColors = null
             }
             ACTION_HIDE_TIPS -> hideTips()
@@ -113,7 +116,7 @@ class FloatingMascotService : Service() {
     private var pendingTipColors: Intent? = null
     private fun intentColor(key: String, fallback: Int): Int = pendingTipColors?.getIntExtra(key, fallback) ?: fallback
 
-    private fun showTips(labels: List<String>, indexes: List<Int>) {
+    private fun showTips(labels: List<String>, indexes: List<Int>, infoMode: Boolean = false, trigger: String = "") {
         val items = labels.zip(indexes).filter { it.first.isNotBlank() }.take(3)
         val pet = mascotView ?: return
         if (items.isEmpty()) { hideTips(); return }
@@ -122,7 +125,7 @@ class FloatingMascotService : Service() {
             intentColor(ACTION_COLOR_TEXT, 0xFF302B3B.toInt()),
             intentColor(ACTION_COLOR_CLOUD, 0xFF9278D8.toInt()),
             intentColor(ACTION_COLOR_ACCENT, 0x267F6BE0),
-            intentColor(ACTION_COLOR_BORDER, 0x337A70A0))
+            intentColor(ACTION_COLOR_BORDER, 0x337A70A0), infoMode, trigger)
         windowParams.width = pet.overlayWidth
         windowParams.height = pet.overlayHeight
         val screenW = resources.displayMetrics.widthPixels
@@ -221,22 +224,27 @@ class FloatingMascotService : Service() {
         private var tipWidthDp = 0f
         private var tipHeightDp = 0f
         private var tipCloudColor = 0xFF9278D8.toInt()
+        private var tipInfoMode = false
+        private var tipTrigger = ""
         val overlayWidth: Int get() = if (tipItems.isEmpty()) (64f * density).toInt() else ((72f + tipWidthDp) * density).toInt()
         val overlayHeight: Int get() = if (tipItems.isEmpty()) (64f * density).toInt() else (maxOf(64f, tipHeightDp) * density).toInt()
 
-        fun setTips(items: List<Pair<String, Int>>, surface: Int, text: Int, cloud: Int, accent: Int, border: Int) {
+        fun setTips(items: List<Pair<String, Int>>, surface: Int, text: Int, cloud: Int, accent: Int, border: Int, infoMode: Boolean = false, trigger: String = "") {
             tipItems = items.take(3)
+            tipInfoMode = infoMode
+            tipTrigger = trigger
             tipText.color = text
             tipCloudColor = cloud
             tipTitle.color = cloud
-            tipBody.color = Color.argb(224, Color.red(surface), Color.green(surface), Color.blue(surface))
+            tipBody.color = Color.argb(104, Color.red(surface), Color.green(surface), Color.blue(surface))
+            tipBody.setShadowLayer(8f * density, 0f, 3f * density, 0x33000000)
             tipBorder.color = border
-            tipAccent.color = Color.argb(58, Color.red(accent), Color.green(accent), Color.blue(accent))
+            tipAccent.color = Color.TRANSPARENT
             tipWidthDp = ((tipItems.maxOfOrNull { tipText.measureText(it.first) / density } ?: 90f) + 48f).coerceIn(148f, 232f)
             val maxLinePx = (tipWidthDp - 48f) * density
             tipRows = tipItems.map { wrapTipText(it.first, maxLinePx) }
             tipRowHeights = tipRows.map { maxOf(31f, it.size * 17f + 8f) }
-            tipHeightDp = 30f + tipRowHeights.sum() + 8f
+            tipHeightDp = 16f + tipRowHeights.sum() + 8f
             invalidate()
         }
 
@@ -264,10 +272,10 @@ class FloatingMascotService : Service() {
             val localY = y / density
             if (localX < 72f || localX > 72f + tipWidthDp) return false
             val top = (height / density - tipHeightDp) / 2f
-            var cursor = top + 30f
+            var cursor = top + 10f
             tipRowHeights.forEachIndexed { index, rowHeight ->
                 if (localY in cursor..(cursor + rowHeight)) {
-                    appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, tipItems[index].second))
+                    appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, tipItems[index].second).putExtra(EXTRA_TIP_TEXT, tipItems[index].first).putExtra(EXTRA_TIP_TRIGGER, tipTrigger).putExtra(EXTRA_TIP_IS_INFO, tipInfoMode))
                     appContext.startService(Intent(appContext, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
                     return true
                 }
@@ -289,13 +297,14 @@ class FloatingMascotService : Service() {
             canvas.drawPath(arrow, tipBorder)
             canvas.drawRoundRect(RectF(left, top, right, bottom), 15f, 15f, tipBorder)
             tipTitle.color = tipCloudColor
-            canvas.drawText("✦  云联想", left + 12f, top + 20f, tipTitle)
-            var rowTop = top + 30f
+            var rowTop = top + 10f
             tipRows.forEachIndexed { index, lines ->
                 val rowHeight = tipRowHeights[index]
-                val rowRect = RectF(left + 6f, rowTop, right - 6f, rowTop + rowHeight)
-                canvas.drawRoundRect(rowRect, 8f, 8f, tipAccent)
-                canvas.drawText("›", left + 11f, rowTop + 19f, tipTitle)
+                if (index > 0) {
+                    val separator = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tipBorder.color; strokeWidth = density * 0.65f }
+                    canvas.drawLine(left + 13f, rowTop, right - 13f, rowTop, separator)
+                }
+                canvas.drawCircle(left + 16f, rowTop + 16f, 2.2f * density, tipTitle)
                 lines.forEachIndexed { lineIndex, line -> canvas.drawText(line, left + 28f, rowTop + 17f + lineIndex * 17f, tipText) }
                 rowTop += rowHeight
             }
@@ -320,6 +329,12 @@ class FloatingMascotService : Service() {
         }
         fun setContextLabel(label: String) {
             messageText = label.take(6).ifBlank { "你好！" }
+            messageUntil = SystemClock.uptimeMillis() + 2600L
+            invalidate()
+        }
+        fun showCopyResult(success: Boolean) {
+            messageText = if (success) "复制成功啦！✨" else "这里好像不能复制呢～"
+            mood = if (success) 1 else 3
             messageUntil = SystemClock.uptimeMillis() + 2600L
             invalidate()
         }
@@ -369,11 +384,15 @@ class FloatingMascotService : Service() {
         private const val KEY_Y = "y"
         const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_FLOATING_MASCOT"
         const val ACTION_SHOW_TIPS = "app.qingjian.inputmethod.action.SHOW_MASCOT_TIPS"
+        const val ACTION_SHOW_INFO_TIPS = "app.qingjian.inputmethod.action.SHOW_MASCOT_INFO_TIPS"
         const val ACTION_HIDE_TIPS = "app.qingjian.inputmethod.action.HIDE_MASCOT_TIPS"
         const val ACTION_TIP_SELECTED = "app.qingjian.inputmethod.action.MASCOT_TIP_SELECTED"
         const val EXTRA_TIP_LABELS = "tip_labels"
         const val EXTRA_TIP_INDEXES = "tip_indexes"
         const val EXTRA_TIP_INDEX = "tip_index"
+        const val EXTRA_TIP_TEXT = "tip_text"
+        const val EXTRA_TIP_TRIGGER = "tip_trigger"
+        const val EXTRA_TIP_IS_INFO = "tip_is_info"
         const val ACTION_COLOR_SURFACE = "tip_surface"
         const val ACTION_COLOR_TEXT = "tip_text"
         const val ACTION_COLOR_CLOUD = "tip_cloud"

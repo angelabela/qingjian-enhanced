@@ -261,6 +261,21 @@ class QingjianInputMethodService :
     private val mascotTipSelectedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val index = intent.getIntExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_INDEX, -1)
+            val isInfo = intent.getBooleanExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_IS_INFO, false)
+            if (isInfo) {
+                val value = intent.getStringExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_TEXT).orEmpty()
+                val trigger = intent.getStringExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_TRIGGER).orEmpty()
+                if (value == SmartInfoProvider.LOCATION_PERMISSION_HINT) {
+                    startActivity(Intent(this@QingjianInputMethodService, LocationPermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } else if (value.isNotBlank() && trigger.isNotBlank()) {
+                    currentInputConnection?.let { connection ->
+                        val before = connection.getTextBeforeCursor(trigger.length, 0)?.toString().orEmpty()
+                        if (before.endsWith(trigger)) connection.deleteSurroundingText(trigger.length, 0)
+                        connection.commitText(value, 1)
+                    }
+                }
+                return
+            }
             if (index < 0 || shownCandidates.getOrNull(index)?.cloud != true) return
             composer.select(originalCandidateIndex(index))
         }
@@ -674,19 +689,7 @@ class QingjianInputMethodService :
             if (request != smartInfoSequence) return@resolve
             val latest = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
             if (!latest.endsWith(trigger)) return@resolve
-            currentPanel.showSmartSuggestions(listOf(value)) { selected ->
-                if (selected == SmartInfoProvider.LOCATION_PERMISSION_HINT) {
-                    startActivity(
-                        Intent(this, LocationPermissionActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } else {
-                    val input = currentInputConnection ?: return@showSmartSuggestions
-                    input.deleteSurroundingText(trigger.length, 0)
-                    input.commitText(selected, 1)
-                    currentPanel.showSmartSuggestions(emptyList()) {}
-                }
-            }
+            currentPanel.showMascotInfoSuggestion(trigger, value)
         }
     }
 

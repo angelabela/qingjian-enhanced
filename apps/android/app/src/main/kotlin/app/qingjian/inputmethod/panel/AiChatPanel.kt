@@ -22,6 +22,7 @@ class AiChatPanel(
     private val onReplace: (String) -> Boolean,
     private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
+    private val transparentBackground: Boolean = false,
 ) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply {
@@ -39,12 +40,12 @@ class AiChatPanel(
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(palette.board)
+        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(12), 0)
-            background = rounded(palette.surface, 14)
+            background = rounded(if (transparentBackground) Color.TRANSPARENT else palette.surface, 14)
             addView(TextView(context).apply {
                 text = "‹"
                 textSize = 32f
@@ -120,7 +121,7 @@ class AiChatPanel(
                             textSize = 16f
                             setTextColor(palette.text)
                             setPadding(dp(13), dp(12), dp(13), dp(12))
-                            background = rounded(palette.surface, 11)
+                            background = rounded(if (transparentBackground) Color.TRANSPARENT else palette.surface, 11)
                             isClickable = true
                             setOnClickListener {
                                 if (onReplace(reply)) {
@@ -149,7 +150,7 @@ class AiChatPanel(
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(palette.brand)
-            background = rounded(palette.surface, 11)
+            background = rounded(if (transparentBackground) Color.TRANSPARENT else palette.surface, 11)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             isClickable = true
             setOnClickListener {
