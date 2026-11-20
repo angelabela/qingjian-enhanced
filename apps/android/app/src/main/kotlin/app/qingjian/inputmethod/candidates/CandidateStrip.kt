@@ -119,11 +119,24 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 换上新画的一帧；画不出来（null）时只铺底色。 */
     fun paint(image: StripImage?) {
+        // 释放上一帧透明背景副本，避免候选频繁变化时 Bitmap 持续堆积。
+        renderedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        renderedBitmap = null
+        // Rust 在空内容或尺寸异常时可能返回 0×N 元数据；禁止把无效位图交给 Canvas。
+        if (image == null || image.bitmap.isRecycled ||
+            image.bitmap.width <= 0 || image.bitmap.height <= 0
+        ) {
+            this.image = null
+            return
+        }
         this.image = image
-        renderedBitmap = if (transparentBackground && image != null) {
+        renderedBitmap = if (transparentBackground) {
             // 不假设 Rust 返回的 Bitmap 可变；复制后再清理底色，避免污染渲染器缓存。
             val source = image.bitmap
-            val bitmap = source.copy(Bitmap.Config.ARGB_8888, true)
+            val bitmap = source.copy(Bitmap.Config.ARGB_8888, true) ?: run {
+                this.image = null
+                return
+            }
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             val bg = image.background
