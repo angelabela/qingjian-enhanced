@@ -317,6 +317,11 @@ class FloatingMascotService : Service() {
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
             invalidate()
         }
+        fun setContextLabel(label: String) {
+            messageText = label.take(6).ifBlank { "你好！" }
+            messageUntil = SystemClock.uptimeMillis() + 2600L
+            invalidate()
+        }
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val now = SystemClock.uptimeMillis()
