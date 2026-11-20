@@ -45,7 +45,7 @@ class FunctionPanel(
     private var backgroundEffectPage = false
     private var textEffectPage = false
     private var aiLoadingEffectPage = false
-    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 14)
+    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
     private var selectedTextTarget = 0
     private var selectedTextPreset = Settings.TextEffectPreset.of(
@@ -114,8 +114,8 @@ class FunctionPanel(
                     backgroundEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..14) {
-                    selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
+                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..15) {
+                    selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
                     aiLoadingEffectPage = true
                     voiceEffectPage = false
                     backgroundEffectPage = false
@@ -152,7 +152,7 @@ class FunctionPanel(
     fun refreshState() {
         val prefs = Settings.preferences(context)
         backgroundEffectEnabled = prefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect)
-        selectedAiLoadingStyle = prefs.getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
+        selectedAiLoadingStyle = prefs.getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
         selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
         selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
