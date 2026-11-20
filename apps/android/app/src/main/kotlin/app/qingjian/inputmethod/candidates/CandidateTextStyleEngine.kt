@@ -58,7 +58,7 @@ class CandidateTextStyleEngine(
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.80f, weight.weight),
+                preedit = Style(color, 0.96f, weight.weight),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
@@ -168,7 +168,7 @@ class CandidateTextStyleEngine(
             clearPaint.textSize = when (role) {
                 Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
                 // Rust strip_top 使用 annotation 字号（12dp × 1.25），约为基础候选字号的 0.75。
-                Role.PREEDIT -> baseTextSize * 0.75f
+                Role.PREEDIT -> baseTextSize * 0.92f
                 Role.GLOSS -> baseTextSize * 0.575f
             }
             clearPaint.textAlign = Paint.Align.CENTER

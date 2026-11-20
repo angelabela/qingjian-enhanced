@@ -11,6 +11,7 @@
     <!-- 悬浮扫码使用前台相机服务，避免应用退到后台后相机被系统回收 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- 只有快捷翻译、青简翻译、补充译词与云联想（后两样缺省关）连用户自己填的大模型接口（见 cloud/ 与 Rust 侧 apps/android/core/src/cloud），语音输入连用户自己填的识别服务（见 voice/ 与 crates/qingjian-voice）；不开云联想时打字不联网 -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -60,6 +61,10 @@
         </activity>
 
         <activity android:name=".background.DynamicBackgroundActivity" android:exported="false" />
+        <activity android:name=".mascot.MascotPermissionActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
+        <service android:name=".mascot.FloatingMascotService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-visible floating companion overlay" />
+        </service>
         <activity android:name=".service.SmartActionActivity" android:exported="false" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
         <service

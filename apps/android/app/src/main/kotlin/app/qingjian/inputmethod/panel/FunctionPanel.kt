@@ -3,6 +3,8 @@ package app.qingjian.inputmethod.panel
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import app.qingjian.inputmethod.mascot.FloatingMascotService
+import app.qingjian.inputmethod.mascot.MascotPermissionActivity
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
@@ -68,6 +70,28 @@ class FunctionPanel(
                 Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
                 Feature(Icon.CAMERA, "扫码") {
                     context.startActivity(Intent(context, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                Feature(
+                    Icon.WAVEFORM,
+                    "悬浮小精灵",
+                    on = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+                        .getBoolean(FloatingMascotService.KEY_ENABLED, false),
+                ) {
+                    val prefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+                    val enabled = prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false)
+                    if (enabled) {
+                        prefs.edit().putBoolean(FloatingMascotService.KEY_ENABLED, false).apply()
+                        context.stopService(Intent(context, FloatingMascotService::class.java))
+                    } else if (android.provider.Settings.canDrawOverlays(context)) {
+                        prefs.edit().putBoolean(FloatingMascotService.KEY_ENABLED, true).apply()
+                        context.startForegroundService(Intent(context, FloatingMascotService::class.java))
+                    } else {
+                        context.startActivity(
+                            Intent(context, MascotPermissionActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                    invalidate()
                 },
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

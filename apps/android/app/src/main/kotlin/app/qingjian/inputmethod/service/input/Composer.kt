@@ -836,47 +836,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         refreshCompletions()
     }
 
-    /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
-    fun clearAll() {
-        val connection = host.connection ?: return
-        // 每次清空都必须建立本次快照；不能在捕获失败时沿用上一次清空的旧文本。
-        editHistory.clear()
-        lastClearSnapshot = null
-        val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
-        if (snapshot != null) {
-            pushUndoSnapshot(snapshot)
-            // 单独保存清空前文本；后续退格按下产生的快照不能覆盖它。
-            lastClearSnapshot = snapshot
-        }
-        clearGestureSnapshot = null
-        pendingBackspaceSnapshot = null
-        closeUndoGroup()
-        backspaceComposing = false
-        beforeBackspace = null
-        connection.beginBatchEdit()
-        try {
-            val selectedAll = connection.performContextMenuAction(android.R.id.selectAll) &&
-                !connection.getSelectedText(0).isNullOrEmpty()
-            if (selectedAll) {
-                connection.commitText("", 1)
-            } else {
-                repeat(100) {
-                    val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    val selected = connection.getSelectedText(0)?.length ?: 0
-                    if (before.isEmpty() && after.isEmpty() && selected == 0) return@repeat
-                    if (selected > 0) connection.commitText("", 1)
-                    else connection.deleteSurroundingText(before.length, after.length)
-                    val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    if (nextBefore == before && nextAfter == after) return@repeat
-                }
-            }
-        } finally {
-            connection.endBatchEdit()
-        }
-        apply(engine.clear())
-    }
+    /** 删除键上划：清除光标左侧全部内容，光标右侧文字保持原样。 */
+    fun clearAll() = clearBeforeCursor()
 
     /**
      * 删除键下滑：只删除光标左侧的文本，光标右侧内容保持不变。
@@ -895,8 +856,18 @@ class Composer(private val engine: Engine, private val host: Host) {
         try {
             // 有选区时先删除选区，再重新读取光标左侧文本；不触碰光标右侧内容。
             if (selected.isNotEmpty()) connection.commitText("", 1)
-            val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-            if (before.isNotEmpty()) connection.deleteSurroundingText(before.length, 0)
+            var keepDeleting = true
+            repeat(100) {
+                if (!keepDeleting) return@repeat
+                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                if (before.isEmpty()) {
+                    keepDeleting = false
+                    return@repeat
+                }
+                connection.deleteSurroundingText(before.length, 0)
+                val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                if (remaining == before) keepDeleting = false
+            }
         } finally {
             connection.endBatchEdit()
         }
