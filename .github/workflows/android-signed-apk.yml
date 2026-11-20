@@ -35,6 +35,7 @@ on:
       - fix/workflow-327-voice-gesture-glass-model-manifest
       - fix/workflow-328-key-gesture-hints-settings
       - fix/workflow-343-stability-scan-strip-voice
+      - fix/workflow-356-ai-animation-backspace-clear-before-cursor
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
