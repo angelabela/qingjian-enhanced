@@ -689,6 +689,16 @@ class QingjianInputMethodService :
             .onFailure { AppLog.warn("mascot semantic response unavailable: " + it.javaClass.simpleName) }
     }
 
+    private fun showMascotDialogue(message: String) {
+        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
+        val intent = Intent(this, FloatingMascotService::class.java)
+            .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
+            .putExtra(FloatingMascotService.EXTRA_MESSAGE, message)
+        runCatching { ContextCompat.startForegroundService(this, intent) }
+            .onFailure { AppLog.warn("mascot dialogue unavailable: " + it.javaClass.simpleName) }
+    }
+
     /** 输入地点 / 天气 / 内存等关键词后，异步更新一条可点击的实时信息候选。 */
     private fun refreshSmartInfoSuggestions() {
         val currentPanel = panel ?: return
@@ -705,6 +715,7 @@ class QingjianInputMethodService :
             if (request != smartInfoSequence) return@resolve
             val latest = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
             if (!latest.endsWith(trigger)) return@resolve
+            showMascotDialogue(value)
             currentPanel.showSmartSuggestions(listOf(value)) { selected ->
                 if (selected == SmartInfoProvider.LOCATION_PERMISSION_HINT) {
                     startActivity(

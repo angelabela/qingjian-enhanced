@@ -75,8 +75,8 @@ class FloatingMascotService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = prefs.getInt(KEY_X, (resources.displayMetrics.widthPixels - size - 18f * density).toInt()).coerceAtLeast(0)
-            y = prefs.getInt(KEY_Y, (resources.displayMetrics.heightPixels * 0.34f).toInt()).coerceAtLeast(0)
+            x = prefs.getInt(KEY_X, (resources.displayMetrics.widthPixels - width - 18f * density).toInt()).coerceIn(0, (resources.displayMetrics.widthPixels - width).coerceAtLeast(0))
+            y = prefs.getInt(KEY_Y, (resources.displayMetrics.heightPixels * 0.34f).toInt()).coerceIn(0, (resources.displayMetrics.heightPixels - height).coerceAtLeast(0))
         }
         mascotView = MascotView(this).also { view ->
             view.setOnTouchListener(createTouchListener(view))
@@ -201,7 +201,7 @@ class FloatingMascotService : Service() {
     private class MascotView(context: Context) : View(context) {
         private val appContext = context
         private val density = resources.displayMetrics.density
-        private val dialogueText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12.5f * density; color = 0xFF51445C.toInt() }
+        private val dialogueText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12.5f; color = 0xFF51445C.toInt() }
         private val dialogueBody = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF5FFFFFF.toInt() }
         private val dialogueBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = density; color = 0x55A58BB8 }
         private val dialogueAccent = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x267F6BE0 }
@@ -254,7 +254,7 @@ class FloatingMascotService : Service() {
                     val baseline = 30f + index * 17f
                     canvas.drawCircle(82f, baseline - 4f, 2.2f, dialogueAccent)
                     val value = item.first
-                    val maxWidth = 148f * density
+                    val maxWidth = 148f
                     val count = dialogueText.breakText(value, true, maxWidth, null).coerceAtLeast(1)
                     val visible = if (count < value.length) value.substring(0, (count - 1).coerceAtLeast(1)) + "…" else value
                     canvas.drawText(visible, 91f, baseline, dialogueText)
@@ -264,7 +264,7 @@ class FloatingMascotService : Service() {
                 var baseline = 38f
                 repeat(2) {
                     if (rest.isNotEmpty()) {
-                        val count = dialogueText.breakText(rest, true, 148f * density, null).coerceAtLeast(1)
+                        val count = dialogueText.breakText(rest, true, 148f, null).coerceAtLeast(1)
                         canvas.drawText(rest.substring(0, count), 84f, baseline, dialogueText)
                         rest = rest.substring(count)
                         baseline += 18f
