@@ -298,6 +298,10 @@ class VoiceInput(private val context: Context, private val engine: Engine, priva
         host.toast(message)
     }
 
+    override fun onAudioFrame(frame: VoiceAudioFrame) {
+        panel?.addAudioFrame(frame)
+    }
+
     override fun onSpectrum(bands: FloatArray) {
         panel?.addSpectrum(bands)
     }

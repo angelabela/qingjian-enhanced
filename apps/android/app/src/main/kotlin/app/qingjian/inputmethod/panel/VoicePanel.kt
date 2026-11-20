@@ -61,6 +61,8 @@ class VoicePanel(
             5 -> PhysicsWaveView.Style.ELASTIC_STRING
             6 -> PhysicsWaveView.Style.GLOW_ORBS
             7 -> PhysicsWaveView.Style.FLOWING_RIBBONS
+            8 -> PhysicsWaveView.Style.REALTIME_WAVEFORM
+            9 -> PhysicsWaveView.Style.WAVEFORM_SPECTRUM
             else -> PhysicsWaveView.Style.SPECTRUM_BARS
         }
         color = palette.brand
@@ -215,13 +217,22 @@ class VoicePanel(
         })
     }
 
+    fun addAudioFrame(frame: VoiceAudioFrame) {
+        if (animationStyle == ANIMATION_DISABLED) return
+        updateSpectrum(frame.spectrum)
+        overlay.updateWaveform(frame.waveform, frame.rms, frame.peak)
+    }
+
     fun addSpectrum(bands: FloatArray) {
         if (animationStyle == ANIMATION_DISABLED) return
+        updateSpectrum(bands)
+    }
+
+    private fun updateSpectrum(bands: FloatArray) {
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        // 五种物理动效使用18个均匀频带：适度精简单元，避免中部窄区域显得拥挤。
-        // 按48段FFT的实际区间求均值，低、中、高频仍保持连续响应。
+        // 物理动效使用18个均匀频带；48段频谱仍完整提供给频谱柱和融合效果。
         val physicsBands = FloatArray(18) { band ->
             val start = band * SAMPLE_COUNT / 18
             val end = (band + 1) * SAMPLE_COUNT / 18
@@ -325,15 +336,16 @@ class VoicePanel(
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
         const val ANIMATION_DISABLED = -2
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "每次启动随机")
+        const val ANIMATION_RANDOM_INDEX = 10
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, ANIMATION_DISABLED)
             return when {
                 selected == ANIMATION_DISABLED -> ANIMATION_DISABLED
-                selected == -1 -> kotlin.random.Random.nextInt(8)
-                else -> selected.coerceIn(0, 7)
+                selected == -1 -> kotlin.random.Random.nextInt(10)
+                else -> selected.coerceIn(0, 9)
             }
         }
     }

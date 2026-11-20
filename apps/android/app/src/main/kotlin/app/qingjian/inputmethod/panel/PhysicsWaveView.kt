@@ -25,12 +25,20 @@ import kotlin.math.sqrt
 class PhysicsWaveView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
-    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, FLOWING_RIBBONS }
+    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, FLOWING_RIBBONS, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM }
 
     var style = Style.SPRING_BARS
         set(value) { field = value; resetState(); invalidate() }
     var listening = false
-        set(value) { field = value; postInvalidateOnAnimation() }
+        set(value) {
+            field = value
+            if (!value) {
+                waveform.fill(0f)
+                waveRms = 0f
+                wavePeak = 0f
+            }
+            postInvalidateOnAnimation()
+        }
     var color: Int = 0xFF3B82F6.toInt()
         set(value) { field = value; invalidate() }
 
@@ -43,6 +51,10 @@ class PhysicsWaveView @JvmOverloads constructor(
     private val peakHold = FloatArray(count)
     private val fft = FloatArray(48)
     private val smoothFft = FloatArray(48)
+    private val waveform = FloatArray(128)
+    private val smoothWaveform = FloatArray(128)
+    private var waveRms = 0f
+    private var wavePeak = 0f
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
     private val path = Path()
@@ -67,10 +79,25 @@ class PhysicsWaveView @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
+    fun updateWaveform(samples: FloatArray, rms: Float, peak: Float) {
+        for (i in waveform.indices) waveform[i] = samples.getOrElse(i) { 0f }.coerceIn(-1f, 1f)
+        waveRms = rms.coerceIn(0f, 1f)
+        wavePeak = peak.coerceIn(0f, 1f)
+        postInvalidateOnAnimation()
+    }
+
     private fun resetState() {
         pos.fill(0f); velocity.fill(0f); peaks.fill(0f); peakVelocity.fill(0f); peakHold.fill(0f)
         smoothFft.fill(0f)
+        waveform.fill(0f); smoothWaveform.fill(0f)
+        waveRms = 0f; wavePeak = 0f
         lastFrame = 0L
+    }
+
+    private fun isPhysicsStyle(): Boolean = when (style) {
+        Style.SPRING_BARS, Style.GRAVITY_BALLS, Style.PEAK_HOLD,
+        Style.ELASTIC_STRING, Style.GLOW_ORBS, Style.FLOWING_RIBBONS -> true
+        else -> false
     }
 
     private fun target(i: Int): Float {
@@ -149,7 +176,11 @@ class PhysicsWaveView @JvmOverloads constructor(
             val blend = if (fft[i] > smoothFft[i]) attack else release
             smoothFft[i] += (fft[i] - smoothFft[i]) * blend
         }
-        if (style.ordinal >= Style.SPRING_BARS.ordinal) {
+        for (i in smoothWaveform.indices) {
+            val blend = if (abs(waveform[i]) > abs(smoothWaveform[i])) attack else release
+            smoothWaveform[i] += (waveform[i] - smoothWaveform[i]) * blend
+        }
+        if (isPhysicsStyle()) {
             var remaining = dt
             while (remaining > 0f) {
                 val h = min(remaining, 1f / 120f)
@@ -159,7 +190,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         }
         // 所有样式统一限制在面板中央 80% 宽度，左右各留 10% 安全边距。
         // 物理类样式只额外压缩垂直绘制区域，避免波形与底部操作按钮重叠。
-        val compactPhysics = style.ordinal >= Style.SPRING_BARS.ordinal && style != Style.FLOWING_RIBBONS
+        val compactPhysics = isPhysicsStyle() && style != Style.FLOWING_RIBBONS
         canvas.save()
         if (style == Style.RING_SPECTRUM) {
             // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
@@ -180,15 +211,71 @@ class PhysicsWaveView @JvmOverloads constructor(
                 Style.ELASTIC_STRING -> drawString(canvas)
                 Style.GLOW_ORBS -> drawOrbs(canvas)
                 Style.FLOWING_RIBBONS -> drawFlowingRibbons(canvas)
+                Style.REALTIME_WAVEFORM -> drawWaveform(canvas, false)
+                Style.WAVEFORM_SPECTRUM -> drawHybridVisualization(canvas)
             }
         }
         canvas.restore()
         val moving = listening || smoothFft.any { it > 0.008f } ||
-            (style.ordinal >= Style.SPRING_BARS.ordinal && pos.indices.any {
+            smoothWaveform.any { abs(it) > 0.003f } ||
+            (isPhysicsStyle() && pos.indices.any {
                 if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
                 else abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f
             })
         if (moving) postInvalidateOnAnimation() else lastFrame = 0L
+    }
+
+    /** 波形与频谱融合：上方真实时域波形，下方保留 48 段实时频谱。 */
+    private fun drawHybridVisualization(canvas: Canvas) {
+        canvas.save()
+        canvas.translate(0f, height * 0.20f)
+        drawSpectrumBars(canvas)
+        canvas.restore()
+        drawWaveform(canvas, true)
+    }
+
+    /** 使用 PCM 时域采样绘制连续波形，峰值与 RMS 只调节视觉幅度和光晕。 */
+    private fun drawWaveform(canvas: Canvas, compact: Boolean) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f || smoothWaveform.isEmpty()) return
+        val centerY = h * if (compact) 0.34f else 0.50f
+        val gain = (1.55f + wavePeak * 0.72f + waveRms * 0.35f).coerceIn(1.55f, 2.35f)
+        val amplitude = h * (if (compact) 0.22f else 0.34f) * gain
+        path.rewind()
+        var previousX = 0f
+        var previousY = centerY - smoothWaveform[0] * amplitude
+        path.moveTo(previousX, previousY)
+        for (i in 1 until smoothWaveform.size) {
+            val x = w * i / (smoothWaveform.size - 1)
+            val y = centerY - smoothWaveform[i] * amplitude
+            val midX = (previousX + x) * 0.5f
+            val midY = (previousY + y) * 0.5f
+            path.quadTo(previousX, previousY, midX, midY)
+            previousX = x
+            previousY = y
+        }
+        path.lineTo(previousX, previousY)
+
+        paint.shader = android.graphics.LinearGradient(
+            0f, 0f, w, 0f,
+            intArrayOf(0xFFFF5FC8.toInt(), 0xFF9B72FF.toInt(), 0xFF39C8FF.toInt(), 0xFF42F5D4.toInt()),
+            null, android.graphics.Shader.TileMode.CLAMP,
+        )
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.strokeWidth = 7.5f * density
+        paint.alpha = (38 + waveRms * 150f).toInt().coerceIn(38, 150)
+        paint.maskFilter = BlurMaskFilter(8f * density, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawPath(path, paint)
+        paint.maskFilter = null
+        paint.strokeWidth = 2.2f * density
+        paint.alpha = 235
+        canvas.drawPath(path, paint)
+        paint.shader = null
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
     }
 
     /** 53 号工作流的 48 频带渐变频谱柱：保留清晰核心线、柔和外发光和流动色相。 */

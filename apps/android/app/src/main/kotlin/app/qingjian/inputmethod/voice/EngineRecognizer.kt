@@ -123,6 +123,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                 // 对实际送入 ASR 的 PCM 做自适应降噪，频谱动画也显示处理后的音频。
                 val chunk = pcmNoiseSuppressor.process(captured)
                 val spectrum = spectrum(chunk)
+                val audioFrame = audioFrame(chunk, spectrum)
                 // 与 finish() 共用锁：先获得锁的音频块先进入引擎工作线程队列；
                 // finish() 获锁后会关闭采集，之后返回的 read 不再排到 Finish 之后。
                 synchronized(feedLock) {
@@ -139,7 +140,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
                             }
                         main.post {
                             if (sessionId == currentSession && callbackGeneration == currentCallbackGeneration) {
-                                this.listener?.onSpectrum(spectrum)
+                                this.listener?.onAudioFrame(audioFrame)
                             }
                         }
                     }
@@ -234,8 +235,30 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
         engineHandler.post { engineThread.quitSafely() }
     }
 
+    /** 从降噪后的 PCM 提取时域波形、RMS 和峰值，供语音面板可视化使用。 */
+    private fun audioFrame(samples: ShortArray, bands: FloatArray): VoiceAudioFrame {
+        val waveform = FloatArray(WAVEFORM_SAMPLES)
+        var energy = 0.0
+        var peak = 0f
+        for (sample in samples) {
+            val value = sample.toFloat() / 32768f
+            energy += value * value
+            peak = maxOf(peak, kotlin.math.abs(value))
+        }
+        for (i in waveform.indices) {
+            val start = i * samples.size / waveform.size
+            val end = ((i + 1) * samples.size / waveform.size)
+                .coerceAtLeast(start + 1).coerceAtMost(samples.size)
+            var sum = 0f
+            for (j in start until end) sum += samples[j].toFloat() / 32768f
+            waveform[i] = sum / (end - start).coerceAtLeast(1)
+        }
+        val rms = if (samples.isEmpty()) 0f else sqrt(energy / samples.size).toFloat()
+        return VoiceAudioFrame(waveform, bands, rms.coerceIn(0f, 1f), peak.coerceIn(0f, 1f))
+    }
+
     /**
-     * 对真实 16 kHz PCM16 样本做 1024 点 Hann 窗 FFT，输出 48 个对数频段。
+     * 对真实 16 kHz PCM16 样本做 1024 点 Hann 窗 FFT，输出 48 个对数频段.
      * 每个频段取 FFT bin 的 RMS 幅度，以 -72 dBFS 到 -18 dBFS 映射到 0..1。
      */
     private fun spectrum(samples: ShortArray): FloatArray {
@@ -335,6 +358,7 @@ class EngineRecognizer(private val engine: Engine) : VoiceRecognizer {
         const val POLL_MS = 100L
         const val FFT_SIZE = 1024
         const val SPECTRUM_BANDS = 48
+        const val WAVEFORM_SAMPLES = 128
         const val FLOOR_DB = -72.0
         const val CEILING_DB = -18.0
         const val NOISE_GATE_DB = 8.0

@@ -1,7 +1,18 @@
 package app.qingjian.inputmethod.voice
 
+data class VoiceAudioFrame(
+    /** 均匀抽样的时域波形，范围 -1..1。 */
+    val waveform: FloatArray,
+    /** 48 段对数频谱，范围 0..1。 */
+    val spectrum: FloatArray,
+    /** 线性 RMS 音量，范围 0..1。 */
+    val rms: Float,
+    /** 线性峰值音量，范围 0..1。 */
+    val peak: Float,
+)
+
 /**
- * 一种语音识别方式。入口（长按空格、工具栏话筒、全面屏底栏的语音键）都经 [VoiceInput] 挑一个实现来用，
+ * 一种语音识别方式.入口（长按空格、工具栏话筒、全面屏底栏的语音键）都经 [VoiceInput] 挑一个实现来用，
  * 换识别方式只换实现：系统 `SpeechRecognizer`、调系统语音输入法、Rust 侧的云端或离线模型（[EngineRecognizer]）。
  * 识别出的文字一律交回 [VoiceInput]，经 Core 上屏。主线程调，回调也在主线程。
  */
@@ -31,10 +42,16 @@ interface VoiceRecognizer {
         /** 出错，给用户看的一句话；之后不再回调。 */
         fun onError(message: String)
 
+        /** 真实音频帧；默认桥接到旧回调，兼容尚未升级的面板监听器。 */
+        fun onAudioFrame(frame: VoiceAudioFrame) {
+            onSpectrum(frame.spectrum)
+            onLevel(frame.rms)
+        }
+
         /** 真实 PCM FFT 得到的对数频段能量（48 段，0..1），主线程回调。 */
         fun onSpectrum(bands: FloatArray)
 
-        /** 兼容旧式音量指示；当前 PCM 识别实现优先回调 onSpectrum。 */
+        /** 兼容旧式音量指示。 */
         fun onLevel(level: Float) {}
     }
 }

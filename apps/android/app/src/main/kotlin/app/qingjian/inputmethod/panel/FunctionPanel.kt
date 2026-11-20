@@ -208,7 +208,7 @@ class FunctionPanel(
             val y = rowTop + row * rowStep
             val bounds = RectF(left, y + (rowStep - itemHeight) / 2f,
                 left + cardWidth, y + (rowStep + itemHeight) / 2f)
-            val selected = (if (selectedVoiceStyle == -1) 8 else selectedVoiceStyle) == index
+            val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
 
             ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
             ink.fill.style = android.graphics.Paint.Style.STROKE
@@ -346,6 +346,38 @@ class FunctionPanel(
                 ink.fill.strokeWidth = ink.dp(1.1f)
                 canvas.drawLine(x1, y1, x2, y2, ink.fill)
             }
+            return
+        }
+        if (index == 8 || index == 9) {
+            val wave = android.graphics.Path()
+            for (step in 0..24) {
+                val u = step / 24f
+                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
+                val cycles = if (index == 8) 2.5 else 3.2
+                val y = cy + kotlin.math.sin(u * Math.PI * cycles).toFloat() *
+                    ink.dp(if (index == 8) 5.5f else 3.8f)
+                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+            }
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
+            ink.fill.strokeWidth = ink.dp(2.8f)
+            ink.fill.color = secondary
+            ink.fill.alpha = 80
+            canvas.drawPath(wave, ink.fill)
+            ink.fill.strokeWidth = ink.dp(1.2f)
+            ink.fill.color = accent
+            ink.fill.alpha = 255
+            canvas.drawPath(wave, ink.fill)
+            if (index == 9) {
+                for (i in 0..4) {
+                    val x = cx - ink.dp(9f) + i * ink.dp(4.5f)
+                    val barH = ink.dp(floatArrayOf(3f, 7f, 11f, 6f, 4f)[i])
+                    ink.fill.strokeWidth = ink.dp(1.4f)
+                    canvas.drawLine(x, cy + ink.dp(12f) - barH, x, cy + ink.dp(12f) + barH, ink.fill)
+                }
+            }
+            ink.fill.style = android.graphics.Paint.Style.FILL
             return
         }
         if (index == 7) {
@@ -723,11 +755,11 @@ class FunctionPanel(
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
-                    if (row in 0 until 5 && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
+                    if (row in 0 until ((VoicePanel.ANIMATION_STYLE_LABELS.size + 1) / 2) && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
                         selectedVoiceStyle = when {
-                            selectedVoiceStyle == VoicePanel.ANIMATION_DISABLED -> if (index == 8) -1 else index
-                            (index == 8 && selectedVoiceStyle == -1) || (index == selectedVoiceStyle) -> VoicePanel.ANIMATION_DISABLED
-                            index == 8 -> -1
+                            selectedVoiceStyle == VoicePanel.ANIMATION_DISABLED -> if (index == VoicePanel.ANIMATION_RANDOM_INDEX) -1 else index
+                            (index == VoicePanel.ANIMATION_RANDOM_INDEX && selectedVoiceStyle == -1) || (index == selectedVoiceStyle) -> VoicePanel.ANIMATION_DISABLED
+                            index == VoicePanel.ANIMATION_RANDOM_INDEX -> -1
                             else -> index
                         }
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
