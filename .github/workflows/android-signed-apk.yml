@@ -40,6 +40,7 @@ on:
       - fix/workflow-368-backspace-ai-spectrum-palettes
       - fix/workflow-549-ai-scan-candidate-staggered-entry
       - fix/workflow-550-mascot-space-light-ai-bounce
+      - fix/workflow-551-mascot-bubble-glow-emoji
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
