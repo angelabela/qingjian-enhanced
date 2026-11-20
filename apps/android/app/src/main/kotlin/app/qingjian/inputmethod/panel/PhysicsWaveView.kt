@@ -491,6 +491,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.maskFilter = null
         paint.alpha = 255
         paint.style = Paint.Style.FILL
+        drawParticleField(canvas, h * 0.46f, h * 0.24f, 0.62f)
     }
 
     private fun spectrumColor(index: Int, shift: Float, spread: Float = 2.8f): Int =
@@ -545,6 +546,7 @@ class PhysicsWaveView @JvmOverloads constructor(
                 cx + radius / stretch, cy + radius * stretch, paint)
         }
         paint.alpha = 255
+        drawParticleField(canvas, height * 0.54f, height * 0.30f, 0.48f)
     }
 
     private fun drawString(canvas: Canvas) {
