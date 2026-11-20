@@ -261,7 +261,7 @@ class FloatingMascotService : Service() {
         private var bubbleHeightDp = 104f
         var bubbleOnLeft: Boolean = false
             private set
-        val dialogueWindowWidthPx: Int get() = ((bubbleWidthDp + 76f) * density).toInt()
+        val dialogueWindowWidthPx: Int get() = ((bubbleWidthDp + 84f) * density).toInt()
         val dialogueWindowHeightPx: Int get() = (maxOf(68f, bubbleHeightDp + 16f) * density).toInt()
         private val bubbleLeftDp: Float get() = if (bubbleOnLeft) 8f else 68f
         private val mascotLeftDp: Float get() = if (bubbleOnLeft) bubbleWidthDp + 16f else 0f
@@ -291,7 +291,11 @@ class FloatingMascotService : Service() {
         }
 
         private fun setDialogueExpanded(expanded: Boolean) {
-            if (dialogueExpanded == expanded) return
+            if (dialogueExpanded == expanded) {
+                // 内容变化时即使气泡仍处于展开状态，也要重新测量并更新窗口尺寸。
+                if (expanded) onDialogueVisibilityChanged?.invoke(true)
+                return
+            }
             dialogueExpanded = expanded
             onDialogueVisibilityChanged?.invoke(expanded)
         }
@@ -361,13 +365,20 @@ class FloatingMascotService : Service() {
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBody)
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
-                tipItems.take(3).forEachIndexed { index, item ->
-                    val baseline = 31f + index * 26f
-                    canvas.drawCircle(bubbleLeftDp + 12f, baseline - 4f, 1.8f, dialogueAccent)
-                    val value = item.first
-                    val count = dialogueText.breakText(value, true, bubbleWidthDp - 36f, null).coerceAtLeast(1)
-                    val visible = if (count < value.length) value.substring(0, (count - 1).coerceAtLeast(1)) + "…" else value
-                    canvas.drawText(visible, bubbleLeftDp + 20f, baseline, dialogueText)
+                var baseline = 28f
+                tipItems.take(3).forEach { item ->
+                    var rest = item.first
+                    var firstLine = true
+                    while (rest.isNotEmpty() && baseline < 8f + bubbleHeightDp - 6f) {
+                        val count = dialogueText.breakText(rest, true, bubbleWidthDp - if (firstLine) 36f else 24f, null).coerceAtLeast(1)
+                        val visible = rest.substring(0, count)
+                        if (firstLine) canvas.drawCircle(bubbleLeftDp + 12f, baseline - 4f, 1.8f, dialogueAccent)
+                        canvas.drawText(visible, bubbleLeftDp + if (firstLine) 20f else 12f, baseline, dialogueText)
+                        rest = rest.substring(count)
+                        firstLine = false
+                        baseline += 15f
+                    }
+                    baseline += 4f
                 }
             } else {
                 var rest = messageText.ifBlank { "我在这里陪你呀！" }
