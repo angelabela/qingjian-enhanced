@@ -74,8 +74,8 @@ class KeyboardView(
         /** 在删除键上往上一划：清空整个输入框。 */
         fun onClearAll()
 
-        /** 在删除键上下划：恢复上一次整框清空前的内容。 */
-        fun onRestoreLastClear()
+        /** 删除键下滑：只清空光标前面的内容，不影响光标后面的文字。 */
+        fun onClearBeforeCursor()
     }
 
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
@@ -516,7 +516,7 @@ class KeyboardView(
         val configured = gestureAction(key, upward)
         val action = if (configured != Settings.GestureAction.DEFAULT) configured else when {
             key == Key.Backspace && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
-            key == Key.Backspace && settings.flickClear && !upward -> Settings.GestureAction.RESTORE_CLEAR
+            key == Key.Backspace && settings.flickClear && !upward -> Settings.GestureAction.CLEAR_BEFORE_CURSOR
             key is Key.Space && !upward -> Settings.GestureAction.OPEN_CLIPBOARD
             key is Key.Letter && !upward -> when (key.char.lowercaseChar()) {
                 'z' -> Settings.GestureAction.SELECT_ALL
@@ -627,7 +627,7 @@ class KeyboardView(
             return
         }
         when {
-            key == Key.Backspace && !upward -> listener.onRestoreLastClear()
+            key == Key.Backspace && !upward -> listener.onClearBeforeCursor()
             key == Key.Backspace -> listener.onClearAll()
             upward && (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
             upward -> key.flick?.let(listener::onKeyChoice)
