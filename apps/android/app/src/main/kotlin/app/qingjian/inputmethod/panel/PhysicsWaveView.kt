@@ -5,6 +5,7 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
@@ -64,6 +65,16 @@ class PhysicsWaveView @JvmOverloads constructor(
     private val path = Path()
     private val density = resources.displayMetrics.density
     private val hueSeed = kotlin.random.Random.nextFloat() * 360f
+    // 光球径向渐变只创建一次；每帧仅更新矩阵，避免18个 Shader 高频分配。
+    private val orbShaderMatrix = Matrix()
+    private val orbShaders = Array(count) { index ->
+        val c = physicalColor(index)
+        android.graphics.RadialGradient(
+            0f, 0f, 1.65f,
+            intArrayOf(0xFFF8FDFF.toInt(), c, (c and 0x00FFFFFF) or 0x33000000),
+            floatArrayOf(0f, 0.42f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+    }
     private var lastFrame = 0L
     private var time = 0f
     private val gravity = 14f
@@ -631,9 +642,10 @@ class PhysicsWaveView @JvmOverloads constructor(
             paint.maskFilter = BlurMaskFilter(radius * 2.5f, BlurMaskFilter.Blur.NORMAL)
             canvas.drawCircle(cx, cy, radius * 2.15f, paint)
             paint.maskFilter = null
-            paint.shader = android.graphics.RadialGradient(cx - radius * 0.28f, cy - radius * 0.32f,
-                radius * 1.65f, intArrayOf(0xFFF8FDFF.toInt(), c, (c and 0x00FFFFFF) or 0x33000000),
-                floatArrayOf(0f, 0.42f, 1f), android.graphics.Shader.TileMode.CLAMP)
+            orbShaderMatrix.setScale(radius, radius)
+            orbShaderMatrix.postTranslate(cx - radius * 0.28f, cy - radius * 0.32f)
+            orbShaders[i].setLocalMatrix(orbShaderMatrix)
+            paint.shader = orbShaders[i]
             paint.alpha = (205 + energy * 45f).toInt().coerceIn(205, 250)
             canvas.drawCircle(cx, cy, radius, paint)
             paint.shader = null
