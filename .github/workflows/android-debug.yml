@@ -1,3 +1,4 @@
+# 550: mascot bubble spacing, cloud-tip shutdown, character bounce and spacebar edge glow.
 # 构建 Android Debug APK；339 轮增加立体按键主题、语音降噪、语义标点、剪贴板结构拆分与六步撤销。
 # 408 后续修复：剪贴板开关触摸拦截、相机标题栏外置、拍照识图快门与扫码框模式切换。
 name: android-debug
