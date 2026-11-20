@@ -801,16 +801,16 @@ class Composer(private val engine: Engine, private val host: Host) {
             val selectedAll = connection.performContextMenuAction(android.R.id.selectAll) &&
                 !connection.getSelectedText(0).isNullOrEmpty()
             if (!selectedAll) {
-                repeat(100) {
+                for (attempt in 0 until 100) {
                     val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val selected = connection.getSelectedText(0)?.length ?: 0
-                    if (before.isEmpty() && after.isEmpty() && selected == 0) return@repeat
+                    if (before.isEmpty() && after.isEmpty() && selected == 0) break
                     if (selected > 0) connection.commitText("", 1)
                     else connection.deleteSurroundingText(before.length, after.length)
                     val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    if (nextBefore == before && nextAfter == after) return@repeat
+                    if (nextBefore == before && nextAfter == after) break
                 }
             }
             // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
