@@ -911,15 +911,22 @@ class QingjianInputMethodService :
 
     /** 按常用功能面板选择的样式绘制 AI 等待提示；所有 span 仅附着于这段 composing 文本。 */
     private fun quickAiLoadingFrame(phase: Int): CharSequence {
-        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
+        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
         val label = when (style) {
-            3 -> "● AI 正在生成"
+            3, 8 -> "● AI 正在生成"
             4 -> "● ✦ AI 正在生成"
+            9 -> "AI 正在生成 |"
             else -> "✦ AI 正在生成"
         }
+        val themeText = Palette.of(this).text
         val palettes = when (style) {
             1 -> intArrayOf(0xFF00E5FF.toInt(), 0xFFFF35C8.toInt(), 0xFFFFD54F.toInt(), 0xFF7CFF6B.toInt(), 0xFF00E5FF.toInt())
             2 -> intArrayOf(0xFFFF3B5C.toInt(), 0xFFFFA52F.toInt(), 0xFFFFEA45.toInt(), 0xFF45E879.toInt(), 0xFF36CFFF.toInt(), 0xFF6577FF.toInt(), 0xFFD65BFF.toInt(), 0xFFFF3B5C.toInt())
+            5 -> intArrayOf(0xFF747C85.toInt(), 0xFFE7EBEF.toInt(), 0xFF747C85.toInt())
+            6 -> intArrayOf(0xFF858585.toInt(), 0xFFF2F2F2.toInt(), 0xFF858585.toInt())
+            7 -> intArrayOf(themeText, themeText)
+            8 -> intArrayOf(0xFF929AA2.toInt(), 0xFFE7EBEF.toInt(), 0xFF929AA2.toInt())
+            9 -> intArrayOf(themeText, themeText)
             else -> intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt(), 0xFF8B72FF.toInt())
         }
         fun colorAt(position: Float): Int {
@@ -937,7 +944,6 @@ class QingjianInputMethodService :
             return android.graphics.Color.rgb(channel(16), channel(8), channel(0))
         }
 
-        val themeText = Palette.of(this).text
         return SpannableString(label).apply {
             label.forEachIndexed { index, char ->
                 if (char.isWhitespace()) return@forEachIndexed
@@ -945,6 +951,33 @@ class QingjianInputMethodService :
                     3 -> {
                         val color = if (index == 0) colorAt(phase * 0.02f) else themeText
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    5 -> {
+                        val pulse = (0.5 + 0.5 * kotlin.math.sin(phase * 0.075)).toFloat()
+                        val color = android.graphics.Color.rgb((116 + pulse * 115).toInt(), (124 + pulse * 111).toInt(), (133 + pulse * 106).toInt())
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    6 -> {
+                        val p = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        setSpan(ForegroundColorSpan(colorAt(p + phase * 0.026f)), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    7 -> {
+                        setSpan(ForegroundColorSpan(themeText), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (index == phase % label.length) {
+                            setSpan(UnderlineSpan(), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                    }
+                    8 -> {
+                        val pulse = (0.5 + 0.5 * kotlin.math.sin(phase * 0.09)).toFloat()
+                        val color = if (index == 0) android.graphics.Color.rgb((110 + pulse * 130).toInt(), (116 + pulse * 130).toInt(), (124 + pulse * 130).toInt()) else themeText
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    9 -> {
+                        val color = if (char == 124.toChar() && phase % 12 < 6) android.graphics.Color.WHITE else if (char == 124.toChar()) 0xFF777777.toInt() else themeText
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (char == 124.toChar()) setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     else -> {
                         val gradientPosition = index.toFloat() / (label.length - 1).coerceAtLeast(1)

@@ -32,7 +32,7 @@ class VoicePanel(
     private val actionLabel: String,
     private val actions: Actions,
     private val blurredKeyboard: Bitmap? = null,
-    private val animationStyle: Int = 0,
+    private val animationStyle: Int = ANIMATION_DISABLED,
     private val animatedKeyboardBackground: Boolean = false,
     private val glassStrength: Int = DEFAULT_GLASS_STRENGTH,
 ) : FrameLayout(context) {
@@ -161,6 +161,7 @@ class VoicePanel(
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         addView(glassHighlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        overlay.visibility = if (animationStyle == ANIMATION_DISABLED) View.GONE else View.VISIBLE
         addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
         overlay.alpha = 0f
@@ -214,6 +215,7 @@ class VoicePanel(
     }
 
     fun addSpectrum(bands: FloatArray) {
+        if (animationStyle == ANIMATION_DISABLED) return
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
@@ -321,12 +323,17 @@ class VoicePanel(
         const val PREF_STYLE = "voice_animation_style"
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
+        const val ANIMATION_DISABLED = -2
         val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
-                .getInt(PREF_STYLE, 0)
-            return if (selected == -1) kotlin.random.Random.nextInt(8) else selected.coerceIn(0, 7)
+                .getInt(PREF_STYLE, ANIMATION_DISABLED)
+            return when {
+                selected == ANIMATION_DISABLED -> ANIMATION_DISABLED
+                selected == -1 -> kotlin.random.Random.nextInt(8)
+                else -> selected.coerceIn(0, 7)
+            }
         }
     }
 }

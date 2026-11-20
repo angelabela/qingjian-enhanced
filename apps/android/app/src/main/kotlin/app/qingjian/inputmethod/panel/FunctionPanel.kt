@@ -42,7 +42,7 @@ class FunctionPanel(
     private var backgroundEffectPage = false
     private var textEffectPage = false
     private var aiLoadingEffectPage = false
-    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
+    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
     private var selectedTextTarget = 0
     private var selectedTextPreset = Settings.TextEffectPreset.of(
@@ -50,7 +50,7 @@ class FunctionPanel(
     )
     private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
     private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
-    private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, 0)
+    private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
     private var voiceGlassStrength = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
         .getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
     private var adjustingVoiceGlass = false
@@ -86,8 +86,8 @@ class FunctionPanel(
                     backgroundEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle != 0) {
-                    selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
+                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..9) {
+                    selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
                     aiLoadingEffectPage = true
                     voiceEffectPage = false
                     backgroundEffectPage = false
@@ -107,7 +107,13 @@ class FunctionPanel(
                 },
                 Feature(Icon.RESIZE, "键盘高度") { startResize() },
                 Feature(Icon.TUNE, "定制工具栏") { openPanel(PanelKind.TOOLBAR) },
-                Feature(Icon.WAVEFORM, "语音动效") { voiceEffectPage = true; invalidate() },
+                Feature(Icon.WAVEFORM, "语音动效", on = selectedVoiceStyle != VoicePanel.ANIMATION_DISABLED) {
+                    selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+                        .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
+                    voiceEffectPage = true
+                    effectScroll.reset()
+                    invalidate()
+                },
                 Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
                 Feature(Icon.SETTINGS, "设置") { openSettings() },
             ) + listOfNotNull(
@@ -465,14 +471,25 @@ class FunctionPanel(
 
     /** AI 等待提示特效选择；预览只画在面板卡片中，实际效果仅附着于输入框等待文字。 */
     private fun drawAiLoadingEffectSettings(canvas: Canvas) {
-        val labels = listOf("345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字", "渐变 + 光点 + 扫光组合")
-        val descriptions = listOf("紫蓝粉平滑流动", "霓虹色与柔和彩色底光", "完整彩虹色带持续流动", "单色光点呼吸，文字清晰", "渐变文字叠加光点与扫光")
+        val labels = listOf(
+            "345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字", "渐变 + 光点 + 扫光组合",
+            "单色呼吸文字", "银灰金属流光", "白色下划线扫光", "单色光点脉冲", "打字机光标闪烁",
+        )
+        val descriptions = listOf(
+            "紫蓝粉平滑流动", "霓虹色与柔和彩色底光", "完整彩虹色带持续流动", "单色光点呼吸，文字清晰", "渐变文字叠加光点与扫光",
+            "灰白亮度缓慢呼吸", "银灰明暗连续流动", "单色文字与移动下划线", "单色圆点柔和脉冲", "末尾光标明暗闪烁",
+        )
         val colors = listOf(
             intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
             intArrayOf(0xFF00E5FF.toInt(), 0xFFFF35C8.toInt(), 0xFFFFD54F.toInt()),
             intArrayOf(0xFFFF3B5C.toInt(), 0xFFFFA52F.toInt(), 0xFF45E879.toInt(), 0xFF36CFFF.toInt(), 0xFFD65BFF.toInt()),
             intArrayOf(palette.brand, palette.accent, palette.text),
             intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
+            intArrayOf(0xFF737B84.toInt(), 0xFFE1E5E9.toInt(), 0xFF737B84.toInt()),
+            intArrayOf(0xFF858585.toInt(), 0xFFF0F0F0.toInt(), 0xFF858585.toInt()),
+            intArrayOf(0xFFB8BEC7.toInt(), 0xFFE9EDF1.toInt(), 0xFFB8BEC7.toInt()),
+            intArrayOf(0xFF8A929A.toInt(), 0xFFF2F4F6.toInt(), 0xFF8A929A.toInt()),
+            intArrayOf(0xFF7C858E.toInt(), 0xFFE7EBEF.toInt(), 0xFF7C858E.toInt()),
         )
         ink.textStart(canvas, "仅改变 AI 一键生成时输入框内的等待提示", 11f, palette.gloss,
             card.left + ink.dp(14f), card.top + ink.dp(24f), card.right - ink.dp(12f))
@@ -481,7 +498,7 @@ class FunctionPanel(
         val gapX = ink.dp(7f)
         val itemHeight = ink.dp(60f)
         val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-        effectScroll.max = (3 * rowStep - (card.bottom - rowTop - ink.dp(6f))).coerceAtLeast(0f)
+        effectScroll.max = (((labels.size + 1) / 2) * rowStep - (card.bottom - rowTop - ink.dp(6f))).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, rowTop, card.right, card.bottom - ink.dp(6f))
         canvas.translate(0f, -effectScroll.offset)
@@ -622,7 +639,7 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val col = if (x < card.left + ink.dp(10f) + itemWidth) 0 else 1
                     val index = row * 2 + col
-                    if (index in 0..4) {
+                    if (index in 0 until 10) {
                         selectedAiLoadingStyle = index
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_AI_LOADING_EFFECT, index).apply()
@@ -703,7 +720,12 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
                     if (row in 0 until 5 && index in VoicePanel.ANIMATION_STYLE_LABELS.indices) {
-                        selectedVoiceStyle = if (index == 8) -1 else index
+                        selectedVoiceStyle = when {
+                            selectedVoiceStyle == VoicePanel.ANIMATION_DISABLED -> if (index == 8) -1 else index
+                            (index == 8 && selectedVoiceStyle == -1) || (index == selectedVoiceStyle) -> VoicePanel.ANIMATION_DISABLED
+                            index == 8 -> -1
+                            else -> index
+                        }
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
                     }
