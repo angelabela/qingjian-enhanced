@@ -163,7 +163,9 @@ class FloatingMascotService : Service() {
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
                     pendingCopy?.let(dragHandler::removeCallbacks)
                     pendingCopy = Runnable {
-                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)
+                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) {
+                            if (!MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)) mascotView?.showCopyResult(false)
+                        } else mascotView?.showCopyResult(false)
                     }.also { dragHandler.postDelayed(it, 1_000L) }
                 }
                 true

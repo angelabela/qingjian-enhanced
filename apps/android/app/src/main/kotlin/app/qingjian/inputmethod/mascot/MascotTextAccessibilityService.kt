@@ -31,24 +31,16 @@ class MascotTextAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
     private fun featureEnabled() = getSharedPreferences("mascot_assist", MODE_PRIVATE).getBoolean("cross_app_enabled", false)
     private fun copyAt(x: Int, y: Int): Boolean {
-        var node: AccessibilityNodeInfo? = null
-        val success = runCatching {
-            if (!featureEnabled()) return@runCatching false
-            val root = rootInActiveWindow ?: return@runCatching false
-            if (root.packageName?.toString() == packageName) return@runCatching false
-            node = findTextNode(root, x, y) ?: return@runCatching false
-            val value = node?.text?.toString()?.trim().orEmpty()
-            if (value.isBlank()) return@runCatching false
-            // 尝试触发系统无障碍焦点与选中反馈，标示当前文本可复制。
-            runCatching { node?.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) }
-            runCatching { node?.performAction(AccessibilityNodeInfo.ACTION_SELECT) }
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("青简复制", value))
-            true
-        }.getOrDefault(false)
-        node?.recycle()
-        sendBroadcast(android.content.Intent(ACTION_COPY_RESULT).setPackage(packageName).putExtra(EXTRA_COPY_SUCCESS, success))
-        return success
+        if (!featureEnabled()) return false
+        val root = rootInActiveWindow ?: return false
+        if (root.packageName?.toString() == packageName) return false
+        val node = findTextNode(root, x, y) ?: return false
+        val value = node.text?.toString()?.trim().orEmpty()
+        if (value.isBlank()) { node.recycle(); return false }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("青简复制", value))
+        node.recycle()
+        return true
     }
     private fun findTextNode(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
         val bounds = Rect()
@@ -71,8 +63,6 @@ class MascotTextAccessibilityService : AccessibilityService() {
     }
     companion object {
         const val ACTION_APP_CONTEXT = "app.qingjian.inputmethod.action.MASCOT_APP_CONTEXT"
-        const val ACTION_COPY_RESULT = "app.qingjian.inputmethod.action.MASCOT_COPY_RESULT"
-        const val EXTRA_COPY_SUCCESS = "copy_success"
         const val EXTRA_APP_LABEL = "app_label"
         const val EXTRA_APP_HINT = "app_hint"
         @Volatile private var active: MascotTextAccessibilityService? = null
