@@ -32,6 +32,8 @@ abstract class PanelView(
 
     private val scrollables = mutableListOf<Scrollable>()
     private val headerCard = RectF()
+    protected var animatedBackgroundEnabled: Boolean = false
+        private set
     private var dragging: Scrollable? = null
 
     protected fun scrollable(horizontal: Boolean, contains: (Float, Float) -> Boolean): ScrollState {
@@ -88,7 +90,9 @@ abstract class PanelView(
 
     /** 动态键盘背景开启时，面板底层必须透出根视图的动态背景。 */
     fun useAnimatedBackground(enabled: Boolean) {
+        animatedBackgroundEnabled = enabled
         setBackgroundColor(if (enabled) Color.TRANSPARENT else palette.board)
+        invalidate()
     }
 
     init {
@@ -117,9 +121,11 @@ abstract class PanelView(
         val inset = ink.dp(6f)
         headerCard.set(inset, inset, width - inset, headerHeight - ink.dp(4f))
         headerCard.offset(0f, ink.density)
-        ink.round(canvas, headerCard, 14f, palette.keyShadow)
-        headerCard.offset(0f, -ink.density)
-        ink.round(canvas, headerCard, 14f, palette.surface)
+        if (!animatedBackgroundEnabled) {
+            ink.round(canvas, headerCard, 14f, palette.keyShadow)
+            headerCard.offset(0f, -ink.density)
+            ink.round(canvas, headerCard, 14f, palette.surface)
+        }
         val cy = headerCard.centerY()
         ink.icon(canvas, leftIcon, ink.dp(BACK_WIDTH_DP) / 2, cy, 24f, if (leftIcon == PanelIcons.Icon.BACK) palette.text else palette.brand)
         tabs?.let {

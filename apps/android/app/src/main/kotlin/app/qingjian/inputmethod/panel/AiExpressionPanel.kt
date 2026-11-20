@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.panel
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -21,6 +22,7 @@ class AiExpressionPanel(
     private val onReplace: (String) -> Boolean,
     private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
+    transparentBackground: Boolean = false,
 ) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply {
@@ -38,12 +40,12 @@ class AiExpressionPanel(
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(palette.board)
+        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(12), 0)
-            background = rounded(palette.surface, 14)
+            background = if (transparentBackground) ColorDrawable(Color.TRANSPARENT) else rounded(palette.surface, 14)
             addView(TextView(context).apply {
                 text = "‹"
                 textSize = 32f
@@ -83,6 +85,11 @@ class AiExpressionPanel(
         content.addView(status)
         status.text = "正在理解上下文并生成多种表达…"
         generate()
+    }
+
+    fun setTransparentBackground(enabled: Boolean) {
+        setBackgroundColor(if (enabled) Color.TRANSPARENT else palette.board)
+        (getChildAt(0) as? LinearLayout)?.background = if (enabled) ColorDrawable(Color.TRANSPARENT) else rounded(palette.surface, 14)
     }
 
     private fun generate() {

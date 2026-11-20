@@ -160,6 +160,11 @@ class QingjianInputMethodService :
             (restarting || clipboardPanelOwnerFieldId == info.fieldId)
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
+    private var lastClipboardPhoneNumber = ""
+    private var lastClipboardPhonePromptAt = 0L
+    private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
+        maybeShowClipboardPhonePrompt()
+    }
 
     /** 短信验证码只通过本机广播送到候选条；短信正文不进入输入法服务。 */
     private val smsCodeListener = object : BroadcastReceiver() {
@@ -374,6 +379,8 @@ class QingjianInputMethodService :
         )
         cloud.start()
         clipboardWatcher.start()
+        getSystemService(ClipboardManager::class.java)?.addPrimaryClipChangedListener(clipboardPhoneListener)
+        maybeShowClipboardPhonePrompt()
         ContextCompat.registerReceiver(
             this,
             mascotTipSelectedReceiver,
@@ -387,6 +394,7 @@ class QingjianInputMethodService :
     override fun onDestroy() {
         AppLog.info("ime destroy")
         clipboardWatcher.stop()
+        getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipboardPhoneListener)
         contacts.stop()
         ClipboardSync.removeListener(syncListener)
         Settings.preferences(this).unregisterOnSharedPreferenceChangeListener(settingsListener)
@@ -652,21 +660,21 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
-        maybeShowMascotSemanticReaction(newSelStart, newSelEnd, oldSelEnd)
+        maybeShowMascotSemanticReaction(newSelStart, newSelEnd)
         // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。
         if (isClipboardPanel()) return
         if (editor != null) return
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
         if (candidatesEnd == -1 && newSelStart == newSelEnd) composer.refreshCompletions()
-        refreshSmartInfoSuggestions()
+        // 已停用旧版电量/内存/天气/位置 Tips 浮窗触发逻辑。
     }
 
 
     /** 本地语义回应：只处理普通非密码输入框中刚提交的文本，不联网、不上传。 */
-    private fun maybeShowMascotSemanticReaction(newSelStart: Int, newSelEnd: Int, oldSelEnd: Int) {
-        if (newSelStart < 0 || newSelEnd != newSelStart || newSelEnd <= oldSelEnd) return
-        if (editor != null || composer.privateInput || composer.directInput || shownPreedit.isNotEmpty()) return
+    private fun maybeShowMascotSemanticReaction(newSelStart: Int, newSelEnd: Int) {
+        if (newSelStart < 0 || newSelEnd != newSelStart) return
+        if (editor != null || composer.privateInput) return
         val info = currentInputEditorInfo ?: return
         val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
         if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
@@ -677,16 +685,40 @@ class QingjianInputMethodService :
         val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
         if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
         val before = currentInputConnection?.getTextBeforeCursor(48, 0)?.toString().orEmpty()
-        val response = MascotDialogueEngine.response(before) ?: return
+        val reaction = MascotDialogueEngine.reaction(before) ?: return
+        val response = reaction.message
         val now = android.os.SystemClock.elapsedRealtime()
-        if (response == lastMascotReaction && now - lastMascotReactionAt < 5_000L) return
+        if (response == lastMascotReaction && now - lastMascotReactionAt < 2_000L) return
         lastMascotReaction = response
         lastMascotReactionAt = now
         val intent = Intent(this, FloatingMascotService::class.java)
             .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
             .putExtra(FloatingMascotService.EXTRA_MESSAGE, response)
+            .putExtra(FloatingMascotService.EXTRA_ANIMATION, reaction.animation)
         runCatching { ContextCompat.startForegroundService(this, intent) }
             .onFailure { AppLog.warn("mascot semantic response unavailable: " + it.javaClass.simpleName) }
+    }
+
+    /** 剪贴板出现电话号码时由小精灵提示；点击提示框打开系统拨号器并预填号码。 */
+    private fun maybeShowClipboardPhonePrompt() {
+        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
+        val clip = runCatching { getSystemService(ClipboardManager::class.java)?.primaryClip }.getOrNull() ?: return
+        if (clip.itemCount == 0 || (Build.VERSION.SDK_INT >= 33 && clip.description.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)) return
+        val raw = clip.getItemAt(0).text?.toString()?.trim().orEmpty()
+        if (raw.length !in 7..40 || !raw.matches(Regex("[+0-9()\\-\\s]+"))) return
+        val digits = raw.filter(Char::isDigit)
+        if (digits.length !in 7..15) return
+        val number = (if (raw.trimStart().startsWith("+")) "+" else "") + digits
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (number == lastClipboardPhoneNumber && now - lastClipboardPhonePromptAt < 30_000L) return
+        lastClipboardPhoneNumber = number
+        lastClipboardPhonePromptAt = now
+        val intent = Intent(this, FloatingMascotService::class.java)
+            .setAction(FloatingMascotService.ACTION_SHOW_PHONE)
+            .putExtra(FloatingMascotService.EXTRA_PHONE_NUMBER, number)
+        runCatching { ContextCompat.startForegroundService(this, intent) }
+            .onFailure { AppLog.warn("clipboard phone prompt unavailable: " + it.javaClass.simpleName) }
     }
 
     private fun showMascotDialogue(message: String) {

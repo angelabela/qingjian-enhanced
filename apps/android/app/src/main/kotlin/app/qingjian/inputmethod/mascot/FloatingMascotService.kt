@@ -17,6 +17,7 @@ import android.graphics.Path
 import android.text.TextPaint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.Handler
@@ -67,8 +68,8 @@ class FloatingMascotService : Service() {
         }
         windowManager = getSystemService(WindowManager::class.java)
         val density = resources.displayMetrics.density
-        val width = (248f * density).toInt()
-        val height = (92f * density).toInt()
+        val width = (190f * density).toInt()
+        val height = (72f * density).toInt()
         windowParams = WindowManager.LayoutParams(
             width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -106,7 +107,8 @@ class FloatingMascotService : Service() {
                 pendingTipColors = null
             }
             ACTION_HIDE_TIPS -> hideTips()
-            ACTION_SHOW_MESSAGE -> mascotView?.setMessage(intent.getStringExtra(EXTRA_MESSAGE).orEmpty())
+            ACTION_SHOW_MESSAGE -> mascotView?.setMessage(intent.getStringExtra(EXTRA_MESSAGE).orEmpty(), animation = intent.getStringExtra(EXTRA_ANIMATION).orEmpty())
+            ACTION_SHOW_PHONE -> mascotView?.setPhonePrompt(intent.getStringExtra(EXTRA_PHONE_NUMBER).orEmpty())
         }
         return START_STICKY
     }
@@ -164,7 +166,7 @@ class FloatingMascotService : Service() {
                 val state = view.getTag() as? FloatArray
                 if (state != null && state[4] == 0f) {
                     val pet = view as MascotView
-                    if (!pet.selectTipAt(event.x, event.y)) pet.onPetTapped()
+                    if (!pet.selectTipAt(event.x, event.y) && !pet.onPhoneBubbleTapped(event.x, event.y)) pet.onPetTapped()
                 }
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
                 true
@@ -211,11 +213,16 @@ class FloatingMascotService : Service() {
         private var tipItems: List<Pair<String, Int>> = emptyList()
         private var messageUntil = 0L
         private var messageText = "你好呀！"
-        val overlayWidth: Int get() = (248f * density).toInt()
-        val overlayHeight: Int get() = (92f * density).toInt()
+        private var animationType = "idle"
+        private var animationStartedAt = 0L
+        private var pendingPhoneNumber: String? = null
+        val overlayWidth: Int get() = (190f * density).toInt()
+        val overlayHeight: Int get() = (72f * density).toInt()
 
         fun setTips(items: List<Pair<String, Int>>, surface: Int, text: Int, cloud: Int, accent: Int, border: Int) {
             tipItems = items.take(3)
+            pendingPhoneNumber = null
+            dialogueText.textSize = 10.5f
             dialogueText.color = text
             dialogueBody.color = Color.argb(242, Color.red(surface), Color.green(surface), Color.blue(surface))
             dialogueBorder.color = border
@@ -236,8 +243,8 @@ class FloatingMascotService : Service() {
             if (tipItems.isEmpty()) return false
             val px = x / density
             val py = y / density
-            if (px !in 70f..244f || py !in 12f..80f) return false
-            val row = ((py - 29f) / 17f).toInt()
+            if (px !in 70f..184f || py !in 10f..70f) return false
+            val row = ((py - 20f) / 17f).toInt()
             val item = tipItems.getOrNull(row) ?: return false
             appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, item.second))
             appContext.startService(Intent(appContext, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
@@ -248,34 +255,33 @@ class FloatingMascotService : Service() {
             if (tipItems.isEmpty() && now >= messageUntil) return
             canvas.save()
             canvas.scale(density, density)
-            val rect = RectF(70f, 10f, 244f, 82f)
-            val tail = Path().apply { moveTo(66f, 39f); lineTo(75f, 32f); lineTo(76f, 48f); close() }
+            val rect = RectF(70f, 10f, 184f, 70f)
+            val tail = Path().apply { moveTo(66f, 34f); lineTo(75f, 28f); lineTo(76f, 43f); close() }
             canvas.drawPath(tail, dialogueBody)
-            canvas.drawRoundRect(rect, 14f, 14f, dialogueBody)
+            canvas.drawRoundRect(rect, 12f, 12f, dialogueBody)
             canvas.drawPath(tail, dialogueBorder)
-            canvas.drawRoundRect(rect, 14f, 14f, dialogueBorder)
+            canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
-                tipItems.forEachIndexed { index, item ->
-                    val baseline = 30f + index * 17f
-                    canvas.drawCircle(82f, baseline - 4f, 2.2f, dialogueAccent)
+                tipItems.take(3).forEachIndexed { index, item ->
+                    val baseline = 26f + index * 17f
+                    canvas.drawCircle(80f, baseline - 4f, 1.8f, dialogueAccent)
                     val value = item.first
-                    val maxWidth = 148f
-                    val count = dialogueText.breakText(value, true, maxWidth, null).coerceAtLeast(1)
+                    val count = dialogueText.breakText(value, true, 92f, null).coerceAtLeast(1)
                     val visible = if (count < value.length) value.substring(0, (count - 1).coerceAtLeast(1)) + "…" else value
-                    canvas.drawText(visible, 91f, baseline, dialogueText)
+                    canvas.drawText(visible, 87f, baseline, dialogueText)
                 }
             } else {
                 var rest = messageText.ifBlank { "我在这里陪你呀！" }
-                var baseline = 38f
-                repeat(2) {
+                var baseline = 29f
+                repeat(3) {
                     if (rest.isNotEmpty()) {
-                        val count = dialogueText.breakText(rest, true, 148f, null).coerceAtLeast(1)
-                        canvas.drawText(rest.substring(0, count), 84f, baseline, dialogueText)
+                        val count = dialogueText.breakText(rest, true, 94f, null).coerceAtLeast(1)
+                        canvas.drawText(rest.substring(0, count), 80f, baseline, dialogueText)
                         rest = rest.substring(count)
-                        baseline += 18f
+                        baseline += 15f
                     }
                 }
-                if (rest.isNotEmpty()) canvas.drawText("…", 230f, 70f, dialogueText)
+                if (rest.isNotEmpty()) canvas.drawText("…", 176f, 62f, dialogueText)
             }
             canvas.restore()
         }
@@ -292,11 +298,30 @@ class FloatingMascotService : Service() {
             setMessage(when (mood) { 1 -> "嘿嘿，今天也要开心呀！"; 2 -> "加油哦，我陪着你！"; 3 -> "收到啦，交给我吧！"; else -> "你好呀，很高兴见到你！" }, 2_600L)
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         }
-        fun setMessage(value: String, duration: Long = 4_500L) {
+        fun setMessage(value: String, duration: Long = 4_500L, animation: String = "idle") {
             tipItems = emptyList()
+            pendingPhoneNumber = null
             messageText = value.trim().take(72).ifBlank { "我在这里陪你呀！" }
             messageUntil = SystemClock.uptimeMillis() + duration
+            animationType = animation
+            animationStartedAt = SystemClock.uptimeMillis()
             invalidate()
+        }
+        fun setPhonePrompt(number: String) {
+            if (number.isBlank()) return
+            setMessage("发现电话号码，点击提示框拨打～", 15_000L)
+            pendingPhoneNumber = number
+        }
+        fun onPhoneBubbleTapped(x: Float, y: Float): Boolean {
+            val number = pendingPhoneNumber ?: return false
+            val px = x / density
+            val py = y / density
+            if (px !in 70f..184f || py !in 10f..70f) return false
+            pendingPhoneNumber = null
+            runCatching {
+                appContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { android.util.Log.w("QingjianMascot", "Unable to open phone dialer", it) }
+            return true
         }
         fun setContextLabel(label: String) = setMessage(label, 4_500L)
         override fun onDraw(canvas: Canvas) {
@@ -304,13 +329,48 @@ class FloatingMascotService : Service() {
             val now = SystemClock.uptimeMillis()
             canvas.save()
             canvas.scale(density, density)
-            canvas.translate(0f, sin(now / 560.0).toFloat() * 2.2f)
+            val elapsed = (now - animationStartedAt).coerceAtLeast(0L).toFloat()
+            val active = elapsed < 1_900f
+            val bounce = if (active && animationType == "happy") -abs(sin(elapsed / 105f)).toFloat() * 7f else 0f
+            val nod = if (active && animationType == "thanks") abs(sin(elapsed / 125f)).toFloat() * 2.8f else 0f
+            canvas.translate(0f, sin(now / 560.0).toFloat() * 1.5f + bounce + nod)
             paint.color = 0x55202A45; canvas.drawCircle(32f, 34f, 29f, paint)
             ear.reset(); ear.moveTo(12f,18f); ear.lineTo(14f,2f); ear.lineTo(26f,13f); ear.close()
             canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
             ear.reset(); ear.moveTo(38f,13f); ear.lineTo(51f,2f); ear.lineTo(52f,20f); ear.close()
             canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
             canvas.drawCircle(32f,34f,25f,face); canvas.drawCircle(32f,34f,25f,outline)
+            if (active) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3.1f
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.color = 0xFFFFA66E.toInt()
+                when (animationType) {
+                    "wave" -> {
+                        val swing = sin(elapsed / 85f).toFloat() * 5f
+                        canvas.drawLine(49f, 40f, 58f, 25f + swing, paint)
+                        canvas.drawCircle(58f, 24f + swing, 3f, cheek)
+                    }
+                    "cheer" -> {
+                        canvas.drawLine(15f, 41f, 6f, 24f, paint)
+                        canvas.drawLine(49f, 41f, 58f, 24f, paint)
+                        canvas.drawCircle(6f, 23f, 3f, cheek)
+                        canvas.drawCircle(58f, 23f, 3f, cheek)
+                    }
+                    "thanks" -> {
+                        canvas.drawLine(15f, 41f, 24f, 47f, paint)
+                        canvas.drawLine(49f, 41f, 40f, 47f, paint)
+                    }
+                    "comfort" -> {
+                        canvas.drawLine(14f, 41f, 25f, 46f, paint)
+                        canvas.drawLine(50f, 41f, 39f, 46f, paint)
+                        paint.style = Paint.Style.FILL
+                        paint.color = 0xFFFF80B5.toInt()
+                        canvas.drawCircle(57f, 14f, 3f, paint)
+                    }
+                }
+                paint.style = Paint.Style.FILL
+            }
             if ((now % 3400L) < 150L) {
                 paint.color = 0xFF473A50.toInt(); paint.strokeWidth = 2.4f; paint.strokeCap = Paint.Cap.ROUND
                 canvas.drawLine(20f,29f,25f,29f,paint); canvas.drawLine(39f,29f,44f,29f,paint)
@@ -340,7 +400,10 @@ class FloatingMascotService : Service() {
         const val ACTION_SHOW_TIPS = "app.qingjian.inputmethod.action.SHOW_MASCOT_TIPS"
         const val ACTION_HIDE_TIPS = "app.qingjian.inputmethod.action.HIDE_MASCOT_TIPS"
         const val ACTION_SHOW_MESSAGE = "app.qingjian.inputmethod.action.SHOW_MASCOT_MESSAGE"
+        const val ACTION_SHOW_PHONE = "app.qingjian.inputmethod.action.SHOW_MASCOT_PHONE"
         const val EXTRA_MESSAGE = "message"
+        const val EXTRA_ANIMATION = "animation"
+        const val EXTRA_PHONE_NUMBER = "phone_number"
         const val ACTION_TIP_SELECTED = "app.qingjian.inputmethod.action.MASCOT_TIP_SELECTED"
         const val EXTRA_TIP_LABELS = "tip_labels"
         const val EXTRA_TIP_INDEXES = "tip_indexes"

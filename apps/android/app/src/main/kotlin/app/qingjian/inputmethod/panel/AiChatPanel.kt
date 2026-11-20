@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -22,6 +23,7 @@ class AiChatPanel(
     private val onReplace: (String) -> Boolean,
     private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
+    transparentBackground: Boolean = false,
 ) : LinearLayout(context) {
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply {
@@ -39,12 +41,12 @@ class AiChatPanel(
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(palette.board)
+        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(12), 0)
-            background = rounded(palette.surface, 14)
+            background = if (transparentBackground) ColorDrawable(Color.TRANSPARENT) else rounded(palette.surface, 14)
             addView(TextView(context).apply {
                 text = "‹"
                 textSize = 32f
@@ -86,6 +88,11 @@ class AiChatPanel(
 
         content.addView(status)
         generate()
+    }
+
+    fun setTransparentBackground(enabled: Boolean) {
+        setBackgroundColor(if (enabled) Color.TRANSPARENT else palette.board)
+        (getChildAt(0) as? LinearLayout)?.background = if (enabled) ColorDrawable(Color.TRANSPARENT) else rounded(palette.surface, 14)
     }
 
     private fun generate() {

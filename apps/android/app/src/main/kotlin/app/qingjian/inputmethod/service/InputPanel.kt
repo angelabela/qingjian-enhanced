@@ -341,7 +341,7 @@ class InputPanel(
     private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("video_frosted", true)
     private val videoBackgroundUri = if (videoBackgroundEnabled && videoBackgroundMode != 1) dynamicBackgroundPrefs.getString("video_uri", null) else null
     private val backgroundEffectActive = settings.keyboardBackgroundEffect && (videoBackgroundUri == null || videoBackgroundMode != 0)
-    private val transparentBackground = backgroundEffectActive || videoBackgroundUri != null
+    private var transparentBackground = backgroundEffectActive || videoBackgroundEnabled || videoBackgroundUri != null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
     private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
@@ -466,8 +466,19 @@ class InputPanel(
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
+        transparentBackground = effectEnabled || enabled || uri != null
+        bar.setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
+        when (val active = panelView) {
+            is app.qingjian.inputmethod.panel.base.PanelView -> active.useAnimatedBackground(transparentBackground)
+            is AiChatPanel -> active.setTransparentBackground(transparentBackground)
+            is AiExpressionPanel -> active.setTransparentBackground(transparentBackground)
+        }
         val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
-        root.background = if (effectEnabled) FlowingKeyboardBackgroundDrawable(palette, style) else android.graphics.drawable.ColorDrawable(palette.board)
+        root.background = when {
+            effectEnabled -> FlowingKeyboardBackgroundDrawable(palette, style)
+            enabled || uri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+            else -> android.graphics.drawable.ColorDrawable(palette.board)
+        }
         root.invalidate()
     }
 
@@ -524,10 +535,10 @@ class InputPanel(
                 actions::insertAtCursor, actions::replaceSelectedText, actions::copyToClipboard, actions::closePanel,
             )
             PanelKind.AI_CHAT -> AiChatPanel(
-                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
+                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
             )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
-                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
+                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
             )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
