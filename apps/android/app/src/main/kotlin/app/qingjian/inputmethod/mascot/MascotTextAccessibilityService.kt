@@ -20,9 +20,9 @@ class MascotTextAccessibilityService : AccessibilityService() {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
         }.getOrDefault(pkg.substringAfterLast('.'))
         val hint = when {
-            listOf("wechat", "whatsapp", "telegram", "qq").any { pkg.contains(it, true) } -> "聊天辅助"
-            listOf("browser", "chrome", "firefox").any { pkg.contains(it, true) } -> "浏览复制"
-            listOf("taobao", "jd", "pinduoduo").any { pkg.contains(it, true) } -> "购物助手"
+            pkg == "com.tencent.mm" || pkg == "com.tencent.mobileqq" || pkg == "com.tencent.qqlite" || listOf("whatsapp", "telegram").any { pkg.contains(it, true) } -> "聊天辅助"
+            pkg == "com.android.chrome" || pkg == "com.uc.browser" || pkg == "com.tencent.mtt" || listOf("browser", "firefox").any { pkg.contains(it, true) } -> "浏览复制"
+            pkg == "com.taobao.taobao" || pkg == "com.jingdong.app.mall" || pkg == "com.xunmeng.pinduoduo" -> "购物助手"
             else -> "场景辅助"
         }
         sendBroadcast(android.content.Intent(ACTION_APP_CONTEXT).setPackage(packageName)
