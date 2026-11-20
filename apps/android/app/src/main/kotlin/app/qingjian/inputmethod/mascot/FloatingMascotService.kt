@@ -86,7 +86,7 @@ class FloatingMascotService : Service() {
                 stopSelf(); return
             }
         }
-        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT) }
+        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenReceiver, filter)
         receiverRegistered = true
