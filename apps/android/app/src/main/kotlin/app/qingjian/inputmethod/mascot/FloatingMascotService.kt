@@ -362,8 +362,8 @@ class FloatingMascotService : Service() {
                 result
             }
             val widest = lines.maxOfOrNull { dialogueText.measureText(it) } ?: 80f
-            bubbleWidthDp = (widest + 28f).coerceIn(112f, 224f)
-            bubbleHeightDp = (lines.size.coerceAtLeast(1) * 16f + 24f).coerceIn(48f, 160f)
+            bubbleWidthDp = (widest + 14f).coerceIn(112f, 224f)
+            bubbleHeightDp = (lines.size.coerceAtLeast(1) * 15f + 12f).coerceIn(48f, 160f)
         }
 
         private fun setDialogueExpanded(expanded: Boolean) {
@@ -441,29 +441,28 @@ class FloatingMascotService : Service() {
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBody)
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
-                var baseline = 28f
+                var baseline = 18f
                 tipItems.take(3).forEach { item ->
                     var rest = item.first
                     var firstLine = true
                     while (rest.isNotEmpty() && baseline < 8f + bubbleHeightDp - 6f) {
-                        val count = dialogueText.breakText(rest, true, bubbleWidthDp - if (firstLine) 36f else 24f, null).coerceAtLeast(1)
+                        val count = dialogueText.breakText(rest, true, bubbleWidthDp - if (firstLine) 24f else 12f, null).coerceAtLeast(1)
                         val visible = rest.substring(0, count)
-                        if (firstLine) canvas.drawCircle(bubbleLeftDp + 12f, baseline - 4f, 1.8f, dialogueAccent)
-                        canvas.drawText(visible, bubbleLeftDp + if (firstLine) 20f else 12f, baseline, dialogueText)
+                        if (firstLine) canvas.drawCircle(bubbleLeftDp + 6f, baseline - 4f, 1.8f, dialogueAccent)
+                        canvas.drawText(visible, bubbleLeftDp + if (firstLine) 10f else 6f, baseline, dialogueText)
                         rest = rest.substring(count)
                         firstLine = false
                         baseline += 15f
                     }
-                    baseline += 4f
                 }
             } else {
                 var rest = messageText.ifBlank { "我在这里陪你呀！" }
-                var baseline = 28f
+                var baseline = 18f
                 var lines = 0
                 while (rest.isNotEmpty() && lines < 9) {
-                    val count = dialogueText.breakText(rest, true, bubbleWidthDp - 24f, null).coerceAtLeast(1)
+                    val count = dialogueText.breakText(rest, true, bubbleWidthDp - 12f, null).coerceAtLeast(1)
                     val visible = rest.substring(0, count)
-                    canvas.drawText(visible, bubbleLeftDp + 12f, baseline, dialogueText)
+                    canvas.drawText(visible, bubbleLeftDp + 6f, baseline, dialogueText)
                     rest = rest.substring(count)
                     baseline += 15f
                     lines++
