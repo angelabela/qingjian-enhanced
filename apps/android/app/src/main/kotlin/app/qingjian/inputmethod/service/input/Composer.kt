@@ -601,7 +601,11 @@ class Composer(private val engine: Engine, private val host: Host) {
                 connection.getTextBeforeCursor(committedPrefixLength, 0)?.toString().orEmpty()
             } else ""
             val expectedCommittedPrefix = typedPrefix.dropLast(activePreeditLength.coerceIn(0, typedPrefix.length))
-            if (deleted != expectedCommittedPrefix) {
+            // 中文标点可能把半角编码中的冒号转换成全角冒号后上屏。
+            // 校验时统一成半角比较，避免 5: / 5：这类编码被误判为宿主文本不匹配。
+            val normalizedDeleted = deleted.replace('：', ':')
+            val normalizedExpected = expectedCommittedPrefix.replace('：', ':')
+            if (normalizedDeleted != normalizedExpected) {
                 host.showNotice("无法替换当前编码")
                 structuredTokenBuffer.clear()
                 return
