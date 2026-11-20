@@ -873,6 +873,7 @@ class QingjianInputMethodService :
         when (action) {
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> Unit
             Settings.GestureAction.CLEAR_ALL -> onClearAll()
+            Settings.GestureAction.CLEAR_BEFORE_CURSOR -> onClearBeforeCursor()
             Settings.GestureAction.RESTORE_CLEAR -> onRestoreLastClear()
             Settings.GestureAction.UNDO -> composer.undo()
             Settings.GestureAction.REDO -> composer.redo()
@@ -941,12 +942,12 @@ class QingjianInputMethodService :
                 if (char.isWhitespace()) return@forEachIndexed
                 when (style) {
                     3 -> {
-                        val color = if (index == 0) colorAt(phase * 0.035f) else themeText
+                        val color = if (index == 0) colorAt(phase * 0.02f) else themeText
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     else -> {
                         val gradientPosition = index.toFloat() / (label.length - 1).coerceAtLeast(1)
-                        val color = colorAt(gradientPosition + phase * if (style == 2) 0.055f else 0.035f)
+                        val color = colorAt(gradientPosition + phase * if (style == 2) 0.031f else 0.02f)
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         if (style == 1) {
                             // 用低透明度彩色底光衬托霓虹字，避免改变输入框或键盘背景。
@@ -956,7 +957,7 @@ class QingjianInputMethodService :
                                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                         if (style == 4) {
-                            val sweepIndex = (phase / 2) % label.length
+                            val sweepIndex = phase % label.length
                             if (index == sweepIndex) {
                                 setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), index, index + 1,
                                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -984,8 +985,8 @@ class QingjianInputMethodService :
                 if (quickAiLoadingConnection !== connection) return
                 runCatching { connection.setComposingText(quickAiLoadingFrame(phase), 1) }
                 phase = (phase + 1) % 1000
-                // 140ms 平缓推进色带，避免高频刷新输入框或产生明显闪烁。
-                quickAiHandler.postDelayed(this, 140L)
+                // 80ms 小步推进色带，降低相邻帧色彩跳变；动画仅在 AI 请求期间运行。
+                quickAiHandler.postDelayed(this, 80L)
             }
         }
         quickAiLoadingRunnable = animation
@@ -1660,6 +1661,8 @@ class QingjianInputMethodService :
     override fun onBackspaceDown() = composer.onBackspaceDown()
 
     override fun onClearAll() = composer.clearAll()
+
+    override fun onClearBeforeCursor() = composer.clearBeforeCursor()
 
     override fun onRestoreLastClear() = composer.restoreLastClear()
 
