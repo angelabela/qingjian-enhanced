@@ -36,6 +36,7 @@ on:
       - fix/workflow-328-key-gesture-hints-settings
       - fix/workflow-343-stability-scan-strip-voice
       - fix/workflow-356-ai-animation-backspace-clear-before-cursor
+      - fix/workflow-368-backspace-ai-spectrum-palettes
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
