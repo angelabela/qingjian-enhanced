@@ -89,6 +89,8 @@ import app.qingjian.inputmethod.scan.ScanPreferences
 import app.qingjian.inputmethod.scan.ScanOverlayService
 import androidx.core.content.ContextCompat
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
+import app.qingjian.inputmethod.mascot.FloatingMascotService
+import app.qingjian.inputmethod.mascot.MascotDialogueEngine
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
 class QingjianInputMethodService :
@@ -295,6 +297,8 @@ class QingjianInputMethodService :
     private val smartInfo by lazy { SmartInfoProvider(this) }
     private var smartInfoSequence = 0
     private var localAiSuggestionSequence = 0
+    private var lastMascotReaction = ""
+    private var lastMascotReactionAt = 0L
 
     /** 返回键关了面板，它的抬起也要吞掉。 */
     private var backConsumed = false
@@ -648,6 +652,7 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        maybeShowMascotSemanticReaction(newSelStart, newSelEnd, oldSelEnd)
         // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。
         if (isClipboardPanel()) return
         if (editor != null) return
@@ -657,6 +662,32 @@ class QingjianInputMethodService :
         refreshSmartInfoSuggestions()
     }
 
+
+    /** 本地语义回应：只处理普通非密码输入框中刚提交的文本，不联网、不上传。 */
+    private fun maybeShowMascotSemanticReaction(newSelStart: Int, newSelEnd: Int, oldSelEnd: Int) {
+        if (newSelStart < 0 || newSelEnd != newSelStart || newSelEnd <= oldSelEnd) return
+        if (editor != null || composer.privateInput || composer.directInput || shownPreedit.isNotEmpty()) return
+        val info = currentInputEditorInfo ?: return
+        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
+        if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        ) return
+        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
+        val before = currentInputConnection?.getTextBeforeCursor(48, 0)?.toString().orEmpty()
+        val response = MascotDialogueEngine.response(before) ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (response == lastMascotReaction && now - lastMascotReactionAt < 5_000L) return
+        lastMascotReaction = response
+        lastMascotReactionAt = now
+        val intent = Intent(this, FloatingMascotService::class.java)
+            .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
+            .putExtra(FloatingMascotService.EXTRA_MESSAGE, response)
+        runCatching { ContextCompat.startForegroundService(this, intent) }
+            .onFailure { AppLog.warn("mascot semantic response unavailable: " + it.javaClass.simpleName) }
+    }
 
     /** 输入地点 / 天气 / 内存等关键词后，异步更新一条可点击的实时信息候选。 */
     private fun refreshSmartInfoSuggestions() {

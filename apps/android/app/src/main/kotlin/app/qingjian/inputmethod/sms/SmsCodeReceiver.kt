@@ -8,6 +8,8 @@ import android.content.Intent
 import android.provider.Telephony
 import android.telephony.SmsMessage
 import android.widget.Toast
+import android.os.Build
+import app.qingjian.inputmethod.mascot.FloatingMascotService
 
 /** 仅在用户开启验证码监测后处理短信；只在本机提取验证码，不上传短信正文。 */
 class SmsCodeReceiver : BroadcastReceiver() {
@@ -29,6 +31,18 @@ class SmsCodeReceiver : BroadcastReceiver() {
         context.sendBroadcast(
             Intent(ACTION_CODE_READY).setPackage(context.packageName).putExtra(EXTRA_CODE, code),
         )
+        val mascotPrefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+        if (mascotPrefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
+            android.provider.Settings.canDrawOverlays(context)
+        ) {
+            val mascotIntent = Intent(context, FloatingMascotService::class.java)
+                .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
+                .putExtra(FloatingMascotService.EXTRA_MESSAGE, "收到短信验证码：$code，已经帮你复制好啦！")
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(mascotIntent)
+                else context.startService(mascotIntent)
+            }.onFailure { android.util.Log.w("QingjianMascot", "Unable to show SMS code in mascot", it) }
+        }
         Toast.makeText(context, "验证码 $code 已复制", Toast.LENGTH_SHORT).show()
     }
 
