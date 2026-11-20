@@ -208,6 +208,7 @@ class FloatingMascotService : Service() {
 
     /** Canvas 卡通宠物：漂浮、眨眼、轻触切换表情，不加载大图。 */
     private class MascotView(context: Context) : View(context) {
+        private val appContext = context
         private val density = resources.displayMetrics.density
         private val tipText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13f * density; color = Color.DKGRAY }
         private val tipTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
@@ -266,8 +267,8 @@ class FloatingMascotService : Service() {
             var cursor = top + 30f
             tipRowHeights.forEachIndexed { index, rowHeight ->
                 if (localY in cursor..(cursor + rowHeight)) {
-                    context.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(context.packageName).putExtra(EXTRA_TIP_INDEX, tipItems[index].second))
-                    context.startService(Intent(context, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
+                    appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, tipItems[index].second))
+                    appContext.startService(Intent(appContext, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
                     return true
                 }
                 cursor += rowHeight
