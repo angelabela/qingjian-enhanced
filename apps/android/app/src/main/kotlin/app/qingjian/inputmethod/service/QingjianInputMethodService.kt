@@ -874,7 +874,8 @@ class QingjianInputMethodService :
             Settings.GestureAction.DEFAULT, Settings.GestureAction.NONE -> Unit
             Settings.GestureAction.CLEAR_ALL -> onClearAll()
             Settings.GestureAction.CLEAR_BEFORE_CURSOR -> onClearBeforeCursor()
-            Settings.GestureAction.RESTORE_CLEAR -> onRestoreLastClear()
+            // 保留旧配置枚举兼容性，但不再执行删除键下滑撤销清空动作。
+            Settings.GestureAction.RESTORE_CLEAR -> Unit
             Settings.GestureAction.UNDO -> composer.undo()
             Settings.GestureAction.REDO -> composer.redo()
             Settings.GestureAction.OPEN_CLIPBOARD -> onOpenClipboard()
