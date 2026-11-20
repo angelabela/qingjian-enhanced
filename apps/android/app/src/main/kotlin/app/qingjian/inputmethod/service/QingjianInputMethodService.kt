@@ -16,10 +16,12 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.style.ForegroundColorSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
+import android.text.style.MetricAffectingSpan
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -735,6 +737,7 @@ class QingjianInputMethodService :
             val latest = runCatching { connection.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
                 .getOrDefault("").trimEnd()
             if (latest != before) return@resolve
+            if (result.isBlank() || listOf("暂时无法", "无法获取", "无法查询", "暂时不可用", "没有返回数据", "无法解析").any(result::contains)) return@resolve
             showMascotDialogue(result)
         }
     }
@@ -1020,7 +1023,7 @@ class QingjianInputMethodService :
 
     /** 按常用功能面板选择的样式绘制 AI 等待提示；所有 span 仅附着于这段 composing 文本。 */
     private fun quickAiLoadingFrame(phase: Int): CharSequence {
-        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 14)
+        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
         val counter = (phase % 100).toString().padStart(2, '0')
         val label = when (style) {
             3, 8 -> "● AI 正在生成"
@@ -1031,6 +1034,7 @@ class QingjianInputMethodService :
             12 -> "◉ AI 正在生成"
             13 -> "AI 正在生成 ▰"
             14 -> "AI 正在生成 $counter"
+            15 -> "AI 正在生成"
             else -> "✦ AI 正在生成"
         }
         val themeText = Palette.of(this).text
@@ -1046,6 +1050,7 @@ class QingjianInputMethodService :
             12 -> intArrayOf(0xFF00E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF4FC8.toInt(), 0xFF00E5FF.toInt())
             13 -> intArrayOf(0xFFF6E7FF.toInt(), 0xFF6DE7FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFA88BFF.toInt())
             14 -> intArrayOf(0xFF49FF88.toInt(), 0xFFA8FFB9.toInt(), 0xFF2BCA70.toInt(), 0xFF49FF88.toInt())
+            15 -> intArrayOf(0xFF38E8FF.toInt(), 0xFF8B72FF.toInt(), 0xFFFF78B7.toInt(), 0xFF38E8FF.toInt())
             else -> intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt(), 0xFF8B72FF.toInt())
         }
         fun colorAt(position: Float): Int {
@@ -1134,6 +1139,15 @@ class QingjianInputMethodService :
                             else colorAt(index.toFloat() / label.length + phase * 0.008f)
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         if (char.isDigit()) setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    15 -> {
+                        val position = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        setSpan(ForegroundColorSpan(colorAt(position + phase * 0.018f)), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        val lift = (maxOf(0.0, kotlin.math.sin(phase * 0.24 - index * 0.82)) * 5.5f * resources.displayMetrics.density).toInt()
+                        if (lift > 0) setSpan(object : MetricAffectingSpan() {
+                            override fun updateDrawState(textPaint: TextPaint) { textPaint.baselineShift = -lift }
+                            override fun updateMeasureState(textPaint: TextPaint) { textPaint.baselineShift = -lift }
+                        }, index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     else -> {
                         val gradientPosition = index.toFloat() / (label.length - 1).coerceAtLeast(1)
