@@ -200,7 +200,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             return START_NOT_STICKY
         }
         scanDiag("onStartCommand startId=$startId flags=$flags action=${intent?.action} shuttingDown=$shuttingDown")
-        return START_STICKY
+        // 相机悬浮服务不应在系统回收后自动重启并重新打开相机；由用户再次主动点击扫码启动。
+        return START_NOT_STICKY
     }
 
     private fun buildOverlay() {
