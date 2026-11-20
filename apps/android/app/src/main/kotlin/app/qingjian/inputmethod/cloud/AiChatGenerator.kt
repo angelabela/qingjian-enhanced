@@ -8,7 +8,11 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /** 用户明确触发的 AI 对话请求；不参与逐字输入或后台自动发送。 */
 class AiChatGenerator(private val context: Context) {
@@ -153,9 +157,13 @@ class AiChatGenerator(private val context: Context) {
             callback(Result.failure(IllegalStateException("请先在「设置 → 云端大模型」填写接口地址、模型和 API Key")))
             return
         }
-        executor.execute {
-            val result = runCatching { block(config, key) }
-            main.post { callback(result) }
+        try {
+            executor.execute {
+                val result = runCatching { block(config, key) }
+                main.post { callback(result) }
+            }
+        } catch (_: RejectedExecutionException) {
+            main.post { callback(Result.failure(IllegalStateException("AI 请求较多，请稍后重试"))) }
         }
     }
 
@@ -205,6 +213,12 @@ class AiChatGenerator(private val context: Context) {
     }
 
     private companion object {
-        val executor = Executors.newCachedThreadPool()
+        // 用户主动触发的云端任务限制并发和排队长度，避免输入法进程内无限创建线程。
+        val executor = ThreadPoolExecutor(
+            2, 2, 30L, TimeUnit.SECONDS,
+            ArrayBlockingQueue(8),
+            Executors.defaultThreadFactory(),
+            ThreadPoolExecutor.AbortPolicy(),
+        ).apply { allowCoreThreadTimeOut(true) }
     }
 }
