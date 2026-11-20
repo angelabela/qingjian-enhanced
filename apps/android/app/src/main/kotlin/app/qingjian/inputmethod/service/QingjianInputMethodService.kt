@@ -363,7 +363,6 @@ class QingjianInputMethodService :
         clipboardWatcher.start()
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
-        candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
     }
 
     override fun onDestroy() {
@@ -570,12 +569,20 @@ class QingjianInputMethodService :
     override fun onWindowShown() {
         super.onWindowShown()
         AppLog.info("window shown")
+        // 定时学习数据落盘只在键盘可见期间运行；隐藏后由 onFinishInputView 负责最终落盘。
+        candidateRerankHandler.removeCallbacks(learningFlushRunnable)
+        candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
     }
 
     override fun onWindowHidden() {
         super.onWindowHidden()
         AppLog.info("window hidden")
         android.util.Log.w("QingjianScanDiag", "IME window hidden editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
+        // 隐藏键盘后停止周期性落盘，取消未执行的候选重排，并释放常驻本地 AI 引擎。
+        candidateRerankHandler.removeCallbacks(learningFlushRunnable)
+        cancelPendingCandidateRerank()
+        localAiSuggestionSequence++
+        LocalAiModelManager.releaseRuntime()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
