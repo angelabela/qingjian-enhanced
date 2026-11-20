@@ -964,7 +964,7 @@ class QingjianInputMethodService :
                                 setSpan(BackgroundColorSpan(0x55FFFFFF), index, index + 1,
                                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                             }
-                            if (index == 0) setSpan(ForegroundColorSpan(colorAt(phase * 0.035f)),
+                            if (index == 0) setSpan(ForegroundColorSpan(colorAt(phase * 0.02f)),
                                 index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                     }
