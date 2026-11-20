@@ -122,7 +122,11 @@ class FunctionPanel(
         }
 
     fun refreshState() {
-        backgroundEffectEnabled = Settings.preferences(context).getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect)
+        val prefs = Settings.preferences(context)
+        backgroundEffectEnabled = prefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect)
+        selectedAiLoadingStyle = prefs.getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
+        selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
         if (!backgroundEffectEnabled) selectedBackgroundStyle = -1
         invalidate()
     }
@@ -180,7 +184,7 @@ class FunctionPanel(
 
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
-        ink.textStart(canvas, "跟随当前主题 · 选择实时音频可视化样式", 11f, palette.gloss,
+        ink.textStart(canvas, "再次点击已选效果可关闭；关闭后语音面板不显示动效", 11f, palette.gloss,
             card.left + ink.dp(16f), top + ink.dp(22f), card.right - ink.dp(12f))
 
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
@@ -728,6 +732,7 @@ class FunctionPanel(
                         }
                         context.getSharedPreferences("voice", Context.MODE_PRIVATE).edit()
                             .putInt(VoicePanel.PREF_STYLE, selectedVoiceStyle).apply()
+                        invalidate()
                     }
                 }
             }
