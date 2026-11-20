@@ -667,7 +667,8 @@ class QingjianInputMethodService :
         val moved = newSelStart != candidatesEnd || newSelEnd != candidatesEnd
         if (candidatesEnd != -1 && moved) composer.onCursorMovedAway()
         if (candidatesEnd == -1 && newSelStart == newSelEnd) composer.refreshCompletions()
-        // 已停用旧版电量/内存/天气/位置 Tips 浮窗触发逻辑。
+        // 保留本地 AI 联想，但不再触发电量、内存、天气、位置等旧版 Tips。
+        refreshSmartInfoSuggestions()
     }
 
 
@@ -731,37 +732,16 @@ class QingjianInputMethodService :
             .onFailure { AppLog.warn("mascot dialogue unavailable: " + it.javaClass.simpleName) }
     }
 
-    /** 输入地点 / 天气 / 内存等关键词后，异步更新一条可点击的实时信息候选。 */
+    /** 保留本地 AI 联想；设备信息关键词不再生成任何浮窗或候选 Tips。 */
     private fun refreshSmartInfoSuggestions() {
         val currentPanel = panel ?: return
         if (editor != null || currentPanel.openPanel != null || shownPreedit.isNotEmpty()) return
         val before = currentInputConnection?.getTextBeforeCursor(96, 0)?.toString().orEmpty()
-        val trigger = SmartInfoProvider.TRIGGERS.firstOrNull { before.endsWith(it) }
-        if (trigger == null) {
+        if (SmartInfoProvider.TRIGGERS.any { before.endsWith(it) }) {
             smartInfoSequence++
-            scheduleLocalAiSuggestions(before, currentPanel)
             return
         }
-        val request = ++smartInfoSequence
-        smartInfo.resolve(trigger) { value ->
-            if (request != smartInfoSequence) return@resolve
-            val latest = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
-            if (!latest.endsWith(trigger)) return@resolve
-            showMascotDialogue(value)
-            currentPanel.showSmartSuggestions(listOf(value)) { selected ->
-                if (selected == SmartInfoProvider.LOCATION_PERMISSION_HINT) {
-                    startActivity(
-                        Intent(this, LocationPermissionActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } else {
-                    val input = currentInputConnection ?: return@showSmartSuggestions
-                    input.deleteSurroundingText(trigger.length, 0)
-                    input.commitText(selected, 1)
-                    currentPanel.showSmartSuggestions(emptyList()) {}
-                }
-            }
-        }
+        scheduleLocalAiSuggestions(before, currentPanel)
     }
 
     /**
