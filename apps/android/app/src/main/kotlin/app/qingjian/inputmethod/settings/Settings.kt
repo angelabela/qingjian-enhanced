@@ -249,6 +249,7 @@ data class Settings(
         const val KEY_BACKGROUND_STYLE = "keyboard_background_style"
         const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
         const val KEY_KEYBOARD_TEXT_PRESET = "keyboard_text_preset"
+        const val KEY_AI_LOADING_EFFECT = "quick_ai_loading_effect"
 
         /** 没选过时的主题，同 PC 的缺省主题。 */
         const val DEFAULT_THEME = "qingjian"
