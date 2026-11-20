@@ -125,36 +125,36 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
     }
 
-    /** 每个候选依次开始显现，候选之间留出短间隔；滚动与重绘时按同一时间轴计算。 */
-    private fun candidateRevealAlpha(index: Int): Int {
-        if (!textFadeActive) return 255
-        val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt - index * CANDIDATE_REVEAL_STAGGER_MS
-        if (elapsed <= 0L) return 0
+    /** 每个候选按自己的起始时间渐入；滚动时仍使用同一时间轴，避免动画跳帧。 */
+    private fun candidateRevealProgress(index: Int): Float {
+        if (!textFadeActive) return 1f
+        val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt -
+            index.coerceAtLeast(0) * CANDIDATE_REVEAL_STAGGER_MS
+        if (elapsed <= 0L) return 0f
         val fraction = (elapsed.toFloat() / TEXT_FADE_DURATION_MS).coerceIn(0f, 1f)
-        val eased = 1f - (1f - fraction) * (1f - fraction)
-        return (eased * 255f).roundToInt().coerceIn(0, 255)
+        // cubic ease-out：先轻快进入，末段柔和停稳，不产生弹跳。
+        return 1f - (1f - fraction) * (1f - fraction) * (1f - fraction)
     }
+
+    private fun candidateRevealAlpha(index: Int): Int =
+        (candidateRevealProgress(index) * 255f).roundToInt().coerceIn(0, 255)
+
+    /** 候选从右侧轻微位移并渐入，最终精确落回原布局位置。 */
+    private fun candidateRevealOffset(index: Int): Float =
+        (1f - candidateRevealProgress(index)) * CANDIDATE_REVEAL_OFFSET_DP * density
 
     /** 供外层 View 在最后一个候选完成显现前持续请求下一帧。 */
     fun advanceTextFade(): Boolean {
         if (!textFadeActive) return false
         val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt
-        val staggerEnd = ((candidates.size - 1).coerceAtLeast(0) * CANDIDATE_REVEAL_STAGGER_MS)
+        val staggerEnd = (candidates.size.coerceAtLeast(1) - 1) * CANDIDATE_REVEAL_STAGGER_MS
         if (elapsed >= TEXT_FADE_DURATION_MS + staggerEnd) {
             textFadeActive = false
             textStyles.setTransitionAlpha(255)
-            extraText.alpha = 255
-            emojiPaint.alpha = 255
-            markPaint.alpha = 255
             return false
         }
-        val fraction = (elapsed.toFloat() / TEXT_FADE_DURATION_MS).coerceIn(0f, 1f)
-        val eased = 1f - (1f - fraction) * (1f - fraction)
-        val alpha = (eased * 255f).roundToInt().coerceIn(0, 255)
-        textStyles.setTransitionAlpha(alpha)
-        extraText.alpha = 255
-        emojiPaint.alpha = 255
-        markPaint.alpha = 255
+        // 只对候选项单独做动画，拼音行和释义不再跟着整行一起闪现。
+        textStyles.setTransitionAlpha(255)
         return true
     }
 
@@ -302,7 +302,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
-            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role, eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(index))
+            val revealSave = canvas.save()
+            canvas.translate(candidateRevealOffset(index), 0f)
+            textStyles.drawReplacing(
+                canvas, candidate.text,
+                RectF(word.left, word.top + shift, word.right, word.bottom + shift),
+                role, eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(index),
+            )
+            canvas.restoreToCount(revealSave)
         }
         // 拼音数据可能比上一帧短或字符宽度发生变化。先清理整条旧拼音绘制带，
         // 再按当前 preeditEdges 重绘，避免旧字母/拼音残影留在新字符之间。
@@ -351,7 +358,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 hits.forEachIndexed { segmentIndex, hit ->
                     if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEachIndexed
                     val segment = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
-                    textStyles.drawReplacing(canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS, eraseUnderlay = false)
+                    val revealSave = canvas.save()
+                    canvas.translate(candidateRevealOffset(candidateIndex), 0f)
+                    textStyles.drawReplacing(
+                        canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS,
+                        eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(candidateIndex),
+                    )
+                    canvas.restoreToCount(revealSave)
                 }
             }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
@@ -366,9 +379,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val value = candidates.getOrNull(index)?.text ?: return@forEachIndexed
             val baseline = rect.centerY() - (extraText.ascent() + extraText.descent()) / 2f
             val originalAlpha = extraText.alpha
+            val revealSave = canvas.save()
+            canvas.translate(candidateRevealOffset(index), 0f)
             extraText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
             canvas.drawText(value, rect.centerX(), baseline, extraText)
             extraText.alpha = originalAlpha
+            canvas.restoreToCount(revealSave)
         }
         for (index in image.emoji) {
             val word = image.wordRect(index) ?: continue
@@ -376,9 +392,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val text = candidates.getOrNull(index)?.text ?: continue
             val baseline = word.centerY() + shift - (emojiPaint.ascent() + emojiPaint.descent()) / 2
             val originalAlpha = emojiPaint.alpha
+            val revealSave = canvas.save()
+            canvas.translate(candidateRevealOffset(index), 0f)
             emojiPaint.alpha = originalAlpha * candidateRevealAlpha(index) / 255
             canvas.drawText(text, word.centerX(), baseline, emojiPaint)
             emojiPaint.alpha = originalAlpha
+            canvas.restoreToCount(revealSave)
         }
         val size = CONTACT_MARK_DP * density
         candidates.forEachIndexed { index, candidate ->
@@ -452,13 +471,20 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             fallbackRects += rect
             if (rect.right < scrollX || rect.left > scrollX + viewWidth) return@forEachIndexed
             val baseline = rect.centerY() - (fallbackText.ascent() + fallbackText.descent()) / 2f
+            val originalAlpha = fallbackText.alpha
+            val revealSave = canvas.save()
+            canvas.translate(candidateRevealOffset(index), 0f)
+            fallbackText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
             canvas.drawText(candidate.text, rect.centerX() - scrollX, baseline, fallbackText)
+            fallbackText.alpha = originalAlpha
+            canvas.restoreToCount(revealSave)
         }
         canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
     }
     private companion object {
         const val TEXT_FADE_DURATION_MS = 220L
         const val CANDIDATE_REVEAL_STAGGER_MS = 58L
+        const val CANDIDATE_REVEAL_OFFSET_DP = 9f
         /** 人头标记多大（dp）：比译文字号小一点，不抢候选字。 */
         const val CONTACT_MARK_DP = 11f
     }
