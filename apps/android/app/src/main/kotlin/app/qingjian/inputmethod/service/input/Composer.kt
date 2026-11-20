@@ -200,6 +200,7 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 字母直接上屏时上屏解出的整串（Shift 单次首字母大写，锁定全大写）。
      */
     fun onSwipe(input: String) {
+        if (input.isNotEmpty()) lastClearSnapshot = null
         if (!undoGroupOpen) captureUndoSnapshot()
         undoGroupOpen = true
         handler.removeCallbacks(undoGroupTimeout)
@@ -292,6 +293,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        if (key != Key.Backspace) lastClearSnapshot = null
         trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
         if (groupedEdit) editHistory.beginGroup()
@@ -569,6 +571,7 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 识别出的字上屏：过引擎（繁体输出、输入历史与统计）；不过引擎的输入框与引擎没装好时原样上屏。 */
     fun commitVoice(text: String) {
+        if (text.isNotEmpty()) lastClearSnapshot = null
         if (engine.ready && !directInput) apply(engine.commitVoice(text)) else commit(text)
     }
 
@@ -880,6 +883,7 @@ class Composer(private val engine: Engine, private val host: Host) {
      */
     fun clearBeforeCursor() {
         val connection = host.connection ?: return
+        lastClearSnapshot = null
         closeUndoGroup()
         pendingBackspaceSnapshot = null
         clearGestureSnapshot = null
@@ -1089,6 +1093,7 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     private fun commit(text: String) {
         if (text.isEmpty()) return
+        lastClearSnapshot = null
         if (!undoGroupOpen) captureUndoSnapshot()
         val connection = host.connection ?: return
         if (host.selectionActive) {
