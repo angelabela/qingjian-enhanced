@@ -76,9 +76,9 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
             ))
             addView(ui.group(
                 "小精灵智能辅助",
-                ui.entry(Icon.TUNE, "跨应用智能辅助", if (MascotTextAccessibilityService.isEnabled(activity)) "无障碍已授权" else "权限与场景设置") {
+                listOf(ui.entry(Icon.TUNE, "跨应用智能辅助", if (MascotTextAccessibilityService.isEnabled(activity)) "无障碍已授权" else "权限与场景设置") {
                     open(MascotAssistActivity::class.java)
-                },
+                }),
             ))
             addView(ui.group(
                 "权限管理",

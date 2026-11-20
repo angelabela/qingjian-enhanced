@@ -16,7 +16,7 @@ class MascotAssistActivity : PageActivity() {
         return listOf(
             ui.group(
                 "跨应用智能辅助",
-                ui.toggle("启用小精灵智能辅助", "识别当前应用场景，并支持拖动小精灵到文字上停留 1 秒后尝试复制。默认关闭。", enabled) { checked ->
+                ui.toggle("启用小精灵智能辅助", "识别当前应用场景，并支持拖动小精灵到文字上停留 1 秒后尝试复制。默认关闭。", enabled, null) { checked ->
                     prefs.edit().putBoolean(KEY_ENABLED, checked).apply()
                     if (checked && !MascotTextAccessibilityService.isEnabled(this)) {
                         Toast.makeText(this, "请在系统无障碍设置中手动开启「青简小精灵智能辅助」", Toast.LENGTH_LONG).show()
