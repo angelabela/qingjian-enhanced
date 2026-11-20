@@ -782,32 +782,53 @@ class Composer(private val engine: Engine, private val host: Host) {
         closeUndoGroup()
     }
 
-    /** 删除键下划：恢复最近一次上划清空前的完整文字与光标/选区。 */
+    /** 删除键下滑：恢复最近一次上划清空前的完整文字与光标/选区。 */
     fun restoreLastClear() {
-        pendingBackspaceSnapshot = null
-        // 优先使用上一次整框清空专用快照，不能让本次下滑按键产生的空快照抢先被恢复。
-        val snapshot = lastClearSnapshot ?: return
-        clearGestureSnapshot = null
+        val snapshot = lastClearSnapshot ?: run {
+            host.showNotice("没有可撤销的清空")
+            return
+        }
         val connection = host.connection ?: return
-        if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast() else undoHistory.remove(snapshot)
-        pendingBackspaceSnapshot = null
-        // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
-        apply(engine.clear())
+        closeUndoGroup()
+        // 清空动作可能由宿主的 selectAll 菜单完成，也可能不支持该菜单；
+        // 必须验证是否真的选中了全文，否则回退到 InputConnection 的前后文删除。
         connection.beginBatchEdit()
+        var restored = false
         try {
-            if (!connection.performContextMenuAction(android.R.id.selectAll)) {
-                val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.length ?: 0
-                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.length ?: 0
-                if (before > 0 || after > 0) connection.deleteSurroundingText(before, after)
+            val selectedAll = connection.performContextMenuAction(android.R.id.selectAll) &&
+                !connection.getSelectedText(0).isNullOrEmpty()
+            if (!selectedAll) {
+                repeat(100) {
+                    val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val selected = connection.getSelectedText(0)?.length ?: 0
+                    if (before.isEmpty() && after.isEmpty() && selected == 0) return@repeat
+                    if (selected > 0) connection.commitText("", 1)
+                    else connection.deleteSurroundingText(before.length, after.length)
+                    val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                    if (nextBefore == before && nextAfter == after) return@repeat
+                }
             }
-            connection.commitText(snapshot.text, 1)
-            val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
-            val end = snapshot.selectionEnd.coerceIn(start, snapshot.text.length)
-            connection.setSelection(start, end)
+            // 先清掉 Core 的组句状态，再恢复编辑框，避免空 preedit 覆盖恢复后的光标。
+            apply(engine.clear())
+            restored = connection.commitText(snapshot.text, 1)
+            if (restored) {
+                val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
+                val end = snapshot.selectionEnd.coerceIn(start, snapshot.text.length)
+                connection.setSelection(start, end)
+            }
         } finally {
             connection.endBatchEdit()
         }
+        if (!restored) {
+            host.showNotice("撤销清空失败，请重试")
+            return
+        }
+        if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast() else undoHistory.remove(snapshot)
         lastClearSnapshot = null
+        pendingBackspaceSnapshot = null
+        clearGestureSnapshot = null
         closeUndoGroup()
         refreshCompletions()
     }
@@ -830,15 +851,18 @@ class Composer(private val engine: Engine, private val host: Host) {
         beforeBackspace = null
         connection.beginBatchEdit()
         try {
-            if (connection.performContextMenuAction(android.R.id.selectAll)) {
+            val selectedAll = connection.performContextMenuAction(android.R.id.selectAll) &&
+                !connection.getSelectedText(0).isNullOrEmpty()
+            if (selectedAll) {
                 connection.commitText("", 1)
             } else {
-                if (!connection.getSelectedText(0).isNullOrEmpty()) connection.commitText("", 1)
                 repeat(100) {
                     val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                    if (before.isEmpty() && after.isEmpty()) return@repeat
-                    connection.deleteSurroundingText(before.length, after.length)
+                    val selected = connection.getSelectedText(0)?.length ?: 0
+                    if (before.isEmpty() && after.isEmpty() && selected == 0) return@repeat
+                    if (selected > 0) connection.commitText("", 1)
+                    else connection.deleteSurroundingText(before.length, after.length)
                     val nextBefore = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     val nextAfter = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
                     if (nextBefore == before && nextAfter == after) return@repeat
