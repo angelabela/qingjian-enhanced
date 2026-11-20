@@ -67,6 +67,8 @@ class VoicePanel(
             else -> PhysicsWaveView.Style.SPECTRUM_BARS
         }
         color = palette.brand
+        spectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            .getInt(PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
     }
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
@@ -334,6 +336,7 @@ class VoicePanel(
     companion object {
         const val SAMPLE_COUNT = 48
         const val PREF_STYLE = "voice_animation_style"
+        const val PREF_SPECTRUM_GRADIENT = "voice_spectrum_gradient"
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
         const val ANIMATION_DISABLED = -2
