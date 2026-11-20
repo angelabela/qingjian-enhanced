@@ -43,6 +43,10 @@ class PhysicsWaveView @JvmOverloads constructor(
     var color: Int = 0xFF3B82F6.toInt()
         set(value) { field = value; invalidate() }
 
+    /** 0 为原有动态彩虹；1–5 为用户选择的固定渐变色带。 */
+    var spectrumGradient: Int = 0
+        set(value) { field = value.coerceIn(0, 5); invalidate() }
+
     private val count = 18
     private val levels = FloatArray(count)
     private val pos = FloatArray(count)
@@ -291,7 +295,7 @@ class PhysicsWaveView @JvmOverloads constructor(
 
         paint.shader = android.graphics.LinearGradient(
             0f, 0f, w, 0f,
-            intArrayOf(0xFFFF5FC8.toInt(), 0xFF9B72FF.toInt(), 0xFF39C8FF.toInt(), 0xFF42F5D4.toInt()),
+            activeSpectrumGradientColors(),
             null, android.graphics.Shader.TileMode.CLAMP,
         )
         paint.style = Paint.Style.STROKE
@@ -421,11 +425,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         val samples = 112
         val layerCount = 5
         val hueOffset = (time * 11f) % 360f
-        val palette = intArrayOf(
-            Color.rgb(255, 92, 196), Color.rgb(153, 91, 255),
-            Color.rgb(55, 157, 255), Color.rgb(35, 230, 226),
-            Color.rgb(255, 94, 126), Color.rgb(255, 193, 75)
-        )
+        val palette = activeSpectrumGradientColors()
         for (layer in 0 until layerCount) {
             val upper = Path()
             val lower = Path()
@@ -505,8 +505,32 @@ class PhysicsWaveView @JvmOverloads constructor(
         drawParticleField(canvas, h * 0.46f, h * 0.24f, 0.62f)
     }
 
-    private fun spectrumColor(index: Int, shift: Float, spread: Float = 2.8f): Int =
-        Color.HSVToColor(floatArrayOf((hueSeed + shift + index * spread) % 360f, 0.78f, 1f))
+    private fun activeSpectrumGradientColors(): IntArray =
+        if (spectrumGradient == 0) {
+            intArrayOf(0xFFFF5FC8.toInt(), 0xFF9B72FF.toInt(), 0xFF39C8FF.toInt(), 0xFF42F5D4.toInt())
+        } else {
+            SPECTRUM_GRADIENT_COLORS[spectrumGradient]
+        }
+
+    private fun spectrumColor(index: Int, shift: Float, spread: Float = 2.8f): Int {
+        if (spectrumGradient == 0) {
+            return Color.HSVToColor(floatArrayOf((hueSeed + shift + index * spread) % 360f, 0.78f, 1f))
+        }
+        val colors = SPECTRUM_GRADIENT_COLORS[spectrumGradient]
+        val base = index.toFloat() / (smoothFft.size - 1).coerceAtLeast(1)
+        val position = ((base + shift / 360f * 0.10f) % 1f + 1f) % 1f
+        val point = position * (colors.size - 1)
+        val segment = point.toInt().coerceIn(0, colors.size - 2)
+        val fraction = point - segment
+        val a = colors[segment]
+        val b = colors[segment + 1]
+        fun channel(shiftBits: Int): Int {
+            val from = (a ushr shiftBits) and 0xFF
+            val to = (b ushr shiftBits) and 0xFF
+            return (from + (to - from) * fraction).toInt().coerceIn(0, 255)
+        }
+        return Color.rgb(channel(16), channel(8), channel(0))
+    }
 
     private fun drawBars(canvas: Canvas, centered: Boolean, caps: Boolean) {
         val w = width.toFloat()
@@ -705,6 +729,18 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.alpha = (90 + energy * 130f).toInt().coerceIn(90, 220)
         canvas.drawCircle(cx, cy, radius * 0.34f, paint)
         paint.alpha = 255
+    }
+
+    companion object {
+        val SPECTRUM_GRADIENT_LABELS = listOf("默认彩虹", "海洋蓝青", "日落暖橙", "极光绿紫", "霓虹粉紫", "冰晶蓝白")
+        val SPECTRUM_GRADIENT_COLORS = arrayOf(
+            intArrayOf(0xFFFF5FC8.toInt(), 0xFF9B72FF.toInt(), 0xFF39C8FF.toInt(), 0xFF42F5D4.toInt()),
+            intArrayOf(0xFF00D4FF.toInt(), 0xFF168BFF.toInt(), 0xFF3656D6.toInt(), 0xFF42E8D8.toInt()),
+            intArrayOf(0xFFFF6B6B.toInt(), 0xFFFF9F43.toInt(), 0xFFFFD166.toInt(), 0xFFFF6B9A.toInt()),
+            intArrayOf(0xFF26E6C8.toInt(), 0xFF47A6FF.toInt(), 0xFF9B70FF.toInt(), 0xFF56E6A5.toInt()),
+            intArrayOf(0xFFFF3BC8.toInt(), 0xFF9B5CFF.toInt(), 0xFF36D9FF.toInt(), 0xFF9CFF5A.toInt()),
+            intArrayOf(0xFFEAFBFF.toInt(), 0xFF78D9FF.toInt(), 0xFF5E8BFF.toInt(), 0xFFC4B8FF.toInt()),
+        )
     }
 
     private fun physicalColor(index: Int): Int {
