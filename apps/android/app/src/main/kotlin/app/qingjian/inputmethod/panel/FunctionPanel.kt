@@ -88,7 +88,7 @@ class FunctionPanel(
                     backgroundEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..9) {
+                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..14) {
                     selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
                     aiLoadingEffectPage = true
                     voiceEffectPage = false
