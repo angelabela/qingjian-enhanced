@@ -31,6 +31,7 @@ object LocalAiModelManager {
     private const val PREFS = "local_ai_model"
     private const val KEY_VERIFIED_SIZE = "verified_model_size"
     private const val KEY_VERIFIED_SHA256 = "verified_model_sha256"
+    private const val KEY_ENABLED = "local_ai_enabled"
     private const val READ_TIMEOUT_MS = 60_000
 
     private val downloadExecutor = Executors.newSingleThreadExecutor { task ->
@@ -70,6 +71,14 @@ object LocalAiModelManager {
             runtimeState = "推理失败"
             lastRuntimeError = error.orEmpty().take(240)
         }
+    }
+
+    /** 本地 AI 默认关闭，避免模型无感占用 CPU/GPU。 */
+    fun isEnabled(context: Context): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
+
+    fun setEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_ENABLED, enabled).apply()
+        if (!enabled) releaseRuntime()
     }
 
     fun modelFile(context: Context): File =
@@ -219,7 +228,7 @@ object LocalAiModelManager {
         onComplete: (List<String>?) -> Unit,
     ) {
         val appContext = context.applicationContext
-        if (before.isBlank() && after.isBlank() || pinyin.isBlank() ||
+        if (!isEnabled(appContext) || before.isBlank() && after.isBlank() || pinyin.isBlank() ||
             candidates.size < 2 || candidates.size > 12 ||
             candidates.distinct().size != candidates.size || !isInstalled(appContext)
         ) {
@@ -227,6 +236,7 @@ object LocalAiModelManager {
             return
         }
         inferenceExecutor.execute {
+            if (!isEnabled(appContext)) { mainHandler.post { onComplete(null) }; return@execute }
             val started = System.nanoTime()
             val ranked = runCatching {
                 val file = modelFile(appContext)
@@ -267,11 +277,12 @@ object LocalAiModelManager {
     /** 本地智能联想与整句补全：只生成用户可选择的后续文本，不直接修改输入框。 */
     fun generateSuggestions(context: Context, before: String, onComplete: (Result<List<String>>) -> Unit) {
         val appContext = context.applicationContext
-        if (before.isBlank() || !isInstalled(appContext)) {
+        if (!isEnabled(appContext) || before.isBlank() || !isInstalled(appContext)) {
             mainHandler.post { onComplete(Result.failure(IllegalStateException("模型未下载或输入上下文为空"))) }
             return
         }
         inferenceExecutor.execute {
+            if (!isEnabled(appContext)) { mainHandler.post { onComplete(Result.failure(IllegalStateException("本地 AI 已关闭"))) }; return@execute }
             val started = System.nanoTime()
             val result = runCatching {
                 val file = modelFile(appContext)
@@ -386,8 +397,9 @@ object LocalAiModelManager {
     /** 释放常驻模型；关闭操作排在当前推理之后执行，不阻塞输入法主线程。 */
     fun releaseRuntime() {
         inferenceExecutor.execute {
-            runtimeEngine?.close()
+            val engine = runtimeEngine
             runtimeEngine = null
+            runCatching { engine?.close() }
             runtimeState = if (lastRuntimeError.isNotBlank()) "已释放（最近有错误）" else "未加载"
             runtimeBackend = "—"
         }
