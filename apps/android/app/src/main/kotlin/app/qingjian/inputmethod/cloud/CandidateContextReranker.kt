@@ -8,7 +8,12 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 根据光标前后文对现有候选做语义排序。
@@ -16,6 +21,8 @@ import java.util.concurrent.Executors
  */
 class CandidateContextReranker(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
+    private val requestSequence = AtomicLong(0L)
+    private val activeConnection = AtomicReference<HttpURLConnection?>(null)
 
     fun rerank(
         before: String,
@@ -24,6 +31,9 @@ class CandidateContextReranker(private val context: Context) {
         candidates: List<String>,
         callback: (List<String>?) -> Unit,
     ) {
+        // 新候选到来即废弃旧请求；断开正在进行的 HTTP 请求，避免过期排序继续占用网络。
+        val requestId = requestSequence.incrementAndGet()
+        activeConnection.getAndSet(null)?.disconnect()
         if ((before.isBlank() && after.isBlank()) || pinyin.isBlank() ||
             candidates.size < 2 || candidates.distinct().size != candidates.size
         ) {
@@ -33,9 +43,11 @@ class CandidateContextReranker(private val context: Context) {
 
         executor.execute {
             val ranked = runCatching {
+                if (requestId != requestSequence.get()) return@runCatching null
                 val config = CloudConfig.load(context)
                 val key = config.apiKey()
                 if (!config.ready || key.isNullOrBlank()) return@runCatching null
+                if (requestId != requestSequence.get()) return@runCatching null
 
                 val system = """
 你是安卓输入法的上下文候选排序器。结合光标前文、光标后文和当前拼音，对给定候选进行完整排序。
@@ -78,6 +90,12 @@ class CandidateContextReranker(private val context: Context) {
                     setRequestProperty("Authorization", "Bearer $key")
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 }
+                activeConnection.set(connection)
+                if (requestId != requestSequence.get()) {
+                    activeConnection.compareAndSet(connection, null)
+                    connection.disconnect()
+                    return@runCatching null
+                }
                 try {
                     connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
                     val status = connection.responseCode
@@ -101,14 +119,21 @@ class CandidateContextReranker(private val context: Context) {
                         }
                     }
                 } finally {
+                    activeConnection.compareAndSet(connection, null)
                     connection.disconnect()
                 }
             }.getOrNull()
-            main.post { callback(ranked) }
+            if (requestId == requestSequence.get()) main.post { callback(ranked) }
         }
     }
 
     private companion object {
-        val executor = Executors.newSingleThreadExecutor()
+        // 只保留一个待处理重排；新请求替换排队中的旧请求，防止快速输入积压。
+        val executor = ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS,
+            ArrayBlockingQueue(1),
+            Executors.defaultThreadFactory(),
+            ThreadPoolExecutor.DiscardOldestPolicy(),
+        )
     }
 }
