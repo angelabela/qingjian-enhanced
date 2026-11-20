@@ -845,31 +845,40 @@ class Composer(private val engine: Engine, private val host: Host) {
      */
     fun clearBeforeCursor() {
         val connection = host.connection ?: return
-        lastClearSnapshot = null
+        // 必须在任何删除/选区变更之前保存完整上下文。此前这里把 lastClearSnapshot 置空，
+        // 导致「撤销清空」入口永远拿不到快照；优先复用按下退格键时捕获的同一帧。
+        val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
+        if (snapshot == null) {
+            host.showNotice("无法读取输入内容，清空已取消")
+            return
+        }
+        lastClearSnapshot = snapshot
+        pushUndoSnapshot(snapshot)
         closeUndoGroup()
         pendingBackspaceSnapshot = null
         clearGestureSnapshot = null
         beforeBackspace = null
         backspaceComposing = false
         val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        var changed = false
         connection.beginBatchEdit()
         try {
             // 有选区时先删除选区，再重新读取光标左侧文本；不触碰光标右侧内容。
-            if (selected.isNotEmpty()) connection.commitText("", 1)
-            var keepDeleting = true
+            if (selected.isNotEmpty()) changed = connection.commitText("", 1) || changed
             repeat(100) {
-                if (!keepDeleting) return@repeat
                 val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                if (before.isEmpty()) {
-                    keepDeleting = false
-                    return@repeat
-                }
-                connection.deleteSurroundingText(before.length, 0)
+                if (before.isEmpty()) return@repeat
+                val deleted = connection.deleteSurroundingText(before.length, 0)
                 val remaining = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
-                if (remaining == before) keepDeleting = false
+                if (deleted || remaining != before) changed = true
+                if (remaining == before) return@repeat
             }
         } finally {
             connection.endBatchEdit()
+        }
+        if (!changed) {
+            lastClearSnapshot = null
+            if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
         }
         editHistory.clear()
         apply(engine.clear())

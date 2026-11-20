@@ -147,13 +147,19 @@ class FloatingMascotService : Service() {
         private val density = resources.displayMetrics.density
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var mood = 0
+        private var messageUntil = 0L
         private val face = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFD66B.toInt() }
         private val eye = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF473A50.toInt() }
         private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
         private val cheek = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFF8C9D.toInt() }
         private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB97842.toInt(); style = Paint.Style.STROKE; strokeWidth = 1.6f * density }
         private val ear = Path()
-        fun onPetTapped() { mood = (mood + 1) % 3; performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY); invalidate() }
+        fun onPetTapped() {
+            mood = (mood + 1) % 4
+            messageUntil = SystemClock.uptimeMillis() + 1500L
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            invalidate()
+        }
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val now = SystemClock.uptimeMillis()
@@ -179,9 +185,17 @@ class FloatingMascotService : Service() {
             paint.style = Paint.Style.FILL
             paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); else -> Color.WHITE }
             canvas.drawCircle(49f,12f,5f + sin(now / 260.0).toFloat() * 1.1f,paint)
-            paint.color = 0xFFFF80B5.toInt(); canvas.drawCircle(8f,45f,2f,paint)
+            paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); 3 -> 0xFF55C8A8.toInt(); else -> 0xFFFF80B5.toInt() }
+            canvas.drawCircle(8f,45f,2f,paint)
+            if (now < messageUntil) {
+                val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xEEFFFFFF.toInt() }
+                val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF55445F.toInt(); textSize = 8.5f; textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                val text = when (mood) { 1 -> "开心！"; 2 -> "加油！"; 3 -> "收到！"; else -> "你好！" }
+                canvas.drawRoundRect(RectF(3f, 48f, 61f, 63f), 7f, 7f, bubble)
+                canvas.drawText(text, 32f, 58f, label)
+            }
             canvas.restore()
-            postInvalidateDelayed(33L)
+            if (visibility == View.VISIBLE && isAttachedToWindow) postInvalidateDelayed(50L)
         }
     }
     companion object {

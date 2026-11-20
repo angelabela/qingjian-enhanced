@@ -91,6 +91,12 @@ class CandidateTextStyleEngine(
     }
 
     private var adaptiveTextColor: Int? = null
+    private var transitionAlpha: Int = 255
+
+    /** 候选文字淡入透明度；不影响候选格背景与分隔线。 */
+    fun setTransitionAlpha(alpha: Int) {
+        transitionAlpha = alpha.coerceIn(0, 255)
+    }
     private val paints = Role.entries.associateWith { role ->
         TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(this, config.style(role)) }
     }
@@ -137,6 +143,8 @@ class CandidateTextStyleEngine(
         val paint = paint(role)
         val x = rect.centerX()
         val originalSize = paint.textSize
+        val originalAlpha = paint.alpha
+        paint.alpha = (originalAlpha * transitionAlpha / 255).coerceIn(0, 255)
         // 词组可能比单字宽很多：在当前候选格内等比缩小文字，避免裁掉半个字。
         // 文字必须完整落在候选格内：同时按宽度和高度缩放，不再设置 62% 的硬下限，
         // 否则较长词组即使缩小后仍会被 clipRect 从左右两侧裁掉。
@@ -209,6 +217,7 @@ class CandidateTextStyleEngine(
         canvas.drawText(text, x, baseline, paint)
         paint.shader = null
         paint.textSize = originalSize
+        paint.alpha = originalAlpha
         canvas.restore()
     }
 }

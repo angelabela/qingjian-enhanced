@@ -112,9 +112,40 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         fallbackText.color = color ?: candidateText.color
     }
 
+    private var textFadeStartedAt = 0L
+    private var textFadeActive = false
+
     fun show(preedit: String, candidates: List<Candidate>) {
+        val changed = this.preedit != preedit || this.candidates.map { it.text } != candidates.map { it.text }
         this.preedit = preedit
         this.candidates = candidates
+        if (changed && (preedit.isNotEmpty() || candidates.isNotEmpty())) {
+            textFadeStartedAt = android.os.SystemClock.uptimeMillis()
+            textFadeActive = true
+        }
+    }
+
+    /** 供外层 View 在淡入期间持续请求下一帧。 */
+    fun advanceTextFade(): Boolean {
+        if (!textFadeActive) return false
+        val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt
+        if (elapsed >= TEXT_FADE_DURATION_MS) {
+            textFadeActive = false
+            textStyles.setTransitionAlpha(255)
+            extraText.alpha = 255
+            emojiPaint.alpha = 255
+            markPaint.alpha = 255
+            return false
+        }
+        val fraction = (elapsed.toFloat() / TEXT_FADE_DURATION_MS).coerceIn(0f, 1f)
+        // 前段柔和显现，末段轻微缓出，避免文字突然跳出来。
+        val eased = 1f - (1f - fraction) * (1f - fraction)
+        val alpha = (eased * 255f).roundToInt().coerceIn(0, 255)
+        textStyles.setTransitionAlpha(alpha)
+        extraText.alpha = alpha
+        emojiPaint.alpha = alpha
+        markPaint.alpha = alpha
+        return true
     }
 
     /** 换上新画的一帧；画不出来（null）时只铺底色。 */
@@ -218,6 +249,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int, selectedIndex: Int = -1) {
+        advanceTextFade()
         val layer = canvas.saveLayer(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, null)
         val leftInset = (viewWidth * 0.05f).roundToInt().toFloat()
         canvas.translate(leftInset, 0f)
@@ -409,6 +441,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
     }
     private companion object {
+        const val TEXT_FADE_DURATION_MS = 220L
         /** 人头标记多大（dp）：比译文字号小一点，不抢候选字。 */
         const val CONTACT_MARK_DP = 11f
     }

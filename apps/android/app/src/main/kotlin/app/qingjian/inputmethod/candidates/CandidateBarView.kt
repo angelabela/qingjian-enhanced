@@ -245,6 +245,7 @@ class CandidateBarView(
         strip.isEmpty -> toolbar.draw(canvas, width)
         else -> {
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
+            if (strip.advanceTextFade()) postInvalidateOnAnimation()
             drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
             // 视频背景模式下候选栏与键盘共用同一动态画面，不绘制底部分界线。
