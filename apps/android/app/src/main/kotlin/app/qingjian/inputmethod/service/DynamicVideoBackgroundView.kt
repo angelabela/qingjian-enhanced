@@ -74,7 +74,8 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastLuminanceSampleAt < 450L) return
+        // 亮度采样只用于主题适配；降低采样频率，且隐藏/脱离窗口时不再读取纹理。
+        if (!isAttachedToWindow || !isShown || now - lastLuminanceSampleAt < 1_500L) return
         lastLuminanceSampleAt = now
         val sample = runCatching { getBitmap(8, 8) }.getOrNull() ?: return
         try {
