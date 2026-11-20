@@ -62,6 +62,11 @@
 
         <activity android:name=".background.DynamicBackgroundActivity" android:exported="false" />
         <activity android:name=".mascot.MascotPermissionActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
+        <service android:name=".mascot.MascotTextAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="false">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/mascot_accessibility_service" />
+        </service>
+        <activity android:name=".mascot.MascotAssistActivity" android:exported="false" />
         <service android:name=".mascot.FloatingMascotService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-visible floating companion overlay" />
         </service>

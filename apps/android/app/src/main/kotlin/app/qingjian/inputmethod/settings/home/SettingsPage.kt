@@ -29,6 +29,8 @@ import app.qingjian.inputmethod.localai.LocalAiModelManager
 import app.qingjian.inputmethod.settings.page.VoiceSettingsActivity
 import app.qingjian.inputmethod.settings.page.ScanSettingsActivity
 import app.qingjian.inputmethod.settings.page.PermissionSettingsActivity
+import app.qingjian.inputmethod.mascot.MascotAssistActivity
+import app.qingjian.inputmethod.mascot.MascotTextAccessibilityService
 import app.qingjian.inputmethod.scan.ScanPreferences
 import app.qingjian.inputmethod.settings.widget.SettingsWidgets
 import app.qingjian.inputmethod.voice.VoiceConfig
@@ -71,6 +73,12 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                     R.string.page_scan_settings,
                     activity.getString(R.string.scan_settings_summary),
                 ) { open(ScanSettingsActivity::class.java) },
+            ))
+            addView(ui.group(
+                "小精灵智能辅助",
+                ui.entry(Icon.TUNE, "跨应用智能辅助", if (MascotTextAccessibilityService.isEnabled(activity)) "无障碍已授权" else "权限与场景设置") {
+                    open(MascotAssistActivity::class.java)
+                },
             ))
             addView(ui.group(
                 "权限管理",

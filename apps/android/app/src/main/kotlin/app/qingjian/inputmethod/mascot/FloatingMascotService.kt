@@ -19,6 +19,8 @@ import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
@@ -38,9 +40,15 @@ class FloatingMascotService : Service() {
     private var tipsView: TipBubbleView? = null
     private var tipsParams: WindowManager.LayoutParams? = null
     private var receiverRegistered = false
+    private val dragHandler = Handler(Looper.getMainLooper())
+    private var pendingCopy: Runnable? = null
+    private var lastDragX = 0
+    private var lastDragY = 0
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
+            if (intent.action == MascotTextAccessibilityService.ACTION_APP_CONTEXT) {
+                mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty())
+            } else mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
         }
     }
 
@@ -79,7 +87,7 @@ class FloatingMascotService : Service() {
                 stopSelf(); return
             }
         }
-        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT) }
+        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenReceiver, filter)
         receiverRegistered = true
@@ -192,20 +200,26 @@ class FloatingMascotService : Service() {
                 val dx = event.rawX - state[0]; val dy = event.rawY - state[1]
                 if (abs(dx) > slop || abs(dy) > slop) state[4] = 1f
                 if (state[4] > 0f) {
+                    lastDragX = event.rawX.toInt(); lastDragY = event.rawY.toInt()
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
                     positionTipsBubble()
+                    pendingCopy?.let(dragHandler::removeCallbacks)
+                    pendingCopy = Runnable {
+                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)
+                    }.also { dragHandler.postDelayed(it, 1_000L) }
                 }
                 true
             }
             MotionEvent.ACTION_UP -> {
+                pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
                 val state = view.getTag() as? FloatArray
                 if (state != null && state[4] == 0f) (view as MascotView).onPetTapped()
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
                 true
             }
-            MotionEvent.ACTION_CANCEL -> true
+            MotionEvent.ACTION_CANCEL -> { pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null; true }
             else -> true
         }
     }
@@ -272,6 +286,11 @@ class FloatingMascotService : Service() {
             setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), bubbleHeight)
         }
 
+        fun setContextLabel(label: String) {
+            messageText = label.take(6).ifBlank { "你好！" }
+            messageUntil = SystemClock.uptimeMillis() + 2600L
+            invalidate()
+        }
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val w = width.toFloat()
@@ -337,6 +356,7 @@ class FloatingMascotService : Service() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var mood = 0
         private var messageUntil = 0L
+        private var messageText = "你好！"
         private val face = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFD66B.toInt() }
         private val eye = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF473A50.toInt() }
         private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
@@ -345,6 +365,7 @@ class FloatingMascotService : Service() {
         private val ear = Path()
         fun onPetTapped() {
             mood = (mood + 1) % 4
+            messageText = when (mood) { 1 -> "开心！"; 2 -> "加油！"; 3 -> "收到！"; else -> "你好！" }
             messageUntil = SystemClock.uptimeMillis() + 1500L
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
             invalidate()
@@ -379,7 +400,7 @@ class FloatingMascotService : Service() {
             if (now < messageUntil) {
                 val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xEEFFFFFF.toInt() }
                 val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF55445F.toInt(); textSize = 8.5f; textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-                val text = when (mood) { 1 -> "开心！"; 2 -> "加油！"; 3 -> "收到！"; else -> "你好！" }
+                val text = messageText
                 canvas.drawRoundRect(RectF(3f, 48f, 61f, 63f), 7f, 7f, bubble)
                 canvas.drawText(text, 32f, 58f, label)
             }
