@@ -23,7 +23,7 @@ class MascotTextAccessibilityService : AccessibilityService() {
             pkg == "com.tencent.mm" || pkg == "com.tencent.mobileqq" || pkg == "com.tencent.qqlite" || listOf("whatsapp", "telegram").any { pkg.contains(it, true) } -> "聊天辅助"
             pkg == "com.android.chrome" || pkg == "com.uc.browser" || pkg == "com.tencent.mtt" || listOf("browser", "firefox").any { pkg.contains(it, true) } -> "浏览复制"
             pkg == "com.taobao.taobao" || pkg == "com.jingdong.app.mall" || pkg == "com.xunmeng.pinduoduo" -> "购物助手"
-            else -> "场景辅助"
+            else -> "我还不太会哦～"
         }
         sendBroadcast(android.content.Intent(ACTION_APP_CONTEXT).setPackage(packageName)
             .putExtra(EXTRA_APP_LABEL, label).putExtra(EXTRA_APP_HINT, hint))
