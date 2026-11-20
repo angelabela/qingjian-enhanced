@@ -125,11 +125,22 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
     }
 
-    /** 供外层 View 在淡入期间持续请求下一帧。 */
+    /** 每个候选依次开始显现，候选之间留出短间隔；滚动与重绘时按同一时间轴计算。 */
+    private fun candidateRevealAlpha(index: Int): Int {
+        if (!textFadeActive) return 255
+        val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt - index * CANDIDATE_REVEAL_STAGGER_MS
+        if (elapsed <= 0L) return 0
+        val fraction = (elapsed.toFloat() / TEXT_FADE_DURATION_MS).coerceIn(0f, 1f)
+        val eased = 1f - (1f - fraction) * (1f - fraction)
+        return (eased * 255f).roundToInt().coerceIn(0, 255)
+    }
+
+    /** 供外层 View 在最后一个候选完成显现前持续请求下一帧。 */
     fun advanceTextFade(): Boolean {
         if (!textFadeActive) return false
         val elapsed = android.os.SystemClock.uptimeMillis() - textFadeStartedAt
-        if (elapsed >= TEXT_FADE_DURATION_MS) {
+        val staggerEnd = ((candidates.size - 1).coerceAtLeast(0) * CANDIDATE_REVEAL_STAGGER_MS)
+        if (elapsed >= TEXT_FADE_DURATION_MS + staggerEnd) {
             textFadeActive = false
             textStyles.setTransitionAlpha(255)
             extraText.alpha = 255
@@ -138,13 +149,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             return false
         }
         val fraction = (elapsed.toFloat() / TEXT_FADE_DURATION_MS).coerceIn(0f, 1f)
-        // 前段柔和显现，末段轻微缓出，避免文字突然跳出来。
         val eased = 1f - (1f - fraction) * (1f - fraction)
         val alpha = (eased * 255f).roundToInt().coerceIn(0, 255)
         textStyles.setTransitionAlpha(alpha)
-        extraText.alpha = alpha
-        emojiPaint.alpha = alpha
-        markPaint.alpha = alpha
+        extraText.alpha = 255
+        emojiPaint.alpha = 255
+        markPaint.alpha = 255
         return true
     }
 
@@ -292,7 +302,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
-            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role, eraseUnderlay = false)
+            textStyles.drawReplacing(canvas, candidate.text, RectF(word.left, word.top + shift, word.right, word.bottom + shift), role, eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(index))
         }
         // 拼音数据可能比上一帧短或字符宽度发生变化。先清理整条旧拼音绘制带，
         // 再按当前 preeditEdges 重绘，避免旧字母/拼音残影留在新字符之间。
@@ -355,14 +365,20 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             // 补充候选不再铺独立色块，保持与主候选一致的透明文字层。
             val value = candidates.getOrNull(index)?.text ?: return@forEachIndexed
             val baseline = rect.centerY() - (extraText.ascent() + extraText.descent()) / 2f
+            val originalAlpha = extraText.alpha
+            extraText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
             canvas.drawText(value, rect.centerX(), baseline, extraText)
+            extraText.alpha = originalAlpha
         }
         for (index in image.emoji) {
             val word = image.wordRect(index) ?: continue
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) continue
             val text = candidates.getOrNull(index)?.text ?: continue
             val baseline = word.centerY() + shift - (emojiPaint.ascent() + emojiPaint.descent()) / 2
+            val originalAlpha = emojiPaint.alpha
+            emojiPaint.alpha = originalAlpha * candidateRevealAlpha(index) / 255
             canvas.drawText(text, word.centerX(), baseline, emojiPaint)
+            emojiPaint.alpha = originalAlpha
         }
         val size = CONTACT_MARK_DP * density
         candidates.forEachIndexed { index, candidate ->
@@ -442,6 +458,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     }
     private companion object {
         const val TEXT_FADE_DURATION_MS = 220L
+        const val CANDIDATE_REVEAL_STAGGER_MS = 58L
         /** 人头标记多大（dp）：比译文字号小一点，不抢候选字。 */
         const val CONTACT_MARK_DP = 11f
     }
