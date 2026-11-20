@@ -45,7 +45,7 @@ class MascotTextAccessibilityService : AccessibilityService() {
     private fun findTextNode(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        if (!bounds.contains(x, y) || node.isPassword || (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive)) return null
+        if (!bounds.contains(x, y) || node.isPassword || node.isEditable || (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive)) return null
         var result: AccessibilityNodeInfo? = if (node.isVisibleToUser && !node.text.isNullOrBlank()) AccessibilityNodeInfo.obtain(node) else null
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
