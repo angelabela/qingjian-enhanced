@@ -43,6 +43,10 @@ class FloatingMascotService : Service() {
     private var pendingCopy: Runnable? = null
     private var lastDragX = 0
     private var lastDragY = 0
+    private var collapsedWidthPx = 0
+    private var collapsedHeightPx = 0
+    private var expandedWidthPx = 0
+    private var expandedHeightPx = 0
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == MascotTextAccessibilityService.ACTION_APP_CONTEXT) {
@@ -68,18 +72,21 @@ class FloatingMascotService : Service() {
         }
         windowManager = getSystemService(WindowManager::class.java)
         val density = resources.displayMetrics.density
-        val width = (190f * density).toInt()
-        val height = (72f * density).toInt()
+        collapsedWidthPx = (64f * density).toInt()
+        collapsedHeightPx = (68f * density).toInt()
+        expandedWidthPx = (250f * density).toInt()
+        expandedHeightPx = (120f * density).toInt()
         windowParams = WindowManager.LayoutParams(
-            width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            collapsedWidthPx, collapsedHeightPx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = prefs.getInt(KEY_X, (resources.displayMetrics.widthPixels - width - 18f * density).toInt()).coerceIn(0, (resources.displayMetrics.widthPixels - width).coerceAtLeast(0))
-            y = prefs.getInt(KEY_Y, (resources.displayMetrics.heightPixels * 0.34f).toInt()).coerceIn(0, (resources.displayMetrics.heightPixels - height).coerceAtLeast(0))
+            x = prefs.getInt(KEY_X, (resources.displayMetrics.widthPixels - collapsedWidthPx - 18f * density).toInt()).coerceIn(0, (resources.displayMetrics.widthPixels - collapsedWidthPx).coerceAtLeast(0))
+            y = prefs.getInt(KEY_Y, (resources.displayMetrics.heightPixels * 0.34f).toInt()).coerceIn(0, (resources.displayMetrics.heightPixels - collapsedHeightPx).coerceAtLeast(0))
         }
         mascotView = MascotView(this).also { view ->
+            view.onDialogueVisibilityChanged = { expanded -> resizeMascotWindow(expanded) }
             view.setOnTouchListener(createTouchListener(view))
             try { windowManager.addView(view, windowParams) }
             catch (error: RuntimeException) {
@@ -134,6 +141,24 @@ class FloatingMascotService : Service() {
         val pet = mascotView ?: return
         pet.clearTips()
         pet.invalidate()
+    }
+
+    /** 气泡显示时扩大窗口；气泡消失后缩回宠物本体，释放透明区域的触摸命中范围。 */
+    private fun resizeMascotWindow(expanded: Boolean) {
+        val view = mascotView ?: return
+        if (!view.isAttachedToWindow) return
+        val targetWidth = if (expanded) expandedWidthPx else collapsedWidthPx
+        val targetHeight = if (expanded) expandedHeightPx else collapsedHeightPx
+        if (windowParams.width == targetWidth && windowParams.height == targetHeight) return
+        val deltaWidth = expandedWidthPx - collapsedWidthPx
+        windowParams.x += if (expanded) -deltaWidth else deltaWidth
+        windowParams.width = targetWidth
+        windowParams.height = targetHeight
+        windowParams.x = windowParams.x.coerceIn(0, (resources.displayMetrics.widthPixels - targetWidth).coerceAtLeast(0))
+        windowParams.y = windowParams.y.coerceIn(0, (resources.displayMetrics.heightPixels - targetHeight).coerceAtLeast(0))
+        runCatching { windowManager.updateViewLayout(view, windowParams) }
+            .onFailure { android.util.Log.w("QingjianMascot", "Unable to resize mascot overlay", it) }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
     }
 
     private fun createTouchListener(view: View) = View.OnTouchListener { _, event ->
@@ -216,8 +241,31 @@ class FloatingMascotService : Service() {
         private var animationType = "idle"
         private var animationStartedAt = 0L
         private var pendingPhoneNumber: String? = null
-        val overlayWidth: Int get() = (190f * density).toInt()
-        val overlayHeight: Int get() = (72f * density).toInt()
+        private var dialogueExpanded = false
+        private var expiryRunnable: Runnable? = null
+        var onDialogueVisibilityChanged: ((Boolean) -> Unit)? = null
+        val overlayWidth: Int get() = (250f * density).toInt()
+        val overlayHeight: Int get() = (120f * density).toInt()
+
+        private fun setDialogueExpanded(expanded: Boolean) {
+            if (dialogueExpanded == expanded) return
+            dialogueExpanded = expanded
+            onDialogueVisibilityChanged?.invoke(expanded)
+        }
+
+        private fun scheduleExpiry(duration: Long) {
+            expiryRunnable?.let(::removeCallbacks)
+            val expectedUntil = messageUntil
+            expiryRunnable = Runnable {
+                if (messageUntil == expectedUntil && SystemClock.uptimeMillis() >= expectedUntil) {
+                    tipItems = emptyList()
+                    pendingPhoneNumber = null
+                    messageText = ""
+                    setDialogueExpanded(false)
+                    invalidate()
+                }
+            }.also { postDelayed(it, duration) }
+        }
 
         fun setTips(items: List<Pair<String, Int>>, surface: Int, text: Int, cloud: Int, accent: Int, border: Int) {
             tipItems = items.take(3)
@@ -228,14 +276,20 @@ class FloatingMascotService : Service() {
             dialogueBorder.color = border
             dialogueAccent.color = Color.argb(45, Color.red(accent), Color.green(accent), Color.blue(accent))
             messageText = ""
-            messageUntil = SystemClock.uptimeMillis() + 8_000L
+            messageUntil = SystemClock.uptimeMillis() + 10_000L
+            setDialogueExpanded(true)
+            scheduleExpiry(10_000L)
             invalidate()
         }
 
         fun clearTips() {
+            if (tipItems.isEmpty()) return
             tipItems = emptyList()
             messageUntil = 0L
             messageText = ""
+            expiryRunnable?.let(::removeCallbacks)
+            expiryRunnable = null
+            setDialogueExpanded(false)
             invalidate()
         }
 
@@ -243,8 +297,8 @@ class FloatingMascotService : Service() {
             if (tipItems.isEmpty()) return false
             val px = x / density
             val py = y / density
-            if (px !in 70f..184f || py !in 10f..70f) return false
-            val row = ((py - 20f) / 17f).toInt()
+            if (px !in 68f..244f || py !in 8f..112f) return false
+            val row = ((py - 18f) / 26f).toInt()
             val item = tipItems.getOrNull(row) ?: return false
             appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, item.second))
             appContext.startService(Intent(appContext, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
@@ -255,33 +309,32 @@ class FloatingMascotService : Service() {
             if (tipItems.isEmpty() && now >= messageUntil) return
             canvas.save()
             canvas.scale(density, density)
-            val rect = RectF(70f, 10f, 184f, 70f)
-            val tail = Path().apply { moveTo(66f, 34f); lineTo(75f, 28f); lineTo(76f, 43f); close() }
-            canvas.drawPath(tail, dialogueBody)
+            // 统一使用小精灵最初的圆角提示语气泡，不绘制箭头或第二个浮窗。
+            val rect = RectF(68f, 8f, 244f, 112f)
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBody)
-            canvas.drawPath(tail, dialogueBorder)
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
                 tipItems.take(3).forEachIndexed { index, item ->
-                    val baseline = 26f + index * 17f
+                    val baseline = 31f + index * 26f
                     canvas.drawCircle(80f, baseline - 4f, 1.8f, dialogueAccent)
                     val value = item.first
-                    val count = dialogueText.breakText(value, true, 92f, null).coerceAtLeast(1)
+                    val count = dialogueText.breakText(value, true, 150f, null).coerceAtLeast(1)
                     val visible = if (count < value.length) value.substring(0, (count - 1).coerceAtLeast(1)) + "…" else value
-                    canvas.drawText(visible, 87f, baseline, dialogueText)
+                    canvas.drawText(visible, 88f, baseline, dialogueText)
                 }
             } else {
                 var rest = messageText.ifBlank { "我在这里陪你呀！" }
-                var baseline = 29f
-                repeat(3) {
-                    if (rest.isNotEmpty()) {
-                        val count = dialogueText.breakText(rest, true, 94f, null).coerceAtLeast(1)
-                        canvas.drawText(rest.substring(0, count), 80f, baseline, dialogueText)
-                        rest = rest.substring(count)
-                        baseline += 15f
-                    }
+                var baseline = 28f
+                var lines = 0
+                while (rest.isNotEmpty() && lines < 6) {
+                    val count = dialogueText.breakText(rest, true, 154f, null).coerceAtLeast(1)
+                    val visible = rest.substring(0, count)
+                    canvas.drawText(visible, 80f, baseline, dialogueText)
+                    rest = rest.substring(count)
+                    baseline += 15f
+                    lines++
                 }
-                if (rest.isNotEmpty()) canvas.drawText("…", 176f, 62f, dialogueText)
+                if (rest.isNotEmpty()) canvas.drawText("…", 226f, 101f, dialogueText)
             }
             canvas.restore()
         }
@@ -301,22 +354,29 @@ class FloatingMascotService : Service() {
         fun setMessage(value: String, duration: Long = 4_500L, animation: String = "idle") {
             tipItems = emptyList()
             pendingPhoneNumber = null
-            messageText = value.trim().take(72).ifBlank { "我在这里陪你呀！" }
+            dialogueText.textSize = 12.5f
+            dialogueText.color = 0xFF51445C.toInt()
+            dialogueBody.color = 0xF5FFFFFF.toInt()
+            dialogueBorder.color = 0x55A58BB8
+            dialogueAccent.color = 0x267F6BE0
+            messageText = value.trim().take(160).ifBlank { "我在这里陪你呀！" }
             messageUntil = SystemClock.uptimeMillis() + duration
             animationType = animation
             animationStartedAt = SystemClock.uptimeMillis()
+            setDialogueExpanded(true)
+            scheduleExpiry(duration)
             invalidate()
         }
         fun setPhonePrompt(number: String) {
             if (number.isBlank()) return
-            setMessage("发现电话号码，点击提示框拨打～", 15_000L)
+            setMessage("发现电话号码：$number  点击提示框打开拨号器", 15_000L)
             pendingPhoneNumber = number
         }
         fun onPhoneBubbleTapped(x: Float, y: Float): Boolean {
             val number = pendingPhoneNumber ?: return false
             val px = x / density
             val py = y / density
-            if (px !in 70f..184f || py !in 10f..70f) return false
+            if (px !in 68f..244f || py !in 8f..112f) return false
             pendingPhoneNumber = null
             runCatching {
                 appContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

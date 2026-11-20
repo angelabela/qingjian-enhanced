@@ -301,6 +301,8 @@ class QingjianInputMethodService :
     private lateinit var voice: VoiceInput
     private val smartInfo by lazy { SmartInfoProvider(this) }
     private var smartInfoSequence = 0
+    private var mascotSmartInfoSequence = 0
+    private var lastMascotSmartInfoText = ""
     private var localAiSuggestionSequence = 0
     private var lastMascotReaction = ""
     private var lastMascotReactionAt = 0L
@@ -661,6 +663,7 @@ class QingjianInputMethodService :
         )
         hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         maybeShowMascotSemanticReaction(newSelStart, newSelEnd)
+        maybeShowMascotSmartInfo(newSelStart, newSelEnd)
         // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。
         if (isClipboardPanel()) return
         if (editor != null) return
@@ -698,6 +701,42 @@ class QingjianInputMethodService :
             .putExtra(FloatingMascotService.EXTRA_ANIMATION, reaction.animation)
         runCatching { ContextCompat.startForegroundService(this, intent) }
             .onFailure { AppLog.warn("mascot semantic response unavailable: " + it.javaClass.simpleName) }
+    }
+
+    /** 输入设备信息关键词时，直接把实时结果显示在小精灵原有的提示语气泡中。 */
+    private fun maybeShowMascotSmartInfo(newSelStart: Int, newSelEnd: Int) {
+        if (newSelStart < 0 || newSelEnd != newSelStart || editor != null || composer.privateInput) return
+        val info = currentInputEditorInfo ?: return
+        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
+        if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        ) return
+        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) ||
+            !android.provider.Settings.canDrawOverlays(this)
+        ) return
+
+        val connection = currentInputConnection ?: return
+        val before = runCatching { connection.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
+            .getOrDefault("").trimEnd()
+        val trigger = SmartInfoProvider.TRIGGERS.sortedByDescending { it.length }
+            .firstOrNull { before.endsWith(it, ignoreCase = true) }
+        if (trigger == null) {
+            lastMascotSmartInfoText = ""
+            return
+        }
+        if (before == lastMascotSmartInfoText) return
+        lastMascotSmartInfoText = before
+        val request = ++mascotSmartInfoSequence
+        smartInfo.resolve(trigger) { result ->
+            if (request != mascotSmartInfoSequence || currentInputConnection !== connection) return@resolve
+            val latest = runCatching { connection.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
+                .getOrDefault("").trimEnd()
+            if (latest != before) return@resolve
+            showMascotDialogue(result)
+        }
     }
 
     /** 剪贴板出现电话号码时由小精灵提示；点击提示框打开系统拨号器并预填号码。 */

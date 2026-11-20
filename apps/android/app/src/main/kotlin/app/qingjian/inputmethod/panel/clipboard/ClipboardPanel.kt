@@ -367,7 +367,7 @@ class ClipboardPanel(
         val margin = ink.dp(CARD_MARGIN_DP)
         val padding = ink.dp(CARD_PADDING_DP)
         card.set(margin, top, width - margin, bottom)
-        ink.round(canvas, card, 12f, if (animatedBackgroundEnabled) android.graphics.Color.TRANSPARENT else palette.surface)
+        ink.round(canvas, card, 12f, palette.surface)
         val image = if (showingPhrases) null else clips[i].image
         if (image != null) {
             thumbnail(image)?.let { bitmap ->
