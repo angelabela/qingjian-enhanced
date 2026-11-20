@@ -232,7 +232,7 @@ class FloatingMascotService : Service() {
                 if (state[4] > 0f) {
                     lastDragX = event.rawX.toInt(); lastDragY = event.rawY.toInt()
                     val pet = view as MascotView
-                    val petLeft = if (pet.bubbleOnLeft) view.width / resources.displayMetrics.density - 64f else 0f
+                    val petLeft = pet.mascotOffsetPx / resources.displayMetrics.density
                     val petX = event.x / resources.displayMetrics.density - petLeft
                     val corner = (if (event.y / resources.displayMetrics.density < 34f) 0 else 2) + if (petX >= 32f) 1 else 0
                     pet.setDragMarker(corner)
@@ -245,8 +245,8 @@ class FloatingMascotService : Service() {
                             val currentView = mascotView
                             val corner = currentView?.dragMarkerCorner ?: -1
                             val density = resources.displayMetrics.density
-                            val petLeft = if (currentView?.bubbleOnLeft == true) currentView.width - (64f * density).toInt() else 0
-                            val targetX = windowParams.x + petLeft + ((if (corner and 1 == 1) 59f else 5f) * density).toInt()
+                            val petLeft = currentView?.mascotOffsetPx ?: 0
+                            val targetX = windowParams.x + petLeft + ((if ((corner and 1) == 1) 59f else 5f) * density).toInt()
                             val targetY = windowParams.y + ((if (corner >= 2) 61f else 5f) * density).toInt()
                             val bounds = MascotTextAccessibilityService.requestCopyAt(targetX, targetY)
                             currentView?.setDragMarker(-1)
@@ -340,6 +340,7 @@ class FloatingMascotService : Service() {
         val dialogueWindowHeightPx: Int get() = (maxOf(68f, bubbleHeightDp + 16f) * density).toInt()
         private val bubbleLeftDp: Float get() = if (bubbleOnLeft) 8f else 68f
         private val mascotLeftDp: Float get() = if (bubbleOnLeft) bubbleWidthDp + 16f else 0f
+        val mascotOffsetPx: Int get() = (mascotLeftDp * density).toInt()
 
         fun setBubbleOnLeft(left: Boolean) {
             if (bubbleOnLeft == left) return
@@ -581,7 +582,7 @@ class FloatingMascotService : Service() {
             paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); 3 -> 0xFF55C8A8.toInt(); else -> 0xFFFF80B5.toInt() }
             canvas.drawCircle(8f,45f,2f,paint)
             if (dragMarkerCorner >= 0) {
-                val markerX = if (dragMarkerCorner and 1 == 1) 60f else 4f
+                val markerX = if ((dragMarkerCorner and 1) == 1) 60f else 4f
                 val markerY = if (dragMarkerCorner >= 2) 64f else 4f
                 paint.color = Color.WHITE
                 canvas.drawCircle(markerX, markerY, 7f, paint)
