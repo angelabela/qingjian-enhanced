@@ -44,6 +44,12 @@ class KeyPainter(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val spaceGlowHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 5.2f * density
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val spaceGlowMatrix = Matrix()
     private var spaceGlowShader: SweepGradient? = null
     private var spaceGlowCenterX = Float.NaN
@@ -161,12 +167,19 @@ class KeyPainter(
             spaceGlowCenterX = cx
             spaceGlowCenterY = cy
         }
-        val angle = (SystemClock.uptimeMillis() % 2_600L) / 2_600f * 360f
+        val angle = (SystemClock.uptimeMillis() % 5_200L) / 5_200f * 360f
         spaceGlowMatrix.setRotate(angle, cx, cy)
         shader.setLocalMatrix(spaceGlowMatrix)
+        val outline = RectF(bounds).apply { inset(1.25f * density, 1.25f * density) }
+        // 先绘制宽而柔和的外沿光晕，再叠加清晰流光线，形成轻微向外扩散的发光边缘。
+        spaceGlowHaloPaint.shader = shader
+        spaceGlowHaloPaint.alpha = 92
+        spaceGlowHaloPaint.setShadowLayer(4f * density, 0f, 0f, 0xAA6D9CFF.toInt())
+        canvas.drawRoundRect(outline, metrics.radius, metrics.radius, spaceGlowHaloPaint)
+        spaceGlowHaloPaint.clearShadowLayer()
+        spaceGlowHaloPaint.shader = null
         spaceGlowPaint.shader = shader
         spaceGlowPaint.alpha = 220
-        val outline = RectF(bounds).apply { inset(1.25f * density, 1.25f * density) }
         canvas.drawRoundRect(outline, metrics.radius, metrics.radius, spaceGlowPaint)
         spaceGlowPaint.shader = null
     }
