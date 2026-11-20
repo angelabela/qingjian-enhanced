@@ -19,6 +19,7 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
