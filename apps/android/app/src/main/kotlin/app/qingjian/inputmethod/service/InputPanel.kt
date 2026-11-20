@@ -492,7 +492,8 @@ class InputPanel(
             runCatching { ContextCompat.startForegroundService(context, intent) }
                 .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
         } else {
-            cloudSuggestions.show(candidates)
+            // 未启用小精灵时不再回退到旧的独立云 Tips 浮窗。
+            cloudSuggestions.show(emptyList())
         }
     }
 
