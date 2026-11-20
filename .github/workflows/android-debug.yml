@@ -71,14 +71,44 @@ jobs:
           find data/generated/dicts -type f -name '*.qj' -size +0c | grep -q .
           ls -lh data/generated/dict.qj data/generated/lm.qj data/generated/dicts
 
-      - name: Build Android debug APK
-        working-directory: apps/android
-        run: ./gradlew assembleDebug --no-daemon --console=plain
+      - name: Prepare fixed Android release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.QINGJIAN_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "缺少 QINGJIAN_ANDROID_KEYSTORE Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "缺少 QINGJIAN_ANDROID_KEYSTORE_PASSWORD Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "缺少 QINGJIAN_ANDROID_KEY_ALIAS Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "缺少 QINGJIAN_ANDROID_KEY_PASSWORD Secret" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/qingjian-signing"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/qingjian-signing/qingjian-release.jks"
+          test -s "$RUNNER_TEMP/qingjian-signing/qingjian-release.jks"
+          echo "QINGJIAN_ANDROID_KEYSTORE=$RUNNER_TEMP/qingjian-signing/qingjian-release.jks" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
 
-      - name: Upload Android debug APK
+      - name: Build signed Android release APK
+        working-directory: apps/android
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      - name: Verify fixed APK signature
+        run: |
+          set -euo pipefail
+          APK="apps/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK"
+
+      - name: Upload signed Android APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: qingjian-android-debug
-          path: apps/android/app/build/outputs/apk/debug/*.apk
+          name: qingjian-android-signed
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
