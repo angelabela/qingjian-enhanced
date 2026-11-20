@@ -47,7 +47,7 @@ class FloatingMascotService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == MascotTextAccessibilityService.ACTION_APP_CONTEXT) {
-                mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty())
+                mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_HINT).orEmpty().ifBlank { intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty() })
             } else mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
         }
     }

@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
@@ -18,7 +19,14 @@ class MascotTextAccessibilityService : AccessibilityService() {
         val label = runCatching {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
         }.getOrDefault(pkg.substringAfterLast('.'))
-        sendBroadcast(android.content.Intent(ACTION_APP_CONTEXT).setPackage(packageName).putExtra(EXTRA_APP_LABEL, label))
+        val hint = when {
+            listOf("wechat", "whatsapp", "telegram", "qq").any { pkg.contains(it, true) } -> "聊天辅助"
+            listOf("browser", "chrome", "firefox").any { pkg.contains(it, true) } -> "浏览复制"
+            listOf("taobao", "jd", "pinduoduo").any { pkg.contains(it, true) } -> "购物助手"
+            else -> "场景辅助"
+        }
+        sendBroadcast(android.content.Intent(ACTION_APP_CONTEXT).setPackage(packageName)
+            .putExtra(EXTRA_APP_LABEL, label).putExtra(EXTRA_APP_HINT, hint))
     }
     override fun onInterrupt() = Unit
     private fun featureEnabled() = getSharedPreferences("mascot_assist", MODE_PRIVATE).getBoolean("cross_app_enabled", false)
@@ -37,7 +45,7 @@ class MascotTextAccessibilityService : AccessibilityService() {
     private fun findTextNode(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        if (!bounds.contains(x, y) || node.isPassword) return null
+        if (!bounds.contains(x, y) || node.isPassword || (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive)) return null
         var result: AccessibilityNodeInfo? = if (node.isVisibleToUser && !node.text.isNullOrBlank()) AccessibilityNodeInfo.obtain(node) else null
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
@@ -56,6 +64,7 @@ class MascotTextAccessibilityService : AccessibilityService() {
     companion object {
         const val ACTION_APP_CONTEXT = "app.qingjian.inputmethod.action.MASCOT_APP_CONTEXT"
         const val EXTRA_APP_LABEL = "app_label"
+        const val EXTRA_APP_HINT = "app_hint"
         @Volatile private var active: MascotTextAccessibilityService? = null
         fun isEnabled(context: Context): Boolean {
             val expected = context.packageName + "/" + MascotTextAccessibilityService::class.java.name
