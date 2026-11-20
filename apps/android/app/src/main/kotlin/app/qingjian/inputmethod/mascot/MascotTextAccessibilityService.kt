@@ -30,17 +30,20 @@ class MascotTextAccessibilityService : AccessibilityService() {
     }
     override fun onInterrupt() = Unit
     private fun featureEnabled() = getSharedPreferences("mascot_assist", MODE_PRIVATE).getBoolean("cross_app_enabled", false)
-    private fun copyAt(x: Int, y: Int): Boolean {
-        if (!featureEnabled()) return false
-        val root = rootInActiveWindow ?: return false
-        if (root.packageName?.toString() == packageName) return false
-        val node = findTextNode(root, x, y) ?: return false
+    private fun copyAt(x: Int, y: Int): Rect? {
+        if (!featureEnabled()) return null
+        val root = rootInActiveWindow ?: return null
+        if (root.packageName?.toString() == packageName) return null
+        val node = findTextNode(root, x, y) ?: return null
         val value = node.text?.toString()?.trim().orEmpty()
-        if (value.isBlank()) { node.recycle(); return false }
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("青简复制", value))
+        if (value.isBlank()) { node.recycle(); return null }
+        val bounds = Rect().also { node.getBoundsInScreen(it) }
+        val copied = runCatching {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("青简复制", value))
+        }.isSuccess
         node.recycle()
-        return true
+        return bounds.takeIf { copied && !it.isEmpty }
     }
     private fun findTextNode(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
         val bounds = Rect()
@@ -71,7 +74,7 @@ class MascotTextAccessibilityService : AccessibilityService() {
             val value = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
             return value.split(':').any { it.equals(expected, true) }
         }
-        fun requestCopyAt(x: Int, y: Int): Boolean = active?.copyAt(x, y) ?: false
+        fun requestCopyAt(x: Int, y: Int): Rect? = active?.copyAt(x, y)
     }
     override fun onDestroy() { if (active === this) active = null; super.onDestroy() }
 }
