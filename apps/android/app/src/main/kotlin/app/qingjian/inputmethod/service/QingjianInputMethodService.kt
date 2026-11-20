@@ -876,7 +876,7 @@ class QingjianInputMethodService :
             Settings.GestureAction.CLEAR_ALL -> onClearAll()
             Settings.GestureAction.CLEAR_BEFORE_CURSOR -> onClearBeforeCursor()
             // 保留旧配置枚举兼容性，但不再执行删除键下滑撤销清空动作。
-            Settings.GestureAction.RESTORE_CLEAR -> Unit
+            Settings.GestureAction.RESTORE_CLEAR -> composer.restoreLastClear()
             Settings.GestureAction.UNDO -> composer.undo()
             Settings.GestureAction.REDO -> composer.redo()
             Settings.GestureAction.OPEN_CLIPBOARD -> onOpenClipboard()
@@ -912,11 +912,17 @@ class QingjianInputMethodService :
 
     /** 按常用功能面板选择的样式绘制 AI 等待提示；所有 span 仅附着于这段 composing 文本。 */
     private fun quickAiLoadingFrame(phase: Int): CharSequence {
-        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 9)
+        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 14)
+        val counter = (phase % 100).toString().padStart(2, '0')
         val label = when (style) {
             3, 8 -> "● AI 正在生成"
             4 -> "● ✦ AI 正在生成"
             9 -> "AI 正在生成 |"
+            10 -> "✧ AI 正在生成"
+            11 -> "✦ AI 正在生成 ·"
+            12 -> "◉ AI 正在生成"
+            13 -> "AI 正在生成 ▰"
+            14 -> "AI 正在生成 $counter"
             else -> "✦ AI 正在生成"
         }
         val themeText = Palette.of(this).text
@@ -925,9 +931,13 @@ class QingjianInputMethodService :
             2 -> intArrayOf(0xFFFF3B5C.toInt(), 0xFFFFA52F.toInt(), 0xFFFFEA45.toInt(), 0xFF45E879.toInt(), 0xFF36CFFF.toInt(), 0xFF6577FF.toInt(), 0xFFD65BFF.toInt(), 0xFFFF3B5C.toInt())
             5 -> intArrayOf(0xFF747C85.toInt(), 0xFFE7EBEF.toInt(), 0xFF747C85.toInt())
             6 -> intArrayOf(0xFF858585.toInt(), 0xFFF2F2F2.toInt(), 0xFF858585.toInt())
-            7 -> intArrayOf(themeText, themeText)
+            7, 9 -> intArrayOf(themeText, themeText)
             8 -> intArrayOf(0xFF929AA2.toInt(), 0xFFE7EBEF.toInt(), 0xFF929AA2.toInt())
-            9 -> intArrayOf(themeText, themeText)
+            10 -> intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt(), 0xFF2DE2C5.toInt())
+            11 -> intArrayOf(0xFFC7D7FF.toInt(), 0xFF8BA7FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFC7D7FF.toInt())
+            12 -> intArrayOf(0xFF00E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF4FC8.toInt(), 0xFF00E5FF.toInt())
+            13 -> intArrayOf(0xFFF6E7FF.toInt(), 0xFF6DE7FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFA88BFF.toInt())
+            14 -> intArrayOf(0xFF49FF88.toInt(), 0xFFA8FFB9.toInt(), 0xFF2BCA70.toInt(), 0xFF49FF88.toInt())
             else -> intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt(), 0xFF8B72FF.toInt())
         }
         fun colorAt(position: Float): Int {
@@ -976,9 +986,46 @@ class QingjianInputMethodService :
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     9 -> {
-                        val color = if (char == 124.toChar() && phase % 12 < 6) android.graphics.Color.WHITE else if (char == 124.toChar()) 0xFF777777.toInt() else themeText
+                        val color = if (char == '|') {
+                            if (phase % 12 < 6) android.graphics.Color.WHITE else 0xFF777777.toInt()
+                        } else themeText
                         setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        if (char == 124.toChar()) setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (char == '|') setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    10 -> {
+                        val p = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        val color = colorAt(p + phase * 0.018f + kotlin.math.sin(phase * 0.035f) * 0.025f)
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (index == phase % label.length) setSpan(UnderlineSpan(), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    11 -> {
+                        val pulse = (0.5 + 0.5 * kotlin.math.sin(phase * 0.11)).toFloat()
+                        val color = if (index == 0 || char == '·') {
+                            android.graphics.Color.rgb((150 + pulse * 105).toInt(), (175 + pulse * 80).toInt(), 255)
+                        } else colorAt(index.toFloat() / label.length + phase * 0.012f)
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    12 -> {
+                        val p = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        val color = colorAt(p + phase * 0.024f)
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (index == phase % label.length) setSpan(BackgroundColorSpan((color and 0x00FFFFFF) or 0x44000000), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    13 -> {
+                        val p = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        setSpan(ForegroundColorSpan(colorAt(p + phase * 0.016f)), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (index == phase % label.length) {
+                            setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            setSpan(UnderlineSpan(), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                    }
+                    14 -> {
+                        val pulse = (0.5 + 0.5 * kotlin.math.sin(phase * 0.10)).toFloat()
+                        val color = if (char.isDigit()) android.graphics.Color.rgb(80, (190 + pulse * 65).toInt(), (110 + pulse * 100).toInt())
+                            else colorAt(index.toFloat() / label.length + phase * 0.008f)
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (char.isDigit()) setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     else -> {
                         val gradientPosition = index.toFloat() / (label.length - 1).coerceAtLeast(1)
@@ -1008,7 +1055,6 @@ class QingjianInputMethodService :
         }
     }
 
-    /** 在输入框光标处用 composing span 显示动态状态；生成结果会直接替换这段提示。 */
     private fun showQuickAiLoading(connection: InputConnection) {
         stopQuickAiLoading(clearText = true)
         // 先结束用户正在编辑的临时 composing 区，再建立独立的 AI 状态区，避免覆盖拼音预编辑。
