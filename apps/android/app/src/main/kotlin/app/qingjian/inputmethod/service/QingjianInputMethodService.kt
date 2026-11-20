@@ -17,6 +17,8 @@ import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.BackgroundColorSpan
+import android.text.style.StyleSpan
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -898,30 +900,67 @@ class QingjianInputMethodService :
         }.getOrDefault("")
     }
 
-    /** 为快捷 AI 等待提示绘制平滑流动的紫-蓝-粉渐变；只作用于这段 composing 文本。 */
+    /** 按常用功能面板选择的样式绘制 AI 等待提示；所有 span 仅附着于这段 composing 文本。 */
     private fun quickAiLoadingFrame(phase: Int): CharSequence {
-        val label = "✦ AI 正在生成"
-        val colors = intArrayOf(
-            0xFF8B72FF.toInt(),
-            0xFF42B8F5.toInt(),
-            0xFFFF78B7.toInt(),
-            0xFF8B72FF.toInt(),
-        )
+        val style = Settings.preferences(this).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
+        val label = when (style) {
+            3 -> "● AI 正在生成"
+            4 -> "● ✦ AI 正在生成"
+            else -> "✦ AI 正在生成"
+        }
+        val palettes = when (style) {
+            1 -> intArrayOf(0xFF00E5FF.toInt(), 0xFFFF35C8.toInt(), 0xFFFFD54F.toInt(), 0xFF7CFF6B.toInt(), 0xFF00E5FF.toInt())
+            2 -> intArrayOf(0xFFFF3B5C.toInt(), 0xFFFFA52F.toInt(), 0xFFFFEA45.toInt(), 0xFF45E879.toInt(), 0xFF36CFFF.toInt(), 0xFF6577FF.toInt(), 0xFFD65BFF.toInt(), 0xFFFF3B5C.toInt())
+            else -> intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt(), 0xFF8B72FF.toInt())
+        }
+        fun colorAt(position: Float): Int {
+            val wrapped = ((position % 1f) + 1f) % 1f
+            val point = wrapped * (palettes.size - 1)
+            val segment = point.toInt().coerceIn(0, palettes.size - 2)
+            val fraction = point - segment
+            val a = palettes[segment]
+            val b = palettes[segment + 1]
+            fun channel(shift: Int): Int {
+                val from = (a ushr shift) and 0xFF
+                val to = (b ushr shift) and 0xFF
+                return (from + (to - from) * fraction).toInt().coerceIn(0, 255)
+            }
+            return android.graphics.Color.rgb(channel(16), channel(8), channel(0))
+        }
+
+        val themeText = Palette.of(this).text
         return SpannableString(label).apply {
             label.forEachIndexed { index, char ->
                 if (char.isWhitespace()) return@forEachIndexed
-                val position = (((index.toFloat() / (label.length - 1)) + phase * 0.035f) % 1f) * (colors.size - 1)
-                val segment = position.toInt().coerceIn(0, colors.size - 2)
-                val fraction = position - segment
-                val start = colors[segment]
-                val end = colors[segment + 1]
-                fun channel(shift: Int): Int {
-                    val a = (start ushr shift) and 0xFF
-                    val b = (end ushr shift) and 0xFF
-                    return (a + (b - a) * fraction).toInt().coerceIn(0, 255)
+                when (style) {
+                    3 -> {
+                        val color = if (index == 0) colorAt(phase * 0.035f) else themeText
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    else -> {
+                        val gradientPosition = index.toFloat() / (label.length - 1).coerceAtLeast(1)
+                        val color = colorAt(gradientPosition + phase * if (style == 2) 0.055f else 0.035f)
+                        setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (style == 1) {
+                            // 用低透明度彩色底光衬托霓虹字，避免改变输入框或键盘背景。
+                            setSpan(BackgroundColorSpan((color and 0x00FFFFFF) or 0x28000000),
+                                index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            setSpan(StyleSpan(android.graphics.Typeface.BOLD), index, index + 1,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        if (style == 4) {
+                            val sweepIndex = (phase / 2) % label.length
+                            if (index == sweepIndex) {
+                                setSpan(ForegroundColorSpan(android.graphics.Color.WHITE), index, index + 1,
+                                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                                setSpan(BackgroundColorSpan(0x55FFFFFF), index, index + 1,
+                                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            }
+                            if (index == 0) setSpan(ForegroundColorSpan(colorAt(phase * 0.035f)),
+                                index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                    }
                 }
-                val color = android.graphics.Color.rgb(channel(16), channel(8), channel(0))
-                setSpan(ForegroundColorSpan(color), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
     }
