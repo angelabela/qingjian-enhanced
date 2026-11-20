@@ -16,6 +16,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.text.TextPaint
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
@@ -43,6 +44,50 @@ class FloatingMascotService : Service() {
     private var pendingCopy: Runnable? = null
     private var lastDragX = 0
     private var lastDragY = 0
+    private var selectionOverlay: View? = null
+    private var clearSelectionRunnable: Runnable? = null
+
+    private fun showSelectionHighlight(bounds: Rect) {
+        clearSelectionRunnable?.let(dragHandler::removeCallbacks)
+        selectionOverlay?.let { old -> runCatching { if (old.isAttachedToWindow) windowManager.removeView(old) } }
+        selectionOverlay = null
+        val width = bounds.width().coerceAtLeast(2)
+        val height = bounds.height().coerceAtLeast(2)
+        val highlight = SelectionHighlightView(this)
+        val params = WindowManager.LayoutParams(
+            width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bounds.left
+            y = bounds.top
+        }
+        runCatching { windowManager.addView(highlight, params); selectionOverlay = highlight }
+            .onFailure { android.util.Log.w("QingjianMascot", "Unable to show copied text bounds", it) }
+        clearSelectionRunnable = Runnable {
+            selectionOverlay?.let { overlay -> runCatching { if (overlay.isAttachedToWindow) windowManager.removeView(overlay) } }
+            selectionOverlay = null
+            clearSelectionRunnable = null
+        }.also { dragHandler.postDelayed(it, 1_800L) }
+    }
+
+    private class SelectionHighlightView(context: Context) : View(context) {
+        private val density = resources.displayMetrics.density
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x2246B7FF }
+        private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF36A9FF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 2f * density
+        }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val inset = border.strokeWidth / 2f
+            val rect = RectF(inset, inset, width - inset, height - inset)
+            canvas.drawRoundRect(rect, 4f * density, 4f * density, fill)
+            canvas.drawRoundRect(rect, 4f * density, 4f * density, border)
+        }
+    }
     private var collapsedWidthPx = 0
     private var collapsedHeightPx = 0
     private var expandedWidthPx = 0
@@ -186,14 +231,31 @@ class FloatingMascotService : Service() {
                 if (abs(dx) > slop || abs(dy) > slop) state[4] = 1f
                 if (state[4] > 0f) {
                     lastDragX = event.rawX.toInt(); lastDragY = event.rawY.toInt()
+                    val pet = view as MascotView
+                    val petLeft = if (pet.bubbleOnLeft) view.width / resources.displayMetrics.density - 64f else 0f
+                    val petX = event.x / resources.displayMetrics.density - petLeft
+                    val corner = (if (event.y / resources.displayMetrics.density < 34f) 0 else 2) + if (petX >= 32f) 1 else 0
+                    pet.setDragMarker(corner)
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
                     pendingCopy?.let(dragHandler::removeCallbacks)
                     pendingCopy = Runnable {
                         if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) {
-                            val copied = MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)
-                            mascotView?.setMessage(if (copied) "复制成功啦！已经放进剪贴板～" else "这里好像不能复制呢，换个文字试试吧～")
+                            val currentView = mascotView
+                            val corner = currentView?.dragMarkerCorner ?: -1
+                            val density = resources.displayMetrics.density
+                            val petLeft = if (currentView?.bubbleOnLeft == true) currentView.width - (64f * density).toInt() else 0
+                            val targetX = windowParams.x + petLeft + ((if (corner and 1 == 1) 59f else 5f) * density).toInt()
+                            val targetY = windowParams.y + ((if (corner >= 2) 61f else 5f) * density).toInt()
+                            val bounds = MascotTextAccessibilityService.requestCopyAt(targetX, targetY)
+                            currentView?.setDragMarker(-1)
+                            if (bounds != null) {
+                                showSelectionHighlight(bounds)
+                                currentView?.setMessage("已圈选文字并复制到剪贴板啦！")
+                            } else {
+                                currentView?.setMessage("这个位置没有可复制的文字，换个角落试试吧～")
+                            }
                         }
                     }.also { dragHandler.postDelayed(it, 1_000L) }
                 }
@@ -201,6 +263,7 @@ class FloatingMascotService : Service() {
             }
             MotionEvent.ACTION_UP -> {
                 pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
+                (view as? MascotView)?.setDragMarker(-1)
                 val state = view.getTag() as? FloatArray
                 if (state != null && state[4] == 0f) {
                     val pet = view as MascotView
@@ -209,7 +272,7 @@ class FloatingMascotService : Service() {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
                 true
             }
-            MotionEvent.ACTION_CANCEL -> { pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null; true }
+            MotionEvent.ACTION_CANCEL -> { pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null; (view as? MascotView)?.setDragMarker(-1); true }
             else -> true
         }
     }
@@ -233,6 +296,9 @@ class FloatingMascotService : Service() {
         android.util.Log.w("QingjianMascot", "Floating mascot service destroyed; enabled=" + getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false))
         mascotView?.let { view -> runCatching { if (view.isAttachedToWindow) windowManager.removeView(view) } }
         mascotView = null
+        clearSelectionRunnable?.let(dragHandler::removeCallbacks)
+        selectionOverlay?.let { overlay -> runCatching { if (overlay.isAttachedToWindow) windowManager.removeView(overlay) } }
+        selectionOverlay = null
         if (receiverRegistered) runCatching { unregisterReceiver(screenReceiver) }
         receiverRegistered = false
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else stopForeground(true)
@@ -256,6 +322,15 @@ class FloatingMascotService : Service() {
         private var pendingPhoneNumber: String? = null
         private var dialogueExpanded = false
         private var expiryRunnable: Runnable? = null
+        var dragMarkerCorner: Int = -1
+            private set
+
+        fun setDragMarker(corner: Int) {
+            val next = corner.takeIf { it in 0..3 } ?: -1
+            if (dragMarkerCorner == next) return
+            dragMarkerCorner = next
+            invalidate()
+        }
         var onDialogueVisibilityChanged: ((Boolean) -> Unit)? = null
         private var bubbleWidthDp = 176f
         private var bubbleHeightDp = 104f
@@ -505,6 +580,18 @@ class FloatingMascotService : Service() {
             canvas.drawCircle(49f,12f,5f + sin(now / 260.0).toFloat() * 1.1f,paint)
             paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); 3 -> 0xFF55C8A8.toInt(); else -> 0xFFFF80B5.toInt() }
             canvas.drawCircle(8f,45f,2f,paint)
+            if (dragMarkerCorner >= 0) {
+                val markerX = if (dragMarkerCorner and 1 == 1) 60f else 4f
+                val markerY = if (dragMarkerCorner >= 2) 64f else 4f
+                paint.color = Color.WHITE
+                canvas.drawCircle(markerX, markerY, 7f, paint)
+                paint.color = 0xFF239BFF.toInt()
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f
+                canvas.drawLine(markerX - 4f, markerY, markerX + 4f, markerY, paint)
+                canvas.drawLine(markerX, markerY - 4f, markerX, markerY + 4f, paint)
+                paint.style = Paint.Style.FILL
+            }
             canvas.restore()
             drawDialogueBubble(canvas, now)
             if (visibility == View.VISIBLE && isAttachedToWindow) postInvalidateDelayed(50L)
