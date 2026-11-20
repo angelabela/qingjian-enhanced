@@ -38,6 +38,7 @@ on:
       - fix/workflow-356-ai-animation-backspace-clear-before-cursor
       - fix/workflow-368-backspace-ai-spectrum-palettes
       - fix/workflow-549-ai-scan-candidate-staggered-entry
+      - fix/workflow-550-mascot-space-light-ai-bounce
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
