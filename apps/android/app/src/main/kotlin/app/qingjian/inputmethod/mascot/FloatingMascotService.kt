@@ -151,7 +151,10 @@ class FloatingMascotService : Service() {
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
                     pendingCopy?.let(dragHandler::removeCallbacks)
                     pendingCopy = Runnable {
-                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)
+                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) {
+                            val copied = MascotTextAccessibilityService.requestCopyAt(lastDragX, lastDragY)
+                            mascotView?.setMessage(if (copied) "复制成功啦！已经放进剪贴板～" else "这里好像不能复制呢，换个文字试试吧～")
+                        }
                     }.also { dragHandler.postDelayed(it, 1_000L) }
                 }
                 true
@@ -224,6 +227,8 @@ class FloatingMascotService : Service() {
 
         fun clearTips() {
             tipItems = emptyList()
+            messageUntil = 0L
+            messageText = ""
             invalidate()
         }
 
