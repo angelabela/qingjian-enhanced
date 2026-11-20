@@ -14,6 +14,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.text.TextUtils
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.os.Build
@@ -34,6 +35,8 @@ class FloatingMascotService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var windowParams: WindowManager.LayoutParams
     private var mascotView: MascotView? = null
+    private var tipsView: TipBubbleView? = null
+    private var tipsParams: WindowManager.LayoutParams? = null
     private var receiverRegistered = false
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -84,9 +87,78 @@ class FloatingMascotService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP || !getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false)) {
-            stopSelf(startId); return START_NOT_STICKY
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        when (intent?.action) {
+            ACTION_SHOW_TIPS -> {
+                val labels = intent.getStringArrayListExtra(EXTRA_TIP_LABELS).orEmpty()
+                val indexes = intent.getIntegerArrayListExtra(EXTRA_TIP_INDEXES).orEmpty()
+                showTips(labels, indexes)
+            }
+            ACTION_HIDE_TIPS -> hideTips()
         }
         return START_STICKY
+    }
+
+    /** 云联想数据直接进入小精灵气泡；气泡独立成窗，避免扩大宠物触摸热区。 */
+    private fun showTips(labels: List<String>, indexes: List<Int>) {
+        val items = labels.zip(indexes).filter { it.first.isNotBlank() }.take(3)
+        if (items.isEmpty() || mascotView == null) {
+            hideTips()
+            return
+        }
+        val existing = tipsView
+        if (existing != null && existing.isAttachedToWindow) {
+            existing.updateItems(items)
+            positionTipsBubble()
+            return
+        }
+        val density = resources.displayMetrics.density
+        val view = TipBubbleView(this, items) { candidateIndex ->
+            sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(packageName).putExtra(EXTRA_TIP_INDEX, candidateIndex))
+            hideTips()
+        }
+        val width = (232f * density).toInt()
+        val height = view.bubbleHeight
+        val params = WindowManager.LayoutParams(
+            width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.START }
+        tipsView = view
+        tipsParams = params
+        runCatching {
+            windowManager.addView(view, params)
+            positionTipsBubble()
+        }.onFailure {
+            tipsView = null
+            tipsParams = null
+            android.util.Log.w("QingjianMascot", "Unable to show cloud suggestion bubble", it)
+        }
+    }
+
+    private fun positionTipsBubble() {
+        val view = tipsView ?: return
+        val params = tipsParams ?: return
+        val pet = mascotView ?: return
+        if (!view.isAttachedToWindow) return
+        val density = resources.displayMetrics.density
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        val gap = (8f * density).toInt()
+        val rightSide = windowParams.x < screenW / 2
+        val proposedX = if (rightSide) windowParams.x + pet.width + gap else windowParams.x - params.width - gap
+        val proposedY = windowParams.y + (pet.height - params.height) / 2
+        params.x = proposedX.coerceIn(0, (screenW - params.width).coerceAtLeast(0))
+        params.y = proposedY.coerceIn((12f * density).toInt(), (screenH - params.height - 48f * density).toInt().coerceAtLeast(0))
+        runCatching { windowManager.updateViewLayout(view, params) }
+    }
+
+    private fun hideTips() {
+        tipsView?.let { view -> runCatching { if (view.isAttachedToWindow) windowManager.removeView(view) } }
+        tipsView = null
+        tipsParams = null
     }
 
     private fun createTouchListener(view: View) = View.OnTouchListener { _, event ->
@@ -103,6 +175,7 @@ class FloatingMascotService : Service() {
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
+                    positionTipsBubble()
                 }
                 true
             }
@@ -133,6 +206,7 @@ class FloatingMascotService : Service() {
             .setContentIntent(pending).setOngoing(true).build()
     }
     override fun onDestroy() {
+        hideTips()
         mascotView?.let { view -> runCatching { if (view.isAttachedToWindow) windowManager.removeView(view) } }
         mascotView = null
         if (receiverRegistered) runCatching { unregisterReceiver(screenReceiver) }
@@ -141,6 +215,94 @@ class FloatingMascotService : Service() {
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** 云联想气泡：最多三条，内容可点击上屏；与宠物本体分窗，空白区域不会挡住底层应用。 */
+    private class TipBubbleView(
+        context: Context,
+        items: List<Pair<String, Int>>,
+        private val onSelect: (Int) -> Unit,
+    ) : View(context) {
+        private val density = resources.displayMetrics.density
+        private val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() }
+        private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x337A70A0; style = Paint.Style.STROKE; strokeWidth = density }
+        private val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF7665A8.toInt(); textSize = 11f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF302B3B.toInt(); textSize = 13f * density; typeface = android.graphics.Typeface.DEFAULT }
+        private val star = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9278D8.toInt(); textSize = 14f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        private var entries: List<Pair<String, Int>> = items.take(3)
+        private var pressed = -1
+        val bubbleHeight: Int get() = ((38f + entries.size * 31f) * density).toInt()
+
+        fun updateItems(items: List<Pair<String, Int>>) {
+            entries = items.take(3)
+            requestLayout()
+            invalidate()
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), bubbleHeight)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat()
+            val h = height.toFloat()
+            canvas.drawRoundRect(RectF(0.5f * density, 0.5f * density, w - 0.5f * density, h - 0.5f * density), 17f * density, 17f * density, body)
+            canvas.drawRoundRect(RectF(0.5f * density, 0.5f * density, w - 0.5f * density, h - 0.5f * density), 17f * density, 17f * density, border)
+            canvas.drawText("✦  云联想", 14f * density, 22f * density, title)
+            entries.forEachIndexed { index, entry ->
+                val top = (29f + index * 31f) * density
+                val row = RectF(8f * density, top, w - 8f * density, top + 27f * density)
+                if (pressed == index) {
+                    val active = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x267F6BE0 }
+                    canvas.drawRoundRect(row, 9f * density, 9f * density, active)
+                }
+                canvas.drawText("›", 15f * density, top + 18f * density, star)
+                val available = w - 48f * density
+                val label = TextUtils.ellipsize(entry.first, text, available, TextUtils.TruncateAt.END).toString()
+                canvas.drawText(label, 32f * density, top + 18f * density, text)
+            }
+        }
+
+        private fun rowAt(y: Float): Int {
+            val row = ((y / density - 29f) / 31f).toInt()
+            if (y < 29f * density) return -1
+            return row.takeIf { it in entries.indices && y <= (29f + it * 31f + 27f) * density } ?: -1
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    pressed = rowAt(event.y)
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val next = rowAt(event.y)
+                    if (next != pressed) { pressed = next; invalidate() }
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val selected = rowAt(event.y)
+                    if (selected >= 0 && selected == pressed) onSelect(entries[selected].second)
+                    pressed = -1
+                    invalidate()
+                    performClick()
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    pressed = -1
+                    invalidate()
+                    return true
+                }
+            }
+            return true
+        }
+
+        override fun performClick(): Boolean {
+            super.performClick()
+            return true
+        }
+    }
 
     /** Canvas 卡通宠物：漂浮、眨眼、轻触切换表情，不加载大图。 */
     private class MascotView(context: Context) : View(context) {
@@ -204,6 +366,12 @@ class FloatingMascotService : Service() {
         private const val KEY_X = "x"
         private const val KEY_Y = "y"
         const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_FLOATING_MASCOT"
+        const val ACTION_SHOW_TIPS = "app.qingjian.inputmethod.action.SHOW_MASCOT_TIPS"
+        const val ACTION_HIDE_TIPS = "app.qingjian.inputmethod.action.HIDE_MASCOT_TIPS"
+        const val ACTION_TIP_SELECTED = "app.qingjian.inputmethod.action.MASCOT_TIP_SELECTED"
+        const val EXTRA_TIP_LABELS = "tip_labels"
+        const val EXTRA_TIP_INDEXES = "tip_indexes"
+        const val EXTRA_TIP_INDEX = "tip_index"
         private const val CHANNEL_ID = "qingjian_floating_mascot"
         private const val NOTIFICATION_ID = 7318
     }

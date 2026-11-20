@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.service
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
@@ -26,6 +27,7 @@ import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import app.qingjian.inputmethod.candidates.CandidateBarView
+import app.qingjian.inputmethod.mascot.FloatingMascotService
 import app.qingjian.inputmethod.candidates.CandidateGrid
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
 import app.qingjian.inputmethod.cloud.AiChatGenerator
@@ -52,6 +54,7 @@ import app.qingjian.inputmethod.panel.editor.FloatingEditor
 import app.qingjian.inputmethod.settings.BottomAction
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
+import androidx.core.content.ContextCompat
 
 /**
  * 覆盖整块输入法窗口的流动光影背景。键盘、候选工具栏和底部操作条共用同一层，
@@ -470,8 +473,22 @@ class InputPanel(
 
     /** 云联想以浮动 Tips 显示；没有候选时连输入法顶部的占位行也一并隐藏。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) {
-        // Tips 在独立悬浮窗口中显示；输入法布局里不再保留 46dp 占位行。
-        cloudSuggestions.show(candidates)
+        val mascotPrefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+        val mascotEnabled = mascotPrefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
+            android.provider.Settings.canDrawOverlays(context)
+        if (mascotEnabled) {
+            // 旧 Tips 只负责智能建议等其他场景；云候选交给全局小精灵气泡呈现。
+            cloudSuggestions.show(emptyList())
+            val intent = Intent(context, FloatingMascotService::class.java).apply {
+                action = if (candidates.isEmpty()) FloatingMascotService.ACTION_HIDE_TIPS else FloatingMascotService.ACTION_SHOW_TIPS
+                putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, ArrayList(candidates.map { it.second }))
+                putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, ArrayList(candidates.map { it.first }))
+            }
+            runCatching { ContextCompat.startForegroundService(context, intent) }
+                .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
+        } else {
+            cloudSuggestions.show(candidates)
+        }
     }
 
     /** 将云 Tips 锚定到当前编辑器光标上方。 */

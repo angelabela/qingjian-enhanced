@@ -258,6 +258,14 @@ class QingjianInputMethodService :
 
     private var neon: NeonEdgeView? = null
 
+    private val mascotTipSelectedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            val index = intent.getIntExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_INDEX, -1)
+            if (index < 0 || shownCandidates.getOrNull(index)?.cloud != true) return
+            composer.select(originalCandidateIndex(index))
+        }
+    }
+
     /** 同步的事件：键盘边缘亮灯，收到内容后开着的剪贴板面板重读。 */
     private val syncListener = object : ClipboardSync.Listener {
         override fun onSyncEvent(type: String, event: JSONObject) {
@@ -362,6 +370,12 @@ class QingjianInputMethodService :
         )
         cloud.start()
         clipboardWatcher.start()
+        ContextCompat.registerReceiver(
+            this,
+            mascotTipSelectedReceiver,
+            IntentFilter(app.qingjian.inputmethod.mascot.FloatingMascotService.ACTION_TIP_SELECTED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
     }
@@ -376,6 +390,7 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(smsStateListener) }
         runCatching { unregisterReceiver(scanResultListener) }
         runCatching { unregisterReceiver(dynamicBackgroundListener) }
+        runCatching { unregisterReceiver(mascotTipSelectedReceiver) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
         LocalAiModelManager.releaseRuntime()
         phraseMemoryHandler.removeCallbacksAndMessages(null)
