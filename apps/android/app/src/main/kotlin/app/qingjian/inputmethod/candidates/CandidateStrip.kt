@@ -22,7 +22,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
-        it.textSize = 19f * density * textScale
+        it.textSize = 25f * density * textScale
         it.textAlign = Paint.Align.CENTER
         it.typeface = fontWeight.typeface
         it.isFakeBoldText = fontWeight.weight >= 600
