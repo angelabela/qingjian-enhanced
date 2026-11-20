@@ -22,6 +22,7 @@ class LocalAiSettingsActivity : PageActivity() {
     override fun content(): List<View> {
         val snapshot = LocalAiModelManager.runtimeSnapshot(this)
         val installed = snapshot.installed
+        val localAiEnabled = LocalAiModelManager.isEnabled(this)
         val runtimeDetails = buildString {
             append("模型文件：").append(if (installed) "已校验" else "未安装")
             append("\n引擎状态：").append(snapshot.state)
@@ -45,6 +46,16 @@ class LocalAiSettingsActivity : PageActivity() {
             "请先下载模型"
         }
         val rows = listOf(
+            ui.action(
+                R.string.local_ai_model_section,
+                if (localAiEnabled) "本地 AI：已开启（推理时可能增加功耗）" else "本地 AI：已关闭（省电模式）",
+            ) {
+                if (!busy) {
+                    LocalAiModelManager.setEnabled(this, !LocalAiModelManager.isEnabled(this))
+                    statusMessage = if (LocalAiModelManager.isEnabled(this)) "本地 AI 已开启" else "本地 AI 已关闭，推理引擎已释放"
+                    rebuild()
+                }
+            },
             ui.action(R.string.local_ai_download, downloadValue) {
                 if (!busy) startDownload()
             },
