@@ -341,7 +341,7 @@ class InputPanel(
     private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("video_frosted", true)
     private val videoBackgroundUri = if (videoBackgroundEnabled && videoBackgroundMode != 1) dynamicBackgroundPrefs.getString("video_uri", null) else null
     private val backgroundEffectActive = settings.keyboardBackgroundEffect && (videoBackgroundUri == null || videoBackgroundMode != 0)
-    private var transparentBackground = backgroundEffectActive || videoBackgroundUri != null
+    private val transparentBackground = backgroundEffectActive || videoBackgroundUri != null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
     private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
@@ -466,7 +466,6 @@ class InputPanel(
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
-        transparentBackground = effectEnabled || uri != null
         val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
         root.background = if (effectEnabled) FlowingKeyboardBackgroundDrawable(palette, style) else android.graphics.drawable.ColorDrawable(palette.board)
         root.invalidate()
@@ -506,30 +505,6 @@ class InputPanel(
         cloudSuggestions.showSmart(candidates, onSelect)
     }
 
-    /** 设备信息类提示只进入小精灵浮框，不再使用输入法原来的 Tips 行。 */
-    fun showMascotInfoSuggestion(trigger: String, value: String) {
-        val enabled = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
-            .getBoolean(FloatingMascotService.KEY_ENABLED, false) && android.provider.Settings.canDrawOverlays(context)
-        if (!enabled || value.isBlank()) {
-            cloudSuggestions.showSmart(emptyList()) {}
-            return
-        }
-        cloudSuggestions.showSmart(emptyList()) {}
-        val intent = Intent(context, FloatingMascotService::class.java).apply {
-            action = FloatingMascotService.ACTION_SHOW_INFO_TIPS
-            putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, arrayListOf(value))
-            putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, arrayListOf(-1))
-            putExtra(FloatingMascotService.EXTRA_TIP_TRIGGER, trigger)
-            putExtra(FloatingMascotService.ACTION_COLOR_SURFACE, palette.surface)
-            putExtra(FloatingMascotService.ACTION_COLOR_TEXT, palette.text)
-            putExtra(FloatingMascotService.ACTION_COLOR_CLOUD, palette.cloud)
-            putExtra(FloatingMascotService.ACTION_COLOR_ACCENT, palette.accent)
-            putExtra(FloatingMascotService.ACTION_COLOR_BORDER, palette.faint)
-        }
-        runCatching { ContextCompat.startForegroundService(context, intent) }
-            .onFailure { android.util.Log.w("QingjianMascot", "Unable to show smart info in mascot bubble", it) }
-    }
-
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
     fun open(kind: PanelKind, text: String = "", hasSelection: Boolean = false) {
         close()
@@ -549,10 +524,10 @@ class InputPanel(
                 actions::insertAtCursor, actions::replaceSelectedText, actions::copyToClipboard, actions::closePanel,
             )
             PanelKind.AI_CHAT -> AiChatPanel(
-                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
+                context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
-                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
+                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel,
             )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)

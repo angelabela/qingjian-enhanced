@@ -33,7 +33,7 @@ abstract class PanelView(
     private val scrollables = mutableListOf<Scrollable>()
     private val headerCard = RectF()
     private var dragging: Scrollable? = null
-    private var animatedBackground = false
+    protected var animatedBackground = false
 
     protected fun scrollable(horizontal: Boolean, contains: (Float, Float) -> Boolean): ScrollState {
         val state = ScrollState(context)
