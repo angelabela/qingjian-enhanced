@@ -850,6 +850,33 @@ class Composer(private val engine: Engine, private val host: Host) {
         apply(engine.clear())
     }
 
+    /**
+     * 删除键下滑：只删除光标左侧的文本，光标右侧内容保持不变。
+     * 同时清理引擎组句状态与编辑历史，避免旧预编辑状态在下一次输入时重新出现。
+     */
+    fun clearBeforeCursor() {
+        val connection = host.connection ?: return
+        closeUndoGroup()
+        pendingBackspaceSnapshot = null
+        clearGestureSnapshot = null
+        beforeBackspace = null
+        backspaceComposing = false
+        val selected = connection.getSelectedText(0)?.toString().orEmpty()
+        connection.beginBatchEdit()
+        try {
+            // 有选区时先删除选区，再重新读取光标左侧文本；不触碰光标右侧内容。
+            if (selected.isNotEmpty()) connection.commitText("", 1)
+            val before = connection.getTextBeforeCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+            if (before.isNotEmpty()) connection.deleteSurroundingText(before.length, 0)
+        } finally {
+            connection.endBatchEdit()
+        }
+        editHistory.clear()
+        apply(engine.clear())
+        closeUndoGroup()
+        refreshCompletions()
+    }
+
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
     fun onCursorMovedAway() {
         if (composing) settle()
