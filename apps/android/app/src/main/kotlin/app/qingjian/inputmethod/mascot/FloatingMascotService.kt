@@ -253,7 +253,7 @@ class FloatingMascotService : Service() {
         }
         private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = borderColor; style = Paint.Style.STROKE; strokeWidth = density }
         private val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cloudColor; textSize = 11f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = textColor; textSize = 13f * density; typeface = android.graphics.Typeface.DEFAULT }
+        private val text = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = textColor; textSize = 13f * density; typeface = android.graphics.Typeface.DEFAULT }
         private val star = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cloudColor; textSize = 14f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
         private val active = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(0x32, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
