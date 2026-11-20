@@ -45,6 +45,13 @@ class CloudSuggestionsView(
     private val palette: Palette,
     private val onSelect: (Int) -> Unit,
 ) : HorizontalScrollView(context) {
+    companion object {
+        private val activeViews = java.util.WeakHashMap<CloudSuggestionsView, Boolean>()
+        fun hideAllFloatingTips() {
+            val views = synchronized(activeViews) { activeViews.keys.toList() }
+            views.forEach { it.hideTips() }
+        }
+    }
     private val density = resources.displayMetrics.density
     private var smartSelection: ((String) -> Unit)? = null
     private var draggingTips = false
@@ -96,6 +103,7 @@ class CloudSuggestionsView(
     }
 
     init {
+        synchronized(activeViews) { activeViews[this] = true }
         isHorizontalScrollBarEnabled = false
         isClickable = true
         isFocusable = true
@@ -485,7 +493,7 @@ class CloudSuggestionsView(
         animateWindowHide()
     }
 
-    private fun hideTips() {
+    fun hideTips() {
         hideHandler.removeCallbacks(autoHideRunnable)
         shatterAnimator?.cancel()
         shatterProgress = 0f
