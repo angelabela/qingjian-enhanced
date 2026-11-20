@@ -425,8 +425,24 @@ class FloatingMascotService : Service() {
             val px = x / density
             val py = y / density
             if (px !in bubbleLeftDp..(bubbleLeftDp + bubbleWidthDp) || py !in 8f..(8f + bubbleHeightDp)) return false
-            val row = ((py - 18f) / 26f).toInt()
-            val item = tipItems.getOrNull(row) ?: return false
+            var rowTop = 8f
+            val item = tipItems.firstOrNull { candidate ->
+                var rest = candidate.first
+                var firstLine = true
+                var lineCount = 0
+                while (rest.isNotEmpty()) {
+                    val count = dialogueText.breakText(
+                        rest, true, bubbleWidthDp - if (firstLine) 24f else 12f, null,
+                    ).coerceAtLeast(1)
+                    rest = rest.substring(count)
+                    firstLine = false
+                    lineCount++
+                }
+                val rowBottom = rowTop + lineCount.coerceAtLeast(1) * 15f
+                val hit = py in rowTop..rowBottom
+                rowTop = rowBottom
+                hit
+            } ?: return false
             appContext.sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(appContext.packageName).putExtra(EXTRA_TIP_INDEX, item.second))
             appContext.startService(Intent(appContext, FloatingMascotService::class.java).setAction(ACTION_HIDE_TIPS))
             return true
