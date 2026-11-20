@@ -919,7 +919,7 @@ class QingjianInputMethodService :
             4 -> "● ✦ AI 正在生成"
             9 -> "AI 正在生成 |"
             10 -> "✧ AI 正在生成"
-            11 -> "✦ AI 正在生成 ·"
+            11 -> "${listOf("✦", "✧", "✺", "✧")[((phase / 4) % 4)]} · AI 正在生成 ·"
             12 -> "◉ AI 正在生成"
             13 -> "AI 正在生成 ▰"
             14 -> "AI 正在生成 $counter"
