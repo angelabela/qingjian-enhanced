@@ -839,8 +839,9 @@ class Composer(private val engine: Engine, private val host: Host) {
     /** 删除键上划：无论光标位置、选区或是否正在组句，都清空整个输入框。 */
     fun clearAll() {
         val connection = host.connection ?: return
-        // 整框清空继续由原有「撤销清空」快照负责，避免普通历史尝试覆盖整份宿主文本。
+        // 每次清空都必须建立本次快照；不能在捕获失败时沿用上一次清空的旧文本。
         editHistory.clear()
+        lastClearSnapshot = null
         val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
         if (snapshot != null) {
             pushUndoSnapshot(snapshot)
