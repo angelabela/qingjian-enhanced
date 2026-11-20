@@ -92,9 +92,11 @@ class FloatingMascotService : Service() {
         }
         when (intent?.action) {
             ACTION_SHOW_TIPS -> {
+                pendingTipColors = intent
                 val labels = intent.getStringArrayListExtra(EXTRA_TIP_LABELS).orEmpty()
                 val indexes = intent.getIntegerArrayListExtra(EXTRA_TIP_INDEXES).orEmpty()
                 showTips(labels, indexes)
+                pendingTipColors = null
             }
             ACTION_HIDE_TIPS -> hideTips()
         }
@@ -102,6 +104,11 @@ class FloatingMascotService : Service() {
     }
 
     /** 云联想数据直接进入小精灵气泡；气泡独立成窗，避免扩大宠物触摸热区。 */
+    private var pendingTipColors: Intent? = null
+
+    private fun intentColor(key: String, fallback: Int): Int =
+        pendingTipColors?.getIntExtra(key, fallback) ?: fallback
+
     private fun showTips(labels: List<String>, indexes: List<Int>) {
         val items = labels.zip(indexes).filter { it.first.isNotBlank() }.take(3)
         if (items.isEmpty() || mascotView == null) {
@@ -115,11 +122,19 @@ class FloatingMascotService : Service() {
             return
         }
         val density = resources.displayMetrics.density
-        val view = TipBubbleView(this, items) { candidateIndex ->
+        val view = TipBubbleView(
+            this,
+            items,
+            intentColor(ACTION_COLOR_SURFACE, 0xFFF2F0F8.toInt()),
+            intentColor(ACTION_COLOR_TEXT, 0xFF302B3B.toInt()),
+            intentColor(ACTION_COLOR_CLOUD, 0xFF9278D8.toInt()),
+            intentColor(ACTION_COLOR_ACCENT, 0x267F6BE0),
+            intentColor(ACTION_COLOR_BORDER, 0x337A70A0),
+        ) { candidateIndex ->
             sendBroadcast(Intent(ACTION_TIP_SELECTED).setPackage(packageName).putExtra(EXTRA_TIP_INDEX, candidateIndex))
             hideTips()
         }
-        val width = (232f * density).toInt()
+        val width = minOf((232f * density).toInt(), (resources.displayMetrics.widthPixels - 16f * density).toInt().coerceAtLeast(1))
         val height = view.bubbleHeight
         val params = WindowManager.LayoutParams(
             width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -130,6 +145,10 @@ class FloatingMascotService : Service() {
         tipsParams = params
         runCatching {
             windowManager.addView(view, params)
+            view.alpha = 0f
+            view.scaleX = 0.96f
+            view.scaleY = 0.96f
+            view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180L).start()
             positionTipsBubble()
         }.onFailure {
             tipsView = null
@@ -144,6 +163,7 @@ class FloatingMascotService : Service() {
         val pet = mascotView ?: return
         if (!view.isAttachedToWindow) return
         val density = resources.displayMetrics.density
+        params.height = view.bubbleHeight
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
         val gap = (8f * density).toInt()
@@ -220,14 +240,22 @@ class FloatingMascotService : Service() {
     private class TipBubbleView(
         context: Context,
         items: List<Pair<String, Int>>,
+        surfaceColor: Int,
+        textColor: Int,
+        cloudColor: Int,
+        accentColor: Int,
+        borderColor: Int,
         private val onSelect: (Int) -> Unit,
     ) : View(context) {
         private val density = resources.displayMetrics.density
-        private val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() }
-        private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x337A70A0; style = Paint.Style.STROKE; strokeWidth = density }
-        private val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF7665A8.toInt(); textSize = 11f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF302B3B.toInt(); textSize = 13f * density; typeface = android.graphics.Typeface.DEFAULT }
-        private val star = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9278D8.toInt(); textSize = 14f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        private val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(244, Color.red(surfaceColor), Color.green(surfaceColor), Color.blue(surfaceColor))
+        }
+        private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = borderColor; style = Paint.Style.STROKE; strokeWidth = density }
+        private val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cloudColor; textSize = 11f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = textColor; textSize = 13f * density; typeface = android.graphics.Typeface.DEFAULT }
+        private val star = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cloudColor; textSize = 14f * density; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        private val active = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
         private var entries: List<Pair<String, Int>> = items.take(3)
         private var pressed = -1
         val bubbleHeight: Int get() = ((38f + entries.size * 31f) * density).toInt()
@@ -252,10 +280,7 @@ class FloatingMascotService : Service() {
             entries.forEachIndexed { index, entry ->
                 val top = (29f + index * 31f) * density
                 val row = RectF(8f * density, top, w - 8f * density, top + 27f * density)
-                if (pressed == index) {
-                    val active = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x267F6BE0 }
-                    canvas.drawRoundRect(row, 9f * density, 9f * density, active)
-                }
+                if (pressed == index) canvas.drawRoundRect(row, 9f * density, 9f * density, active)
                 canvas.drawText("›", 15f * density, top + 18f * density, star)
                 val available = w - 48f * density
                 val label = TextUtils.ellipsize(entry.first, text, available, TextUtils.TruncateAt.END).toString()
@@ -372,6 +397,11 @@ class FloatingMascotService : Service() {
         const val EXTRA_TIP_LABELS = "tip_labels"
         const val EXTRA_TIP_INDEXES = "tip_indexes"
         const val EXTRA_TIP_INDEX = "tip_index"
+        const val ACTION_COLOR_SURFACE = "tip_surface"
+        const val ACTION_COLOR_TEXT = "tip_text"
+        const val ACTION_COLOR_CLOUD = "tip_cloud"
+        const val ACTION_COLOR_ACCENT = "tip_accent"
+        const val ACTION_COLOR_BORDER = "tip_border"
         private const val CHANNEL_ID = "qingjian_floating_mascot"
         private const val NOTIFICATION_ID = 7318
     }

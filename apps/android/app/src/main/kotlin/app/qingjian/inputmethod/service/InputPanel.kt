@@ -483,6 +483,11 @@ class InputPanel(
                 action = if (candidates.isEmpty()) FloatingMascotService.ACTION_HIDE_TIPS else FloatingMascotService.ACTION_SHOW_TIPS
                 putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, ArrayList(candidates.map { it.second }))
                 putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, ArrayList(candidates.map { it.first }))
+                putExtra(FloatingMascotService.ACTION_COLOR_SURFACE, palette.surface)
+                putExtra(FloatingMascotService.ACTION_COLOR_TEXT, palette.text)
+                putExtra(FloatingMascotService.ACTION_COLOR_CLOUD, palette.cloud)
+                putExtra(FloatingMascotService.ACTION_COLOR_ACCENT, palette.accent)
+                putExtra(FloatingMascotService.ACTION_COLOR_BORDER, palette.faint)
             }
             runCatching { ContextCompat.startForegroundService(context, intent) }
                 .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
