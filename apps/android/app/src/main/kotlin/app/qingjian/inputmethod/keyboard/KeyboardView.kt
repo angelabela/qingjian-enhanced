@@ -255,6 +255,7 @@ class KeyboardView(
             )
         }
         if (side.enabled) painter.drawSide(canvas, side)
+        if (isShown && slots.any { it.key is Key.Space }) postInvalidateDelayed(32L)
         val flicking = flickSlot?.takeIf { flickArmed }
         if (flicking == null) trail.draw(canvas)
         if (flicking != null) {
