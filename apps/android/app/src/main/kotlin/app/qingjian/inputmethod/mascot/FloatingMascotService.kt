@@ -276,9 +276,12 @@ class FloatingMascotService : Service() {
             dialogueBorder.color = border
             dialogueAccent.color = Color.argb(45, Color.red(accent), Color.green(accent), Color.blue(accent))
             messageText = ""
-            messageUntil = SystemClock.uptimeMillis() + 10_000L
+            // 云联想提示保持显示，直到被用户选中、主动隐藏或被下一条提示替换。
+            // 避免用户还没来得及阅读，提示框就自动消失。
+            messageUntil = Long.MAX_VALUE
+            expiryRunnable?.let(::removeCallbacks)
+            expiryRunnable = null
             setDialogueExpanded(true)
-            scheduleExpiry(10_000L)
             invalidate()
         }
 
@@ -351,7 +354,7 @@ class FloatingMascotService : Service() {
             setMessage(when (mood) { 1 -> "嘿嘿，今天也要开心呀！"; 2 -> "加油哦，我陪着你！"; 3 -> "收到啦，交给我吧！"; else -> "你好呀，很高兴见到你！" }, 2_600L)
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         }
-        fun setMessage(value: String, duration: Long = 4_500L, animation: String = "idle") {
+        fun setMessage(value: String, duration: Long = 12_000L, animation: String = "idle") {
             tipItems = emptyList()
             pendingPhoneNumber = null
             dialogueText.textSize = 12.5f
@@ -383,7 +386,7 @@ class FloatingMascotService : Service() {
             }.onFailure { android.util.Log.w("QingjianMascot", "Unable to open phone dialer", it) }
             return true
         }
-        fun setContextLabel(label: String) = setMessage(label, 4_500L)
+        fun setContextLabel(label: String) = setMessage(label, 12_000L)
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val now = SystemClock.uptimeMillis()
