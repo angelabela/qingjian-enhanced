@@ -41,6 +41,8 @@ class FunctionPanel(
     private var voiceEffectPage = false
     private var backgroundEffectPage = false
     private var textEffectPage = false
+    private var aiLoadingEffectPage = false
+    private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
     private var selectedTextTarget = 0
     private var selectedTextPreset = Settings.TextEffectPreset.of(
@@ -82,6 +84,15 @@ class FunctionPanel(
                     textEffectPage = true
                     voiceEffectPage = false
                     backgroundEffectPage = false
+                    invalidate()
+                },
+                Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle != 0) {
+                    selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 4)
+                    aiLoadingEffectPage = true
+                    voiceEffectPage = false
+                    backgroundEffectPage = false
+                    textEffectPage = false
+                    effectScroll.reset()
                     invalidate()
                 },
                 Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
@@ -128,7 +139,7 @@ class FunctionPanel(
     private val knob = RectF()
     // 两个动效选择页共用竖向惯性滚动，内容始终裁切在面板卡片内部。
     private val effectScroll = scrollable(false) { x, y ->
-        (voiceEffectPage || backgroundEffectPage || textEffectPage) &&
+        (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) &&
             x >= card.left && x <= card.right &&
             y >= card.top + ink.dp(38f) && y <= card.bottom - ink.dp(6f)
     }
@@ -136,13 +147,15 @@ class FunctionPanel(
     private val columns = 5
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage || textEffectPage) null else tabs, Icon.SETTINGS)
+        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) null else tabs, Icon.SETTINGS)
         if (voiceEffectPage) {
             ink.text(canvas, "语音面板动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         } else if (backgroundEffectPage) {
             ink.text(canvas, "键盘背景动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         } else if (textEffectPage) {
             ink.text(canvas, "文字效果", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        } else if (aiLoadingEffectPage) {
+            ink.text(canvas, "AI等待特效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         }
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
@@ -150,6 +163,7 @@ class FunctionPanel(
             if (voiceEffectPage) drawVoiceEffectSettings(canvas)
             else if (backgroundEffectPage) drawBackgroundEffectSettings(canvas)
             else if (textEffectPage) drawTextEffectSettings(canvas)
+            else if (aiLoadingEffectPage) drawAiLoadingEffectSettings(canvas)
             else drawFeatures(canvas)
         } else drawToggles(canvas)
     }
@@ -448,6 +462,61 @@ class FunctionPanel(
         canvas.restore()
     }
 
+
+    /** AI 等待提示特效选择；预览只画在面板卡片中，实际效果仅附着于输入框等待文字。 */
+    private fun drawAiLoadingEffectSettings(canvas: Canvas) {
+        val labels = listOf("345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字", "渐变 + 光点 + 扫光组合")
+        val descriptions = listOf("紫蓝粉平滑流动", "霓虹色与柔和彩色底光", "完整彩虹色带持续流动", "单色光点呼吸，文字清晰", "渐变文字叠加光点与扫光")
+        val colors = listOf(
+            intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
+            intArrayOf(0xFF00E5FF.toInt(), 0xFFFF35C8.toInt(), 0xFFFFD54F.toInt()),
+            intArrayOf(0xFFFF3B5C.toInt(), 0xFFFFA52F.toInt(), 0xFF45E879.toInt(), 0xFF36CFFF.toInt(), 0xFFD65BFF.toInt()),
+            intArrayOf(palette.brand, palette.accent, palette.text),
+            intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
+        )
+        ink.textStart(canvas, "仅改变 AI 一键生成时输入框内的等待提示", 11f, palette.gloss,
+            card.left + ink.dp(14f), card.top + ink.dp(24f), card.right - ink.dp(12f))
+        val rowTop = card.top + ink.dp(38f)
+        val rowStep = ink.dp(68f)
+        val gapX = ink.dp(7f)
+        val itemHeight = ink.dp(60f)
+        val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+        effectScroll.max = (3 * rowStep - (card.bottom - rowTop - ink.dp(6f))).coerceAtLeast(0f)
+        canvas.save()
+        canvas.clipRect(card.left, rowTop, card.right, card.bottom - ink.dp(6f))
+        canvas.translate(0f, -effectScroll.offset)
+        labels.forEachIndexed { index, label ->
+            val col = index % 2
+            val row = index / 2
+            val left = card.left + ink.dp(10f) + col * (itemWidth + gapX)
+            val top = rowTop + row * rowStep
+            val bounds = RectF(left, top, left + itemWidth, top + itemHeight)
+            val selected = selectedAiLoadingStyle == index
+            ink.round(canvas, bounds, 10f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.3f else 0.65f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(10f), ink.dp(10f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            val swatch = RectF(bounds.left + ink.dp(8f), bounds.top + ink.dp(9f),
+                bounds.right - ink.dp(8f), bounds.top + ink.dp(29f))
+            val stops = colors[index]
+            ink.fill.shader = android.graphics.LinearGradient(swatch.left, 0f, swatch.right, 0f,
+                stops, null, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(swatch, ink.dp(6f), ink.dp(6f), ink.fill)
+            ink.fill.shader = null
+            ink.textStart(canvas, label, 10.5f, if (selected) palette.brand else palette.text,
+                bounds.left + ink.dp(7f), bounds.top + ink.dp(43f), bounds.right - ink.dp(5f))
+            ink.textStart(canvas, descriptions[index], 9f, palette.gloss,
+                bounds.left + ink.dp(7f), bounds.top + ink.dp(55f), bounds.right - ink.dp(5f))
+            if (selected) {
+                ink.fill.color = palette.brand
+                canvas.drawCircle(bounds.right - ink.dp(8f), bounds.top + ink.dp(8f), ink.dp(2.5f), ink.fill)
+            }
+        }
+        canvas.restore()
+    }
+
     private fun drawFeatures(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
         features.forEachIndexed { i, feature ->
@@ -537,13 +606,30 @@ class FunctionPanel(
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
-            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage && !textEffectPage) tabs.indexAt(x)?.let {
+            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage && !textEffectPage && !aiLoadingEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
                 voiceEffectPage = false
             }
 
             !card.contains(x, y) -> Unit
+            tabs.selected == 0 && aiLoadingEffectPage -> {
+                val rowTop = card.top + ink.dp(38f)
+                val rowStep = ink.dp(68f)
+                val gapX = ink.dp(7f)
+                val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+                if (y >= rowTop - effectScroll.offset) {
+                    val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
+                    val col = if (x < card.left + ink.dp(10f) + itemWidth) 0 else 1
+                    val index = row * 2 + col
+                    if (index in 0..4) {
+                        selectedAiLoadingStyle = index
+                        Settings.preferences(context).edit()
+                            .putInt(Settings.KEY_AI_LOADING_EFFECT, index).apply()
+                        invalidate()
+                    }
+                }
+            }
             tabs.selected == 0 && textEffectPage -> {
                 val targetTop = card.top + ink.dp(8f + 28f)
                 val gap = ink.dp(8f)
@@ -636,10 +722,11 @@ class FunctionPanel(
     }
 
     override fun onBack() {
-        if (voiceEffectPage || backgroundEffectPage || textEffectPage) {
+        if (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) {
             voiceEffectPage = false
             backgroundEffectPage = false
             textEffectPage = false
+            aiLoadingEffectPage = false
             invalidate()
         } else {
             super.onBack()
