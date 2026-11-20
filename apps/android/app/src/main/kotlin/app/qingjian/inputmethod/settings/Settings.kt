@@ -42,7 +42,7 @@ data class Settings(
     val flickSymbols: Boolean,
     /** 长按字母键不滑直接抬手出大写（缺省关，出角标符号）；气泡照样弹，滑着选不受影响。 */
     val longPressUpper: Boolean,
-    /** 在删除键上往上一划清掉光标前的全部文字（缺省开），候选条上给「撤销」。 */
+    /** 删除键上滑清空整个输入框、下滑撤销清空（缺省开）；清空光标前仍可单独配置。 */
     val flickClear: Boolean,
     /** 按住空格左右滑逐字挪光标（缺省开）；关了空格上横滑不响应。 */
     val spaceCursor: Boolean,
