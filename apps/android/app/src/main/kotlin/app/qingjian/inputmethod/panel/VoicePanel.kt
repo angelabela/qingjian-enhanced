@@ -19,6 +19,7 @@ import android.widget.TextView
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.base.Ink
 import app.qingjian.inputmethod.theme.Palette
+import app.qingjian.inputmethod.voice.VoiceAudioFrame
 import kotlin.math.exp
 import kotlin.math.cos
 import kotlin.math.sin
