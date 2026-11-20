@@ -1114,6 +1114,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (!processing.compareAndSet(false, true)) return
         capture.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                if (shuttingDown) {
+                    runCatching { image.close() }
+                    processing.set(false)
+                    closeMlKitClients()
+                    return
+                }
                 val media = image.image
                 if (media == null) {
                     runCatching { image.close() }
@@ -1128,6 +1134,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     .addOnSuccessListener { result ->
                         val recognized = result.text.trim()
                         android.os.Handler(mainLooper).post {
+                            if (shuttingDown) return@post
                             if (recognized.isBlank()) {
                                 Toast.makeText(this@ScanOverlayService, "没有识别到文字，请调整角度后重拍", Toast.LENGTH_SHORT).show()
                             } else {
@@ -1138,7 +1145,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     }
                     .addOnFailureListener {
                         android.os.Handler(mainLooper).post {
-                            Toast.makeText(this@ScanOverlayService, "文字识别失败，请重试", Toast.LENGTH_SHORT).show()
+                            if (!shuttingDown) {
+                                Toast.makeText(this@ScanOverlayService, "文字识别失败，请重试", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                     .addOnCompleteListener {
