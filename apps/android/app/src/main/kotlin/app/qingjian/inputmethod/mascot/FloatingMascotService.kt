@@ -352,7 +352,6 @@ class FloatingMascotService : Service() {
 
     /** Canvas 卡通宠物：漂浮、眨眼、轻触切换表情，不加载大图。 */
     private class MascotView(context: Context) : View(context) {
-        private val density = resources.displayMetrics.density
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var mood = 0
         private var messageUntil = 0L
