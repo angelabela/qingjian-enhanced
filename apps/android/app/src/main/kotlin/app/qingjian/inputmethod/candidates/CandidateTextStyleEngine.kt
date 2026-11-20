@@ -58,7 +58,7 @@ class CandidateTextStyleEngine(
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.96f, weight.weight),
+                preedit = Style(color, 1.18f, maxOf(600, weight.weight), typefaceFamily = "sans-serif-medium"),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
@@ -149,12 +149,12 @@ class CandidateTextStyleEngine(
         // 文字必须完整落在候选格内：同时按宽度和高度缩放，不再设置 62% 的硬下限，
         // 否则较长词组即使缩小后仍会被 clipRect 从左右两侧裁掉。
         val availableWidth = (rect.width() - 2f * density).coerceAtLeast(1f)
-        val availableHeight = (rect.height() - 2f * density).coerceAtLeast(1f)
+        val availableHeight = (rect.height() - 2f * density + if (role == Role.PREEDIT) 6f * density else 0f).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
         val fitScale = if (role == Role.PREEDIT) {
             // 拼音按统一字号绘制：窄字母 i/l/j/r/t 不再因 Rust 单字命中框较窄而被缩小。
-            minOf(1f, availableHeight / measuredHeight)
+            minOf(1.12f, availableHeight / measuredHeight)
         } else minOf(
             1f,
             availableWidth / measuredWidth.coerceAtLeast(1f),
@@ -167,7 +167,7 @@ class CandidateTextStyleEngine(
         val clipRect = if (role == Role.PREEDIT) {
             val minGlyphWidth = baseTextSize * 0.58f
             val extra = ((minGlyphWidth - rect.width()).coerceAtLeast(0f)) / 2f
-            RectF(rect.left - extra, rect.top, rect.right + extra, rect.bottom)
+            RectF(rect.left - extra, rect.top - 3f * density, rect.right + extra, rect.bottom + 3f * density)
         } else rect
         canvas.clipRect(clipRect)
         // 仅拼音行仍保留 Rust 字形，需要擦除后覆盖；候选词和注释已在 Rust 主题层关闭文字绘制，
@@ -176,7 +176,7 @@ class CandidateTextStyleEngine(
             clearPaint.textSize = when (role) {
                 Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
                 // Rust strip_top 使用 annotation 字号（12dp × 1.25），约为基础候选字号的 0.75。
-                Role.PREEDIT -> baseTextSize * 0.92f
+                Role.PREEDIT -> baseTextSize * 1.12f
                 Role.GLOSS -> baseTextSize * 0.575f
             }
             clearPaint.textAlign = Paint.Align.CENTER

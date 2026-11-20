@@ -856,8 +856,8 @@ class QingjianInputMethodService :
     }
 
     /** 只重画显示层；candidateIndexMap 保证视觉重排不会改变引擎原始候选的选择下标。 */
-    private fun renderShownComposition(preedit: String, candidates: List<Candidate>) {
-        panel?.bar?.show(preedit, candidates)
+    private fun renderShownComposition(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
+        panel?.bar?.show(preedit, candidates, animateCandidates)
         panel?.showCloudSuggestions(candidates.mapIndexedNotNull { index, candidate ->
             if (candidate.cloud) index to candidate.text else null
         })
@@ -898,7 +898,7 @@ class QingjianInputMethodService :
                         if (order.size == candidates.size && order != candidates.indices.toList()) {
                             candidateIndexMap = order
                             shownCandidates = order.map(candidates::get)
-                            renderShownComposition(preedit, shownCandidates)
+                            renderShownComposition(preedit, shownCandidates, animateCandidates = false)
                         }
                     }
                 }

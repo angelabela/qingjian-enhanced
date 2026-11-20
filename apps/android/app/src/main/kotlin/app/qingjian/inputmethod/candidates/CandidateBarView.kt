@@ -193,10 +193,10 @@ class CandidateBarView(
     }
 
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
-    fun show(preedit: String, candidates: List<Candidate>) {
+    fun show(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
         closePopup()
         if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
-        strip.show(preedit, candidates)
+        strip.show(preedit, candidates, animateCandidates)
         scroller.forceFinished(true)
         scrollTo(0, 0)
         repaint()
@@ -242,7 +242,10 @@ class CandidateBarView(
     override fun onDraw(canvas: Canvas) = when {
         resizing -> resizeHandle.draw(canvas, width)
         strip.isEmpty && notice != null -> toolbar.drawNotice(canvas, width, notice!!.first)
-        strip.isEmpty -> toolbar.draw(canvas, width)
+        strip.isEmpty -> {
+            toolbar.draw(canvas, width)
+            postInvalidateOnAnimation()
+        }
         else -> {
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()

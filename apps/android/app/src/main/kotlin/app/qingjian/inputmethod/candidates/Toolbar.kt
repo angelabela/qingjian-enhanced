@@ -3,6 +3,8 @@ package app.qingjian.inputmethod.candidates
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.os.SystemClock
+import kotlin.math.sin
 import android.text.TextPaint
 import android.text.TextUtils
 import app.qingjian.inputmethod.R
@@ -26,6 +28,7 @@ class Toolbar(
     private val logoSlot = 62f * density
     private val hideSlot = 62f * density
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val logoGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.15f * density }
     private val line = Paint().apply { color = palette.faint }
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
 
@@ -70,14 +73,24 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        // 与 Windows 托盘同一张品牌标
+        // 品牌图标采用低幅度呼吸缩放与环形微光，保持安静、不闪烁，也不影响左侧点击区域。
         val logoSize = (30 * density).toInt()
         val logoCentre = (logoSlot / 2).toInt()
+        val phase = (SystemClock.uptimeMillis() % LOGO_CYCLE_MS).toFloat() / LOGO_CYCLE_MS
+        val wave = sin(phase * Math.PI * 2.0).toFloat()
+        val pulse = 1f + wave * 0.022f
+        logoGlow.color = palette.brand
+        logoGlow.alpha = (24f + (wave + 1f) * 13f).toInt().coerceIn(18, 50)
+        canvas.drawCircle(logoCentre.toFloat(), cy, 19f * density, logoGlow)
+        canvas.save()
+        canvas.scale(pulse, pulse, logoCentre.toFloat(), cy)
+        logo?.alpha = (242f + (wave + 1f) * 6.5f).toInt().coerceIn(242, 255)
         logo?.setBounds(
             logoCentre - logoSize / 2, (cy - logoSize / 2).toInt(),
             logoCentre + logoSize / 2, (cy + logoSize / 2).toInt(),
         )
         logo?.draw(canvas)
+        canvas.restore()
 
         stroke.color = palette.gloss
         val slot = middleSlot(viewWidth)
@@ -96,5 +109,6 @@ class Toolbar(
 
     private companion object {
         const val VISIBLE_SLOTS = 5
+        const val LOGO_CYCLE_MS = 4_200L
     }
 }

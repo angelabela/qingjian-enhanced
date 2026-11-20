@@ -115,13 +115,17 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private var textFadeStartedAt = 0L
     private var textFadeActive = false
 
-    fun show(preedit: String, candidates: List<Candidate>) {
+    fun show(preedit: String, candidates: List<Candidate>, animateReveal: Boolean = true) {
         val changed = this.preedit != preedit || this.candidates.map { it.text } != candidates.map { it.text }
         this.preedit = preedit
         this.candidates = candidates
-        if (changed && (preedit.isNotEmpty() || candidates.isNotEmpty())) {
+        if (animateReveal && changed && (preedit.isNotEmpty() || candidates.isNotEmpty())) {
             textFadeStartedAt = android.os.SystemClock.uptimeMillis()
             textFadeActive = true
+        } else if (!animateReveal) {
+            // AI 重排只调整既有候选顺序，不再重播第二轮逐字淡入，避免用户感觉候选刷新两遍。
+            textFadeActive = false
+            textStyles.setTransitionAlpha(255)
         }
     }
 

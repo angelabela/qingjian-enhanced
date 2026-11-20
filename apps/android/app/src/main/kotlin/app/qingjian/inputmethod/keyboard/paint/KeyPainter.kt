@@ -2,10 +2,7 @@ package app.qingjian.inputmethod.keyboard.paint
 
 import android.graphics.Canvas
 import android.graphics.LinearGradient
-import android.graphics.Matrix
-import android.graphics.SweepGradient
 import android.graphics.Paint
-import android.os.SystemClock
 import android.graphics.RectF
 import android.graphics.Shader
 import app.qingjian.inputmethod.keyboard.ShiftState
@@ -38,22 +35,6 @@ class KeyPainter(
         isFakeBoldText = fontWeight.weight >= 600
     }
     private val bubble = RectF()
-    private val spaceGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 1.45f * density
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val spaceGlowHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 5.2f * density
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val spaceGlowMatrix = Matrix()
-    private var spaceGlowShader: SweepGradient? = null
-    private var spaceGlowCenterX = Float.NaN
-    private var spaceGlowCenterY = Float.NaN
     private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * density
@@ -84,7 +65,6 @@ class KeyPainter(
             canvas, bounds,
             keyFillColor(key, down, brand),
         )
-        if (key is Key.Space) drawSpaceEdgeGlow(canvas, bounds)
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
@@ -151,37 +131,6 @@ class KeyPainter(
         }
 
 
-    }
-
-    /** 空格键边缘流光：沿键帽圆角轮廓连续旋转的彩色高光，不遮挡麦克风图标。 */
-    private fun drawSpaceEdgeGlow(canvas: Canvas, bounds: RectF) {
-        val cx = bounds.centerX()
-        val cy = bounds.centerY()
-        var shader = spaceGlowShader
-        if (shader == null || cx != spaceGlowCenterX || cy != spaceGlowCenterY) {
-            shader = SweepGradient(cx, cy, intArrayOf(
-                0x0038E8FF, 0xFF38E8FF.toInt(), 0xFF8B72FF.toInt(),
-                0xFFFF78B7.toInt(), 0x0038E8FF,
-            ), floatArrayOf(0f, 0.18f, 0.48f, 0.78f, 1f))
-            spaceGlowShader = shader
-            spaceGlowCenterX = cx
-            spaceGlowCenterY = cy
-        }
-        val angle = (SystemClock.uptimeMillis() % 5_200L) / 5_200f * 360f
-        spaceGlowMatrix.setRotate(angle, cx, cy)
-        shader.setLocalMatrix(spaceGlowMatrix)
-        val outline = RectF(bounds).apply { inset(1.25f * density, 1.25f * density) }
-        // 先绘制宽而柔和的外沿光晕，再叠加清晰流光线，形成轻微向外扩散的发光边缘。
-        spaceGlowHaloPaint.shader = shader
-        spaceGlowHaloPaint.alpha = 92
-        spaceGlowHaloPaint.setShadowLayer(4f * density, 0f, 0f, 0xAA6D9CFF.toInt())
-        canvas.drawRoundRect(outline, metrics.radius, metrics.radius, spaceGlowHaloPaint)
-        spaceGlowHaloPaint.clearShadowLayer()
-        spaceGlowHaloPaint.shader = null
-        spaceGlowPaint.shader = shader
-        spaceGlowPaint.alpha = 220
-        canvas.drawRoundRect(outline, metrics.radius, metrics.radius, spaceGlowPaint)
-        spaceGlowPaint.shader = null
     }
 
     /** 手势提示直接显示在键帽内：上滑靠上、下滑靠下；优先完整文字，确实放不下才换语义图标。 */
