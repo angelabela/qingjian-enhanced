@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import app.qingjian.inputmethod.mascot.FloatingMascotService
 import app.qingjian.inputmethod.mascot.MascotPermissionActivity
+import app.qingjian.inputmethod.candidates.CloudSuggestionsView
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
@@ -82,6 +83,7 @@ class FunctionPanel(
                     if (enabled) {
                         prefs.edit().putBoolean(FloatingMascotService.KEY_ENABLED, false).apply()
                         context.stopService(Intent(context, FloatingMascotService::class.java))
+                        CloudSuggestionsView.hideAllFloatingTips()
                     } else if (android.provider.Settings.canDrawOverlays(context)) {
                         prefs.edit().putBoolean(FloatingMascotService.KEY_ENABLED, true).apply()
                         context.startForegroundService(Intent(context, FloatingMascotService::class.java))
@@ -568,12 +570,12 @@ class FunctionPanel(
         val labels = listOf(
             "345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字", "渐变 + 光点 + 扫光组合",
             "单色呼吸文字", "银灰金属流光", "白色下划线扫光", "单色光点脉冲", "打字机光标闪烁",
-            "极光呼吸光带", "星尘流光点阵", "液态霓虹脉冲", "全息扫描光束", "数字矩阵闪烁",
+            "极光呼吸光带", "星尘流光点阵", "液态霓虹脉冲", "全息扫描光束", "数字矩阵闪烁", "字符跳动弹跳文字",
         )
         val descriptions = listOf(
             "紫蓝粉平滑流动", "霓虹色与柔和彩色底光", "完整彩虹色带持续流动", "单色光点呼吸，文字清晰", "渐变文字叠加光点与扫光",
             "灰白亮度缓慢呼吸", "银灰明暗连续流动", "单色文字与移动下划线", "单色圆点柔和脉冲", "末尾光标明暗闪烁",
-            "青绿蓝紫色雾状流动", "星点闪烁并沿文字掠过", "液态色带与明暗脉冲", "彩色高光逐字扫描", "绿色数字与矩阵脉冲",
+            "青绿蓝紫色雾状流动", "星点闪烁并沿文字掠过", "液态色带与明暗脉冲", "彩色高光逐字扫描", "绿色数字与矩阵脉冲", "字符依次上下弹跳，伴随柔和渐变",
         )
         val colors = listOf(
             intArrayOf(0xFF8B72FF.toInt(), 0xFF42B8F5.toInt(), 0xFFFF78B7.toInt()),
@@ -591,6 +593,7 @@ class FunctionPanel(
             intArrayOf(0xFF00E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF4FC8.toInt()),
             intArrayOf(0xFFF6E7FF.toInt(), 0xFF6DE7FF.toInt(), 0xFFA88BFF.toInt()),
             intArrayOf(0xFF49FF88.toInt(), 0xFFA8FFB9.toInt(), 0xFF2BCA70.toInt()),
+            intArrayOf(0xFF38E8FF.toInt(), 0xFF8B72FF.toInt(), 0xFFFF78B7.toInt()),
         )
         ink.textStart(canvas, "仅改变 AI 一键生成时输入框内的等待提示", 11f, palette.gloss,
             card.left + ink.dp(14f), card.top + ink.dp(24f), card.right - ink.dp(12f))
@@ -740,7 +743,7 @@ class FunctionPanel(
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val col = if (x < card.left + ink.dp(10f) + itemWidth) 0 else 1
                     val index = row * 2 + col
-                    if (index in 0 until 15) {
+                    if (index in 0 until 16) {
                         selectedAiLoadingStyle = index
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_AI_LOADING_EFFECT, index).apply()
