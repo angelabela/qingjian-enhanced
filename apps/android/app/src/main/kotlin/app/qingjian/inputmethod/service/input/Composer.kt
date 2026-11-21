@@ -54,7 +54,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 优先调用宿主的上一项编辑动作；宿主不支持时再发 Shift+Tab。 */
         fun performPreviousEditorAction(): Boolean
 
-        fun showComposition(preedit: String, candidates: List<Candidate>)
+        fun showComposition(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true)
 
         /** 键位表变了（中英、符号页、九宫格）。 */
         fun showKeyboard()
@@ -286,18 +286,22 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /** 组句时把本机混合编码候选追加到 Core 候选末尾，选择后替换当前 preedit。 */
-    private fun showCandidatesWithStructured(base: List<Candidate>) {
+    private fun showCandidatesWithStructured(base: List<Candidate>, animateCandidates: Boolean = true) {
         val prefix = structuredTokenBuffer.toString()
+        val baseTexts = base.mapTo(HashSet()) { it.text }
         structuredCompletions = if (
             composing && !privateInput && !directInput && prefix.length >= 2
         ) {
-            host.structuredTokenSuggestions(prefix).filter { it != prefix }.take(5)
+            host.structuredTokenSuggestions(prefix)
+                .filter { it != prefix && it !in baseTexts }
+                .distinct()
+                .take(5)
         } else {
             emptyList()
         }
         structuredCompletionStart = if (structuredCompletions.isEmpty()) Int.MAX_VALUE else 0
         candidates = structuredCompletions.map { Candidate(text = it, senses = emptyList()) } + base
-        host.showComposition(preedit, candidates)
+        host.showComposition(preedit, candidates, animateCandidates)
     }
 
     fun onKey(key: Key) {
@@ -1148,7 +1152,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         if (!composing) return@Runnable
         val frame = engine.pollPrediction()
         if (frame != null && frame.preedit == preedit) {
-            showCandidatesWithStructured(frame.candidates)
+            showCandidatesWithStructured(frame.candidates, animateCandidates = false)
         }
         if (engine.predicting) handler.postDelayed(pollPrediction, PREDICTION_POLL_MS)
     }
