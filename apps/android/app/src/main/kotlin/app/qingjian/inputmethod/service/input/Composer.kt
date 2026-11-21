@@ -247,7 +247,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                     flushStructuredToken()
                 }
             }
-            is Key.Space, is Key.Enter, Key.Tab -> flushStructuredToken()
+            is Key.Space, is Key.Enter, Key.Tab, Key.TabPrevious -> flushStructuredToken()
             Key.Backspace -> if (structuredTokenBuffer.isNotEmpty()) {
                 structuredTokenBuffer.deleteCharAt(structuredTokenBuffer.length - 1)
             }
@@ -471,7 +471,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.onLanguageChanged()
             }
         }
-        if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab) closeUndoGroup()
+        if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab || key == Key.TabPrevious) closeUndoGroup()
         if (!composing && key != Key.Backspace && key != Key.Clear) refreshCompletions()
         } finally {
             if (groupedEdit) editHistory.endGroup()
