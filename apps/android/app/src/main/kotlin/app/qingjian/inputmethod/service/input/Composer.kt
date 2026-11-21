@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.InputConnection
 import app.qingjian.inputmethod.core.Engine
+import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.InputOptions
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.core.frame.Frame
@@ -1157,10 +1158,17 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     private var choiceRescorePolls = 0
+    private var choiceRescoreStartedAt = 0L
+    private var choiceRescorePreedit = ""
+    private var choiceRescoreCandidateSnapshot: List<String> = emptyList()
 
     private val requestChoiceRescore: Runnable = Runnable {
         if (composing && engine.requestRescoring()) {
+            choiceRescoreStartedAt = SystemClock.elapsedRealtime()
+            choiceRescorePreedit = preedit
+            choiceRescoreCandidateSnapshot = candidates.map { it.text }
             choiceRescorePolls = CHOICE_RESCORE_MAX_POLLS
+            AppLog.info("知意候选重排已提交 preedit=$choiceRescorePreedit candidate_count=${choiceRescoreCandidateSnapshot.size}")
             handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
         }
     }
@@ -1170,11 +1178,19 @@ class Composer(private val engine: Engine, private val host: Host) {
         val frame = engine.pollRescoring()
         if (frame != null && frame.preedit == preedit) {
             candidates = frame.candidates
-            host.showComposition(frame.preedit, frame.candidates)
+            host.showComposition(frame.preedit, frame.candidates, animateCandidates = false)
+            val elapsed = (SystemClock.elapsedRealtime() - choiceRescoreStartedAt).coerceAtLeast(0L)
+            val reordered = choiceRescoreCandidateSnapshot != frame.candidates.map { it.text }
+            AppLog.info("知意候选重排完成 elapsed_ms=$elapsed reordered=$reordered candidate_count=${frame.candidates.size}")
             choiceRescorePolls = 0
         } else {
             choiceRescorePolls--
-            if (choiceRescorePolls > 0) handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
+            if (choiceRescorePolls > 0) {
+                handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
+            } else if (choiceRescoreStartedAt > 0L) {
+                AppLog.warn("知意候选重排等待超时 preedit=$choiceRescorePreedit")
+                choiceRescoreStartedAt = 0L
+            }
         }
     }
 
