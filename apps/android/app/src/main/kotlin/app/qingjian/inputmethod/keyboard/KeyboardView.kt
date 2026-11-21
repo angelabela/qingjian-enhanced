@@ -590,6 +590,7 @@ class KeyboardView(
                 return
             }
             flickDirection = if (vertical > 0f) 1 else -1
+            if (isBackspace && flickDirection > 0) timer.removeCallbacks(repeatBackspace)
             if (key is Key.Space) {
                 // 自定义空格上下滑优先于长按语音、剪贴板和光标手势。
                 timer.removeCallbacks(spaceHold)
