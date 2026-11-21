@@ -196,7 +196,8 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     }
     // 含章·通变：本地 P2C 模型按拼音生成整句候选；模型缺失或损坏时保留词图 + bigram 回退。
     let neural_model = data_dir.join("hanzhang-tongbian-small.qjm");
-    let mut hanzhang_choice: Option<Arc<CharScorer>> = None;\n    if neural_model.is_file() {
+    let mut hanzhang_choice: Option<Arc<CharScorer>> = None;
+    if neural_model.is_file() {
         let started = Instant::now();
         match CharScorer::load(&neural_model) {
             Ok(scorer) => {
