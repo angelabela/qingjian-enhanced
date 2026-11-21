@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import android.view.View
 import android.widget.Toast
 import app.qingjian.inputmethod.R
@@ -36,10 +37,19 @@ class AdvancedActivity : PageActivity() {
 
     /** 正在写压缩包（后台线程），行上显示「导出中…」。 */
     private var exporting = false
+    private var importingModel = false
     private var restoring = false
     private var restoredSecretsUnavailable = false
 
     override fun content(): List<View> = listOf(
+        ui.group(
+            R.string.zhiyi_section,
+            ui.action(
+                if (importingModel) R.string.zhiyi_importing else R.string.zhiyi_import,
+                if (zhiyiReady()) getString(R.string.zhiyi_ready) else null,
+            ) { if (!importingModel) pickZhiyiFolder() },
+            footer = R.string.zhiyi_note,
+        ),
         // 原有的独立数据/设置备份恢复入口继续保留。
         ui.group(
             R.string.data_backup_section,
@@ -259,7 +269,15 @@ class AdvancedActivity : PageActivity() {
             restoreAllFromUris(uris)
             return
         }
-        val target = data?.data ?: return
+        val selectedTree = data?.data
+        if (requestCode == PICK_ZHIYI_FOLDER && selectedTree != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(selectedTree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            importZhiyiModel(selectedTree)
+            return
+        }
+        val target = selectedTree ?: return
         when (requestCode) {
             PACK_LOGS -> { packLogs(target); return }
             CREATE_ZIP -> {
@@ -383,6 +401,80 @@ class AdvancedActivity : PageActivity() {
     }
 
     /** 发出去排第一：手机上存下来的文件多数人找不到，反馈又多在 QQ 群里。 */
+    private fun pickZhiyiFolder() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        startActivityForResult(intent, PICK_ZHIYI_FOLDER)
+    }
+
+    private fun zhiyiDirectory() = File(Engine.userDir(this), "models/zhiyi")
+
+    private fun zhiyiReady(): Boolean = listOf(
+        "model.safetensors", "config.json", "tokenizer.json", "unified_vocab.json",
+    ).all { name -> File(zhiyiDirectory(), name).let { it.isFile && it.length() > 0 } }
+
+    /** 选择包含四个模型文件的目录；后台流式复制，校验通过后再替换旧模型。 */
+    private fun importZhiyiModel(treeUri: Uri) {
+        importingModel = true
+        rebuild()
+        thread(name = "qingjian-zhiyi-import") {
+            val result = runCatching {
+                val treeId = DocumentsContract.getTreeDocumentId(treeUri)
+                val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeId)
+                val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val documents = mutableMapOf<String, String>()
+                contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    while (cursor.moveToNext()) documents[cursor.getString(nameColumn)] = cursor.getString(idColumn)
+                } ?: error("无法读取所选目录")
+                val required = listOf("model.safetensors", "config.json", "tokenizer.json", "unified_vocab.json")
+                val missing = required.filterNot(documents::containsKey)
+                if (missing.isNotEmpty()) error("模型目录缺少文件：" + missing.joinToString("、"))
+
+                val target = zhiyiDirectory()
+                val parent = target.parentFile ?: error("模型目录不可用")
+                if (!parent.exists() && !parent.mkdirs()) error("无法创建模型目录")
+                val staging = File(parent, "zhiyi.importing")
+                val backup = File(parent, "zhiyi.previous")
+                staging.deleteRecursively()
+                backup.deleteRecursively()
+                if (!staging.mkdirs()) error("无法创建临时模型目录")
+                try {
+                    for (name in required) {
+                        val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documents.getValue(name))
+                        val input = contentResolver.openInputStream(documentUri) ?: error("无法读取模型文件：" + name)
+                        input.use { source -> File(staging, name).outputStream().buffered().use { output -> source.copyTo(output) } }
+                        if (File(staging, name).length() == 0L) error("模型文件为空：" + name)
+                    }
+                    if (File(staging, "model.safetensors").length() < 1024L * 1024L) error("model.safetensors 文件大小异常")
+                    JSONObject(File(staging, "config.json").readText())
+                    JSONObject(File(staging, "unified_vocab.json").readText())
+                    if (target.exists() && !target.renameTo(backup)) error("无法备份旧模型")
+                    if (!staging.renameTo(target)) {
+                        if (backup.exists()) backup.renameTo(target)
+                        error("无法安装新模型目录")
+                    }
+                    backup.deleteRecursively()
+                } catch (failure: Throwable) {
+                    staging.deleteRecursively()
+                    throw failure
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                importingModel = false
+                if (result.isSuccess) {
+                    Engine.reloadAll()
+                    Toast.makeText(this, R.string.zhiyi_import_success, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, result.exceptionOrNull()?.message ?: getString(R.string.zhiyi_import_failed), Toast.LENGTH_LONG).show()
+                }
+                rebuild()
+            }
+        }
+    }
+
     private fun chooseLogTarget() {
         AlertDialog.Builder(this)
             .setTitle(R.string.logs_export_title)
@@ -716,5 +808,6 @@ class AdvancedActivity : PageActivity() {
         const val BACKUP_SETTINGS = 4
         const val RESTORE_SETTINGS = 5
         const val RESTORE_ALL_PICK = 6
+        const val PICK_ZHIYI_FOLDER = 7
     }
 }
