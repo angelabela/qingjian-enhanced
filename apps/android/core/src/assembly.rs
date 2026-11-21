@@ -10,7 +10,8 @@ use std::time::Instant;
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
-use qingjian_lm::{BigramModel, MixedModel, TRIGRAM_WEIGHT, TrigramModel};
+use qingjian_lm::BigramModel;
+use qingjian_neural::zhiyi::ChoiceScorer;
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
@@ -49,32 +50,6 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     if let Some(table) = load_emoji(data_dir) {
         engine = engine.with_emoji(table);
     }
-    // 知意词级三元模型由用户单独放入应用数据目录；不存在或损坏时完全沿用原来的二元模型路径。
-    let trigram_path = user_dir.join("downloads/models/zhiyi-ngram/zh.ngram");
-    let trigram = if trigram_path.is_file() {
-        let started = Instant::now();
-        match TrigramModel::open(&trigram_path) {
-            Ok(model) => {
-                tracing::info!(
-                    path = %trigram_path.display(),
-                    unigrams = model.unigram_count(),
-                    bigrams = model.bigram_count(),
-                    trigrams = model.trigram_count(),
-                    bytes = model.bytes(),
-                    load_ms = started.elapsed().as_millis(),
-                    "知意三元模型已加载"
-                );
-                Some(model)
-            }
-            Err(error) => {
-                tracing::warn!(%error, path = %trigram_path.display(), "知意三元模型加载失败");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
     let bigram_path = data_dir.join("lm.qj");
     let bigram = if bigram_path.is_file() {
         match BigramModel::from_path(&bigram_path) {
@@ -88,38 +63,37 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
         None
     };
 
-    if let Some(trigram) = trigram {
-        // 三元词表中有、主词库中没有的词，按官方 supplement 规则推断读音与词频，
-        // 否则模型认识的网络词 / 专名仍无法进入安卓端词图。
-        match qingjian_dictionary::supplement(trigram.vocabulary(), &[engine.dictionary()]) {
-            Ok(words) if !words.is_empty() => {
-                tracing::info!(entries = words.len(), "知意三元模型补充词库已生成");
-                engine.set_model_words(Some(words));
-            }
-            Ok(_) => tracing::info!("知意三元模型没有需要补充的词"),
-            Err(error) => tracing::warn!(%error, "知意三元模型补充词库生成失败"),
-        }
-
-        // PhraseModel 用于整段候选重排；独立 mmap 同一文件，和整句模型共享操作系统页缓存。
-        match TrigramModel::open(&trigram_path) {
-            Ok(phrase_model) => engine.set_phrase_model(Some(Arc::new(phrase_model))),
-            Err(error) => tracing::warn!(%error, "知意短语模型加载失败"),
-        }
-
-        let language_model: Box<dyn qingjian_core::sentence::LanguageModel> = match bigram {
-            Some(bigram) => Box::new(MixedModel::new(
-                Box::new(trigram),
-                Box::new(bigram),
-                TRIGRAM_WEIGHT,
-            )),
-            None => Box::new(trigram),
-        };
-        engine = engine.with_language_model(language_model);
-    } else if let Some(bigram) = bigram {
+    if let Some(bigram) = bigram {
         tracing::info!("二元语言模型已加载");
         engine = engine.with_language_model(Box::new(bigram));
     } else {
         tracing::info!("没有可用的静态语言模型，使用词频整句");
+    }
+
+    // 知意 Transformer 模型由用户导入到应用私有目录；模型缺失或加载失败时不影响原有输入引擎。
+    let zhiyi_dir = user_dir.join("models/zhiyi");
+    if zhiyi_dir.is_dir() {
+        let started = Instant::now();
+        match ChoiceScorer::load(&zhiyi_dir).and_then(|scorer| {
+            // 预热一次真实前向：首次量化 / 推理的开销留在引擎后台装配线程，不落到按键回调。
+            let typed = scorer.letter_units("ni");
+            scorer.score("", &typed, &["ni", "nin"])?;
+            Ok(scorer)
+        }) {
+            Ok(scorer) => {
+                tracing::info!(
+                    path = %zhiyi_dir.display(),
+                    load_ms = started.elapsed().as_millis(),
+                    "知意 Transformer 模型已加载并预热"
+                );
+                engine.set_choice_model(Some(Arc::new(scorer)));
+            }
+            Err(error) => {
+                tracing::warn!(%error, path = %zhiyi_dir.display(), "知意 Transformer 模型加载失败，沿用原候选排序");
+            }
+        }
+    } else {
+        tracing::info!("未导入知意 Transformer 模型，沿用原候选排序");
     }
     load_phrases(&mut engine, user_dir);
     Ok(engine)
