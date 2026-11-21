@@ -39,7 +39,9 @@ class KeyboardSettingsActivity : PageActivity() {
                 listOfNotNull(
                     hapticRow(settings),
                     ui.toggle(R.string.key_sound_title, R.string.key_sound_note, settings.keySound) {
-                        prefs.edit().putBoolean(Settings.KEY_KEY_SOUND, it).apply()
+                        val editor = prefs.edit().putBoolean(Settings.KEY_KEY_SOUND, it)
+                        if (it) editor.putBoolean(Settings.KEY_HAPTIC, false)
+                        editor.apply()
                         rebuild()
                     },
                     if (settings.keySound) ui.picker(
@@ -135,7 +137,10 @@ class KeyboardSettingsActivity : PageActivity() {
         val selected = if (settings.haptic) settings.hapticStrength.ordinal + 1 else 0
         return ui.segmentedRow(R.string.haptic_title, options, selected) { index ->
             val editor = prefs.edit().putBoolean(Settings.KEY_HAPTIC, index > 0)
-            if (index > 0) editor.putString(Settings.KEY_HAPTIC_STRENGTH, HapticStrength.entries[index - 1].key)
+            if (index > 0) {
+                editor.putString(Settings.KEY_HAPTIC_STRENGTH, HapticStrength.entries[index - 1].key)
+                editor.putBoolean(Settings.KEY_KEY_SOUND, false)
+            }
             editor.apply()
             rebuild()
         }
