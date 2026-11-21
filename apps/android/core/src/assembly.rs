@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use qingjian_core::{EmojiTable, Engine, Language, Translator};
+use qingjian_core::{CharTable, ChoiceModel, EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
 use qingjian_lm::{BigramModel, MixedModel, TrigramModel, TRIGRAM_WEIGHT};
@@ -16,6 +16,70 @@ use qingjian_neural::zhiyi::ChoiceScorer;
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
+
+
+/// 知意与含章的候选协同模型。知意的拼音单元与含章字级 LM 的输入编码不同，
+/// 因此不把同一组 typed token 错误地传给两个模型；含章评分本身只依赖 context + candidate。
+struct HybridChoiceScorer {
+    zhiyi: Arc<ChoiceScorer>,
+    hanzhang: Arc<CharScorer>,
+}
+
+impl ChoiceModel for HybridChoiceScorer {
+    fn align(&self, keys: &str, syllables: &[String]) -> Option<Vec<u32>> {
+        self.zhiyi.align(keys, syllables)
+    }
+
+    fn letter_units(&self, keys: &str) -> Vec<u32> {
+        self.zhiyi.letter_units(keys)
+    }
+
+    fn score(&self, context: &str, typed: &[u32], texts: &[&str]) -> Vec<f32> {
+        if texts.is_empty() {
+            return Vec::new();
+        }
+        let zhiyi = self.zhiyi.score(context, typed, texts).ok()
+            .filter(|scores| scores.len() == texts.len());
+        let hanzhang = self.hanzhang.score(context, texts).ok()
+            .filter(|scores| scores.len() == texts.len());
+        match (zhiyi, hanzhang) {
+            (Some(z), Some(h)) => {
+                let z = standardize_scores(&z);
+                let h: Vec<f32> = h.into_iter().map(|v| v as f32).collect();
+                let h = standardize_scores(&h);
+                z.iter().zip(h).map(|(a, b)| 0.72 * a + 0.28 * b).collect()
+            }
+            (Some(z), None) => z,
+            (None, Some(h)) => h.into_iter().map(|v| v as f32).collect(),
+            (None, None) => Vec::new(),
+        }
+    }
+
+    fn compose(&self, context: &str, syllables: &[(&str, bool)]) -> Option<CharTable> {
+        match self.zhiyi.compose(context, syllables) {
+            Ok(Some(rows)) => Some(CharTable::new(self.zhiyi.char_index(), rows)),
+            Ok(None) => None,
+            Err(error) => {
+                tracing::warn!(%error, "知意按音节出字失败，本次回退词图");
+                None
+            }
+        }
+    }
+}
+
+/// 候选页内 z-score，去除不同模型 logit 尺度差异；零方差时保留中性分。
+fn standardize_scores(scores: &[f32]) -> Vec<f32> {
+    if scores.is_empty() {
+        return Vec::new();
+    }
+    let mean = scores.iter().copied().sum::<f32>() / scores.len() as f32;
+    let variance = scores.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / scores.len() as f32;
+    let std = variance.sqrt();
+    if !std.is_finite() || std < 1e-5 {
+        return vec![0.0; scores.len()];
+    }
+    scores.iter().map(|v| ((v - mean) / std).clamp(-3.0, 3.0)).collect()
+}
 
 /// Android 端补充的业务短语；独立于跨平台产品数据包，确保常见简拼可命中。
 pub(crate) fn builtin_android_dictionary() -> Dictionary {
@@ -132,7 +196,7 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     }
     // 含章·通变：本地 P2C 模型按拼音生成整句候选；模型缺失或损坏时保留词图 + bigram 回退。
     let neural_model = data_dir.join("hanzhang-tongbian-small.qjm");
-    if neural_model.is_file() {
+    let mut hanzhang_choice: Option<Arc<CharScorer>> = None;\n    if neural_model.is_file() {
         let started = Instant::now();
         match CharScorer::load(&neural_model) {
             Ok(scorer) => {
@@ -143,7 +207,7 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
                             load_ms = started.elapsed().as_millis(),
                             "本地整句生成与候选上下文重排模型已加载"
                         );
-                        engine.set_choice_model(Some(scorer));
+                        hanzhang_choice = Some(Arc::clone(&scorer));
                         engine = engine.with_sentence_scorer(Box::new(p2c), None, None, None);
                     }
                     None => tracing::warn!("本地模型缺少 P2C 分隔符，保留词图 + bigram"),
@@ -152,25 +216,38 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
             Err(error) => tracing::warn!(%error, "本地整句模型加载失败，保留词图 + bigram"),
         }
     }
-    // 知意 Transformer 选词模型单独导入；与现有三元 n-gram、含章整句模型并行保留。
-    // 模型缺失或加载失败时不影响原有候选与输入流程。
+    // 候选协同评分：知意负责拼音条件对齐与主语义分，含章补充上下文语言分；
+    // 归一化后融合，避免两个模型原始 logit 尺度不同导致某一方完全压制另一方。
+    // 同一个知意实例还保留 compose 出字能力；含章 P2C 仍负责整句生成。
     let zhiyi_dir = user_dir.join("models/zhiyi");
     if zhiyi_dir.is_dir() {
         let started = Instant::now();
         match ChoiceScorer::load(&zhiyi_dir).and_then(|scorer| {
-            // 首次前向预热放在引擎后台装配线程，避免把初始化成本带入按键回调。
             let typed = scorer.letter_units("ni");
-            scorer.score("", &typed, &["ni", "nin"])?;
+            scorer.score("", &typed, &["你", "泥"])?;
             Ok(scorer)
         }) {
-            Ok(scorer) => {
+            Ok(zhiyi) => {
+                let zhiyi = Arc::new(zhiyi);
+                if let Some(hanzhang) = hanzhang_choice.clone() {
+                    engine.set_choice_model(Some(Arc::new(HybridChoiceScorer {
+                        zhiyi: Arc::clone(&zhiyi),
+                        hanzhang,
+                    })));
+                    tracing::info!("知意 + 含章候选融合评分已启用");
+                } else {
+                    engine.set_choice_model(Some(zhiyi));
+                    tracing::info!("知意候选评分已启用（含章评分模型不可用）");
+                }
                 tracing::info!(path = %zhiyi_dir.display(), load_ms = started.elapsed().as_millis(), "知意 Transformer 模型已加载并预热");
-                engine.set_choice_model(Some(Arc::new(scorer)));
             }
-            Err(error) => tracing::warn!(%error, path = %zhiyi_dir.display(), "知意 Transformer 模型加载失败，沿用原候选排序"),
+            Err(error) => tracing::warn!(%error, path = %zhiyi_dir.display(), "知意 Transformer 模型加载失败，保留含章候选评分"),
         }
+    } else if let Some(hanzhang) = hanzhang_choice {
+        engine.set_choice_model(Some(hanzhang));
+        tracing::info!("含章候选评分已启用（未导入知意模型）");
     } else {
-        tracing::info!("未导入知意 Transformer 模型，沿用原候选排序");
+        tracing::info!("未启用额外候选评分模型，使用词图与语言模型排序");
     }
 
     load_phrases(&mut engine, user_dir);
