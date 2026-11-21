@@ -47,6 +47,7 @@ on:
       - fix/workflow-421-key-feedback-pinyin-candidates
       - feature/android-optional-trigram-model
       - feature/workflow-433-zhiyi-transformer
+      - feature/workflow-436-zhiyi-monitor-candidate-voice
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
