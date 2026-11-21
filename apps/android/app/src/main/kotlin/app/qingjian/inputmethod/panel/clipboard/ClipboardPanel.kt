@@ -728,7 +728,8 @@ class ClipboardPanel(
         groups.labels = visiblePhraseGroups
         groups.selected = visiblePhraseGroups.indexOf(lastGroup).coerceAtLeast(0)
         actions.phrasesChanged()
-        collapse()
+        // 从剪贴板条目添加常用语时仍留在剪贴板页，不能把当前浏览位置重置到顶部。
+        collapse(resetScroll = showingPhrases)
     }
 
     companion object {
