@@ -340,6 +340,15 @@ jobs:
         working-directory: apps/android
         run: ./gradlew assembleDebug --no-daemon --console=plain
 
+      # PR 构建也上传可安装 APK，便于手机直接下载测试；不包含签名发版密钥。
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qingjian-android-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 15
