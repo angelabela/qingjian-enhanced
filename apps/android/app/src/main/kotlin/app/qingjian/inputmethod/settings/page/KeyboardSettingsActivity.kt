@@ -40,6 +40,7 @@ class KeyboardSettingsActivity : PageActivity() {
                     hapticRow(settings),
                     ui.toggle(R.string.key_sound_title, R.string.key_sound_note, settings.keySound) {
                         prefs.edit().putBoolean(Settings.KEY_KEY_SOUND, it).apply()
+                        rebuild()
                     },
                     if (settings.keySound) ui.picker(
                         R.string.key_sound_style_title,
