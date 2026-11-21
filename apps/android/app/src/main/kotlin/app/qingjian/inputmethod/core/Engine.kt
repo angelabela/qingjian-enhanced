@@ -404,6 +404,13 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         return json.getString("kind") to json.getString("text")
     }
 
+    /** 停键后把知意候选交给 Rust 后台线程，不在按键回调里做推理。 */
+    fun requestRescoring(): Boolean = ready && Native.requestRescoring(handle)
+
+    /** 有最新的知意打分结果时取回重排后的候选帧。 */
+    fun pollRescoring(): Frame? =
+        if (ready) Native.pollRescoring(handle)?.let(Frame::parse) else null
+
     fun reset() {
         if (ready) Native.reset(handle)
     }
