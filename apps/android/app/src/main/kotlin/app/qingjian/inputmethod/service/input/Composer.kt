@@ -721,10 +721,10 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 组句中取云联想结果的间隔。 */
         const val PREDICTION_POLL_MS = 150L
 
-        /** 知意候选重排的停键防抖与结果轮询；每次最多等待约 1 秒。 */
+        /** 知意候选重排的停键防抖与结果轮询；每次最多等待约 3 秒。 */
         const val CHOICE_RESCORE_DELAY_MS = 80L
         const val CHOICE_RESCORE_POLL_MS = 25L
-        const val CHOICE_RESCORE_MAX_POLLS = 40
+        const val CHOICE_RESCORE_MAX_POLLS = 120
 
         /** 重启输入后认输入框停在哪一版 preedit 时往回看几版：快打时在路上的改动不会更多。 */
         const val SENT_PREEDITS = 8
