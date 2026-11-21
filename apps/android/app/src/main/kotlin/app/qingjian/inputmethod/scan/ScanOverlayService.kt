@@ -1311,6 +1311,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var resizing = false
         private var squareMode = false
         private var touchInScanArea = false
+        private var downZoomRatio = 1f
+        private var verticalZoomGesture = false
+        private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
         private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val activeCamera = camera ?: return false
@@ -1424,15 +1427,35 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     downX = event.x
                     downY = event.y
                     start = RectF(rect)
+                    downZoomRatio = camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f
+                    verticalZoomGesture = false
                     resizing = event.x >= start.right - 28f * density && event.y >= start.bottom - 28f * density
                     touchInScanArea = rect.contains(event.x, event.y)
-                    // 整个预览层都接收触摸，以便在扫描框之外也能双指缩放镜头。
+                    // 整个预览层都接收触摸：双指捏合缩放；单指上下滑变焦；横向拖动仍可调整扫描框。
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (!touchInScanArea) return true
                     val dx = event.x - downX
                     val dy = event.y - downY
+                    if (!verticalZoomGesture && kotlin.math.abs(dy) > touchSlop &&
+                        kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.15f
+                    ) {
+                        verticalZoomGesture = true
+                    }
+                    if (verticalZoomGesture) {
+                        val activeCamera = camera ?: return true
+                        val zoom = activeCamera.cameraInfo.zoomState.value ?: return true
+                        // 向上滑放大、向下滑缩小；按窗口高度映射完整可用倍率，手感平滑且不跳级。
+                        val travel = (height * 0.72f).coerceAtLeast(1f)
+                        val fraction = (-dy / travel).coerceIn(-1f, 1f)
+                        val maxRatio = zoom.maxZoomRatio
+                        val minRatio = zoom.minZoomRatio
+                        val next = (downZoomRatio + fraction * (maxRatio - minRatio) * 0.55f)
+                            .coerceIn(minRatio, maxRatio)
+                        activeCamera.cameraControl.setZoomRatio(next)
+                        return true
+                    }
+                    if (!touchInScanArea) return true
                     if (resizing) {
                         if (squareMode) {
                             val maxSide = minOf(width - start.left, height - start.top)
@@ -1458,8 +1481,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     invalidate()
                     return true
                 }
-                MotionEvent.ACTION_UP -> { if (touchInScanArea) saveRect(); touchInScanArea = false; return true }
-                MotionEvent.ACTION_CANCEL -> return true
+                MotionEvent.ACTION_UP -> {
+                    if (touchInScanArea && !verticalZoomGesture) saveRect()
+                    touchInScanArea = false
+                    verticalZoomGesture = false
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> { verticalZoomGesture = false; return true }
             }
             return true
         }
