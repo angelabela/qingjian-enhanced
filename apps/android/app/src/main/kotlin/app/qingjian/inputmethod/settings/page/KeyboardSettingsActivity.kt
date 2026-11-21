@@ -36,27 +36,40 @@ class KeyboardSettingsActivity : PageActivity() {
             ),
             ui.group(
                 R.string.section_keys,
-                hapticRow(settings),
-                ui.slider(
-                    R.string.key_text_size_title, null,
-                    1, 50, settings.keyFontSize, step = 1,
-                    format = { it.toString() + "sp" },
-                ) {
-                    prefs.edit().putInt(Settings.KEY_KEY_FONT_SIZE, it).apply()
-                },
-                ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
-                    prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
-                },
-                ui.picker(
-                    R.string.key_skin_title,
-                    settings.keySkin.label,
-                    Settings.KeySkin.entries.map { it.label },
-                    Settings.KeySkin.entries.indexOf(settings.keySkin),
-                ) { index ->
-                    prefs.edit().putString(Settings.KEY_KEY_SKIN, Settings.KeySkin.entries[index].name).apply()
-                    rebuild()
-                },
-                arrangementPicker(settings),
+                listOfNotNull(
+                    hapticRow(settings),
+                    ui.toggle(R.string.key_sound_title, R.string.key_sound_note, settings.keySound) {
+                        prefs.edit().putBoolean(Settings.KEY_KEY_SOUND, it).apply()
+                    },
+                    if (settings.keySound) ui.picker(
+                        R.string.key_sound_style_title,
+                        settings.keySoundStyle.label,
+                        Settings.KeySoundStyle.entries.map { it.label },
+                        Settings.KeySoundStyle.entries.indexOf(settings.keySoundStyle),
+                    ) { index ->
+                        prefs.edit().putString(Settings.KEY_KEY_SOUND_STYLE, Settings.KeySoundStyle.entries[index].name).apply()
+                    } else null,
+                    ui.slider(
+                        R.string.key_text_size_title, null,
+                        1, 50, settings.keyFontSize, step = 1,
+                        format = { it.toString() + "sp" },
+                    ) {
+                        prefs.edit().putInt(Settings.KEY_KEY_FONT_SIZE, it).apply()
+                    },
+                    ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
+                        prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
+                    },
+                    ui.picker(
+                        R.string.key_skin_title,
+                        settings.keySkin.label,
+                        Settings.KeySkin.entries.map { it.label },
+                        Settings.KeySkin.entries.indexOf(settings.keySkin),
+                    ) { index ->
+                        prefs.edit().putString(Settings.KEY_KEY_SKIN, Settings.KeySkin.entries[index].name).apply()
+                        rebuild()
+                    },
+                    arrangementPicker(settings),
+                ),
                 footer = R.string.arrangement_note,
             ),
             ui.group(

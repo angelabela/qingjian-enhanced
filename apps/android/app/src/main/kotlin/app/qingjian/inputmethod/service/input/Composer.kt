@@ -767,11 +767,18 @@ class Composer(private val engine: Engine, private val host: Host) {
         val frame = engine.complete(before)
         localCompletionStart = frame.candidates.size
         localCompletions = symbols
-        val base = frame.candidates + symbols.filterNot { symbol -> frame.candidates.any { it.text == symbol } }
-            .map { Candidate(text = it, senses = emptyList()) }
+        val base = (frame.candidates + symbols.filterNot { symbol -> frame.candidates.any { it.text == symbol } }
+            .map { Candidate(text = it, senses = emptyList()) }).distinctBy { it.text }
         val prefix = structuredTokenBuffer.toString()
+        // 连续联想只保留真正补全当前前缀的词；与 Core 候选、标点候选去重，避免同一词出现两次。
         structuredCompletions = if (prefix.length >= 2) {
-            host.structuredTokenSuggestions(prefix).filter { it != prefix }.take(5)
+            host.structuredTokenSuggestions(prefix)
+                .asSequence()
+                .filter { it.isNotBlank() && it != prefix }
+                .distinct()
+                .filterNot { suggestion -> base.any { it.text == suggestion } }
+                .take(5)
+                .toList()
         } else {
             emptyList()
         }

@@ -58,6 +58,7 @@ import app.qingjian.inputmethod.core.store.PhraseRules
 import app.qingjian.inputmethod.core.store.Shuangpin
 import app.qingjian.inputmethod.keyboard.KeyboardView
 import app.qingjian.inputmethod.keyboard.ShiftState
+import app.qingjian.inputmethod.keyboard.KeySounds
 import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.keyboard.layout.KeyboardLayout
 import app.qingjian.inputmethod.panel.PanelActions
@@ -993,7 +994,10 @@ class QingjianInputMethodService :
         )
     }
 
-    override fun onKey(key: Key) = composer.onKey(key)
+    override fun onKey(key: Key) {
+        KeySounds.play(this, key)
+        composer.onKey(key)
+    }
 
     override fun onOpenClipboard() = clipboard()
 

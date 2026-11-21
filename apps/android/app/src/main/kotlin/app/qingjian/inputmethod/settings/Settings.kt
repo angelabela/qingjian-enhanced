@@ -106,8 +106,16 @@ data class Settings(
     /** 候选区与键盘区分别保存文字效果预设。 */
     val candidateTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
     val keyboardTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
+    /** 按键声音独立于震动开关；缺省关闭，避免升级后突然发声。 */
+    val keySound: Boolean = false,
+    val keySoundStyle: KeySoundStyle = KeySoundStyle.SYSTEM,
 ) {
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
+
+    enum class KeySoundStyle(val label: String) {
+        SYSTEM("系统按键音"), CRISP("清脆短音"), SOFT("柔和短音"), MECHANICAL("机械短音"), BUBBLE("轻提示音");
+        companion object { fun of(value: String?): KeySoundStyle = entries.firstOrNull { it.name == value } ?: SYSTEM }
+    }
 
     /** 文字效果预设；只作用于候选区或键盘区，不影响整个面板。 */
     enum class TextEffectPreset(val label: String) {
@@ -181,6 +189,8 @@ data class Settings(
         const val KEY_BOTTOM_RIGHT = "bottom_right"
         const val KEY_HAPTIC = "haptic"
         const val KEY_HAPTIC_STRENGTH = "haptic_strength"
+        const val KEY_KEY_SOUND = "key_sound"
+        const val KEY_KEY_SOUND_STYLE = "key_sound_style"
         const val KEY_POPUP = "key_popup"
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
         const val KEY_KEY_FONT_SIZE = "key_font_size"
@@ -356,6 +366,8 @@ data class Settings(
                 keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 6),
                 candidateTextPreset = TextEffectPreset.of(prefs.getString(KEY_CANDIDATE_TEXT_PRESET, null)),
                 keyboardTextPreset = TextEffectPreset.of(prefs.getString(KEY_KEYBOARD_TEXT_PRESET, null)),
+                keySound = prefs.getBoolean(KEY_KEY_SOUND, false),
+                keySoundStyle = KeySoundStyle.of(prefs.getString(KEY_KEY_SOUND_STYLE, null)),
             )
         }
     }

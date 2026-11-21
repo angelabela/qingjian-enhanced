@@ -141,8 +141,9 @@ class KeyPainter(
         val hintWidth = (b.width() - 8f * density).coerceAtLeast(10f * density)
         if (upLabel != null) {
             drawGestureHint(
-                canvas, b.centerX(), b.top + 11f * density, upLabel,
-                upward = true, onBrand = onBrand, maxLabelWidth = hintWidth,
+                canvas, b.centerX(),
+                if (upLabel == "。" || upLabel == ".") b.top + b.height() * 0.24f else b.top + 11f * density,
+                upLabel, upward = true, onBrand = onBrand, maxLabelWidth = hintWidth,
             )
         }
         if (downLabel != null) {
