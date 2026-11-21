@@ -2,9 +2,9 @@ package app.qingjian.inputmethod.settings.page
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.view.View
 import android.widget.Toast
+import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.Engine
 import java.io.File
 import java.io.RandomAccessFile
@@ -12,7 +12,7 @@ import kotlin.concurrent.thread
 
 /** 可选知意三元语言模型：用户导入本地 .ngram，不随 APK 打包。 */
 class TrigramModelActivity : PageActivity() {
-    override val title: Int = android.R.string.dialog_alert_title
+    override val title: Int = R.string.page_dictionaries
 
     private val modelFile get() = File(Engine.userDir(this), "models/zhiyi-ngram/zh.ngram")
     private val enabledFile get() = File(modelFile.parentFile, ".enabled")
@@ -31,10 +31,10 @@ class TrigramModelActivity : PageActivity() {
             ), 12),
             spaced(ui.group(
                 "模型管理",
-                ui.action(if (busy) "正在导入…" else if (exists) "重新导入模型文件" else "选择 .ngram 模型文件") {
+                ui.link(if (busy) "正在导入…" else if (exists) "重新导入模型文件" else "选择 .ngram 模型文件", null) {
                     if (!busy) pickModel()
                 },
-                ui.toggle("启用三元模型", "关闭后仅使用原有二元语言模型", enabled) { on ->
+                ui.toggle("启用三元模型", "关闭后仅使用原有二元语言模型", enabled, null) { on ->
                     if (!exists) {
                         Toast.makeText(this, "请先导入模型文件", Toast.LENGTH_SHORT).show()
                         rebuild()
@@ -45,7 +45,7 @@ class TrigramModelActivity : PageActivity() {
                         Toast.makeText(this, if (on) "已启用，正在重新加载模型" else "已停用，正在回退二元模型", Toast.LENGTH_LONG).show()
                     }
                 },
-                ui.action("删除已导入模型") {
+                ui.link("删除已导入模型", null) {
                     if (exists && !busy) {
                         modelFile.delete()
                         enabledFile.delete()
