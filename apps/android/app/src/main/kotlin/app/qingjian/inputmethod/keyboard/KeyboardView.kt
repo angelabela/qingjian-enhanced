@@ -91,9 +91,11 @@ class KeyboardView(
     private val pressed = HashMap<Int, KeySlot>()
 
     private val timer = Handler(Looper.getMainLooper())
+    private var backspaceRepeatStarted = false
     private val repeatBackspace = object : Runnable {
         override fun run() {
-            // 长按期间继续普通连删；真正达到上下滑动阈值时 followFlick 会停掉连删并锁定手势。
+            // 先等住手势判定窗口：点按在抬手时删一次，上滑则不会先误删一个字。
+            backspaceRepeatStarted = true
             listener.onKey(Key.Backspace)
             timer.postDelayed(this, REPEAT_INTERVAL_MS)
         }
@@ -304,7 +306,7 @@ class KeyboardView(
                 when {
                     slot.key == Key.Backspace -> {
                         listener.onBackspaceDown()
-                        listener.onKey(Key.Backspace)
+                        backspaceRepeatStarted = false
                         timer.postDelayed(repeatBackspace, REPEAT_DELAY_MS)
                     }
 
@@ -362,7 +364,10 @@ class KeyboardView(
                     endFlick()
                     if (flicked != null) {
                         if (pointer == trail.pointer) trail.clear()
-                        if (flicked.key == Key.Backspace) timer.removeCallbacks(repeatBackspace)
+                        if (flicked.key == Key.Backspace) {
+                            timer.removeCallbacks(repeatBackspace)
+                            backspaceRepeatStarted = false
+                        }
                         if (flicked.key is Key.Space) {
                             timer.removeCallbacks(spaceHold)
                             if (voiceMode) listener.onVoiceRelease(cancel = true)
@@ -410,7 +415,11 @@ class KeyboardView(
                     choosing -> choicePopup.finish()?.let { chosen ->
                         if (choiceKey == Key.Language) listener.onLanguageChoice(chosen) else listener.onKeyChoice(choiceItems[chosen])
                     }
-                    slot?.key == Key.Backspace -> timer.removeCallbacks(repeatBackspace)
+                    slot?.key == Key.Backspace -> {
+                        timer.removeCallbacks(repeatBackspace)
+                        if (!backspaceRepeatStarted) listener.onKey(Key.Backspace)
+                        backspaceRepeatStarted = false
+                    }
                     openClipboard -> listener.onOpenClipboard()
                     spoke -> listener.onVoiceRelease(cancel = false)
                     movedCursor -> Unit
@@ -744,6 +753,7 @@ class KeyboardView(
         endFlick()
         endEditShortcut()
         timer.removeCallbacks(repeatBackspace)
+        backspaceRepeatStarted = false
         timer.removeCallbacks(longPress)
         timer.removeCallbacks(spaceHold)
         // 说着话的手指被系统收走（来电、键盘重建）：当取消
