@@ -61,7 +61,7 @@ class VoicePanel(
             4 -> PhysicsWaveView.Style.PEAK_HOLD
             5 -> PhysicsWaveView.Style.ELASTIC_STRING
             6 -> PhysicsWaveView.Style.GLOW_ORBS
-            7 -> PhysicsWaveView.Style.FLOWING_RIBBONS
+            7 -> PhysicsWaveView.Style.SPHERICAL_PARTICLE_MESH
             8 -> PhysicsWaveView.Style.REALTIME_WAVEFORM
             9 -> PhysicsWaveView.Style.WAVEFORM_SPECTRUM
             else -> PhysicsWaveView.Style.SPECTRUM_BARS
