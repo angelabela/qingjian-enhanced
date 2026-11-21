@@ -307,6 +307,12 @@ class Engine(context: Context, private val onReady: () -> Unit) {
 
         fun userDir(context: Context) = File(context.filesDir, "user").apply { mkdirs() }
 
+        /** 模型文件更新后卸下并重新装配所有活动引擎；只在主线程调用。 */
+        fun reloadAll() = live.toList().forEach { engine ->
+            engine.unload()
+            engine.load()
+        }
+
         /** 导出前把开着的引擎里还没落盘的学习数据写下（组句一并丢掉，导出时用户在 App 里）。主线程调。 */
         fun flushAll() = live.forEach(Engine::reset)
 
