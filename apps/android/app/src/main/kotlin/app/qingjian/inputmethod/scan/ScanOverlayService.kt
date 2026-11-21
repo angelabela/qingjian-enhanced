@@ -1025,16 +1025,31 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     deferredFrameRelease.set(true)
                                     try {
                                         zxingFallbackExecutor.execute {
+                                            var releaseOnWorker = true
                                             try {
-                                                decodeWithZxing(proxy)?.let { (value, bounds) ->
-                                                    ContextCompat.getMainExecutor(this@ScanOverlayService).execute { handleZxingFallback(proxy, value, bounds) }
+                                                val decoded = decodeWithZxing(proxy)
+                                                if (decoded != null) {
+                                                    releaseOnWorker = false
+                                                    val (value, bounds) = decoded
+                                                    ContextCompat.getMainExecutor(this@ScanOverlayService).execute {
+                                                        try {
+                                                            // 变换与扫描框判断需要预览 View；在主线程处理完再释放 ImageProxy。
+                                                            handleZxingFallback(proxy, value, bounds)
+                                                        } finally {
+                                                            processing.set(false)
+                                                            runCatching { proxy.close() }
+                                                            if (shuttingDown) closeMlKitClients()
+                                                        }
+                                                    }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.w(TAG, "ZXing fallback decode failed", error)
                                             } finally {
-                                                processing.set(false)
-                                                runCatching { proxy.close() }
-                                                if (shuttingDown) closeMlKitClients()
+                                                if (releaseOnWorker) {
+                                                    processing.set(false)
+                                                    runCatching { proxy.close() }
+                                                    if (shuttingDown) closeMlKitClients()
+                                                }
                                             }
                                         }
                                     } catch (error: Throwable) {
