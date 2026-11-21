@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.os.SystemClock
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.sin
 import android.text.TextPaint
 import android.text.TextUtils
