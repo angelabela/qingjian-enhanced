@@ -4,13 +4,13 @@
 //! `user_dir` 是应用私有目录下的学习数据目录。
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
-use qingjian_lm::{BigramModel, MixedModel, TRIGRAM_WEIGHT, TrigramModel};
-use std::sync::Arc;
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
+use qingjian_lm::{BigramModel, MixedModel, TRIGRAM_WEIGHT, TrigramModel};
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
