@@ -221,7 +221,7 @@ class CandidateBarView(
         val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
         val previousScroll = scrollX
         val nextFirstCandidate = candidates.firstOrNull()?.text
-        if (preedit.isEmpty() || nextFirstCandidate == null) {
+        if (nextFirstCandidate == null) {
             firstCandidatePulseStartedAt = 0L
             highlightedFirstCandidate = null
         } else if (nextFirstCandidate != highlightedFirstCandidate) {
@@ -286,7 +286,7 @@ class CandidateBarView(
         }
         else -> {
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
-            if (visibleCaretIndex >= 0) strip.drawPreeditCaret(canvas, visibleCaretIndex, stripWidth * 0.05f)
+            // 拼音行不再绘制额外竖线，避免字母尾部出现像输入光标一样的干扰线。
             drawFirstCandidatePulse(canvas)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
             drawSmartActions(canvas)
@@ -326,12 +326,12 @@ class CandidateBarView(
         }
     }
 
-    /** 首候选短暂呼吸高亮；仅在新拼音组句出现时播放，不因异步重排重复闪烁。 */
+    /** 首选词及其释义共享呼吸高亮；输入候选和后续联想候选均生效。 */
     private fun drawFirstCandidatePulse(canvas: Canvas) {
         val startedAt = firstCandidatePulseStartedAt
-        if (startedAt <= 0L || lastShownPreedit.isNullOrEmpty() || strip.candidates.isEmpty()) return
+        if (startedAt <= 0L || strip.candidates.isEmpty()) return
         val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
-        val rect = strip.wordRect(0) ?: return
+        val rect = strip.candidateEffectRect(0) ?: return
         rect.offset(stripWidth * 0.05f - scrollX, 0f)
         if (rect.right <= 0f || rect.left >= stripWidth) return
         val phase = (elapsed % FIRST_CANDIDATE_PULSE_PERIOD_MS).toFloat() /
