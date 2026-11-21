@@ -619,14 +619,14 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     private var choiceRescorePolls = 0
 
-    private val requestChoiceRescore = Runnable {
+    private val requestChoiceRescore: Runnable = Runnable {
         if (composing && engine.requestRescoring()) {
             choiceRescorePolls = CHOICE_RESCORE_MAX_POLLS
             handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
         }
     }
 
-    private val pollChoiceRescore = Runnable {
+    private val pollChoiceRescore: Runnable = Runnable {
         if (!composing || choiceRescorePolls <= 0) return@Runnable
         val frame = engine.pollRescoring()
         if (frame != null && frame.preedit == preedit) {
