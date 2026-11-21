@@ -10,7 +10,7 @@ use std::time::Instant;
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
-use qingjian_lm::BigramModel;
+use qingjian_lm::{BigramModel, MixedModel, TrigramModel, TRIGRAM_WEIGHT};
 use qingjian_neural::{CharScorer, P2cScorer};
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
@@ -60,16 +60,72 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     if let Some(table) = load_emoji(data_dir) {
         engine = engine.with_emoji(table);
     }
-    let model = data_dir.join("lm.qj");
-    if model.is_file() {
-        let started = Instant::now();
-        match BigramModel::from_path(&model) {
+    // 可选知意三元模型：不随 APK 打包，避免额外增加约 79 MB；
+    // 用户导入后放在应用用户数据目录 models/zhiyi-ngram/zh.ngram。
+    // 三元模型同时用于整句词图（与本地 bigram 按 0.5 插值）和整句候选重排；
+    // 缺失或损坏时完全回退到原有 bigram，不影响基础输入。
+    let bigram_path = data_dir.join("lm.qj");
+    let trigram_path = user_dir.join("models/zhiyi-ngram/zh.ngram");
+    let bigram = if bigram_path.is_file() {
+        match BigramModel::from_path(&bigram_path) {
             Ok(model) => {
-                tracing::info!(load_ms = started.elapsed().as_millis(), "语言模型已加载");
-                engine = engine.with_language_model(Box::new(model));
+                tracing::info!("二元语言模型已加载");
+                Some(model)
             }
-            Err(error) => tracing::warn!(%error, "语言模型加载失败，使用词频整句"),
+            Err(error) => {
+                tracing::warn!(%error, "二元语言模型加载失败");
+                None
+            }
         }
+    } else {
+        None
+    };
+
+    if trigram_path.is_file() {
+        let started = Instant::now();
+        match TrigramModel::open(&trigram_path) {
+            Ok(phrase_model) => {
+                // PhraseModel 为候选整句重排提供完整上下文分；单独 mmap 同一文件，
+                // 另一个映射用于词图 LanguageModel，避免复制 79 MB 模型数据。
+                engine.set_phrase_model(Some(Arc::new(phrase_model)));
+                match TrigramModel::open(&trigram_path) {
+                    Ok(trigram_model) => {
+                        engine = match bigram {
+                            Some(bigram_model) => engine.with_language_model(Box::new(
+                                MixedModel::new(
+                                    Box::new(trigram_model),
+                                    Box::new(bigram_model),
+                                    TRIGRAM_WEIGHT,
+                                ),
+                            )),
+                            None => engine.with_language_model(Box::new(trigram_model)),
+                        };
+                        tracing::info!(
+                            load_ms = started.elapsed().as_millis(),
+                            trigram_weight = TRIGRAM_WEIGHT,
+                            "可选三元语言模型已加载：整句词图与候选重排启用"
+                        );
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "三元模型词图映射失败，保留二元模型");
+                        if let Some(bigram_model) = bigram {
+                            engine = engine.with_language_model(Box::new(bigram_model));
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "三元模型不可用，回退二元模型");
+                if let Some(bigram_model) = bigram {
+                    engine = engine.with_language_model(Box::new(bigram_model));
+                }
+            }
+        }
+    } else if let Some(bigram_model) = bigram {
+        engine = engine.with_language_model(Box::new(bigram_model));
+        tracing::info!("语言模型已加载：使用随包二元模型");
+    } else {
+        tracing::warn!("没有可用的静态语言模型，使用词频整句");
     }
     // 含章·通变：本地 P2C 模型按拼音生成整句候选；模型缺失或损坏时保留词图 + bigram 回退。
     let neural_model = data_dir.join("hanzhang-tongbian-small.qjm");
