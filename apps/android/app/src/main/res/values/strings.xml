@@ -311,6 +311,13 @@
     <string name="voice_key">API Key</string>
     <string name="voice_none_note">没选识别服务时语音输入用不了</string>
     <string name="voice_note">在火山引擎开通「豆包流式语音识别」，把 API Key 填在这里，计费方式选你开通的那种；说话的录音会发给火山引擎，会产生费用</string>
+    <string name="zhiyi_section">知意本地模型</string>
+    <string name="zhiyi_import">选择知意模型文件夹</string>
+    <string name="zhiyi_importing">正在导入知意模型…</string>
+    <string name="zhiyi_ready">模型已导入，可重新导入</string>
+    <string name="zhiyi_note">先解压模型压缩包，再选择同时包含 model.safetensors、config.json、tokenizer.json、unified_vocab.json 四个文件的文件夹。模型只保存在本机应用数据目录，不会打包进 APK。</string>
+    <string name="zhiyi_import_success">知意模型导入完成，输入引擎正在重新加载</string>
+    <string name="zhiyi_import_failed">导入失败，请检查模型文件夹是否完整</string>
     <string name="export_title">导出数据</string>
     <string name="export_value">存为 zip</string>
     <string name="export_running">导出中…</string>
