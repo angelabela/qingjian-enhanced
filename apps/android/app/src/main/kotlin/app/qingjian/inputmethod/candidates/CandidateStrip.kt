@@ -330,16 +330,18 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 }
             }
         }
-        // 拼音行按 Rust 提供的字符边界定位，逐字原生重绘，不改变光标命中区域。
+        // 拼音作为一整行按自然字距绘制，避免逐字符塞进过窄的字格导致缩小、挤叠和笔画发虚。
+        // Rust 提供的 preeditEdges 仍保留给光标命中与拖动，不改变任何触摸区域。
         if (codePoints.isNotEmpty() && edges.size >= codePoints.size + 1) {
             val topY = image.preeditTop
             val bottomY = image.preeditBottom.coerceAtLeast(topY + 1f)
-            for (i in codePoints.indices) {
-                val left = edges[i]
-                val rightEdge = edges[i + 1]
-                if (rightEdge < scrollX || left > scrollX + contentViewWidth) continue
-                val glyph = String(Character.toChars(codePoints[i]))
-                textStyles.drawReplacing(canvas, glyph, RectF(left, topY, rightEdge, bottomY), CandidateTextStyleEngine.Role.PREEDIT)
+            val left = edges.first()
+            val right = edges[codePoints.size]
+            if (right >= scrollX && left <= scrollX + contentViewWidth) {
+                textStyles.drawReplacing(
+                    canvas, preedit, RectF(left, topY, right, bottomY),
+                    CandidateTextStyleEngine.Role.PREEDIT,
+                )
             }
         }
         // 释义由 Candidate.senses 提供文本，Rust hit rect 只提供布局位置。

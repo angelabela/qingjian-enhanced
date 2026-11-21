@@ -84,6 +84,10 @@ class CandidateBarView(
             invalidate()
         }
 
+    // 防止同一候选快照被上游重复回调时再次关闭弹层、重置滚动并触发位图重绘。
+    private var lastShownPreedit: String? = null
+    private var lastShownCandidates: List<Candidate>? = null
+
     private val popup = ChoicePopup(this, palette)
 
     private val divider = Paint().apply {
@@ -194,6 +198,9 @@ class CandidateBarView(
 
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
     fun show(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
+        if (lastShownPreedit == preedit && lastShownCandidates == candidates) return
+        lastShownPreedit = preedit
+        lastShownCandidates = candidates.toList()
         closePopup()
         if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
         strip.show(preedit, candidates, animateCandidates)

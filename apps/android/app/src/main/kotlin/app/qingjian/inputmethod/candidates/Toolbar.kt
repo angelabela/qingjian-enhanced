@@ -4,8 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.os.SystemClock
-import kotlin.math.PI
-import kotlin.math.sin
 import android.text.TextPaint
 import android.text.TextUtils
 import app.qingjian.inputmethod.R
@@ -29,7 +27,6 @@ class Toolbar(
     private val logoSlot = 62f * density
     private val hideSlot = 62f * density
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val logoGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.15f * density }
     private val line = Paint().apply { color = palette.faint }
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
 
@@ -74,30 +71,11 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        // 周期动画：先完整旋转一圈，再出现明显的品牌色双环发光，随后短暂停留并重复。
+        // 仅保留匀速旋转动画；旋转结束后保持静态，不绘制光环或辉光。
         val logoSize = (30 * density).toInt()
         val logoCentre = (logoSlot / 2).toInt()
         val phase = (SystemClock.uptimeMillis() % LOGO_CYCLE_MS).toFloat() / LOGO_CYCLE_MS
-        val spinEnd = 0.46f
-        val glowEnd = 0.72f
-        val spinning = phase < spinEnd
-        val rotation = if (spinning) (phase / spinEnd) * 360f else 360f
-        val glowProgress = if (phase in spinEnd..glowEnd) {
-            ((phase - spinEnd) / (glowEnd - spinEnd)).coerceIn(0f, 1f)
-        } else if (phase > glowEnd) {
-            (1f - (phase - glowEnd) / (1f - glowEnd)).coerceIn(0f, 1f) * 0.22f
-        } else 0f
-        val glowWave = sin(glowProgress * PI).toFloat().coerceAtLeast(0f)
-        logoGlow.color = palette.brand
-        logoGlow.strokeWidth = (1.4f + glowWave * 3.4f) * density
-        logoGlow.alpha = (glowWave * 220f).toInt().coerceIn(0, 220)
-        logoGlow.setShadowLayer(5f * density * glowWave, 0f, 0f, palette.brand)
-        if (glowWave > 0f) {
-            canvas.drawCircle(logoCentre.toFloat(), cy, (19f + glowWave * 5f) * density, logoGlow)
-            logoGlow.alpha = (glowWave * 125f).toInt()
-            canvas.drawCircle(logoCentre.toFloat(), cy, (23f + glowWave * 7f) * density, logoGlow)
-        }
-        logoGlow.clearShadowLayer()
+        val rotation = phase * 360f
         canvas.save()
         canvas.rotate(rotation, logoCentre.toFloat(), cy)
         logo?.alpha = 255
