@@ -17,9 +17,9 @@ object KeyboardLayout {
     private val PUNCTUATION = mapOf('，' to ',', '。' to '.', '？' to '?', '！' to '!', '：' to ':')
 
     /** 中文键盘的一个标点键（[full] 是全角的样子），见 [Key.Text.punct]。 */
-    fun punct(full: Char, fullWidth: Boolean, weight: Float = 1f): Key.Text {
+    fun punct(full: Char, fullWidth: Boolean, weight: Float = 1f, flickText: String? = null): Key.Text {
         val half = PUNCTUATION.getValue(full)
-        return Key.Text(if (fullWidth) full.toString() else half.toString(), weight, punct = half)
+        return Key.Text(if (fullWidth) full.toString() else half.toString(), weight, punct = half, flickText = flickText)
     }
 
     /** 不在组句时拼音列里放的标点；、和 … 没有对应的半角键，总是全角。 */
@@ -44,13 +44,13 @@ object KeyboardLayout {
 
     private fun letters(row: String, hints: String) = row.zip(hints) { char, hint -> Key.Letter(char, hint.toString()) }
 
-    /** 底排：两个切换键、逗号、空格、句号、中英、回车。中文的逗号句号走 Core 的标点转换（[fullWidth] 只管键上印什么）。 */
+    /** 底排：逗号键上滑输入句号；原句号位置改为 Tab，向编辑器发送真实 Tab 键。 */
     private fun bottomRow(first: Key, second: Key, chinese: Boolean, fullWidth: Boolean = true) = listOf(
         first,
         second,
-        if (chinese) punct('，', fullWidth) else Key.Text(","),
+        if (chinese) punct('，', fullWidth, flickText = ".") else Key.Text(",", flickText = "."),
         Key.Space(),
-        if (chinese) punct('。', fullWidth) else Key.Text("."),
+        Key.Tab,
         Key.Language,
         Key.Enter(),
     )
@@ -81,7 +81,7 @@ object KeyboardLayout {
         letters("qwertyuiop", TOP_HINTS),
         letters("asdfghjkl", MIDDLE_HINTS_JA) + Key.Text("ー"),
         listOf(Key.Shift) + letters("zxcvbnm", BOTTOM_HINTS_JA) + Key.Backspace,
-        listOf(Key.SymbolPage("!?#", 1.25f), Key.NumberPage("123"), Key.Text("、"), Key.Space(), Key.Text("。"), Key.Language, Key.Enter()),
+        listOf(Key.SymbolPage("!?#", 1.25f), Key.NumberPage("123"), Key.Text("、", flickText = "。"), Key.Space(), Key.Tab, Key.Language, Key.Enter()),
     )
 
     /**

@@ -67,6 +67,7 @@ class ClipboardPanel(
 
     private val list = RectF()
     private val listScroll = scrollable(false) { x, y -> list.contains(x, y) }
+    private var restoreClipScrollPending = !phrasesFirst && tabs.selected == CLIPS
 
     /** 展开着的那一张（列表里的下标），-1 是都收着。 */
     private var expanded = -1
@@ -180,6 +181,15 @@ class ClipboardPanel(
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, headerHeight + ink.dp(SUMMARY_DP), width.toFloat(), listBottom)
         arrange()
+        if (!showingPhrases) {
+            if (restoreClipScrollPending) {
+                listScroll.drag(lastClipScrollOffset)
+                restoreClipScrollPending = false
+            }
+            lastClipScrollOffset = listScroll.offset
+        } else {
+            restoreClipScrollPending = false
+        }
         canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
@@ -631,7 +641,13 @@ class ClipboardPanel(
 
     private fun collapse(resetScroll: Boolean = true) {
         expanded = -1
-        if (resetScroll) listScroll.reset()
+        if (resetScroll) {
+            listScroll.reset()
+            lastClipScrollOffset = 0f
+            restoreClipScrollPending = false
+        } else if (!showingPhrases) {
+            lastClipScrollOffset = listScroll.offset
+        }
         layouts.clear()
     }
 
@@ -736,5 +752,8 @@ class ClipboardPanel(
 
         /** 常用语停在哪一组：关了面板再开还在这组；加完常用语跳到它所在的组。 */
         var lastGroup = PhraseRules.defaultGroup
+
+        /** 剪贴板在同一编辑场景重建面板时恢复滚动位置。 */
+        private var lastClipScrollOffset = 0f
     }
 }

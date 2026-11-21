@@ -55,7 +55,17 @@ sealed class Key(val label: String, val weight: Float = 1f) {
      * 直接上屏的标点、数字、符号。[punct] 不为空的是中文键盘的标点键：上屏前交 Core 按设置转全角或保持半角
      * （键上印的 [text] 只是样子，见 [KeyboardLayout.punct]）。
      */
-    class Text(val text: String, weight: Float = 1f, val punct: Char? = null) : Key(text, weight)
+    class Text(
+        val text: String,
+        weight: Float = 1f,
+        val punct: Char? = null,
+        private val flickText: String? = null,
+    ) : Key(text, weight) {
+        override val choices: List<String> get() = flickText?.let(::listOf).orEmpty()
+    }
+
+    /** 向编辑器发送真实 Tab 键，用于表格等输入框跳到下一格。 */
+    data object Tab : Key("Tab", 1f)
 
     data object Shift : Key("", 1.5f)
 
@@ -85,8 +95,8 @@ sealed class Key(val label: String, val weight: Float = 1f) {
     val functional: Boolean
         get() = this is Shift || this is Backspace || this is Symbols || this is SymbolPage ||
             this is NumberPage || this is Letters || this is Language || this is Clear ||
-            (this is Digit && digit == '1')
+            (this is Digit && digit == '1') || this == Tab
 
     /** 按下时弹气泡的键。 */
-    val poppable: Boolean get() = this is Letter || this is Zhuyin || (this is Text && weight == 1f)
+    val poppable: Boolean get() = this is Letter || this is Zhuyin || (this is Text && weight == 1f && choices.isEmpty())
 }

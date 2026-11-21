@@ -30,6 +30,8 @@ class Composer(private val engine: Engine, private val host: Host) {
     private var pendingBackspaceSnapshot: ClearSnapshot? = null
     /** 删除键手势开始时的快照；普通退格后仍保留，供同一次上滑清空使用。 */
     private var clearGestureSnapshot: ClearSnapshot? = null
+    /** 第一次上滑清空光标左侧后，连续第二次清空光标右侧。 */
+    private var clearAfterCursorNext = false
     private var undoGroupOpen = false
     private val undoGroupTimeout = Runnable { if (!composing) undoGroupOpen = false }
 
@@ -200,7 +202,10 @@ class Composer(private val engine: Engine, private val host: Host) {
      * 字母直接上屏时上屏解出的整串（Shift 单次首字母大写，锁定全大写）。
      */
     fun onSwipe(input: String) {
-        if (input.isNotEmpty()) lastClearSnapshot = null
+        if (input.isNotEmpty()) {
+            lastClearSnapshot = null
+            clearAfterCursorNext = false
+        }
         if (!undoGroupOpen) captureUndoSnapshot()
         undoGroupOpen = true
         handler.removeCallbacks(undoGroupTimeout)
@@ -242,7 +247,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                     flushStructuredToken()
                 }
             }
-            is Key.Space, is Key.Enter -> flushStructuredToken()
+            is Key.Space, is Key.Enter, Key.Tab -> flushStructuredToken()
             Key.Backspace -> if (structuredTokenBuffer.isNotEmpty()) {
                 structuredTokenBuffer.deleteCharAt(structuredTokenBuffer.length - 1)
             }
@@ -293,7 +298,10 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
-        if (key != Key.Backspace) lastClearSnapshot = null
+        if (key != Key.Backspace) {
+            lastClearSnapshot = null
+            clearAfterCursorNext = false
+        }
         trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
         if (groupedEdit) editHistory.beginGroup()
@@ -310,7 +318,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 undoGroupOpen = true
                 handler.removeCallbacks(undoGroupTimeout)
                 handler.postDelayed(undoGroupTimeout, UNDO_GROUP_TIMEOUT_MS)
-            } else if (key is Key.Space || key is Key.Text || key is Key.Enter) {
+            } else if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab) {
                 closeUndoGroup()
             }
         }
@@ -423,6 +431,11 @@ class Composer(private val engine: Engine, private val host: Host) {
                 !host.performEditorAction() -> host.sendKey(KeyEvent.KEYCODE_ENTER)
             }
 
+            Key.Tab -> {
+                if (composing) settle()
+                host.sendKey(KeyEvent.KEYCODE_TAB)
+            }
+
             is Key.Symbols -> {
                 if (composing) selectFirst()
                 host.openSymbolPanel()
@@ -446,7 +459,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.onLanguageChanged()
             }
         }
-        if (key is Key.Space || key is Key.Text || key is Key.Enter) closeUndoGroup()
+        if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab) closeUndoGroup()
         if (!composing && key != Key.Backspace && key != Key.Clear) refreshCompletions()
         } finally {
             if (groupedEdit) editHistory.endGroup()
@@ -836,12 +849,15 @@ class Composer(private val engine: Engine, private val host: Host) {
         lastClearSnapshot = null
         pendingBackspaceSnapshot = null
         clearGestureSnapshot = null
+        clearAfterCursorNext = false
         closeUndoGroup()
         refreshCompletions()
     }
 
     /** 删除键上划：清除光标左侧全部内容，光标右侧文字保持原样。 */
-    fun clearAll() = clearBeforeCursor()
+    fun clearAll() {
+        if (clearAfterCursorNext) clearAfterCursor() else clearBeforeCursor()
+    }
 
     /**
      * 删除键下滑：只删除光标左侧的文本，光标右侧内容保持不变。
@@ -880,6 +896,50 @@ class Composer(private val engine: Engine, private val host: Host) {
         } finally {
             connection.endBatchEdit()
         }
+        clearAfterCursorNext = connection.getTextAfterCursor(MAX_CLEAR, 0)?.isNotEmpty() == true
+        if (!changed) {
+            lastClearSnapshot = null
+            if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
+        }
+        editHistory.clear()
+        apply(engine.clear())
+        closeUndoGroup()
+        refreshCompletions()
+    }
+
+    /** 连续第二次上滑清空时，删除光标右侧全部内容，光标左侧保持原样。 */
+    private fun clearAfterCursor() {
+        val connection = host.connection ?: return
+        val snapshot = clearGestureSnapshot ?: pendingBackspaceSnapshot ?: readUndoSnapshot()
+        if (snapshot == null) {
+            host.showNotice("无法读取输入内容，清空已取消")
+            clearAfterCursorNext = false
+            return
+        }
+        lastClearSnapshot = snapshot
+        pushUndoSnapshot(snapshot)
+        closeUndoGroup()
+        pendingBackspaceSnapshot = null
+        clearGestureSnapshot = null
+        beforeBackspace = null
+        backspaceComposing = false
+        var changed = false
+        connection.beginBatchEdit()
+        try {
+            val selected = connection.getSelectedText(0)?.toString().orEmpty()
+            if (selected.isNotEmpty()) changed = connection.commitText("", 1) || changed
+            repeat(100) {
+                val after = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                if (after.isEmpty()) return@repeat
+                val deleted = connection.deleteSurroundingText(0, after.length)
+                val remaining = connection.getTextAfterCursor(MAX_CLEAR, 0)?.toString().orEmpty()
+                if (deleted || remaining != after) changed = true
+                if (remaining == after) return@repeat
+            }
+        } finally {
+            connection.endBatchEdit()
+        }
+        clearAfterCursorNext = false
         if (!changed) {
             lastClearSnapshot = null
             if (undoHistory.lastOrNull() == snapshot) undoHistory.removeLast()
@@ -892,6 +952,7 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 组句中光标被点到别处：敲的字母原样落下，不留带 ' 的显示形式。 */
     fun onCursorMovedAway() {
+        clearAfterCursorNext = false
         if (composing) settle()
     }
 
@@ -927,6 +988,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         editHistory.clear()
         lastClearSnapshot = null
         pendingBackspaceSnapshot = null
+        clearAfterCursorNext = false
         closeUndoGroup()
         preedit = ""
         sentPreedits.clear()
@@ -1079,6 +1141,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     private fun commit(text: String) {
         if (text.isEmpty()) return
         lastClearSnapshot = null
+        clearAfterCursorNext = false
         if (!undoGroupOpen) captureUndoSnapshot()
         val connection = host.connection ?: return
         if (host.selectionActive) {
@@ -1172,6 +1235,7 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 没在组句时的退格：刚补完一对、光标前后正是这一对就一起删，否则照常退格。 */
     private fun deleteBackward() {
+        clearAfterCursorNext = false
         val pair = engine.pairBackspace()
         val connection = host.connection ?: run {
             host.sendKey(KeyEvent.KEYCODE_DEL)

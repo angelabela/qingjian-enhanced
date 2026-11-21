@@ -43,6 +43,7 @@ on:
       - fix/workflow-551-mascot-bubble-glow-emoji
       - fix/workflow-552-candidate-refresh-pinyin-logo-animation
       - fix/workflow-555-candidate-dedup-pinyin-spacing-logo-spin-glow
+      - fix/workflow-556-clipboard-scroll-clear-tab
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
