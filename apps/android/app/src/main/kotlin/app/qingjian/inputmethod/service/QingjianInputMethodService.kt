@@ -410,6 +410,7 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(mascotTipSelectedReceiver) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
         LocalAiModelManager.releaseRuntime()
+        KeySounds.release()
         phraseMemoryHandler.removeCallbacksAndMessages(null)
         phraseMemoryThread.quitSafely()
         candidateRerankSequence++
