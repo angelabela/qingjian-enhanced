@@ -153,8 +153,13 @@ class CandidateTextStyleEngine(
         val measuredWidth = paint.measureText(text)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
         val fitScale = if (role == Role.PREEDIT) {
-            // 拼音按统一字号绘制：窄字母 i/l/j/r/t 不再因 Rust 单字命中框较窄而被缩小。
-            minOf(1.12f, availableHeight / measuredHeight)
+            // 拼音逐字定位时，字符边界可能很窄；必须同时按宽、高 fit。
+            // 旧逻辑只按高度放大，并把裁剪框扩到相邻字母区域，容易造成字母重叠。
+            minOf(
+                1.12f,
+                availableWidth / measuredWidth.coerceAtLeast(1f),
+                availableHeight / measuredHeight,
+            )
         } else minOf(
             1f,
             availableWidth / measuredWidth.coerceAtLeast(1f),
@@ -165,9 +170,8 @@ class CandidateTextStyleEngine(
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
         val clipRect = if (role == Role.PREEDIT) {
-            val minGlyphWidth = baseTextSize * 0.58f
-            val extra = ((minGlyphWidth - rect.width()).coerceAtLeast(0f)) / 2f
-            RectF(rect.left - extra, rect.top - 3f * density, rect.right + extra, rect.bottom + 3f * density)
+            // 保持每个字母的真实边界，不向左右扩展侵入相邻字母。
+            RectF(rect.left, rect.top - 2f * density, rect.right, rect.bottom + 2f * density)
         } else rect
         canvas.clipRect(clipRect)
         // 仅拼音行仍保留 Rust 字形，需要擦除后覆盖；候选词和注释已在 Rust 主题层关闭文字绘制，
