@@ -107,6 +107,11 @@ class KeyPainter(
                 text(canvas, label, 21f, labelColor, bounds.centerX(), bounds.top + bounds.height() * belowHint)
             }
 
+            // 逗号键同时承载上滑句号：逗号与字母主字对齐，句号提示由 drawGestureHints 放在上方。
+            key is Key.Text && key.choices.isNotEmpty() -> {
+                text(canvas, label, 21f, labelColor, bounds.centerX(), bounds.top + bounds.height() * belowHint)
+            }
+
             // 中英键：角上写按一下会切到哪种语言，长按换
             key == Key.Language && languageHint.isNotEmpty() -> {
                 text(canvas, languageHint, 10f, secondaryColor, bounds.right - bounds.width() * 0.22f, bounds.top + bounds.height() * 0.24f)
