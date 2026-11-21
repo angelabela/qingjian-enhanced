@@ -42,6 +42,9 @@ pub struct BigramModel {
     /// CSR 后继。
     successors: Table<Successor>,
 
+    /// 按词面排序的词条编号，用于单字上屏后的词语前缀续写（不改变磁盘格式）。
+    prefix_order: Vec<u32>,
+
     /// 一元计数总和（不含句首标记）。
     total: f64,
 
@@ -104,6 +107,7 @@ impl BigramModel {
             metadata: Some(container.metadata().clone()),
         };
         model.finish();
+        model.build_prefix_order();
         tracing::debug!(
             words = model.word_count(),
             bigrams = model.bigram_count(),
@@ -239,6 +243,16 @@ impl BigramModel {
         self.successors.len()
     }
 
+    /// 构建词面有序索引；只保存 u32 编号，避免复制整份词表。
+    fn build_prefix_order(&mut self) {
+        let mut ids: Vec<u32> = (0..self.entries.len() as u32).collect();
+        ids.sort_unstable_by(|a, b| {
+            word_text(&self.words, &self.entries[*a as usize])
+                .cmp(word_text(&self.words, &self.entries[*b as usize]))
+        });
+        self.prefix_order = ids;
+    }
+
     /// `.qj` 里的来历；TSV 解析的返回 `None`。
     pub fn metadata(&self) -> Option<&Metadata> {
         self.metadata.as_ref()
@@ -259,6 +273,14 @@ impl BigramModel {
             .ok()
             .map(|index| successors[index].count)
     }
+}
+
+/// 常用汉字与 CJK 扩展区；联想续写只收汉字，不把拉丁词或符号拆出来。
+fn is_cjk_char(c: char) -> bool {
+    matches!(c as u32,
+        0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF |
+        0x20000..=0x2A6DF | 0x2A700..=0x2B73F | 0x2B740..=0x2B81F |
+        0x2B820..=0x2CEAF | 0x2CEB0..=0x2EBEF | 0x30000..=0x3134F)
 }
 
 /// 条目对应的词。
@@ -287,24 +309,64 @@ fn group(pairs: &[(u32, u32, u32)], word_count: usize) -> (Vec<u32>, Vec<Success
 
 impl LanguageModel for BigramModel {
     fn successors(&self, previous: &str, limit: usize) -> Vec<String> {
-        let Some(id) = self.word_id(previous) else {
+        if limit == 0 {
             return Vec::new();
-        };
-        let start = self.offsets[id as usize] as usize;
-        let end = self.offsets[id as usize + 1] as usize;
-        let mut next: Vec<Successor> = self.successors[start..end].to_vec();
+        }
         let by_count =
             |a: &Successor, b: &Successor| b.count.cmp(&a.count).then(a.word.cmp(&b.word));
-        // 「的」这类常见词的后继上万条，只排出前 `limit` 个
-        if next.len() > limit && limit > 0 {
-            next.select_nth_unstable_by(limit - 1, by_count);
-            next.truncate(limit);
+        let mut result = Vec::with_capacity(limit);
+
+        // 先保留语料里真实统计到的词级 bigram 接续。
+        if let Some(id) = self.word_id(previous) {
+            let start = self.offsets[id as usize] as usize;
+            let end = self.offsets[id as usize + 1] as usize;
+            let mut next: Vec<Successor> = self.successors[start..end].to_vec();
+            if next.len() > limit {
+                next.select_nth_unstable_by(limit - 1, by_count);
+                next.truncate(limit);
+            }
+            next.sort_by(by_count);
+            result.extend(next.iter().map(|s| {
+                word_text(&self.words, &self.entries[s.word as usize]).to_owned()
+            }));
         }
-        next.sort_by(by_count);
-        next.iter()
-            .take(limit)
-            .map(|s| word_text(&self.words, &self.entries[s.word as usize]).to_owned())
-            .collect()
+
+        // 单字上屏时补「词语前缀续写」：「文章 / 文字 / 文学」可贡献「章 / 字 / 学」。
+        // 即使单字本身不在 bigram 词表中，也不能因此直接返回空。
+        if result.len() < limit
+            && previous.chars().count() == 1
+            && previous.chars().next().is_some_and(is_cjk_char)
+        {
+            let start = self.prefix_order.partition_point(|&id| {
+                word_text(&self.words, &self.entries[id as usize]) < previous
+            });
+            let mut completions: Vec<(u32, String)> = Vec::new();
+            for &id in &self.prefix_order[start..] {
+                let word = word_text(&self.words, &self.entries[id as usize]);
+                if !word.starts_with(previous) {
+                    break;
+                }
+                let suffix = &word[previous.len()..];
+                if suffix.is_empty()
+                    || !suffix.chars().all(is_cjk_char)
+                    || result.iter().any(|existing| existing == suffix)
+                {
+                    continue;
+                }
+                completions.push((self.entries[id as usize].count, suffix.to_owned()));
+            }
+            completions.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            for (_, suffix) in completions {
+                if result.len() >= limit {
+                    break;
+                }
+                if !result.contains(&suffix) {
+                    result.push(suffix);
+                }
+            }
+        }
+        result.truncate(limit);
+        result
     }
 
     fn log_prob(&self, previous: Option<&str>, word: &str) -> Option<f64> {
@@ -364,6 +426,17 @@ mod tests {
         assert_eq!(model.successors("我", 2), ["想", "去"]);
         assert!(model.successors("想", 8).is_empty());
         assert!(model.successors("火星", 8).is_empty());
+    }
+
+    #[test]
+    fn single_character_follow_up_uses_word_prefixes_when_bigram_is_missing() {
+        let model = BigramModel::parse(
+            "<s>\t100\n文章\t100\n文字\t90\n文学\t80\n文明\t70\n文档\t60\n",
+            "",
+        )
+        .unwrap();
+        // 「文」不在一元词表中，也没有 bigram；仍应从已知词语中补出后续字。
+        assert_eq!(model.successors("文", 4), ["章", "字", "学", "明"]);
     }
 
     #[test]
