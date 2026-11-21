@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.os.SystemClock
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 import android.text.TextPaint
 import android.text.TextUtils
@@ -73,18 +75,33 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        // 品牌图标采用低幅度呼吸缩放与环形微光，保持安静、不闪烁，也不影响左侧点击区域。
+        // 周期动画：先完整旋转一圈，再出现明显的品牌色双环发光，随后短暂停留并重复。
         val logoSize = (30 * density).toInt()
         val logoCentre = (logoSlot / 2).toInt()
         val phase = (SystemClock.uptimeMillis() % LOGO_CYCLE_MS).toFloat() / LOGO_CYCLE_MS
-        val wave = sin(phase * Math.PI * 2.0).toFloat()
-        val pulse = 1f + wave * 0.022f
+        val spinEnd = 0.46f
+        val glowEnd = 0.72f
+        val spinning = phase < spinEnd
+        val rotation = if (spinning) (phase / spinEnd) * 360f else 360f
+        val glowProgress = if (phase in spinEnd..glowEnd) {
+            ((phase - spinEnd) / (glowEnd - spinEnd)).coerceIn(0f, 1f)
+        } else if (phase > glowEnd) {
+            (1f - (phase - glowEnd) / (1f - glowEnd)).coerceIn(0f, 1f) * 0.22f
+        } else 0f
+        val glowWave = sin(glowProgress * PI).toFloat().coerceAtLeast(0f)
         logoGlow.color = palette.brand
-        logoGlow.alpha = (24f + (wave + 1f) * 13f).toInt().coerceIn(18, 50)
-        canvas.drawCircle(logoCentre.toFloat(), cy, 19f * density, logoGlow)
+        logoGlow.strokeWidth = (1.4f + glowWave * 3.4f) * density
+        logoGlow.alpha = (glowWave * 220f).toInt().coerceIn(0, 220)
+        logoGlow.setShadowLayer(5f * density * glowWave, 0f, 0f, palette.brand)
+        if (glowWave > 0f) {
+            canvas.drawCircle(logoCentre.toFloat(), cy, (19f + glowWave * 5f) * density, logoGlow)
+            logoGlow.alpha = (glowWave * 125f).toInt()
+            canvas.drawCircle(logoCentre.toFloat(), cy, (23f + glowWave * 7f) * density, logoGlow)
+        }
+        logoGlow.clearShadowLayer()
         canvas.save()
-        canvas.scale(pulse, pulse, logoCentre.toFloat(), cy)
-        logo?.alpha = (242f + (wave + 1f) * 6.5f).toInt().coerceIn(242, 255)
+        canvas.rotate(rotation, logoCentre.toFloat(), cy)
+        logo?.alpha = 255
         logo?.setBounds(
             logoCentre - logoSize / 2, (cy - logoSize / 2).toInt(),
             logoCentre + logoSize / 2, (cy + logoSize / 2).toInt(),
@@ -109,6 +126,6 @@ class Toolbar(
 
     private companion object {
         const val VISIBLE_SLOTS = 5
-        const val LOGO_CYCLE_MS = 4_200L
+        const val LOGO_CYCLE_MS = 3_600L
     }
 }
