@@ -1561,13 +1561,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (verticalZoomGesture) {
                         val activeCamera = camera ?: return true
                         val zoom = activeCamera.cameraInfo.zoomState.value ?: return true
-                        // 向上滑放大、向下滑缩小；按窗口高度映射完整可用倍率，手感平滑且不跳级。
-                        val travel = (height * 0.72f).coerceAtLeast(1f)
-                        val fraction = (-dy / travel).coerceIn(-1f, 1f)
-                        val maxRatio = zoom.maxZoomRatio
-                        val minRatio = zoom.minZoomRatio
-                        val next = (downZoomRatio + fraction * (maxRatio - minRatio) * 0.55f)
-                            .coerceIn(minRatio, maxRatio)
+                        // 单指纵向变焦采用相对倍率曲线：手指上移即放大，下移即缩小。
+                        // 以按下时倍率为锚点，避免每帧累加误差；手指回到起点也会回到原倍率。
+                        val travel = (height * 0.55f).coerceAtLeast(1f)
+                        val scale = kotlin.math.exp((-dy / travel).toDouble()).toFloat()
+                        val next = (downZoomRatio * scale)
+                            .coerceIn(zoom.minZoomRatio, zoom.maxZoomRatio)
                         activeCamera.cameraControl.setZoomRatio(next)
                         return true
                     }
