@@ -236,3 +236,29 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_setWubi<'local>
 ) -> jstring {
     frame(env, handle, |session| session.set_wubi(on != 0, mixed != 0))
 }
+
+
+/// 用户停顿后提交待处理的知意选词打分任务。
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_requestRescoring(
+    _env: JNIEnv,
+    _this: JObject,
+    handle: jlong,
+) -> jboolean {
+    with_session(handle, Session::request_rescoring).unwrap_or(false) as jboolean
+}
+
+/// 取回后台打分结果；有新候选帧时返回 JSON，否则返回 null。
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_pollRescoring<'local>(
+    env: JNIEnv<'local>,
+    _this: JObject<'local>,
+    handle: jlong,
+) -> jstring {
+    let Some(frame) = with_session(handle, Session::poll_rescoring).flatten() else {
+        return std::ptr::null_mut();
+    };
+    env.new_string(frame.to_json())
+        .map(JString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
