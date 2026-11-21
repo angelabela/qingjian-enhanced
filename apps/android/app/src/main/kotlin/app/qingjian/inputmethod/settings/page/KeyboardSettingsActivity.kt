@@ -40,7 +40,7 @@ class KeyboardSettingsActivity : PageActivity() {
                     hapticRow(settings),
                     ui.toggle(R.string.key_sound_title, R.string.key_sound_note, settings.keySound) {
                         val editor = prefs.edit().putBoolean(Settings.KEY_KEY_SOUND, it)
-                        if (it) editor.putBoolean(Settings.KEY_HAPTIC, false)
+                        editor.putBoolean(Settings.KEY_HAPTIC, false)
                         editor.apply()
                         rebuild()
                     },
