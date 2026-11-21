@@ -35,7 +35,7 @@ class KeyboardSettingsActivity : PageActivity() {
                 getString(R.string.height_note) + "\n" + getString(R.string.fullscreen_note),
             ),
             ui.group(
-                R.string.section_keys,
+                getString(R.string.section_keys),
                 listOfNotNull(
                     hapticRow(settings),
                     ui.toggle(R.string.key_sound_title, R.string.key_sound_note, settings.keySound) {
@@ -71,7 +71,7 @@ class KeyboardSettingsActivity : PageActivity() {
                     },
                     arrangementPicker(settings),
                 ),
-                footer = R.string.arrangement_note,
+                footer = getString(R.string.arrangement_note),
             ),
             ui.group(
                 R.string.section_gestures,
