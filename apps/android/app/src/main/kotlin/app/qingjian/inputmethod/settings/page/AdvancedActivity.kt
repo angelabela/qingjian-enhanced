@@ -48,6 +48,7 @@ class AdvancedActivity : PageActivity() {
                 if (importingModel) R.string.zhiyi_importing else R.string.zhiyi_import,
                 if (zhiyiReady()) getString(R.string.zhiyi_ready) else null,
             ) { if (!importingModel) pickZhiyiFolder() },
+            ui.action("知意模型运行监控", "查看模型加载、推理耗时、成功与失败记录") { showZhiyiMonitor() },
             footer = R.string.zhiyi_note,
         ),
         // 原有的独立数据/设置备份恢复入口继续保留。
@@ -412,6 +413,53 @@ class AdvancedActivity : PageActivity() {
     private fun zhiyiReady(): Boolean = listOf(
         "model.safetensors", "config.json", "tokenizer.json", "unified_vocab.json",
     ).all { name -> File(zhiyiDirectory(), name).let { it.isFile && it.length() > 0 } }
+
+    /** 从引擎日志读取真实加载和异步重排事件；文件存在只代表已导入，不会被误报为已加载。 */
+    private fun showZhiyiMonitor() {
+        val lines = AppLog.logDir(this).listFiles()?.asSequence()
+            ?.filter { it.isFile && (it.name.endsWith(".log") || it.name.startsWith("ime.")) }
+            ?.sortedBy { it.lastModified() }
+            ?.flatMap { file -> runCatching { file.readLines(Charsets.UTF_8).asSequence() }.getOrElse { emptySequence() } }
+            ?.filter { it.contains("知意 Transformer") || it.contains("知意候选重排") }
+            ?.toList().orEmpty()
+        val lastLoad = lines.lastOrNull {
+            it.contains("知意 Transformer 模型已加载并预热") ||
+                it.contains("知意 Transformer 模型加载失败") ||
+                it.contains("未导入知意 Transformer 模型")
+        }
+        val loaded = lastLoad?.contains("模型已加载并预热") == true
+        val loadStatus = when {
+            loaded -> "已加载并预热"
+            lastLoad?.contains("模型加载失败") == true -> "加载失败"
+            lastLoad?.contains("未导入") == true -> "未导入模型"
+            zhiyiReady() -> "模型文件已导入，尚无加载成功记录"
+            else -> "未发现完整模型文件"
+        }
+        val completed = lines.filter { it.contains("知意候选重排完成") }
+        val failures = lines.filter {
+            it.contains("知意候选重排等待超时") || it.contains("知意 Transformer 模型加载失败")
+        }
+        val latestInference = completed.lastOrNull()
+        val elapsed = Regex("elapsed_ms=(\\d+)").find(latestInference.orEmpty())?.groupValues?.getOrNull(1)
+        val reordered = Regex("reordered=(true|false)").find(latestInference.orEmpty())?.groupValues?.getOrNull(1)
+        val latestError = failures.lastOrNull()?.substringAfter("WARN")?.trim()
+        val message = buildString {
+            appendLine("模型加载状态：$loadStatus")
+            appendLine("模型文件：${if (zhiyiReady()) "四个文件齐全" else "文件不完整"}")
+            appendLine("候选重排成功次数：${completed.size}")
+            appendLine("候选重排失败/超时次数：${failures.size}")
+            appendLine("最近推理耗时：${elapsed?.plus(" ms") ?: "暂无成功记录"}")
+            appendLine("最近候选顺序变化：${when (reordered) { "true" -> "已变化"; "false" -> "未变化（模型执行成功，但排序相同）"; else -> "暂无记录" }}")
+            appendLine("最近错误：${latestError ?: "无"}")
+            appendLine()
+            append("注：成功次数按实际收到 Rust 重排结果统计；模型加载状态按最新引擎日志判断。")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("知意 Transformer 运行监控")
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
 
     /** 选择包含四个模型文件的目录；后台流式复制，校验通过后再替换旧模型。 */
     private fun importZhiyiModel(treeUri: Uri) {
