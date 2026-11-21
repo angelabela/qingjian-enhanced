@@ -304,7 +304,19 @@ class CandidateBarView(
                 // 长按一触发 GestureDetector 就不再给拖动；按在拼音行上先停一停再拖也要跟
                 gestures.setIsLongpressEnabled(!onPreedit)
             }
-            gestures.onTouchEvent(event)
+            // 拼音光标拖动不再只依赖 GestureDetector 的 onScroll 阈值回调；
+            // 直接消费每一帧 ACTION_MOVE，避免悬浮层/父容器分发导致拖动时光标不更新。
+            if (onPreedit && event.actionMasked == MotionEvent.ACTION_MOVE) {
+                dragCaret(event.x)
+            }
+            val handled = gestures.onTouchEvent(event)
+            if (onPreedit && (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL)) {
+                onPreedit = false
+                dragCaret = -1
+                gestures.setIsLongpressEnabled(true)
+            }
+            handled || onPreedit
         }
     }
 
