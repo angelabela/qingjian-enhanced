@@ -4,7 +4,7 @@ use ::jni::JNIEnv;
 use ::jni::objects::{JObject, JString};
 use ::jni::sys::{jboolean, jint, jlong, jstring};
 
-use super::frame;
+use super::{frame, with_session};
 use crate::session::Session;
 
 #[unsafe(no_mangle)]
