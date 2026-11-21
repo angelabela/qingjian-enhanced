@@ -31,7 +31,7 @@ object Haptics {
 
     private fun vibrate(context: Context, hold: Boolean) {
         val prefs = Settings.preferences(context)
-        if (!prefs.getBoolean(Settings.KEY_HAPTIC, true)) return
+        if (prefs.getBoolean(Settings.KEY_KEY_SOUND, false) || !prefs.getBoolean(Settings.KEY_HAPTIC, true)) return
         val vibrator = vibrator(context)?.takeIf { it.hasVibrator() } ?: return
         val strength = HapticStrength.of(prefs.getString(Settings.KEY_HAPTIC_STRENGTH, null))
         val pattern = effect(vibrator, strength, hold)
