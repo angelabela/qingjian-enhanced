@@ -1029,7 +1029,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                             try {
                                                 val decoded = decodeWithZxing(proxy)
                                                 if (decoded != null) {
-                                                    releaseOnWorker = false
                                                     val (value, bounds) = decoded
                                                     ContextCompat.getMainExecutor(this@ScanOverlayService).execute {
                                                         try {
@@ -1041,6 +1040,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                                             if (shuttingDown) closeMlKitClients()
                                                         }
                                                     }
+                                                    releaseOnWorker = false
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.w(TAG, "ZXing fallback decode failed", error)
