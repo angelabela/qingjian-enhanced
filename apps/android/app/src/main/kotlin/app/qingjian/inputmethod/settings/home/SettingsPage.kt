@@ -22,7 +22,6 @@ import app.qingjian.inputmethod.settings.page.ClipboardSettingsActivity
 import app.qingjian.inputmethod.settings.page.ClipboardSyncActivity
 import app.qingjian.inputmethod.settings.page.CloudSettingsActivity
 import app.qingjian.inputmethod.settings.page.DictionariesActivity
-import app.qingjian.inputmethod.settings.page.TrigramModelActivity
 import app.qingjian.inputmethod.settings.page.InputSettingsActivity
 import app.qingjian.inputmethod.settings.page.KeyboardSettingsActivity
 import app.qingjian.inputmethod.settings.page.LocalAiSettingsActivity
@@ -95,7 +94,7 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                     open(AppearanceActivity::class.java)
                 },
                 ui.entry(Icon.BOOK, R.string.page_dictionaries, null) { open(DictionariesActivity::class.java) },
-                ui.entry(Icon.TUNE, "三元语言模型", "导入、校验与启用知意 .ngram 模型") { open(TrigramModelActivity::class.java) },
+                ui.entry(Icon.TUNE, "知意 Transformer 模型", "导入模型文件夹并启用本地候选重排") { open(AdvancedActivity::class.java) },
             ))
             addView(learning(settings))
             addView(ui.group(
