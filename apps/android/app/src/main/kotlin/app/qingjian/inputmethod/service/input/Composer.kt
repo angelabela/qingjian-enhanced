@@ -314,8 +314,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
         // 已有上下文候选时，空格应选择首候选；不要先 flush 混合编码缓冲区，
         // 否则会把 structuredCompletions 清空，导致空格无法选中它。
-        val spaceSelectsCompletion = key is Key.Space && !composing && completing && candidates.isNotEmpty()
-        if (!spaceSelectsCompletion) trackStructuredTokenInput(key)
+        val preserveStructuredCompletion = key is Key.Space && !composing && completing &&
+            candidates.isNotEmpty() && structuredCompletions.isNotEmpty()
+        if (!preserveStructuredCompletion) trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
         if (groupedEdit) editHistory.beginGroup()
         try {
