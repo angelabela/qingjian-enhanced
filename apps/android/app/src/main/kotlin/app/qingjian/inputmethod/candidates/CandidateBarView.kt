@@ -199,14 +199,17 @@ class CandidateBarView(
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
     fun show(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
         if (lastShownPreedit == preedit && lastShownCandidates == candidates) return
+        val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
+        val previousScroll = scrollX
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
         closePopup()
         if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
         strip.show(preedit, candidates, animateCandidates)
         scroller.forceFinished(true)
-        scrollTo(0, 0)
+        if (!preserveScroll) scrollTo(0, 0)
         repaint()
+        if (preserveScroll) scrollTo(previousScroll.coerceIn(0, maxScroll()), 0)
     }
 
     /** 在工具栏的位置放一句提示 [message]，点它执行 [action]（打开对应的设置页）。 */
