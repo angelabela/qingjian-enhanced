@@ -94,7 +94,6 @@ class SettingsPage(private val activity: Activity, private val ui: SettingsWidge
                     open(AppearanceActivity::class.java)
                 },
                 ui.entry(Icon.BOOK, R.string.page_dictionaries, null) { open(DictionariesActivity::class.java) },
-                ui.entry(Icon.TUNE, "知意 Transformer 模型", "导入模型文件夹并启用本地候选重排") { open(AdvancedActivity::class.java) },
             ))
             addView(learning(settings))
             addView(ui.group(
