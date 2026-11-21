@@ -7,7 +7,7 @@ import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.settings.Settings
 
 /**
- * 按键声音。系统模式沿用 Android 的系统按键音开关与音量；
+ * 按键声音。系统模式优先沿用 Android 的系统按键音与音量；系统按键音关闭时回退到短音。
  * 预设模式使用短促合成音，不加载音频文件、不创建每次点击的播放器。
  */
 object KeySounds {
