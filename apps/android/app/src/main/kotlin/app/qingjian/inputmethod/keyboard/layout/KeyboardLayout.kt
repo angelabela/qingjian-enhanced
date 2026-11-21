@@ -152,10 +152,10 @@ object KeyboardLayout {
     private const val ZHUYIN_BOTTOM_WIDTH = 0.85f
 
     /** 数字键盘左列的符号，可以上下拖（与九宫格拼音列同一个控件）。 */
-    val NUMBER_SIDE = listOf("%", "/", "-", "+", "=", "*", ",", ":", "(", ")", "#", "\$")
+    val NUMBER_SIDE = listOf("%", "/", "-", "+", "=", "*", ",", ":", "(", ")", "#", "\$", "@")
 
     /**
-     * 数字键盘：左列符号，中间 3×3 数字，右列 删除 / . / @；底排 符 / 返回 / 0 / 空格 / 回车，
+     * 数字键盘：左列符号（含 @），中间 3×3 数字，右列 删除 / . / Tab；底排 符 / 返回 / 0 / 空格 / 回车，
      * 与上面各列对齐，所以复用九宫格的列宽。
      */
     fun numbers(): List<List<Key>> {
@@ -163,7 +163,7 @@ object KeyboardLayout {
         return listOf(
             digits("123") + Key.Backspace,
             digits("456") + Key.Text(".", SIDE_WIDTH),
-            digits("789") + Key.Text("@", SIDE_WIDTH),
+            digits("789") + Key.Tab,
             listOf(
                 Key.Symbols("符", SIDE_WIDTH),
                 Key.Letters("返回", NINE_KEY_WIDTH),

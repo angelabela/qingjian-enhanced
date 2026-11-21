@@ -436,6 +436,18 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.sendKey(KeyEvent.KEYCODE_TAB)
             }
 
+            Key.TabPrevious -> {
+                if (composing) settle()
+                val connection = host.connection
+                if (connection == null) {
+                    host.sendKey(KeyEvent.KEYCODE_TAB)
+                } else {
+                    val now = SystemClock.uptimeMillis()
+                    connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
+                    connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
+                }
+            }
+
             is Key.Symbols -> {
                 if (composing) selectFirst()
                 host.openSymbolPanel()

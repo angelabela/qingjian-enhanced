@@ -524,6 +524,11 @@ class KeyboardView(
     /** 键面提示显示实际生效的动作；默认手势也显示，显式选择 NONE 则隐藏。 */
     private fun gestureHintLabel(key: Key, upward: Boolean): String? {
         val configured = gestureAction(key, upward)
+        // 内建手势也要在键帽上常驻提示：逗号上滑句号、Tab 上滑回到上一格。
+        if (configured == Settings.GestureAction.DEFAULT && upward) {
+            if (key == Key.Tab) return "上一格"
+            if (key is Key.Text && settings.flickSymbols && key.flick == ".") return "句号"
+        }
         val action = if (configured != Settings.GestureAction.DEFAULT) configured else when {
             key == Key.Backspace && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
             key == Key.Backspace && settings.flickClear && !upward -> Settings.GestureAction.RESTORE_CLEAR
@@ -549,7 +554,7 @@ class KeyboardView(
         val down = gestureAction(key, upward = false)
         // NONE 是显式禁用，但仍要接管该方向，防止落回按键原生动作。
         val custom = up != Settings.GestureAction.DEFAULT || down != Settings.GestureAction.DEFAULT
-        return custom || (key as? Key.Letter)?.flickShift == true ||
+        return key == Key.Tab || custom || (key as? Key.Letter)?.flickShift == true ||
             (settings.flickSymbols && key.flick != null) ||
             (settings.flickClear && key == Key.Backspace)
     }
@@ -640,6 +645,7 @@ class KeyboardView(
         when {
             key == Key.Backspace && !upward -> listener.onGestureAction(Settings.GestureAction.RESTORE_CLEAR)
             key == Key.Backspace -> listener.onClearAll()
+            key == Key.Tab && upward -> listener.onKey(Key.TabPrevious)
             upward && (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
             upward -> key.flick?.let(listener::onKeyChoice)
         }
