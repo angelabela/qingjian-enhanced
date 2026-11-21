@@ -24,36 +24,40 @@ class TrigramModelActivity : PageActivity() {
         return listOf(
             spaced(ui.group(
                 "知意三元语言模型",
-                ui.row("模型文件", if (exists) "已导入 · ${modelFile.length() / (1024 * 1024)} MB" else "尚未导入"),
-                ui.row("运行状态", if (enabled) "已启用（重新装配引擎后生效）" else "未启用"),
-                ui.row("模型位置", "应用私有目录 / models/zhiyi-ngram/zh.ngram"),
+                listOf(
+                    ui.row("模型文件", if (exists) "已导入 · ${modelFile.length() / (1024 * 1024)} MB" else "尚未导入"),
+                    ui.row("运行状态", if (enabled) "已启用（重新装配引擎后生效）" else "未启用"),
+                    ui.row("模型位置", "应用私有目录 / models/zhiyi-ngram/zh.ngram"),
+                ),
                 footer = "模型由用户自行选择导入，不会打包进 APK。启用后用于整句词图与候选上下文重排；模型缺失、格式错误或加载失败时自动回退原有二元模型。",
             ), 12),
             spaced(ui.group(
                 "模型管理",
-                ui.link(if (busy) "正在导入…" else if (exists) "重新导入模型文件" else "选择 .ngram 模型文件", null) {
-                    if (!busy) pickModel()
-                },
-                ui.toggle("启用三元模型", "关闭后仅使用原有二元语言模型", enabled, null) { on ->
-                    if (!exists) {
-                        Toast.makeText(this, "请先导入模型文件", Toast.LENGTH_SHORT).show()
-                        rebuild()
-                    } else {
-                        if (on) enabledFile.writeText("enabled") else enabledFile.delete()
-                        Engine.reloadAll()
-                        rebuild()
-                        Toast.makeText(this, if (on) "已启用，正在重新加载模型" else "已停用，正在回退二元模型", Toast.LENGTH_LONG).show()
-                    }
-                },
-                ui.link("删除已导入模型", null) {
-                    if (exists && !busy) {
-                        modelFile.delete()
-                        enabledFile.delete()
-                        Engine.reloadAll()
-                        rebuild()
-                        Toast.makeText(this, "模型已删除，已回退二元模型", Toast.LENGTH_SHORT).show()
-                    }
-                },
+                listOf(
+                    ui.link(if (busy) "正在导入…" else if (exists) "重新导入模型文件" else "选择 .ngram 模型文件", null) {
+                        if (!busy) pickModel()
+                    },
+                    ui.toggle("启用三元模型", "关闭后仅使用原有二元语言模型", enabled, null) { on ->
+                        if (!exists) {
+                            Toast.makeText(this, "请先导入模型文件", Toast.LENGTH_SHORT).show()
+                            rebuild()
+                        } else {
+                            if (on) enabledFile.writeText("enabled") else enabledFile.delete()
+                            Engine.reloadAll()
+                            rebuild()
+                            Toast.makeText(this, if (on) "已启用，正在重新加载模型" else "已停用，正在回退二元模型", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    ui.link("删除已导入模型", null) {
+                        if (exists && !busy) {
+                            modelFile.delete()
+                            enabledFile.delete()
+                            Engine.reloadAll()
+                            rebuild()
+                            Toast.makeText(this, "模型已删除，已回退二元模型", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ),
             ), 12),
         )
     }
