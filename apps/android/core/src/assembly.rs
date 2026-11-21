@@ -1,4 +1,4 @@
-//! 装配 Engine：装的东西与 Linux Server 的 `assembly` 一致；云端由会话另接（`Session::set_cloud`），不带神经重排。
+//! 装配 Engine：基础组件与 Linux Server 的 `assembly` 一致；Android 额外挂载知意选词重排，云端由会话另接。
 //!
 //! `data_dir` 是壳从 APK assets 解出来的随包数据目录（`.qj` 要 mmap，必须是真文件），
 //! `user_dir` 是应用私有目录下的学习数据目录。
