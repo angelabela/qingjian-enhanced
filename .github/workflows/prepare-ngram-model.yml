@@ -41,6 +41,9 @@ jobs:
                          if pathlib.PurePosixPath(m.name).name == "zh.ngram"
                          and m.isfile()]
               if len(matches) != 1:
+                  print("Archive members:")
+                  for m in tf.getmembers():
+                      print("{} size={} type={}".format(m.name, m.size, "file" if m.isfile() else "other"))
                   raise SystemExit(f"Expected exactly one regular zh.ngram, found {len(matches)}")
               src = tf.extractfile(matches[0])
               if src is None:
