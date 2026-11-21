@@ -31,6 +31,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val glassFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glassEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val glassHighlight = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val glassBloom = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x263D9BFF
+        maskFilter = android.graphics.BlurMaskFilter(5f * density, android.graphics.BlurMaskFilter.Blur.NORMAL)
+    }
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
     }
@@ -292,11 +296,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val topHighlight = RectF(rect.left + 3f * density, rect.top + 1.5f * density,
             rect.right - 3f * density, rect.top + 9f * density)
         canvas.drawArc(topHighlight, 190f, 160f, false, glassHighlight)
-        val lowerGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x263D9BFF
-            maskFilter = android.graphics.BlurMaskFilter(5f * density, android.graphics.BlurMaskFilter.Blur.NORMAL)
-        }
-        canvas.drawRoundRect(rect, radius, radius, lowerGlow)
+        canvas.drawRoundRect(rect, radius, radius, glassBloom)
     }
 
     /** 点在拼音行上（视图坐标，拼音行不随候选滚动）：光标该落在第几个字之后；不在拼音行上为 -1。 */
