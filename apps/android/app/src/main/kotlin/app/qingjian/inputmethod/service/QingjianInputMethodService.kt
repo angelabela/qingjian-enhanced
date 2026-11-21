@@ -845,6 +845,12 @@ class QingjianInputMethodService :
     override fun performEditorAction(): Boolean = editor == null && sendDefaultEditorAction(true)
 
     override fun showComposition(preedit: String, candidates: List<Candidate>) {
+        // 引擎在同一轮输入中可能重复发出完全相同的快照；不重复 render/JNI 绘制，
+        // 避免候选条二次闪现。Candidate 是 data class，比较包含候选文字、云端标记及释义。
+        if (shownPreedit == preedit && shownCandidates == candidates) {
+            AppLog.debug("candidate render skipped: identical snapshot size=${candidates.size}")
+            return
+        }
         candidateRerankSequence++
         candidateRerankRunnable?.let(candidateRerankHandler::removeCallbacks)
         candidateRerankRunnable = null
