@@ -214,7 +214,7 @@
     <string name="haptic_standard">标准</string>
     <string name="haptic_strong">重</string>
     <string name="key_sound_title">按键声音</string>
-    <string name="key_sound_note">独立于震动设置；可关闭声音，或选择系统按键音与预设短音</string>
+    <string name="key_sound_note">按键声音与震动二选一；可选择系统按键音或预设短音</string>
     <string name="key_sound_style_title">声音类型</string>
     <string name="key_text_size_title">键面字号</string>
     <string name="key_skin_title">按键主题</string>
