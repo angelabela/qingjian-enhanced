@@ -77,6 +77,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
     private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface; isFakeBoldText = fontWeight.weight >= 600 }
     private val fallbackRects = ArrayList<RectF>()
+    private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = markColor
+        strokeWidth = 1.6f * density
+        strokeCap = Paint.Cap.ROUND
+    }
     private val src = Rect()
     private val dst = Rect()
 
@@ -260,6 +265,21 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 拖动中：只按横坐标找最近的缝，手指上下偏出拼音行也照样跟。 */
     fun caretNear(x: Float): Int = image?.caretNear(x) ?: -1
+
+    /** 在拼音行绘制明确的插入光标，让用户知道下一次输入/退格作用于哪个字母位置。 */
+    fun drawPreeditCaret(canvas: Canvas, index: Int, leftInset: Float) {
+        val frame = image ?: return
+        val x = frame.preeditEdges.getOrNull(index) ?: return
+        if (frame.preeditBottom <= frame.preeditTop) return
+        val half = 1f * density
+        val top = (frame.preeditTop - 2f * density).coerceAtLeast(0f)
+        val bottom = (frame.preeditBottom + 2f * density).coerceAtMost(barHeight)
+        caretPaint.alpha = 230
+        canvas.drawRoundRect(
+            RectF(leftInset + x - half, top, leftInset + x + half, bottom),
+            half, half, caretPaint,
+        )
+    }
 
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int, selectedIndex: Int = -1) {
