@@ -48,7 +48,7 @@ class AdvancedActivity : PageActivity() {
                 if (importingModel) R.string.zhiyi_importing else R.string.zhiyi_import,
                 if (zhiyiReady()) getString(R.string.zhiyi_ready) else null,
             ) { if (!importingModel) pickZhiyiFolder() },
-            ui.action(R.string.zhiyi_monitor_title, R.string.zhiyi_monitor_summary) { showZhiyiMonitor() },
+            ui.action(R.string.zhiyi_monitor_title, getString(R.string.zhiyi_monitor_summary)) { showZhiyiMonitor() },
             footer = R.string.zhiyi_note,
         ),
         // 原有的独立数据/设置备份恢复入口继续保留。
