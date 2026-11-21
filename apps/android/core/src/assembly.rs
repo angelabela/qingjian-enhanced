@@ -12,6 +12,7 @@ use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
 use qingjian_lm::{BigramModel, MixedModel, TrigramModel, TRIGRAM_WEIGHT};
 use qingjian_neural::{CharScorer, P2cScorer};
+use qingjian_neural::zhiyi::ChoiceScorer;
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
@@ -151,6 +152,27 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
             Err(error) => tracing::warn!(%error, "本地整句模型加载失败，保留词图 + bigram"),
         }
     }
+    // 知意 Transformer 选词模型单独导入；与现有三元 n-gram、含章整句模型并行保留。
+    // 模型缺失或加载失败时不影响原有候选与输入流程。
+    let zhiyi_dir = user_dir.join("models/zhiyi");
+    if zhiyi_dir.is_dir() {
+        let started = Instant::now();
+        match ChoiceScorer::load(&zhiyi_dir).and_then(|scorer| {
+            // 首次前向预热放在引擎后台装配线程，避免把初始化成本带入按键回调。
+            let typed = scorer.letter_units("ni");
+            scorer.score("", &typed, &["ni", "nin"])?;
+            Ok(scorer)
+        }) {
+            Ok(scorer) => {
+                tracing::info!(path = %zhiyi_dir.display(), load_ms = started.elapsed().as_millis(), "知意 Transformer 模型已加载并预热");
+                engine.set_choice_model(Some(Arc::new(scorer)));
+            }
+            Err(error) => tracing::warn!(%error, path = %zhiyi_dir.display(), "知意 Transformer 模型加载失败，沿用原候选排序"),
+        }
+    } else {
+        tracing::info!("未导入知意 Transformer 模型，沿用原候选排序");
+    }
+
     load_phrases(&mut engine, user_dir);
     Ok(engine)
 }
