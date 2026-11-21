@@ -1027,7 +1027,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                         zxingFallbackExecutor.execute {
                                             try {
                                                 decodeWithZxing(proxy)?.let { (value, bounds) ->
-                                                    mainHandler.post { handleZxingFallback(proxy, value, bounds) }
+                                                    ContextCompat.getMainExecutor(this@ScanOverlayService).execute { handleZxingFallback(proxy, value, bounds) }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.w(TAG, "ZXing fallback decode failed", error)
@@ -1142,10 +1142,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     val result = reader.decodeWithState(BinaryBitmap(binarizer(variant)))
                     val points = result.resultPoints
                     if (points.size >= 2) {
-                        val left = points.minOf(ResultPoint::getX)
-                        val top = points.minOf(ResultPoint::getY)
-                        val right = points.maxOf(ResultPoint::getX)
-                        val bottom = points.maxOf(ResultPoint::getY)
+                        val left = points.minOf { it.x }
+                        val top = points.minOf { it.y }
+                        val right = points.maxOf { it.x }
+                        val bottom = points.maxOf { it.y }
                         if (right > left && bottom > top) return result.text.trim() to RectF(left, top, right, bottom)
                     }
                     if (result.text.isNotBlank()) return result.text.trim() to RectF(0f, 0f, width.toFloat(), height.toFloat())
