@@ -240,9 +240,9 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_setWubi<'local>
 
 /// 用户停顿后提交待处理的知意选词打分任务。
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_requestRescoring(
-    _env: JNIEnv,
-    _this: JObject,
+pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_requestRescoring<'local>(
+    _env: JNIEnv<'local>,
+    _this: JObject<'local>,
     handle: jlong,
 ) -> jboolean {
     with_session(handle, Session::request_rescoring).unwrap_or(false) as jboolean
