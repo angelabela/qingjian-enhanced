@@ -237,7 +237,6 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_setWubi<'local>
     frame(env, handle, |session| session.set_wubi(on != 0, mixed != 0))
 }
 
-
 /// 用户停顿后提交待处理的知意选词打分任务。
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_requestRescoring<'local>(
