@@ -117,6 +117,7 @@ class CandidateBarView(
         strokeWidth = 1.6f * density
     }
     private var firstCandidatePulseStartedAt = 0L
+    private var highlightedFirstCandidate: String? = null
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
@@ -214,10 +215,14 @@ class CandidateBarView(
         val preeditChanged = lastShownPreedit != preedit
         val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
         val previousScroll = scrollX
-        if (preedit.isNotEmpty() && candidates.isNotEmpty() && preeditChanged && animateCandidates) {
-            firstCandidatePulseStartedAt = android.os.SystemClock.uptimeMillis()
-        } else if (preedit.isEmpty() || candidates.isEmpty()) {
+        val nextFirstCandidate = candidates.firstOrNull()?.text
+        if (preedit.isEmpty() || nextFirstCandidate == null) {
             firstCandidatePulseStartedAt = 0L
+            highlightedFirstCandidate = null
+        } else if (nextFirstCandidate != highlightedFirstCandidate) {
+            // 特效跟随首候选词本身：候选重排/新一轮首选变化时才重新开始，不再 1.5 秒后自动熄灭。
+            highlightedFirstCandidate = nextFirstCandidate
+            firstCandidatePulseStartedAt = android.os.SystemClock.uptimeMillis()
         }
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
@@ -308,10 +313,6 @@ class CandidateBarView(
         val startedAt = firstCandidatePulseStartedAt
         if (startedAt <= 0L || lastShownPreedit.isNullOrEmpty() || strip.candidates.isEmpty()) return
         val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
-        if (elapsed >= FIRST_CANDIDATE_PULSE_MS) {
-            firstCandidatePulseStartedAt = 0L
-            return
-        }
         val rect = strip.wordRect(0) ?: return
         rect.offset(stripWidth * 0.05f - scrollX, 0f)
         if (rect.right <= 0f || rect.left >= stripWidth) return
@@ -320,7 +321,7 @@ class CandidateBarView(
         val breath = (0.5f + 0.5f * sin(phase * (Math.PI * 2.0).toFloat()))
         val save = canvas.save()
         canvas.clipRect(0f, 0f, stripWidth.toFloat(), height.toFloat())
-        val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
+        val glow = android.graphics.RectF(rect).apply { inset(-2.5f * density, -2f * density) }
         firstCandidateGlow.alpha = (12f + breath * 24f).toInt()
         canvas.drawRoundRect(glow, 9f * density, 9f * density, firstCandidateGlow)
         firstCandidateRing.alpha = (90f + breath * 110f).toInt()
@@ -491,7 +492,6 @@ class CandidateBarView(
 
     private companion object {
         const val NOTICE_MS = 5000L
-        const val FIRST_CANDIDATE_PULSE_MS = 1500L
         const val FIRST_CANDIDATE_PULSE_PERIOD_MS = 620L
     }
 }
