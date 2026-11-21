@@ -12,6 +12,7 @@ import app.qingjian.inputmethod.settings.Settings
  */
 object KeySounds {
     @Volatile private var tones: ToneGenerator? = null
+    @Volatile private var toneVolume: Int = -1
 
     fun play(context: Context, key: Key) {
         val prefs = Settings.preferences(context)
@@ -37,11 +38,16 @@ object KeySounds {
 
     private fun playTone(tone: Int, durationMs: Int, volume: Int) {
         runCatching {
-            val generator = tones ?: synchronized(this) {
-                tones ?: ToneGenerator(AudioManager.STREAM_SYSTEM, 70).also { tones = it }
+            synchronized(this) {
+                var generator = tones
+                if (generator == null || toneVolume != volume) {
+                    generator?.release()
+                    generator = ToneGenerator(AudioManager.STREAM_SYSTEM, volume)
+                    tones = generator
+                    toneVolume = volume
+                }
+                generator.startTone(tone, durationMs)
             }
-            generator.setVolume(volume)
-            generator.startTone(tone, durationMs)
         }
     }
 }
