@@ -102,6 +102,7 @@ impl BigramModel {
             index,
             offsets,
             successors,
+            prefix_order: Vec::new(),
             total: 0.0,
             start: None,
             metadata: Some(container.metadata().clone()),
@@ -193,11 +194,13 @@ impl BigramModel {
             index: Table::Owned(index),
             offsets: Table::Owned(offsets),
             successors: Table::Owned(successors),
+            prefix_order: Vec::new(),
             total: 0.0,
             start: None,
             metadata: None,
         };
         model.finish();
+        model.build_prefix_order();
         tracing::debug!(
             words = model.word_count(),
             bigrams = model.bigram_count(),
