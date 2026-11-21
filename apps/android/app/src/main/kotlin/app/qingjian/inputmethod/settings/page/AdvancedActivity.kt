@@ -9,6 +9,7 @@ import android.widget.Toast
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.Engine
+import java.io.File
 import java.time.LocalDate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -26,6 +27,9 @@ class AdvancedActivity : PageActivity() {
     /** 正在写压缩包（后台线程），行上显示「导出中…」。 */
     private var exporting = false
 
+    /** 正在导入知意三元模型。 */
+    private var importingModel = false
+
     override fun content(): List<View> = listOf(
         ui.group(
             null,
@@ -33,6 +37,14 @@ class AdvancedActivity : PageActivity() {
                 if (!exporting) pickTarget()
             },
             footer = R.string.export_note,
+        ),
+        ui.group(
+            R.string.ngram_section,
+            ui.action(
+                if (importingModel) R.string.ngram_importing else R.string.ngram_import,
+                if (ngramFile().isFile) getString(R.string.ngram_ready) else null,
+            ) { if (!importingModel) pickNgram() },
+            footer = R.string.ngram_note,
         ),
         ui.group(
             null,
@@ -63,6 +75,10 @@ class AdvancedActivity : PageActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         val target = data?.data
         if (resultCode != RESULT_OK || target == null) return
+        if (requestCode == PICK_NGRAM) {
+            importNgram(target)
+            return
+        }
         if (requestCode == PACK_LOGS) {
             packLogs(target)
             return
@@ -80,6 +96,58 @@ class AdvancedActivity : PageActivity() {
                 exporting = false
                 rebuild()
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun pickNgram() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+        startActivityForResult(intent, PICK_NGRAM)
+    }
+
+    private fun ngramFile() = File(Engine.userDir(this), "downloads/models/zhiyi-ngram/zh.ngram")
+
+    /** 在后台复制并检查文件头；成功后回主线程重装输入引擎。 */
+    private fun importNgram(uri: Uri) {
+        importingModel = true
+        rebuild()
+        thread(name = "qingjian-ngram-import") {
+            val result = runCatching {
+                val target = ngramFile()
+                val directory = target.parentFile ?: error("模型目录不可用")
+                if (!directory.exists() && !directory.mkdirs()) error("无法创建模型目录")
+                val temporary = File(directory, "zh.ngram.importing")
+                val input = contentResolver.openInputStream(uri) ?: error("无法读取所选文件")
+                input.use { source -> temporary.outputStream().use { output -> source.copyTo(output) } }
+                val valid = temporary.length() >= 24 && temporary.inputStream().use { stream ->
+                    val magic = ByteArray(8)
+                    stream.read(magic) == magic.size && magic.contentEquals("ZYNGRAM1".toByteArray(Charsets.US_ASCII))
+                }
+                if (!valid) {
+                    temporary.delete()
+                    error(getString(R.string.ngram_import_invalid))
+                }
+                if (target.exists() && !target.delete()) {
+                    temporary.delete()
+                    error("无法替换旧模型")
+                }
+                if (!temporary.renameTo(target)) {
+                    temporary.delete()
+                    error("无法保存模型文件")
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                importingModel = false
+                if (result.isSuccess) {
+                    Engine.reloadAll()
+                    Toast.makeText(this, R.string.ngram_import_success, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, result.exceptionOrNull()?.message ?: getString(R.string.ngram_import_failed), Toast.LENGTH_LONG).show()
+                }
+                rebuild()
             }
         }
     }
@@ -185,5 +253,6 @@ class AdvancedActivity : PageActivity() {
     private companion object {
         const val CREATE_ZIP = 1
         const val PACK_LOGS = 2
+        const val PICK_NGRAM = 3
     }
 }
