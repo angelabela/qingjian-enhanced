@@ -431,6 +431,14 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         /** 导出前把开着的引擎里还没落盘的学习数据写下（组句一并丢掉，导出时用户在 App 里）。主线程调。 */
         fun flushAll() = live.forEach(Engine::reset)
 
+        /** 用户导入或启停三元模型后重装所有活跃引擎；调用方必须在主线程。 */
+        fun reloadAll() {
+            live.toList().forEach { engine ->
+                engine.unload()
+                engine.load()
+            }
+        }
+
         /**
          * 清空学习数据，返回删掉的文件数（-1 是出错）。引擎内存里的学习数据下次落盘会把删掉的写回去，
          * 所以先落盘卸下开着的引擎、再删、再重新装配（装好之前按键原样上屏）。主线程调。
