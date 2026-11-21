@@ -526,8 +526,8 @@ class KeyboardView(
         val configured = gestureAction(key, upward)
         // 内建手势也要在键帽上常驻提示：逗号上滑句号、Tab 上滑回到上一格。
         if (configured == Settings.GestureAction.DEFAULT && upward) {
-            if (key == Key.Tab) return "上一格"
-            if (key is Key.Text && settings.flickSymbols && key.flick == ".") return "句号"
+            if (key == Key.Tab || key == Key.TabWide) return "上一格"
+            if (key is Key.Text && settings.flickSymbols && key.flick == ".") return if (chinese) "。" else "."
         }
         val action = if (configured != Settings.GestureAction.DEFAULT) configured else when {
             key == Key.Backspace && settings.flickClear && upward -> Settings.GestureAction.CLEAR_ALL
@@ -554,7 +554,7 @@ class KeyboardView(
         val down = gestureAction(key, upward = false)
         // NONE 是显式禁用，但仍要接管该方向，防止落回按键原生动作。
         val custom = up != Settings.GestureAction.DEFAULT || down != Settings.GestureAction.DEFAULT
-        return key == Key.Tab || custom || (key as? Key.Letter)?.flickShift == true ||
+        return key == Key.Tab || key == Key.TabWide || custom || (key as? Key.Letter)?.flickShift == true ||
             (settings.flickSymbols && key.flick != null) ||
             (settings.flickClear && key == Key.Backspace)
     }
@@ -645,7 +645,7 @@ class KeyboardView(
         when {
             key == Key.Backspace && !upward -> listener.onGestureAction(Settings.GestureAction.RESTORE_CLEAR)
             key == Key.Backspace -> listener.onClearAll()
-            key == Key.Tab && upward -> listener.onKey(Key.TabPrevious)
+            (key == Key.Tab || key == Key.TabWide) && upward -> listener.onKey(Key.TabPrevious)
             upward && (key as? Key.Letter)?.flickShift == true -> listener.onKey(Key.Shift)
             upward -> key.flick?.let(listener::onKeyChoice)
         }

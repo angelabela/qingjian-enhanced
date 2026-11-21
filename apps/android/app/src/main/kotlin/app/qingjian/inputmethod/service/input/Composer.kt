@@ -51,6 +51,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         /** 执行输入框的缺省动作（搜索、发送、下一项）；没有缺省动作返回 false。 */
         fun performEditorAction(): Boolean
 
+        /** 优先调用宿主的上一项编辑动作；宿主不支持时再发 Shift+Tab。 */
+        fun performPreviousEditorAction(): Boolean
+
         fun showComposition(preedit: String, candidates: List<Candidate>)
 
         /** 键位表变了（中英、符号页、九宫格）。 */
@@ -247,7 +250,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                     flushStructuredToken()
                 }
             }
-            is Key.Space, is Key.Enter, Key.Tab, Key.TabPrevious -> flushStructuredToken()
+            is Key.Space, is Key.Enter, Key.Tab, Key.TabWide, Key.TabPrevious -> flushStructuredToken()
             Key.Backspace -> if (structuredTokenBuffer.isNotEmpty()) {
                 structuredTokenBuffer.deleteCharAt(structuredTokenBuffer.length - 1)
             }
@@ -431,21 +434,14 @@ class Composer(private val engine: Engine, private val host: Host) {
                 !host.performEditorAction() -> host.sendKey(KeyEvent.KEYCODE_ENTER)
             }
 
-            Key.Tab -> {
+            Key.Tab, Key.TabWide -> {
                 if (composing) settle()
                 host.sendKey(KeyEvent.KEYCODE_TAB)
             }
 
             Key.TabPrevious -> {
                 if (composing) settle()
-                val connection = host.connection
-                if (connection == null) {
-                    host.sendKey(KeyEvent.KEYCODE_TAB)
-                } else {
-                    val now = SystemClock.uptimeMillis()
-                    connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
-                    connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
-                }
+                host.performPreviousEditorAction()
             }
 
             is Key.Symbols -> {
@@ -471,7 +467,7 @@ class Composer(private val engine: Engine, private val host: Host) {
                 host.onLanguageChanged()
             }
         }
-        if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab || key == Key.TabPrevious) closeUndoGroup()
+        if (key is Key.Space || key is Key.Text || key is Key.Enter || key == Key.Tab || key == Key.TabWide || key == Key.TabPrevious) closeUndoGroup()
         if (!composing && key != Key.Backspace && key != Key.Clear) refreshCompletions()
         } finally {
             if (groupedEdit) editHistory.endGroup()

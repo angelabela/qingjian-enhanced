@@ -67,6 +67,9 @@ sealed class Key(val label: String, val weight: Float = 1f) {
     /** 向编辑器发送真实 Tab 键，用于表格等输入框跳到下一格。 */
     data object Tab : Key("Tab", 1f)
 
+    /** 数字键盘右列 Tab：宽度与上方删除键、句点键一致。 */
+    data object TabWide : Key("Tab", KeyboardLayout.SIDE_WIDTH)
+
     /** Tab 键上滑：发送 Shift+Tab，跳回表格或表单的上一格。 */
     data object TabPrevious : Key("上一格", 1f)
 
@@ -98,7 +101,7 @@ sealed class Key(val label: String, val weight: Float = 1f) {
     val functional: Boolean
         get() = this is Shift || this is Backspace || this is Symbols || this is SymbolPage ||
             this is NumberPage || this is Letters || this is Language || this is Clear ||
-            (this is Digit && digit == '1') || this == Tab || this == TabPrevious
+            (this is Digit && digit == '1') || this == Tab || this == TabWide || this == TabPrevious
 
     /** 按下时弹气泡的键。 */
     val poppable: Boolean get() = this is Letter || this is Zhuyin || (this is Text && weight == 1f && choices.isEmpty())

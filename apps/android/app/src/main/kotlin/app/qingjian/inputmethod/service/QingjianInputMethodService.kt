@@ -844,6 +844,17 @@ class QingjianInputMethodService :
 
     override fun performEditorAction(): Boolean = editor == null && sendDefaultEditorAction(true)
 
+    override fun performPreviousEditorAction(): Boolean {
+        val target = connection ?: return false
+        if (runCatching { target.performEditorAction(EditorInfo.IME_ACTION_PREVIOUS) }.getOrDefault(false)) {
+            return true
+        }
+        val downTime = android.os.SystemClock.uptimeMillis()
+        target.sendKeyEvent(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
+        target.sendKeyEvent(KeyEvent(downTime, android.os.SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB, 0, KeyEvent.META_SHIFT_ON))
+        return true
+    }
+
     override fun showComposition(preedit: String, candidates: List<Candidate>) {
         // 引擎在同一轮输入中可能重复发出完全相同的快照；不重复 render/JNI 绘制，
         // 避免候选条二次闪现。Candidate 是 data class，比较包含候选文字、云端标记及释义。

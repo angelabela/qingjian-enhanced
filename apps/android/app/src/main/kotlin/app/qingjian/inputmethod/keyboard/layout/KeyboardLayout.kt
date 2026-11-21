@@ -163,7 +163,7 @@ object KeyboardLayout {
         return listOf(
             digits("123") + Key.Backspace,
             digits("456") + Key.Text(".", SIDE_WIDTH),
-            digits("789") + Key.Tab,
+            digits("789") + Key.TabWide,
             listOf(
                 Key.Symbols("符", SIDE_WIDTH),
                 Key.Letters("返回", NINE_KEY_WIDTH),

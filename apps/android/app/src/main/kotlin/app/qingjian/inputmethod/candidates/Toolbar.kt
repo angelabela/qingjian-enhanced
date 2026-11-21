@@ -11,6 +11,8 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.settings.ToolbarTool
 import app.qingjian.inputmethod.theme.Palette
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * 不在组句时候选条的样子：左边 logo 进功能面板、右边收起键盘，两头固定、各隔一道竖线，宽度一样；
@@ -71,17 +73,20 @@ class Toolbar(
 
     fun draw(canvas: Canvas, viewWidth: Int) {
         val cy = barHeight / 2
-        // 仅保留匀速旋转动画；旋转结束后保持静态，不绘制光环或辉光。
+        // 改为轻柔的呼吸悬浮：缩放与上下浮动错相循环，不再旋转图标，也不加辉光。
         val logoSize = (30 * density).toInt()
-        val logoCentre = (logoSlot / 2).toInt()
+        val logoCentre = (logoSlot / 2).toFloat()
         val phase = (SystemClock.uptimeMillis() % LOGO_CYCLE_MS).toFloat() / LOGO_CYCLE_MS
-        val rotation = phase * 360f
+        val scale = 0.92f + 0.08f * (0.5f - 0.5f * cos(phase * 2f * Math.PI).toFloat())
+        val floatY = sin(phase * 2f * Math.PI).toFloat() * 1.4f * density
         canvas.save()
-        canvas.rotate(rotation, logoCentre.toFloat(), cy)
+        canvas.translate(logoCentre, cy + floatY)
+        canvas.scale(scale, scale)
+        canvas.translate(-logoCentre, -cy)
         logo?.alpha = 255
         logo?.setBounds(
-            logoCentre - logoSize / 2, (cy - logoSize / 2).toInt(),
-            logoCentre + logoSize / 2, (cy + logoSize / 2).toInt(),
+            (logoCentre - logoSize / 2).toInt(), (cy - logoSize / 2).toInt(),
+            (logoCentre + logoSize / 2).toInt(), (cy + logoSize / 2).toInt(),
         )
         logo?.draw(canvas)
         canvas.restore()

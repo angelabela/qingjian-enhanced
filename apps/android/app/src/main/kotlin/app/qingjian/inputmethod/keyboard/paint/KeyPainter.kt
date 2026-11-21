@@ -165,16 +165,18 @@ class KeyPainter(
         ink.typeface = fontTypeface
         ink.textAlign = Paint.Align.CENTER
         ink.textSize = 8.5f * density
+        val punctuationOnly = upward && (label == "。" || label == ".")
         val arrow = if (upward) "↑" else "↓"
         val fullText = "$arrow$label"
         val useText = ink.measureText(fullText) <= maxLabelWidth
         val symbolText = "$arrow${gestureHintSymbol(label, upward)}"
         val shown = when {
+            punctuationOnly -> label
             useText -> fullText
             ink.measureText(symbolText) <= maxLabelWidth -> symbolText
             else -> arrow
         }
-        ink.textSize = (if (useText) 8.5f else 11f) * density
+        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * density
         // 只有完整动作文字超出键帽可用宽度时才退化为图标。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
