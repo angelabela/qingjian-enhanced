@@ -58,7 +58,7 @@ class CandidateTextStyleEngine(
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.87f, maxOf(600, weight.weight), typefaceFamily = "sans-serif-medium"),
+                preedit = Style(color, 0.92f, maxOf(600, weight.weight), typefaceFamily = "sans-serif-medium"),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
