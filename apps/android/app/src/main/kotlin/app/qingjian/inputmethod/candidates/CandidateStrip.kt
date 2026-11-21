@@ -260,6 +260,45 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         return rect
     }
 
+    /** 首选词的整体视觉区域：同时包含词条和其下方的词性/英文释义 hit 区。 */
+    fun candidateEffectRect(index: Int): RectF? {
+        val frame = image ?: return wordRect(index)
+        val result = wordRect(index) ?: return null
+        frame.hits.filter { it.candidate == index && it.sense != null }.forEach { hit ->
+            result.union(hit.rect)
+        }
+        return result
+    }
+
+    /** 长按候选的液态玻璃选中层；只绘制玻璃底与高光，文字继续使用普通候选样式。 */
+    private fun drawLiquidGlass(canvas: Canvas, index: Int, scrollX: Int, shift: Int) {
+        val rect = candidateEffectRect(index) ?: return
+        rect.offset(-scrollX.toFloat(), shift.toFloat())
+        rect.inset(-4f * density, -3f * density)
+        val radius = 10f * density
+        glassFill.shader = android.graphics.LinearGradient(
+            rect.left, rect.top, rect.right, rect.bottom,
+            intArrayOf(0x66FFFFFF, (glassTint and 0x00FFFFFF) or 0x33202020, 0x223F9FFF),
+            floatArrayOf(0f, 0.48f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        glassFill.alpha = 210
+        canvas.drawRoundRect(rect, radius, radius, glassFill)
+        glassFill.shader = null
+        glassEdge.color = 0xBFFFFFFF.toInt()
+        glassEdge.strokeWidth = 1.1f * density
+        canvas.drawRoundRect(rect, radius, radius, glassEdge)
+        glassHighlight.color = 0x88FFFFFF.toInt()
+        glassHighlight.strokeWidth = 1.4f * density
+        val topHighlight = RectF(rect.left + 3f * density, rect.top + 1.5f * density,
+            rect.right - 3f * density, rect.top + 9f * density)
+        canvas.drawArc(topHighlight, 190f, 160f, false, glassHighlight)
+        val lowerGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x263D9BFF
+            maskFilter = android.graphics.BlurMaskFilter(5f * density, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawRoundRect(rect, radius, radius, lowerGlow)
+    }
+
     /** 点在拼音行上（视图坐标，拼音行不随候选滚动）：光标该落在第几个字之后；不在拼音行上为 -1。 */
     fun caretAt(x: Float, y: Float): Int = image?.caretAt(x, y) ?: -1
 
@@ -316,13 +355,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
         }
+        // 长按选中只保留液态玻璃底层，旧的高亮文字样式不再参与绘制。
+        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex, scrollX, shift)
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
             if (image.emoji.contains(index)) return@forEachIndexed
             val word = image.wordRect(index) ?: return@forEachIndexed
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
             val role = when {
-                index == selectedIndex -> CandidateTextStyleEngine.Role.SELECTED
                 index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
