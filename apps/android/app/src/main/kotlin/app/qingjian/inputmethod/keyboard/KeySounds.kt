@@ -33,7 +33,28 @@ object KeySounds {
             Key.Backspace -> AudioManager.FX_KEYPRESS_DELETE
             else -> AudioManager.FX_KEYPRESS_STANDARD
         }
-        runCatching { context.getSystemService(AudioManager::class.java)?.playSoundEffect(effect) }
+        val systemEffectsEnabled = runCatching {
+            android.provider.Settings.System.getInt(
+                context.contentResolver,
+                android.provider.Settings.System.SOUND_EFFECTS_ENABLED,
+                1,
+            ) != 0
+        }.getOrDefault(true)
+        if (systemEffectsEnabled) {
+            runCatching { context.getSystemService(AudioManager::class.java)?.playSoundEffect(effect) }
+        } else {
+            // App 内已明确开启按键声音时，不让系统全局「按键音」关闭导致完全静音。
+            playTone(ToneGenerator.TONE_PROP_BEEP, 24, 60)
+        }
+    }
+
+    /** 输入法服务销毁时释放共享音源，避免 ToneGenerator 长期占用系统音频资源。 */
+    fun release() {
+        synchronized(this) {
+            tones?.release()
+            tones = null
+            toneVolume = -1
+        }
     }
 
     private fun playTone(tone: Int, durationMs: Int, volume: Int) {
