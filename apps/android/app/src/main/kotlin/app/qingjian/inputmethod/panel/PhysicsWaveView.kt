@@ -26,7 +26,7 @@ import kotlin.math.sqrt
 class PhysicsWaveView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
-    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, FLOWING_RIBBONS, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM }
+    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, SPHERICAL_PARTICLE_MESH, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM }
 
     var style = Style.SPRING_BARS
         set(value) { field = value; resetState(); invalidate() }
@@ -116,7 +116,7 @@ class PhysicsWaveView @JvmOverloads constructor(
 
     private fun isPhysicsStyle(): Boolean = when (style) {
         Style.SPRING_BARS, Style.GRAVITY_BALLS, Style.PEAK_HOLD,
-        Style.ELASTIC_STRING, Style.GLOW_ORBS, Style.FLOWING_RIBBONS -> true
+        Style.ELASTIC_STRING, Style.GLOW_ORBS -> true
         else -> false
     }
 
@@ -224,7 +224,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         }
         // 所有样式统一限制在面板中央 80% 宽度，左右各留 10% 安全边距。
         // 物理类样式只额外压缩垂直绘制区域，避免波形与底部操作按钮重叠。
-        val compactPhysics = isPhysicsStyle() && style != Style.FLOWING_RIBBONS
+        val compactPhysics = isPhysicsStyle() && style != Style.SPHERICAL_PARTICLE_MESH
         canvas.save()
         if (style == Style.RING_SPECTRUM) {
             // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
@@ -244,7 +244,7 @@ class PhysicsWaveView @JvmOverloads constructor(
                 Style.GRAVITY_BALLS -> drawBalls(canvas)
                 Style.ELASTIC_STRING -> drawString(canvas)
                 Style.GLOW_ORBS -> drawOrbs(canvas)
-                Style.FLOWING_RIBBONS -> drawFlowingRibbons(canvas)
+                Style.SPHERICAL_PARTICLE_MESH -> drawSphericalParticleMesh(canvas)
                 Style.REALTIME_WAVEFORM -> drawWaveform(canvas, false)
                 Style.WAVEFORM_SPECTRUM -> drawHybridVisualization(canvas)
             }
@@ -503,6 +503,119 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.alpha = 255
         paint.style = Paint.Style.FILL
         drawParticleField(canvas, h * 0.46f, h * 0.24f, 0.62f)
+    }
+
+    /** 球形流体声波：48 段真实频谱驱动球面纬线起伏，粒子经纬网格与半透明彩色丝带形成 3D 均衡器。 */
+    private fun drawSphericalParticleMesh(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val cx = w * 0.5f
+        val cy = h * 0.49f
+        val radius = min(w, h) * 0.285f
+        val rotation = time * 0.22f
+        val energy = (smoothFft.average().toFloat() * 0.75f + waveRms * 0.45f).coerceIn(0f, 1f)
+        val colors = intArrayOf(
+            Color.rgb(37, 211, 238), Color.rgb(39, 220, 156),
+            Color.rgb(244, 92, 89), Color.rgb(224, 196, 158),
+        )
+        fun mixColor(position: Float): Int {
+            val p = (position.coerceIn(0f, 0.999f) * (colors.size - 1))
+            val i = p.toInt()
+            val t = p - i
+            val a = colors[i]; val b = colors[i + 1]
+            return Color.rgb(
+                (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+                (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+                (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt(),
+            )
+        }
+        // 球体柔和背光与中心暗核，保留语音面板的深海军蓝底色。
+        paint.shader = android.graphics.RadialGradient(
+            cx, cy, radius * 1.45f,
+            intArrayOf(0x2035B9D8, 0x1837C8A0, 0x0035B9D8),
+            floatArrayOf(0f, 0.72f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(cx, cy, radius * 1.45f, paint)
+        paint.shader = null
+        val latitudes = 15
+        val segments = 96
+        // 球面纬线按频带能量产生轻柔呼吸，背面降低透明度，制造半透明 3D 深度。
+        for (lat in 0 until latitudes) {
+            val v = -1f + 2f * lat / (latitudes - 1)
+            val ringRadius = kotlin.math.sqrt((1f - v * v).coerceAtLeast(0f))
+            val pathLine = Path()
+            var started = false
+            for (i in 0..segments) {
+                val u = i.toFloat() / segments
+                val angle = u * 2f * PI.toFloat() + rotation + v * 0.24f
+                val band = ((u * (smoothFft.size - 1)).toInt()).coerceIn(0, smoothFft.lastIndex)
+                val amplitude = smoothFft[band]
+                val ripple = sin(angle * 3.0f + time * 1.25f + lat * 0.42f) *
+                    radius * (0.018f + amplitude * 0.075f) * (0.35f + energy)
+                val x3 = cos(angle) * (ringRadius * radius + ripple)
+                val y3 = v * radius
+                val z3 = sin(angle) * (ringRadius * radius + ripple)
+                val perspective = 3.2f / (3.2f - z3 / radius * 0.62f)
+                val x = cx + x3 * perspective
+                val y = cy + y3 * perspective
+                if (!started) { pathLine.moveTo(x, y); started = true } else pathLine.lineTo(x, y)
+            }
+            val depth = (0.22f + ringRadius * 0.55f).coerceIn(0.18f, 0.8f)
+            paint.color = mixColor(lat.toFloat() / (latitudes - 1))
+            paint.alpha = (28 + depth * 55f + energy * 28f).toInt().coerceIn(20, 115)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = (0.7f + energy * 0.55f) * density
+            paint.maskFilter = BlurMaskFilter(3.8f * density, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawPath(pathLine, paint)
+            paint.maskFilter = null
+            paint.alpha = (85 + depth * 105f).toInt().coerceIn(55, 190)
+            paint.strokeWidth = 0.8f * density
+            canvas.drawPath(pathLine, paint)
+        }
+        // 经线与节点粒子构成稠密网格；每个节点跟随对应 FFT 频带微幅脉动。
+        val meridians = 32
+        for (m in 0 until meridians) {
+            val longitude = 2f * PI.toFloat() * m / meridians + rotation
+            val meridian = Path()
+            for (step in 0..64) {
+                val phi = -PI.toFloat() / 2f + PI.toFloat() * step / 64f
+                val band = (step * (smoothFft.size - 1) / 64).coerceIn(0, smoothFft.lastIndex)
+                val amplitude = smoothFft[band]
+                val r = radius * (1f + amplitude * 0.045f * sin(time * 1.8f + longitude * 2f))
+                val x3 = r * cos(phi) * cos(longitude)
+                val y3 = r * sin(phi)
+                val z3 = r * cos(phi) * sin(longitude)
+                val perspective = 3.2f / (3.2f - z3 / radius * 0.62f)
+                val x = cx + x3 * perspective
+                val y = cy + y3 * perspective
+                if (step == 0) meridian.moveTo(x, y) else meridian.lineTo(x, y)
+                if (step % 4 == 0) {
+                    val front = (0.30f + ((z3 / radius + 1f) * 0.30f)).coerceIn(0.12f, 0.9f)
+                    paint.color = mixColor((m.toFloat() / meridians * 0.72f + step / 64f * 0.28f))
+                    paint.alpha = (55 + front * 145f + amplitude * 40f).toInt().coerceIn(40, 220)
+                    paint.style = Paint.Style.FILL
+                    val dot = (0.7f + amplitude * 1.35f) * density
+                    canvas.drawCircle(x, y, dot, paint)
+                }
+            }
+            paint.color = mixColor(m.toFloat() / meridians)
+            paint.alpha = 52
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 0.65f * density
+            canvas.drawPath(meridian, paint)
+        }
+        // 外缘的细光环与音频驱动的暖色粒子高光。
+        paint.color = 0xFF7BDCCB.toInt()
+        paint.alpha = (28 + energy * 65f).toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1f * density
+        paint.maskFilter = BlurMaskFilter(8f * density, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawCircle(cx, cy, radius * (1.02f + energy * 0.025f), paint)
+        paint.maskFilter = null
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
     }
 
     private fun activeSpectrumGradientColors(): IntArray =
