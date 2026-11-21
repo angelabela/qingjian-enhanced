@@ -45,6 +45,7 @@ on:
       - fix/workflow-555-candidate-dedup-pinyin-spacing-logo-spin-glow
       - fix/workflow-556-clipboard-scroll-clear-tab
       - fix/workflow-421-key-feedback-pinyin-candidates
+      - feature/android-optional-trigram-model
     paths:
       - '.github/workflows/android-signed-apk.yml'
       - 'apps/android/**'
