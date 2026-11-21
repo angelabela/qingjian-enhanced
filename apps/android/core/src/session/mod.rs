@@ -166,7 +166,8 @@ impl Session {
 
     /// 取回选词模型结果；只有最新一轮结果到达才重查候选并返回新帧。
     pub fn poll_rescoring(&mut self) -> Option<Frame> {
-        if self.tools_open || self.engine.composition().is_empty() || !self.engine.poll_rescoring() {
+        if self.tools_open || self.engine.composition().is_empty() || !self.engine.poll_rescoring()
+        {
             return None;
         }
         Some(self.refresh(String::new()))
