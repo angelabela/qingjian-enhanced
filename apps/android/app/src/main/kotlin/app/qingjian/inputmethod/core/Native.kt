@@ -90,6 +90,12 @@ internal object Native {
     /** 不在组句时按光标前的文字给补全（邮箱后缀），放在帧的候选里。 */
     external fun complete(handle: Long, beforeCursor: String): String?
 
+    /** 请求知意选词模型后台打分；没有待处理任务时返回 false。 */
+    external fun requestRescoring(handle: Long): Boolean
+
+    /** 后台选词打分完成时返回更新后的候选帧。 */
+    external fun pollRescoring(handle: Long): String?
+
     external fun reset(handle: Long)
 
     /** 只落盘学习数据，不清空当前组句。 */
