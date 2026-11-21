@@ -1,15 +1,17 @@
-//! 装配 Engine：装的东西与 Linux Server 的 `assembly` 一致；云端由会话另接（`Session::set_cloud`），不带神经重排。
+//! 装配 Engine：基础组件与 Linux Server 的 `assembly` 一致；Android 额外挂载知意选词重排，云端由会话另接。
 //!
 //! `data_dir` 是壳从 APK assets 解出来的随包数据目录（`.qj` 要 mmap，必须是真文件），
 //! `user_dir` 是应用私有目录下的学习数据目录。
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use qingjian_core::{EmojiTable, Engine, Language, Translator};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, PhraseBook, UsageStats, VocabularyBook};
 use qingjian_lm::BigramModel;
+use qingjian_neural::zhiyi::ChoiceScorer;
 use qingjian_translate::{Glossary, LayeredTranslator, PersonalGlossary};
 
 use crate::error::AndroidError;
@@ -48,16 +50,50 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
     if let Some(table) = load_emoji(data_dir) {
         engine = engine.with_emoji(table);
     }
-    let model = data_dir.join("lm.qj");
-    if model.is_file() {
-        let started = Instant::now();
-        match BigramModel::from_path(&model) {
-            Ok(model) => {
-                tracing::info!(load_ms = started.elapsed().as_millis(), "语言模型已加载");
-                engine = engine.with_language_model(Box::new(model));
+    let bigram_path = data_dir.join("lm.qj");
+    let bigram = if bigram_path.is_file() {
+        match BigramModel::from_path(&bigram_path) {
+            Ok(model) => Some(model),
+            Err(error) => {
+                tracing::warn!(%error, "二元语言模型加载失败");
+                None
             }
-            Err(error) => tracing::warn!(%error, "语言模型加载失败，使用词频整句"),
         }
+    } else {
+        None
+    };
+
+    if let Some(bigram) = bigram {
+        tracing::info!("二元语言模型已加载");
+        engine = engine.with_language_model(Box::new(bigram));
+    } else {
+        tracing::info!("没有可用的静态语言模型，使用词频整句");
+    }
+
+    // 知意 Transformer 模型由用户导入到应用私有目录；模型缺失或加载失败时不影响原有输入引擎。
+    let zhiyi_dir = user_dir.join("models/zhiyi");
+    if zhiyi_dir.is_dir() {
+        let started = Instant::now();
+        match ChoiceScorer::load(&zhiyi_dir).and_then(|scorer| {
+            // 预热一次真实前向：首次量化 / 推理的开销留在引擎后台装配线程，不落到按键回调。
+            let typed = scorer.letter_units("ni");
+            scorer.score("", &typed, &["ni", "nin"])?;
+            Ok(scorer)
+        }) {
+            Ok(scorer) => {
+                tracing::info!(
+                    path = %zhiyi_dir.display(),
+                    load_ms = started.elapsed().as_millis(),
+                    "知意 Transformer 模型已加载并预热"
+                );
+                engine.set_choice_model(Some(Arc::new(scorer)));
+            }
+            Err(error) => {
+                tracing::warn!(%error, path = %zhiyi_dir.display(), "知意 Transformer 模型加载失败，沿用原候选排序");
+            }
+        }
+    } else {
+        tracing::info!("未导入知意 Transformer 模型，沿用原候选排序");
     }
     load_phrases(&mut engine, user_dir);
     Ok(engine)

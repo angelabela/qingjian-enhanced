@@ -8,6 +8,12 @@ ignore = [
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
     "RUSTSEC-2026-0429",
+    # candle-core → zip 8.6.0 新披露的四项问题；当前仓库只经 candle 读取模型，不调用 ZIP 解压/流式提取 API。
+    # 升级 candle 并带入修复版 zip 后删除这些豁免。
+    "RUSTSEC-2026-0545",
+    "RUSTSEC-2026-0546",
+    "RUSTSEC-2026-0547",
+    "RUSTSEC-2026-0548",
     # ttf-parser 停止维护。bamboo-slip 直接用它查字体的轮廓表，fontdb / cosmic-text 也依赖它；上游换掉后再跟。
     "RUSTSEC-2026-0192",
     # zbus_names / zvariant / zvariant_derive 停止维护。链路 qingjian-linux-ibus → zbus 5.19，等 zbus 换掉它们再删。

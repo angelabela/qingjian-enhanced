@@ -4137,6 +4137,7 @@ dependencies = [
  "qingjian-dictionary",
  "qingjian-learning",
  "qingjian-lm",
+ "qingjian-neural",
  "qingjian-predict",
  "qingjian-render",
  "qingjian-translate",

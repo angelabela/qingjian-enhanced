@@ -26,6 +26,12 @@ ignore = [
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
     "RUSTSEC-2026-0429",
+    # candle-core → zip 8.6.0 新披露的 AES 认证、extract 符号链接、legacy 解码预分配与流式头一致性问题。
+    # 当前仓库只经 candle 读取模型 safetensors，不调用 ZIP 解压/流式提取 API；升级 candle 带入修复版 zip 后删除。
+    "RUSTSEC-2026-0545",
+    "RUSTSEC-2026-0546",
+    "RUSTSEC-2026-0547",
+    "RUSTSEC-2026-0548",
     # ttf-parser 停止维护。bamboo-slip 直接用它查字体轮廓表，fontdb / cosmic-text
     # 也依赖它；上游换成别的库之后再跟。
     "RUSTSEC-2026-0192",

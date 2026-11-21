@@ -156,6 +156,23 @@ impl Session {
         }
     }
 
+    /// 用户停顿后把本轮候选送给选词模型后台打分；没有模型或没有待打分候选时返回 false。
+    pub fn request_rescoring(&mut self) -> bool {
+        if self.tools_open || self.engine.composition().is_empty() {
+            return false;
+        }
+        self.engine.request_rescoring()
+    }
+
+    /// 取回选词模型结果；只有最新一轮结果到达才重查候选并返回新帧。
+    pub fn poll_rescoring(&mut self) -> Option<Frame> {
+        if self.tools_open || self.engine.composition().is_empty() || !self.engine.poll_rescoring()
+        {
+            return None;
+        }
+        Some(self.refresh(String::new()))
+    }
+
     fn refresh(&mut self, commit: String) -> Frame {
         self.pinyin_choices.clear();
         self.preedit_pinned = (0, 0);

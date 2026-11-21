@@ -290,6 +290,13 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         return json.getString("kind") to json.getString("text")
     }
 
+    /** 停键后把知意候选交给 Rust 后台线程，不在按键回调里做推理。 */
+    fun requestRescoring(): Boolean = ready && Native.requestRescoring(handle)
+
+    /** 有最新的知意打分结果时取回重排后的候选帧。 */
+    fun pollRescoring(): Frame? =
+        if (ready) Native.pollRescoring(handle)?.let(Frame::parse) else null
+
     fun reset() {
         if (ready) Native.reset(handle)
     }
@@ -306,6 +313,12 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         private val live = mutableSetOf<Engine>()
 
         fun userDir(context: Context) = File(context.filesDir, "user").apply { mkdirs() }
+
+        /** 模型文件更新后卸下并重新装配所有活动引擎；只在主线程调用。 */
+        fun reloadAll() = live.toList().forEach { engine ->
+            engine.unload()
+            engine.load()
+        }
 
         /** 导出前把开着的引擎里还没落盘的学习数据写下（组句一并丢掉，导出时用户在 App 里）。主线程调。 */
         fun flushAll() = live.forEach(Engine::reset)

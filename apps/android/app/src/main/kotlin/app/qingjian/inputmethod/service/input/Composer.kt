@@ -497,6 +497,9 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 输入框换了或键盘收起：组句不带走。 */
     fun abandon() {
+        handler.removeCallbacks(requestChoiceRescore)
+        handler.removeCallbacks(pollChoiceRescore)
+        choiceRescorePolls = 0
         preedit = ""
         sentPreedits.clear()
         composingLost = false
@@ -606,6 +609,36 @@ class Composer(private val engine: Engine, private val host: Host) {
         surrounding?.let { (before, after) -> engine.setSurrounding(before, after) }
         handler.removeCallbacks(pollPrediction)
         if (engine.predicting && composing) handler.postDelayed(pollPrediction, PREDICTION_POLL_MS)
+
+        // 知意只在停键后异步打分；新按键会取消旧防抖，绝不阻塞按键绘制。
+        handler.removeCallbacks(requestChoiceRescore)
+        handler.removeCallbacks(pollChoiceRescore)
+        choiceRescorePolls = 0
+        if (composing) handler.postDelayed(requestChoiceRescore, CHOICE_RESCORE_DELAY_MS)
+    }
+
+    private var choiceRescorePolls = 0
+
+    private val requestChoiceRescore: Runnable = Runnable {
+        if (composing && engine.requestRescoring()) {
+            choiceRescorePolls = CHOICE_RESCORE_MAX_POLLS
+            handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
+        }
+    }
+
+    private val pollChoiceRescore: Runnable = Runnable {
+        if (!composing || choiceRescorePolls <= 0) return@Runnable
+        val frame = engine.pollRescoring()
+        if (frame != null && frame.preedit == preedit) {
+            candidates = frame.candidates
+            host.showComposition(frame.preedit, frame.candidates)
+            choiceRescorePolls = 0
+        } else {
+            choiceRescorePolls--
+            if (choiceRescorePolls > 0) {
+                handler.postDelayed(pollChoiceRescore, CHOICE_RESCORE_POLL_MS)
+            }
+        }
     }
 
     /** 组句中隔一会儿取一次云联想结果；到了就插进候选重画，组句结束不再取。 */
@@ -687,6 +720,11 @@ class Composer(private val engine: Engine, private val host: Host) {
 
         /** 组句中取云联想结果的间隔。 */
         const val PREDICTION_POLL_MS = 150L
+
+        /** 知意候选重排的停键防抖与结果轮询；每次最多等待约 3 秒。 */
+        const val CHOICE_RESCORE_DELAY_MS = 80L
+        const val CHOICE_RESCORE_POLL_MS = 25L
+        const val CHOICE_RESCORE_MAX_POLLS = 120
 
         /** 重启输入后认输入框停在哪一版 preedit 时往回看几版：快打时在路上的改动不会更多。 */
         const val SENT_PREEDITS = 8
