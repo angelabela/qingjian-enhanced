@@ -165,6 +165,8 @@ class CandidateBarView(
 
     /** 拖动中光标上次挪到的位置（拼音行第几个字之后）；还没挪过为 -1。 */
     private var dragCaret = -1
+    /** 拼音行可见插入光标；新一轮拼音默认落在末尾，用户拖动后跟随手指。 */
+    private var visibleCaretIndex = -1
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
@@ -213,6 +215,9 @@ class CandidateBarView(
     fun show(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
         if (lastShownPreedit == preedit && lastShownCandidates == candidates) return
         val preeditChanged = lastShownPreedit != preedit
+        if (preedit.isEmpty()) visibleCaretIndex = -1
+        else if (preeditChanged || visibleCaretIndex < 0) visibleCaretIndex = preedit.length
+        else visibleCaretIndex = visibleCaretIndex.coerceIn(0, preedit.length)
         val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
         val previousScroll = scrollX
         val nextFirstCandidate = candidates.firstOrNull()?.text
@@ -281,6 +286,7 @@ class CandidateBarView(
         }
         else -> {
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
+            if (visibleCaretIndex >= 0) strip.drawPreeditCaret(canvas, visibleCaretIndex, stripWidth * 0.05f)
             drawFirstCandidatePulse(canvas)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
             drawSmartActions(canvas)
@@ -404,6 +410,8 @@ class CandidateBarView(
         val caret = strip.caretNear(x - stripWidth * 0.05f)
         if (caret < 0 || caret == dragCaret) return
         dragCaret = caret
+        visibleCaretIndex = caret
+        invalidate()
         Haptics.tap(context)
         listener.onMoveCaret(caret)
     }
@@ -416,6 +424,8 @@ class CandidateBarView(
         // 拼音行钉在视口上，不随候选滚动，按视图坐标查
         val caret = strip.caretAt(x - stripWidth * 0.05f, y)
         if (caret >= 0) {
+            visibleCaretIndex = caret
+            invalidate()
             listener.onMoveCaret(caret)
             return
         }
