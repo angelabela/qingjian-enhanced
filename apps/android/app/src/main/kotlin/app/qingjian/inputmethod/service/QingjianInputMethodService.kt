@@ -856,7 +856,7 @@ class QingjianInputMethodService :
         return true
     }
 
-    override fun showComposition(preedit: String, candidates: List<Candidate>) {
+    override fun showComposition(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean) {
         // 引擎在同一轮输入中可能重复发出完全相同的快照；不重复 render/JNI 绘制，
         // 避免候选条二次闪现。Candidate 是 data class，比较包含候选文字、云端标记及释义。
         if (shownPreedit == preedit && shownCandidates == candidates) {
@@ -869,7 +869,7 @@ class QingjianInputMethodService :
         shownPreedit = preedit
         shownCandidates = candidates
         candidateIndexMap = candidates.indices.toList()
-        renderShownComposition(preedit, candidates)
+        renderShownComposition(preedit, candidates, animateCandidates)
         scheduleCandidateRerank(preedit, candidates)
     }
 
