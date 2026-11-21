@@ -454,4 +454,6 @@
     <string name="local_ai_deleted">本地模型已删除。</string>
     <string name="local_ai_download_failed">模型下载失败：%1$s</string>
     <string name="local_ai_test_failed">模型测试失败：%1$s</string>
+    <string name="zhiyi_monitor_title">知意模型运行监控</string>
+    <string name="zhiyi_monitor_summary">查看模型加载、推理耗时、成功与失败记录</string>
 </resources>
