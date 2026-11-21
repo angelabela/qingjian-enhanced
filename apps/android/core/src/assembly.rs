@@ -81,7 +81,8 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
         None
     };
 
-    if trigram_path.is_file() {
+    let trigram_enabled = trigram_path.is_file() && trigram_path.with_file_name(".enabled").is_file();
+    if trigram_enabled {
         let started = Instant::now();
         match TrigramModel::open(&trigram_path) {
             Ok(phrase_model) => {
@@ -107,7 +108,8 @@ pub fn assemble(data_dir: &Path, user_dir: &Path) -> Result<Engine, AndroidError
                         );
                     }
                     Err(error) => {
-                        tracing::warn!(%error, "三元模型词图映射失败，保留二元模型");
+                        tracing::warn!(%error, "三元模型词图映射失败，关闭三元重排并保留二元模型");
+                        engine.set_phrase_model(None);
                         if let Some(bigram_model) = bigram {
                             engine = engine.with_language_model(Box::new(bigram_model));
                         }
