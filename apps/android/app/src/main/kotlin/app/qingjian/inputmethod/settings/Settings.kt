@@ -284,6 +284,7 @@ data class Settings(
             val prefs = preferences(context)
             val legacyKeyTextSize = TextSize.of(prefs.getString(KEY_KEY_TEXT_SIZE, null))
             val legacyCandidateTextSize = TextSize.of(prefs.getString(KEY_TEXT_SIZE, null))
+            val keySoundEnabled = prefs.getBoolean(KEY_KEY_SOUND, false)
             return Settings(
                 layout = Layout.entries.firstOrNull { it.name == prefs.getString(KEY_LAYOUT, null) }
                     ?: Layout.QWERTY,
@@ -291,7 +292,7 @@ data class Settings(
                 fullscreenAdapt = prefs.getBoolean(KEY_FULLSCREEN, true),
                 bottomLeft = BottomAction.of(prefs.getString(KEY_BOTTOM_LEFT, null), BottomAction.SWITCH_INPUT_METHOD),
                 bottomRight = BottomAction.of(prefs.getString(KEY_BOTTOM_RIGHT, null), BottomAction.VOICE),
-                haptic = prefs.getBoolean(KEY_HAPTIC, true),
+                haptic = prefs.getBoolean(KEY_HAPTIC, true) && !keySoundEnabled,
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
                 keyTextSize = legacyKeyTextSize,
@@ -366,7 +367,7 @@ data class Settings(
                 keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 6),
                 candidateTextPreset = TextEffectPreset.of(prefs.getString(KEY_CANDIDATE_TEXT_PRESET, null)),
                 keyboardTextPreset = TextEffectPreset.of(prefs.getString(KEY_KEYBOARD_TEXT_PRESET, null)),
-                keySound = prefs.getBoolean(KEY_KEY_SOUND, false),
+                keySound = keySoundEnabled,
                 keySoundStyle = KeySoundStyle.of(prefs.getString(KEY_KEY_SOUND_STYLE, null)),
             )
         }
