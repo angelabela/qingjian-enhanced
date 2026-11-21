@@ -106,7 +106,7 @@ data class Settings(
     /** 候选区与键盘区分别保存文字效果预设。 */
     val candidateTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
     val keyboardTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
-    /** 按键声音独立于震动开关；缺省关闭，避免升级后突然发声。 */
+    /** 按键声音与震动互斥；缺省关闭，避免升级后突然发声。 */
     val keySound: Boolean = false,
     val keySoundStyle: KeySoundStyle = KeySoundStyle.SYSTEM,
 ) {
