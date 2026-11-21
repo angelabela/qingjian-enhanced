@@ -81,6 +81,8 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 上一帧的 preedit，非空即在组句。 */
     private var preedit = ""
+    /** 当前拼音预编辑串中的光标位置；-1 表示尚未初始化，默认落在末尾。 */
+    private var preeditCaretIndex = -1
 
     /** 这段组句里最近交给输入框的几版 preedit（新的在后），重启输入后认输入框里停在哪一版，见 [resume]。 */
     private val sentPreedits = ArrayDeque<String>()
@@ -310,7 +312,10 @@ class Composer(private val engine: Engine, private val host: Host) {
             lastClearSnapshot = null
             clearAfterCursorNext = false
         }
-        trackStructuredTokenInput(key)
+        // 已有上下文候选时，空格应选择首候选；不要先 flush 混合编码缓冲区，
+        // 否则会把 structuredCompletions 清空，导致空格无法选中它。
+        val spaceSelectsCompletion = key is Key.Space && !composing && completing && candidates.isNotEmpty()
+        if (!spaceSelectsCompletion) trackStructuredTokenInput(key)
         val groupedEdit = key is Key.Space || key is Key.Text
         if (groupedEdit) editHistory.beginGroup()
         try {
@@ -425,13 +430,13 @@ class Composer(private val engine: Engine, private val host: Host) {
             }
 
             is Key.Space -> when {
-                !composing -> commit(" ")
-                chinese || japanese -> apply(engine.space())
-                // 英文模式：敲的字母原样上屏，空格照给
-                else -> {
+                composing && (chinese || japanese) -> apply(engine.space())
+                composing -> {
                     apply(engine.commitRaw())
                     commit(" ")
                 }
+                completing && candidates.isNotEmpty() -> select(0)
+                else -> commit(" ")
             }
 
             is Key.Enter -> when {
@@ -689,7 +694,9 @@ class Composer(private val engine: Engine, private val host: Host) {
 
     /** 点了拼音行第 [index] 个字之后：光标挪进拼音里，接着敲的字、退格都在那里。 */
     fun moveCaret(index: Int) {
-        if (composing) apply(engine.moveCaret(index))
+        if (!composing) return
+        preeditCaretIndex = index.coerceIn(0, preedit.length)
+        apply(engine.moveCaret(preeditCaretIndex))
     }
 
     fun selectTranslation(index: Int, sense: Int) = apply(engine.selectTranslation(index, sense))
@@ -737,10 +744,14 @@ class Composer(private val engine: Engine, private val host: Host) {
         }
     }
 
-    /** 按住空格左右滑：不在组句时按方向键挪光标。 */
+    /** 按住空格左右滑：组句中移动拼音光标，平时移动宿主输入框光标。 */
     fun moveCursor(steps: Int) {
-        // 组句中不响应：落下拼音再挪会把没选的字母上屏；拼音里的光标靠点拼音行挪（[moveCaret]）
-        if (steps == 0 || composing) return
+        if (steps == 0) return
+        if (composing) {
+            val current = preeditCaretIndex.takeIf { it >= 0 } ?: preedit.length
+            moveCaret((current + steps).coerceIn(0, preedit.length))
+            return
+        }
         val code = if (steps < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
         repeat(abs(steps)) { host.sendKey(code) }
     }
@@ -1014,6 +1025,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         clearAfterCursorNext = false
         closeUndoGroup()
         preedit = ""
+        preeditCaretIndex = -1
         sentPreedits.clear()
         composingLost = false
         pinyinChoices = emptyList()
@@ -1128,7 +1140,25 @@ class Composer(private val engine: Engine, private val host: Host) {
                 insertedBefore = frame.commit,
             )
         }
+        val previousPreedit = preedit
         preedit = frame.preedit
+        if (preedit.isEmpty()) {
+            preeditCaretIndex = -1
+        } else if (preedit != previousPreedit) {
+            // 引擎在当前拼音光标处插入/删除时，用最长公共前后缀推算新光标，
+            // 让用户在中间修正字母后仍能继续用空格滑动定位。
+            var prefix = 0
+            while (prefix < previousPreedit.length && prefix < preedit.length &&
+                previousPreedit[prefix] == preedit[prefix]
+            ) prefix++
+            var suffix = 0
+            while (suffix < previousPreedit.length - prefix && suffix < preedit.length - prefix &&
+                previousPreedit[previousPreedit.length - 1 - suffix] == preedit[preedit.length - 1 - suffix]
+            ) suffix++
+            preeditCaretIndex = (prefix + preedit.length - prefix - suffix).coerceIn(0, preedit.length)
+        } else if (preeditCaretIndex < 0) {
+            preeditCaretIndex = preedit.length
+        }
         if (frame.commit.isNotEmpty() && preedit.isEmpty()) closeUndoGroup()
         if (preedit.isEmpty()) {
             sentPreedits.clear()

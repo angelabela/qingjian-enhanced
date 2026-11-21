@@ -8,6 +8,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.widget.OverScroller
+import kotlin.math.sin
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.frame.Candidate
 import app.qingjian.inputmethod.keyboard.Haptics
@@ -105,6 +106,17 @@ class CandidateBarView(
         textAlign = Paint.Align.CENTER
         textSize = 11f * density
     }
+    /** 拼音组句时强调首候选：低透明脉冲底光 + 细描边，不遮挡候选文字。 */
+    private val firstCandidateGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.brand
+        style = Paint.Style.FILL
+    }
+    private val firstCandidateRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.brand
+        style = Paint.Style.STROKE
+        strokeWidth = 1.6f * density
+    }
+    private var firstCandidatePulseStartedAt = 0L
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
@@ -199,8 +211,14 @@ class CandidateBarView(
     /** 拼音行右侧的提示（删候选的结果）由渲染器从 Rust 那边的帧里取，这里只要拼音和候选。 */
     fun show(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean = true) {
         if (lastShownPreedit == preedit && lastShownCandidates == candidates) return
+        val preeditChanged = lastShownPreedit != preedit
         val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
         val previousScroll = scrollX
+        if (preedit.isNotEmpty() && candidates.isNotEmpty() && preeditChanged && animateCandidates) {
+            firstCandidatePulseStartedAt = android.os.SystemClock.uptimeMillis()
+        } else if (preedit.isEmpty() || candidates.isEmpty()) {
+            firstCandidatePulseStartedAt = 0L
+        }
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
         closePopup()
@@ -258,6 +276,7 @@ class CandidateBarView(
         }
         else -> {
             strip.draw(canvas, scrollX, stripWidth, popupIndex)
+            drawFirstCandidatePulse(canvas)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
             drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
@@ -282,6 +301,32 @@ class CandidateBarView(
             }
             gestures.onTouchEvent(event)
         }
+    }
+
+    /** 首候选短暂呼吸高亮；仅在新拼音组句出现时播放，不因异步重排重复闪烁。 */
+    private fun drawFirstCandidatePulse(canvas: Canvas) {
+        val startedAt = firstCandidatePulseStartedAt
+        if (startedAt <= 0L || lastShownPreedit.isNullOrEmpty() || strip.candidates.isEmpty()) return
+        val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
+        if (elapsed >= FIRST_CANDIDATE_PULSE_MS) {
+            firstCandidatePulseStartedAt = 0L
+            return
+        }
+        val rect = strip.wordRect(0) ?: return
+        rect.offset(stripWidth * 0.05f - scrollX, 0f)
+        if (rect.right <= 0f || rect.left >= stripWidth) return
+        val phase = (elapsed % FIRST_CANDIDATE_PULSE_PERIOD_MS).toFloat() /
+            FIRST_CANDIDATE_PULSE_PERIOD_MS
+        val breath = (0.5f + 0.5f * sin(phase * (Math.PI * 2.0).toFloat()))
+        val save = canvas.save()
+        canvas.clipRect(0f, 0f, stripWidth.toFloat(), height.toFloat())
+        val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
+        firstCandidateGlow.alpha = (12f + breath * 24f).toInt()
+        canvas.drawRoundRect(glow, 9f * density, 9f * density, firstCandidateGlow)
+        firstCandidateRing.alpha = (90f + breath * 110f).toInt()
+        canvas.drawRoundRect(glow, 9f * density, 9f * density, firstCandidateRing)
+        canvas.restoreToCount(save)
+        postInvalidateOnAnimation()
     }
 
     /** 候选格右上角的小电话/短信入口；普通候选文字区域仍照常点击上屏。 */
@@ -446,5 +491,7 @@ class CandidateBarView(
 
     private companion object {
         const val NOTICE_MS = 5000L
+        const val FIRST_CANDIDATE_PULSE_MS = 1500L
+        const val FIRST_CANDIDATE_PULSE_PERIOD_MS = 620L
     }
 }
