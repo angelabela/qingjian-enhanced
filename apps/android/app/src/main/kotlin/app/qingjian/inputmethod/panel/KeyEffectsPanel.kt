@@ -4,10 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
-import android.os.SystemClock
 import android.view.MotionEvent
 import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.panel.base.PanelView
@@ -24,8 +22,7 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private val frosted get() = prefs.getBoolean(KEY_FROSTED, false)
     private val marquee get() = prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false)
     private fun top() = card.top + ink.dp(12f)
-    private fun gridTop() = card.top + ink.dp(42f)
-    private fun alphaTop() = gridTop() + ink.dp(112f)
+    private fun alphaTop() = top() + ink.dp(4f)
     private fun alphaTrackY() = alphaTop() + ink.dp(40f)
     private fun frostedTop() = alphaTop() + ink.dp(60f)
     private fun marqueeTop() = frostedTop() + ink.dp(48f)
@@ -46,11 +43,6 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         canvas.save()
         canvas.clipRect(card.left, card.top + ink.dp(6f), card.right, viewportBottom)
         canvas.translate(0f, -scroll.offset)
-        ink.textStart(canvas, "26 个字母按键依次流动发光，功能键保持原样", 10.5f, palette.gloss,
-            card.left + ink.dp(14f), top() + ink.dp(14f), card.right - ink.dp(10f))
-        ink.textStart(canvas, "字母按键预览", 11f, palette.text,
-            card.left + ink.dp(14f), top() + ink.dp(30f), card.right - ink.dp(10f))
-        drawLetterPreview(canvas)
         ink.textStart(canvas, "按键透明度", 13f, palette.text, card.left + ink.dp(14f), alphaTop() + ink.dp(17f), card.right - ink.dp(68f))
         ink.text(canvas, "$alpha%", 12f, palette.brand, card.right - ink.dp(28f), alphaTop() + ink.dp(17f))
         val left = card.left + ink.dp(18f)
@@ -68,34 +60,6 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         drawToggle(canvas, marqueeTop(), "字母按键跑马灯", marquee, "A-Z 依次流动，带彩虹渐变光尾")
         canvas.restore()
         if (marquee && isShown) postInvalidateDelayed(32L)
-    }
-
-    private fun drawLetterPreview(canvas: Canvas) {
-        val gap = ink.dp(4f)
-        val left = card.left + ink.dp(12f)
-        val cellWidth = (card.width() - ink.dp(24f) - gap * 6f) / 7f
-        val rowStep = ink.dp(27f)
-        val phase = (SystemClock.uptimeMillis() % 2_600L).toFloat() / 100f
-        ('A'..'Z').forEachIndexed { index, letter ->
-            val x = left + (index % 7) * (cellWidth + gap)
-            val y = gridTop() + (index / 7) * rowStep
-            val bounds = RectF(x, y, x + cellWidth, y + ink.dp(22f))
-            ink.round(canvas, bounds, 5f, palette.functionalKey)
-            val trail = (phase - index + 26f) % 26f
-            val strength = if (marquee && trail <= 4.8f) (1f - trail / 4.8f).coerceIn(0f, 1f) else 0f
-            if (strength > 0f) {
-                val hue = (172f + phase * (360f / 26f)) % 360f
-                val color = Color.HSVToColor((48 + 207 * strength).toInt(), floatArrayOf(hue, 0.92f, 1f))
-                ink.fill.style = Paint.Style.STROKE
-                ink.fill.strokeWidth = ink.dp(0.8f + 1.2f * strength)
-                ink.fill.color = color
-                ink.fill.setShadowLayer(ink.dp(3f * strength), 0f, 0f, color)
-                canvas.drawRoundRect(bounds, ink.dp(5f), ink.dp(5f), ink.fill)
-                ink.fill.clearShadowLayer()
-                ink.fill.style = Paint.Style.FILL
-                ink.text(canvas, letter.toString(), 11f, color, bounds.centerX(), bounds.centerY())
-            } else ink.text(canvas, letter.toString(), 11f, palette.text, bounds.centerX(), bounds.centerY())
-        }
     }
 
     private fun drawToggle(canvas: Canvas, rowTop: Float, label: String, enabled: Boolean, note: String) {
