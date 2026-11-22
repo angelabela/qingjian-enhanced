@@ -11,6 +11,7 @@ import android.os.Build
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.Matrix
+import app.qingjian.inputmethod.core.AppLog
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
 internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
@@ -31,6 +32,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         surfaceTextureListener = this
     }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+        AppLog.info("[VIDEO_BG_DIAG] surface available view=${this.width}x${this.height} texture=${width}x${height} uriScheme=${videoUri.scheme}")
         releasePlayer()
         val target = Surface(surface)
         output = target
@@ -42,6 +44,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             media.setOnVideoSizeChangedListener { _, width, height ->
                 videoWidth = width
                 videoHeight = height
+                AppLog.info("[VIDEO_BG_DIAG] source size=${width}x${height} view=${this@DynamicVideoBackgroundView.width}x${this@DynamicVideoBackgroundView.height}")
                 applyVideoTransform()
             }
             media.isLooping = true
@@ -52,6 +55,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                     return@setOnPreparedListener
                 }
                 prepared = true
+                AppLog.info("[VIDEO_BG_DIAG] player prepared view=${this@DynamicVideoBackgroundView.width}x${this@DynamicVideoBackgroundView.height} source=${videoWidth}x${videoHeight}")
                 runCatching {
                     ready.setVolume(0f, 0f)
                     ready.start()
@@ -68,6 +72,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                 false
             }
             media.setOnErrorListener { _, what, extra ->
+                AppLog.warn("[VIDEO_BG_DIAG] MediaPlayer error what=$what extra=$extra")
                 android.util.Log.w("QingjianVideoBg", "MediaPlayer error what=$what extra=$extra")
                 releasePlayer()
                 true
@@ -78,7 +83,15 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             releasePlayer()
         }
     }
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { applyVideoTransform() }
+    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+        AppLog.info("[VIDEO_BG_DIAG] texture resized=${width}x${height} view=${this.width}x${this.height}")
+        applyVideoTransform()
+    }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        AppLog.info("[VIDEO_BG_DIAG] view size=${w}x${h} previous=${oldw}x${oldh} attached=$isAttachedToWindow")
+        applyVideoTransform()
+    }
 
     /** 等比例铺满整个输入法面板；超出面板的部分居中裁切，不拉伸画面。 */
     private fun applyVideoTransform() {
@@ -91,6 +104,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
         }
         setTransform(matrix)
+        AppLog.debug("[VIDEO_BG_DIAG] transform view=${width}x${height} source=${videoWidth}x${videoHeight} scale=$scale")
     }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {

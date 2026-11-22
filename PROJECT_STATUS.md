@@ -15,6 +15,7 @@
 
 ## 当前版本基线与最新交付
 
+- 当前开发中的下一版：`0.3.13-dev`，按当前 Gradle 公式计算 `versionCode=313`。尚未构建成功前，不视为可安装交付。
 - 用户版本规则：以 `0.3.4` 为起始基线；每次成功交付可用 APK 后递增 patch 位；保留源码中的 `-dev` 后缀。APP 版本号与 GitHub Actions run number 分开管理。
 - 最新成功构建、固定签名验证通过且 artifact 可用的 APK：`versionName=0.3.12-dev`。按当前 `apps/android/app/build.gradle.kts` 的公式（主版本 × 10000 + 次版本 × 100 + 修订版本）计算，`versionCode=312`；该值来自源码计算，未下载 APK 直接读取 Manifest。
 - 最新交付：`android-signed-apk` #538；run ID `45049084378`；分支 `feature/workflow-444-model-coordination`；提交 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd`；完成时间 `2026-11-22T17:28:45Z`。Build、Verify APK signature、Upload signed APK 均成功。
@@ -28,7 +29,7 @@
 
 ## 当前已知待验证事项
 
-1. BJ-041 视频背景铺满、BJ-042 扫码标题栏不透明且与预览区无缝衔接、BJ-043 前缀输入框首次点击获得焦点：修复代码已进入 #538 签名 APK，均为**已修复待验证**，尚无用户设备实测结论。
+1. BJ-041 视频背景铺满、BJ-042 扫码标题栏不透明且与预览区无缝衔接、BJ-043 前缀输入框首次点击获得焦点：#538 版本仍待设备确认；本轮继续调整标题栏透明度与预览区动态对齐，并增加视频、剪贴板和前缀输入诊断日志。
 2. CI-001：#533–#537 的 `Dispatch.flush()` Rust 编译错误已在 #538 代码中移除并通过构建；CI 层面已验证，设备端日志导出仍待用户验证。
 3. REL-001：版本号序列与旧档案 versionCode 记载不一致，需在下一次交付前核对；不得把 workflow run number 当作 APP 版本。
 4. CI-002：`android-debug.yml` 名称与实际 `assembleRelease` 行为不符，且未覆盖当前目标分支；尚未生成经确认的真正 Debug APK。
@@ -36,7 +37,7 @@
 
 ## 下一步事项
 
-- 请用户安装 #538 后重点验证日志导出是否包含导出前最后时刻的日志、日志包中的 line_count 与最新时间记录是否正确。
+- 本轮 0.3.13-dev 需验证日志是否在手机本地零点切换，并核对 ZIP 的文件数、行数、SHA-256 与最新记录时间。
 - 同时验证 BJ-041、BJ-042、BJ-043 的实际设备表现；CI 成功不等于设备问题已解决。
 - 下一次 APK 构建前，先核对 `0.3.11-dev` 是否有独立交付记录，并统一 `versionName`、Gradle 计算的 `versionCode` 与档案记录。
 - 单独审查 Debug 工作流，使其真正执行 Debug variant；本次监控没有修改工作流或应用源码。

@@ -1,4 +1,4 @@
-//! tracing 接到 logcat（标签 `qingjian`），并按天写进 `files/logs/`（留 [`KEEP_DAYS`] 天），设置里「打包日志」交的就是它；
+//! tracing 接到 logcat（标签 `qingjian`），并按手机本地日期写进 `files/logs/`（留 [`KEEP_DAYS`] 天），设置里「打包日志」交的就是它；
 //! panic 也记一条（安卓上 stderr 看不到）。文件缺省只记 info 及以上，开了详细日志才记 debug（会带上打的字）。
 //! Kotlin 的日志与没接住的异常经 [`Java_app_qingjian_inputmethod_core_Native_log`] 写进同一份文件。
 //! 非 Android 目标（本机测试）什么都不做。
@@ -9,9 +9,70 @@ use ::jni::objects::{JObject, JString};
 use ::jni::sys::JNI_FALSE;
 use ::jni::sys::{jboolean, jint};
 
-/// 日志文件留几天。
+/// 日志文件保留天数（按手机本地日期命名）。
 #[cfg(target_os = "android")]
-const KEEP_DAYS: usize = 7;
+const KEEP_DAYS: usize = 30;
+
+#[cfg(target_os = "android")]
+struct LocalDailyAppender {
+    dir: std::path::PathBuf,
+    state: std::sync::Mutex<LocalDailyState>,
+}
+#[cfg(target_os = "android")]
+struct LocalDailyState {
+    date: String,
+    file: std::fs::File,
+}
+#[cfg(target_os = "android")]
+struct LocalDailyWriter<'a> {
+    state: std::sync::MutexGuard<'a, LocalDailyState>,
+}
+#[cfg(target_os = "android")]
+impl LocalDailyAppender {
+    fn new(dir: &std::path::Path) -> std::io::Result<Self> {
+        std::fs::create_dir_all(dir)?;
+        let date = jiff::Zoned::now().date().to_string();
+        let file = Self::open_file(dir, &date)?;
+        Self::prune(dir);
+        Ok(Self { dir: dir.to_path_buf(), state: std::sync::Mutex::new(LocalDailyState { date, file }) })
+    }
+    fn open_file(dir: &std::path::Path, date: &str) -> std::io::Result<std::fs::File> {
+        std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("ime.{date}.log")))
+    }
+    fn prune(dir: &std::path::Path) {
+        let mut files: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let name = path.file_name()?.to_str()?;
+                (path.is_file() && name.starts_with("ime.") && name.ends_with(".log"))
+                    .then_some((name.to_owned(), path))
+            }).collect();
+        files.sort_by(|a, b| b.0.cmp(&a.0));
+        for (_, path) in files.into_iter().skip(KEEP_DAYS) { let _ = std::fs::remove_file(path); }
+    }
+}
+#[cfg(target_os = "android")]
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LocalDailyAppender {
+    type Writer = LocalDailyWriter<'a>;
+    fn make_writer(&'a self) -> Self::Writer {
+        // 每条事件持有同一把锁完成写入，避免跨本地零点时一行日志被拆分。
+        let today = jiff::Zoned::now().date().to_string();
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.date != today {
+            if let Ok(file) = Self::open_file(&self.dir, &today) {
+                state.date = today;
+                state.file = file;
+                Self::prune(&self.dir);
+            }
+        }
+        LocalDailyWriter { state }
+    }
+}
+#[cfg(target_os = "android")]
+impl std::io::Write for LocalDailyWriter<'_> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> { std::io::Write::write(&mut self.state.file, buffer) }
+    fn flush(&mut self) -> std::io::Result<()> { std::io::Write::flush(&mut self.state.file) }
+}
 
 /// 详细日志开着：文件也记 debug。
 #[cfg(target_os = "android")]
@@ -35,13 +96,8 @@ pub fn init(log_dir: Option<&std::path::Path>) {
             .ok()
             .map(|layer| layer.with_filter(LevelFilter::DEBUG));
         let file = log_dir.and_then(|dir| {
-            let appender = tracing_appender::rolling::RollingFileAppender::builder()
-                .rotation(tracing_appender::rolling::Rotation::DAILY)
-                .filename_prefix("ime")
-                .filename_suffix("log")
-                .max_log_files(KEEP_DAYS)
-                .build(dir)
-                .ok()?;
+            // 按 Android 当前系统时区的本地日期滚动，而不是按 UTC 日期边界滚动。
+            let appender = LocalDailyAppender::new(dir).ok()?;
             // 开关随时会变，每条都问，不按调用点缓存
             let filter = DynFilterFn::new(|metadata, _| {
                 *metadata.level() <= tracing::Level::INFO

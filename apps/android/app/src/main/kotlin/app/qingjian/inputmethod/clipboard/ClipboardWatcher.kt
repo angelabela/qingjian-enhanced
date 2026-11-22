@@ -21,21 +21,28 @@ import kotlin.concurrent.thread
 class ClipboardWatcher(private val context: Context) {
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
-    private val listener = ClipboardManager.OnPrimaryClipChangedListener { capture() }
+    @Volatile private var started = false
+    private val listener = ClipboardManager.OnPrimaryClipChangedListener {
+        AppLog.info("[CLIPBOARD_DIAG] system primary clip changed")
+        capture()
+    }
 
     fun start() {
         val available = manager != null
         manager?.addPrimaryClipChangedListener(listener)
+        started = available
         AppLog.info("[CLIPBOARD_DIAG] watcher started managerAvailable=$available")
     }
 
     fun stop() {
         manager?.removePrimaryClipChangedListener(listener)
+        started = false
         AppLog.info("[CLIPBOARD_DIAG] watcher stopped")
     }
 
     /** 读取系统当前剪贴板：预览独立于历史记录开关，键盘弹出时也能显示最新文字。 */
     fun capture() {
+        AppLog.debug("[CLIPBOARD_DIAG] capture invoked thread=${Thread.currentThread().name} listenerRegistered=$started")
         val settings = Settings.load(context)
         if (!settings.recordClipboard) {
             AppLog.debug("[CLIPBOARD_DIAG] capture skipped: history recording disabled")
@@ -47,6 +54,7 @@ class ClipboardWatcher(private val context: Context) {
                 AppLog.debug("[CLIPBOARD_DIAG] capture skipped: primaryClip unavailable")
                 return
             }
+        AppLog.info("[CLIPBOARD_DIAG] primaryClip available itemCount=${clip.itemCount} timestamp=${clip.description.timestamp} mimeTypes=${clip.description.mimeTypeCount}")
         if (clip.itemCount == 0) {
             AppLog.debug("[CLIPBOARD_DIAG] capture skipped: clip has no items")
             return
@@ -58,6 +66,7 @@ class ClipboardWatcher(private val context: Context) {
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
+        AppLog.debug("[CLIPBOARD_DIAG] first item uriPresent=${uri != null} mime=${mime ?: "none"} textPresent=${item.text != null}")
         if (uri != null && mime?.startsWith("image/") == true) {
             val identity = "image:${mime}:${uri}:${clip.description.timestamp}"
             if (!firstSeen(identity)) return

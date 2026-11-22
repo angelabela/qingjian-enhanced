@@ -328,6 +328,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             false
         }
         prefixInput.setOnClickListener {
+            scanDiag("prefix click requested=$prefixEditingRequested focused=${prefixInput.hasFocus()} windowFocusable=${windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0} textLength=${prefixInput.text?.length ?: 0}")
             if (prefixEditingRequested) return@setOnClickListener
             prefixEditingRequested = true
             prefixEditorHadFocus = false
@@ -345,9 +346,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         prefixInput.requestFocus()
                         prefixInput.post inner@{
                             if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@inner
-                            prefixImeRequested = true
-                            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                                ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                            val accepted = imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
+                            prefixImeRequested = accepted
+                            scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()}")
                         }
                     }.onFailure {
                         prefixImeRequested = false
@@ -458,13 +460,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         themePalette?.surface ?: 0xFF303846.toInt(),
                         themePalette?.brand ?: 0xFF55E6D0.toInt(),
                         0.72f,
-                        0xD8,
+                        0xFF,
                     ),
                     adaptiveGlassColor(
                         themePalette?.board ?: 0xFF252D39.toInt(),
                         themePalette?.brand ?: 0xFF55E6D0.toInt(),
                         0.58f,
-                        0xD8,
+                        0xFF,
                     ),
                 ),
             ).apply {
@@ -478,7 +480,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     themePalette?.brand ?: 0xFF55E6D0.toInt(),
                     themePalette?.brand ?: 0xFF55E6D0.toInt(),
                     1f,
-                    0xD0,
+                    0xFF,
                 ))
             }
             // 使用显式凸轮廓裁剪，而不是依赖透明背景 drawable 自动生成 Outline。
@@ -551,15 +553,22 @@ class ScanOverlayService : Service(), LifecycleOwner {
             .setInterpolator(android.view.animation.DecelerateInterpolator(1.35f))
             .start()
         restoreCaptureButtonPosition()
-        headerView.post {
-            val actualHeaderHeight = headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight
-            if (actualHeaderHeight > 0 && actualHeaderHeight != headerHeightEstimate) {
+        var appliedHeaderHeight = headerHeightEstimate
+        headerView.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val actualHeaderHeight = (bottom - top).coerceAtLeast(0)
+            if (actualHeaderHeight > 0 && actualHeaderHeight != appliedHeaderHeight) {
+                // 标题栏换行或尺寸变化时，预览区顶边始终精确贴合标题栏底边。
+                val previewHeight = (windowParams.height - appliedHeaderHeight).coerceAtLeast(dp(220))
                 val previewParams = root.layoutParams as? FrameLayout.LayoutParams
-                previewParams?.topMargin = actualHeaderHeight
-                if (previewParams != null) root.layoutParams = previewParams
-                windowParams.height = (windowParams.height + actualHeaderHeight - headerHeightEstimate)
-                    .coerceAtLeast(actualHeaderHeight + dp(220))
+                if (previewParams != null && previewParams.topMargin != actualHeaderHeight) {
+                    previewParams.topMargin = actualHeaderHeight
+                    root.layoutParams = previewParams
+                }
+                windowParams.height = previewHeight + actualHeaderHeight
+                appliedHeaderHeight = actualHeaderHeight
+                scanDiag("header-preview bounds synchronized headerHeight=$actualHeaderHeight previewTopMargin=${previewParams?.topMargin}")
                 runCatching { windowManager.updateViewLayout(overlayRoot, windowParams) }
+                    .onFailure { scanDiag("header-preview layout update failed: ${it.javaClass.simpleName}", warning = true) }
             }
         }
     }

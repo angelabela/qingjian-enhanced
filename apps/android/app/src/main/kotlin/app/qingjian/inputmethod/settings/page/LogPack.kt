@@ -11,6 +11,9 @@ import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.settings.Settings
 import java.io.File
 import java.io.OutputStream
+import java.io.IOException
+import java.security.MessageDigest
+import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -41,42 +44,80 @@ object LogPack {
     }
 
     private fun logs(context: Context): List<File> =
-        AppLog.logDir(context).listFiles { file -> file.isFile }?.sortedBy { it.name }.orEmpty()
+        AppLog.logDir(context).listFiles { file ->
+            file.isFile && file.name.startsWith("ime.") && file.name.endsWith(".log")
+        }?.sortedBy { it.name }.orEmpty()
+
+    private data class LogSnapshot(
+        val file: File, val bytes: ByteArray, val modified: Long,
+        val lineCount: Int, val sha256: String, val latestTimestamp: String,
+    )
+
+    private fun snapshot(file: File): LogSnapshot {
+        var lastError: Throwable? = null
+        repeat(3) {
+            try {
+                val beforeLength = file.length()
+                val beforeModified = file.lastModified()
+                val bytes = file.readBytes()
+                val afterLength = file.length()
+                val afterModified = file.lastModified()
+                if (beforeLength != bytes.size.toLong() || beforeLength != afterLength || beforeModified != afterModified) {
+                    throw IOException("log changed while snapshotting: ${file.name}")
+                }
+                val text = String(bytes, StandardCharsets.UTF_8)
+                val lineCount = if (text.isEmpty()) 0 else text.count { it == '\\n' } + if (text.endsWith("\\n")) 0 else 1
+                val latest = text.lineSequence().filter { it.isNotBlank() }.lastOrNull()
+                    ?.takeWhile { !it.isWhitespace() }.orEmpty()
+                val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                return LogSnapshot(file, bytes, afterModified, lineCount, hash, latest)
+            } catch (error: Throwable) {
+                lastError = error
+                Thread.sleep(80)
+            }
+        }
+        throw IOException("unable to capture complete log file ${file.name}", lastError)
+    }
 
     /** 文字的两份先算好再开压缩包：算到一半出错不留下半个包。写完关掉 [output]。 */
     private fun write(context: Context, output: OutputStream): Int {
         AppLog.flushForExport()
         val exportTime = java.time.Instant.now()
-        val logs = logs(context)
+        val snapshots = logs(context).map(::snapshot)
+        val totalBytes = snapshots.sumOf { it.bytes.size.toLong() }
+        val latestRecord = snapshots.map { it.latestTimestamp }.filter { it.isNotBlank() }.maxOrNull().orEmpty()
         val manifest = buildString {
-            append("export_time=").append(exportTime).append('\n')
-            append("log_file_count=").append(logs.size).append('\n')
-            logs.forEach { file ->
-                val lineCount = runCatching { file.useLines { it.count() } }.getOrDefault(-1)
-                append(file.name).append(" bytes=").append(file.length())
-                    .append(" modified=").append(java.time.Instant.ofEpochMilli(file.lastModified()))
-                    .append(" line_count=").append(lineCount).append('\n')
+            append("export_time=").append(exportTime).append('\\n')
+            append("timezone=").append(java.util.TimeZone.getDefault().id).append('\\n')
+            append("log_file_count=").append(snapshots.size).append('\\n')
+            append("total_log_bytes=").append(totalBytes).append('\\n')
+            append("latest_record_time=").append(latestRecord).append('\\n')
+            snapshots.forEach { item ->
+                append(item.file.name).append(" bytes=").append(item.bytes.size)
+                    .append(" modified=").append(java.time.Instant.ofEpochMilli(item.modified))
+                    .append(" line_count=").append(item.lineCount)
+                    .append(" sha256=").append(item.sha256)
+                    .append(" latest_record=").append(item.latestTimestamp).append('\\n')
             }
         }
         val texts = listOf("settings.txt" to settings(context), "device.txt" to device(context), "log_manifest.txt" to manifest)
         ZipOutputStream(output).use { zip ->
-            for (file in logs) {
-                val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
-                zip.putNextEntry(ZipEntry(file.name).apply { time = file.lastModified() })
-                zip.write(bytes)
+            for (item in snapshots) {
+                zip.putNextEntry(ZipEntry(item.file.name).apply { time = item.modified })
+                zip.write(item.bytes)
                 zip.closeEntry()
             }
             for ((name, text) in texts) {
                 zip.putNextEntry(ZipEntry(name))
-                zip.write(text.toByteArray())
+                zip.write(text.toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
             }
         }
         AppLog.info(
-            "[LOG_EXPORT] completed files=${logs.size} logEntries=${logs.sumOf { file -> runCatching { file.useLines { it.count() } }.getOrDefault(0) }} " +
-                "archiveEntries=${logs.size + texts.size} exportTime=${exportTime}",
+            "[LOG_EXPORT] completed files=${snapshots.size} totalBytes=$totalBytes logEntries=${snapshots.sumOf { it.lineCount }} " +
+                "archiveEntries=${snapshots.size + texts.size} latestRecord=$latestRecord exportTime=$exportTime",
         )
-        return logs.size + texts.size
+        return snapshots.size + texts.size
     }
 
     private fun settings(context: Context): String =
@@ -99,6 +140,7 @@ object LogPack {
             line("device") { "${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}), abi ${Build.SUPPORTED_ABIS.joinToString()}" },
             line("android") { "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), build ${Build.DISPLAY}" },
             line("locale") { config.locales.toLanguageTags() },
+            line("timezone") { java.util.TimeZone.getDefault().id },
             line("screen") {
                 val metrics = context.resources.displayMetrics
                 "${metrics.widthPixels}x${metrics.heightPixels} @ ${metrics.densityDpi} dpi, font scale ${config.fontScale}, " +
