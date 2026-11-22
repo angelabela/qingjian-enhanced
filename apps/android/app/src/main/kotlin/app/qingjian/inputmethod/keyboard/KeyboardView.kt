@@ -765,7 +765,7 @@ class KeyboardView(
             }
         }
         if (candidateSwipeMode) {
-            val currentStep = (-dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
+            val currentStep = (dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
             val delta = currentStep - candidateSwipeLastStep
             if (delta != 0) {
                 candidateSwipeLastStep = currentStep
@@ -849,7 +849,7 @@ class KeyboardView(
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
         const val CANDIDATE_SWIPE_START_DP = 12f
-        const val CANDIDATE_SWIPE_STEP_DP = 24f
+        const val CANDIDATE_SWIPE_STEP_DP = 18f
         const val SPACE_CLIPBOARD_SWIPE_DP = 22f
         const val SPACE_CLIPBOARD_SLOPE = 1.2f
     }
