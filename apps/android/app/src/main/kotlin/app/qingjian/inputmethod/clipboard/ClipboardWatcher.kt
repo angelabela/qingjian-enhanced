@@ -39,9 +39,9 @@ class ClipboardWatcher(private val context: Context) {
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
-        val firstRecord = firstSeen(clip.description.timestamp)
         if (uri != null && mime?.startsWith("image/") == true) {
-            if (!firstRecord) return
+            val identity = "image:${mime}:${uri}:${clip.description.timestamp}"
+            if (!firstSeen(identity)) return
             thread(name = "qingjian-clipboard-image") {
                 val bytes = runCatching {
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -56,17 +56,23 @@ class ClipboardWatcher(private val context: Context) {
         }
         // 某些应用复制的是 URI/Intent：text 为空但系统仍可转换成可粘贴文本。
         val text = runCatching { item.coerceToText(context)?.toString() }.getOrNull() ?: return
-        if (firstRecord && text != ClipboardSync.lastReceived) {
+        if (firstSeen("text:$text") && text != ClipboardSync.lastReceived) {
             ClipboardStore.add(context, text, settings.clipboardLimit)
             ClipboardSync.changed()
         }
     }
 
-    /** 时间戳记在磁盘上：输入法进程会被杀，重起后系统剪贴板里还是那一份。 */
-    private fun firstSeen(timestamp: Long): Boolean {
+    /**
+     * 用内容指纹去重，而不是依赖部分国产 ROM 经常为 0 或不变化的 ClipDescription.timestamp。
+     * 指纹持久化，输入法进程重启后仍能识别同一条剪贴板内容。
+     */
+    private fun firstSeen(identity: String): Boolean {
+        val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
         val prefs = context.getSharedPreferences("clipboard", Context.MODE_PRIVATE)
-        if (prefs.getLong(LAST_SEEN, 0L) == timestamp) return false
-        prefs.edit().putLong(LAST_SEEN, timestamp).apply()
+        if (prefs.getString(LAST_SEEN_FINGERPRINT, null) == fingerprint) return false
+        prefs.edit().putString(LAST_SEEN_FINGERPRINT, fingerprint).apply()
         return true
     }
 
@@ -87,6 +93,6 @@ class ClipboardWatcher(private val context: Context) {
 
     private companion object {
         const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
-        const val LAST_SEEN = "last_seen_timestamp"
+        const val LAST_SEEN_FINGERPRINT = "last_seen_fingerprint"
     }
 }

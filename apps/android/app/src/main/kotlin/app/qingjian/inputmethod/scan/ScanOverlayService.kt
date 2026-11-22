@@ -244,7 +244,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     dp(18).toFloat(), dp(18).toFloat(),
                     dp(18).toFloat(), dp(18).toFloat(),
                 )
-                setStroke(dp(1), 0x66FFFFFF)
+                setStroke(dp(1), adaptiveGlassColor(
+                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                    1f,
+                    0xD0,
+                ))
             }
             clipToOutline = true
             clipChildren = true
@@ -437,14 +442,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     adaptiveGlassColor(
                         themePalette?.surface ?: 0xFF303846.toInt(),
                         themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.28f,
-                        0xB0,
+                        0.72f,
+                        0xD8,
                     ),
                     adaptiveGlassColor(
                         themePalette?.board ?: 0xFF252D39.toInt(),
                         themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.22f,
-                        0xB8,
+                        0.58f,
+                        0xD8,
                     ),
                 ),
             ).apply {

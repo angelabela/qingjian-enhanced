@@ -217,8 +217,8 @@ class QingjianInputMethodService :
         val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }
             .getOrNull()?.takeIf { it.isNotEmpty() }
 
-        // 输入法历史明确按“最新在前”排列。先主动 capture 后优先读历史，
-        // 防止部分 ROM 的 primaryClip 暂时返回旧条目时覆盖已经收录的新内容。
+        // 系统 primaryClip 是当前剪贴板的唯一实时来源；历史列表可能因 ROM 时间戳异常、
+        // JNI 写入延迟或同步排序而暂时停留在旧条目，因此只能作为系统读取失败时的兜底。
         val settings = Settings.load(this)
         val historyText = if (settings.recordClipboard) {
             runCatching {
@@ -228,8 +228,8 @@ class QingjianInputMethodService :
             }.getOrNull()?.takeIf { it.isNotEmpty() }
         } else null
         val text = preferredCode?.trim()?.takeIf { it.isNotEmpty() }
-            ?: historyText
             ?: systemText
+            ?: historyText
         if (text.isNullOrEmpty()) {
             bar.clearNotice()
             return
@@ -1980,11 +1980,12 @@ class QingjianInputMethodService :
         }
         closeEditor()
         closePanel()
+        // 每次打开翻译前从设置重新同步 Stack 的视频/光效层，避免沿用旧面板状态。
+        panel?.refreshDynamicBackground()
         composer.abandon()
         val bar = TranslateBar(
             this,
             Palette.of(this),
-            transparentBackground = panel?.editorBackgroundTransparent == true,
             partner = "英",
             onSource = quickTranslate::onSource,
             onConfirm = { closeEditor() },

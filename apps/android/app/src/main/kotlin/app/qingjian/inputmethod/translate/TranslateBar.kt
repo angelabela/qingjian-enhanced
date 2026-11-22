@@ -27,8 +27,6 @@ import app.qingjian.inputmethod.theme.Palette
 class TranslateBar(
     context: Context,
     private val palette: Palette,
-    /** 动态背景开启时使用半透明主题磨砂层，透出视频/光效；否则使用默认纯色面板。 */
-    private val transparentBackground: Boolean = false,
     /** 学习语言的简称（英、日），画在方向胶囊上。 */
     private val partner: String,
     private val onSource: (String) -> Unit,
@@ -107,12 +105,8 @@ class TranslateBar(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (transparentBackground) {
-            val glassWash = (palette.board and 0x00FFFFFF) or 0x68000000
-            canvas.drawColor(glassWash)
-        } else {
-            canvas.drawColor(palette.board)
-        }
+        // 不绘制任何底色：让 Stack 下方正在运行的动态光效/视频背景完整透出。
+        // 普通静态模式下，底层 root 仍会提供主题 board 颜色。
         val cy = height / 2f
         val buttonLeft = width - ink.dp(BUTTON_DP)
         box.set(ink.dp(10f), cy - ink.dp(20f), buttonLeft, cy + ink.dp(20f))
