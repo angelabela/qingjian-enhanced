@@ -400,9 +400,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setOnClickListener { scanDiag("close button tapped", warning = true); finishPrefixEditing(); stopSelf() }
         }
         toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
-        // 空白标题栏/行区域可直接拖动；按钮和输入框保留各自点击、编辑行为。
-        attachHeaderDrag(prefixRow)
-        attachHeaderDrag(toolbar)
+        // 整个标题栏由 DraggableHeaderLayout 统一处理拖动；子控件短按仍由自身接收。
 
         val header = object : DraggableHeaderLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
