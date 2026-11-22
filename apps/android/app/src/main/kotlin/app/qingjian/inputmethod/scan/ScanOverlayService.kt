@@ -361,13 +361,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
                 updateHeaderWindowLayout()
-                prefixInput.post {
-                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
+                prefixInput.post outer@{
+                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@outer
                     runCatching {
                         prefixInput.requestFocus()
                         // 延后一帧等待 Dialog 的焦点标志生效；后续点击不再重复请求 IME。
-                        prefixInput.post {
-                            if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@post
+                        prefixInput.post inner@{
+                            if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@inner
                             prefixImeRequested = true
                             val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
                             imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
