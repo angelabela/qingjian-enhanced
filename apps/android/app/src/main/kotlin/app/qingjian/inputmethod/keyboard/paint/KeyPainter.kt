@@ -70,7 +70,7 @@ class KeyPainter(
             canvas, bounds,
             keyFillColor(key, down, brand),
         )
-        if (marqueeEnabled && key is Key.Letter) drawLetterMarquee(canvas, bounds, key.char)
+        if (marqueeEnabled && key is Key.Letter) key.label.firstOrNull()?.let { drawLetterMarquee(canvas, bounds, it) }
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
