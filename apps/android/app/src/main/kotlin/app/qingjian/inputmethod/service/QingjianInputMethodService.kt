@@ -169,8 +169,16 @@ class QingjianInputMethodService :
     private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
-        // 剪贴板变化时即使键盘面板未打开也由系统监听；仅在输入视图可见且未输入拼音时刷新提示。
-        if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+        // 系统剪贴板回调有时早于 ROM 完成 primaryClip 更新；立即读取后再做短延迟复查。
+        // 这样既覆盖系统剪贴板刚更新的时序，也覆盖 ClipboardWatcher 异步收录历史的时序。
+        if (isInputViewShown && shownPreedit.isEmpty()) {
+            showLatestClipboardNotice()
+            listOf(120L, 360L, 720L).forEach { delay ->
+                Handler(mainLooper).postDelayed({
+                    if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+                }, delay)
+            }
+        }
     }
 
     /** 短信验证码只通过本机广播送到候选条；短信正文不进入输入法服务。 */
@@ -656,9 +664,11 @@ class QingjianInputMethodService :
         clipboardWatcher.capture()
         showLatestClipboardNotice()
         // 部分系统在输入法窗口启动的首帧仍返回旧剪贴板；稍后重读一次，避免捕获时序竞态。
-        Handler(mainLooper).postDelayed({
-            if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
-        }, 180L)
+        listOf(180L, 420L, 800L).forEach { delay ->
+            Handler(mainLooper).postDelayed({
+                if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+            }, delay)
+        }
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
         runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
