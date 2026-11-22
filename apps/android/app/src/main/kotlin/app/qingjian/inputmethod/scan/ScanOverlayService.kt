@@ -81,8 +81,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 真正的系统悬浮扫码窗：TYPE_APPLICATION_OVERLAY + NOT_FOCUSABLE，
- * 不接管焦点，宿主输入框和输入法 InputConnection 保持不变。
+ * 单窗口系统悬浮扫码窗：默认 NOT_FOCUSABLE，不干扰宿主输入框；
+ * 仅编辑扫码前缀时临时取得焦点并显示系统输入法。
  */
 class ScanOverlayService : Service(), LifecycleOwner {
     /** 同时写入 Android logcat 与设置中可打包的本机诊断日志；不记录扫码文本内容。 */
@@ -536,7 +536,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setBackgroundColor(Color.TRANSPARENT)
         }
         overlayRoot.addView(headerView, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
-        overlayRoot.addView(root, FrameLayout.LayoutParams(-1, height, Gravity.TOP).apply {
+        overlayRoot.addView(root, FrameLayout.LayoutParams(-1, -1, Gravity.TOP).apply {
             topMargin = headerHeightEstimate
         })
         overlayRoot.alpha = 0f
@@ -563,7 +563,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     /**
-     * 子控件先正常处理点击；手指移动超过 touch slop 才由父容器拦截并拖动整个窗口组。
+     * 子控件先正常处理点击；手指移动超过 touch slop 才由父容器拦截并拖动整个单窗口。
      * 模式、闪光灯、关闭按钮和前缀输入框因此既能短按操作，也能按住拖动。
      */
     private open inner class DraggableHeaderLayout(context: Context) : LinearLayout(context) {
