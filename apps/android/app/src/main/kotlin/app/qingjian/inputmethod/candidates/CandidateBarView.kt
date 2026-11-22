@@ -253,7 +253,26 @@ class CandidateBarView(
         val next = index.takeIf { it in strip.candidates.indices } ?: -1
         if (gestureSelectionIndex == next) return
         gestureSelectionIndex = next
+        if (next >= 0) scrollCandidateIntoView(next)
         invalidate()
+    }
+
+    /**
+     * 空格横滑预选到屏幕外的候选时，自动滚动候选条把该词完整带入视口。
+     * 左右两侧都预留与绘制一致的内边距，避免末尾候选只露出半截。
+     */
+    private fun scrollCandidateIntoView(index: Int) {
+        val rect = strip.wordRect(index) ?: return
+        val inset = strip.leftInsetPx(stripWidth)
+        val safeLeft = scrollX + inset
+        val safeRight = scrollX + stripWidth - 8f * density
+        val target = when {
+            rect.left + inset < safeLeft -> rect.left.toInt()
+            rect.right + inset > safeRight -> (rect.right + inset - stripWidth + 8f * density).toInt()
+            else -> return
+        }
+        scroller.forceFinished(true)
+        scrollTo(target.coerceIn(0, maxScroll()), 0)
     }
 
     /** 提交或取消空格横滑预选。 */
@@ -572,7 +591,9 @@ class CandidateBarView(
         closePopup()
     }
 
-    private fun maxScroll(): Int = (strip.contentWidth - stripWidth).toInt().coerceAtLeast(0)
+    // 内容绘制从左内边距开始，因此最大滚动量也要补偿这段内边距。
+    private fun maxScroll(): Int =
+        (strip.contentWidth + strip.leftInsetPx(stripWidth) - stripWidth).toInt().coerceAtLeast(0)
 
     private companion object {
         const val NOTICE_MS = 5000L

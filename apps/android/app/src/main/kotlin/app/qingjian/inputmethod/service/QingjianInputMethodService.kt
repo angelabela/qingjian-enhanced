@@ -259,17 +259,32 @@ class QingjianInputMethodService :
             return
         }
         AppLog.info("[SCAN_DIAG] result received length=${value.length} editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId} connection=${connection.javaClass.simpleName}")
-        val before = runCatching { connection.getTextBeforeCursor(256, 0)?.toString().orEmpty() }.getOrDefault("")
-        val after = runCatching { connection.getTextAfterCursor(256, 0)?.toString().orEmpty() }.getOrDefault("")
-        // 只把光标紧邻、且左右为边界的完整串号视为重复。不能用 contains：
-        // D8097F-ZTEGD867A245 后面再扫 ZTEGD867A245，短串是长串的后缀但不是重复扫描。
+        val before = runCatching { connection.getTextBeforeCursor(10000, 0)?.toString().orEmpty() }.getOrDefault("")
+        val selected = runCatching { connection.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { connection.getTextAfterCursor(10000, 0)?.toString().orEmpty() }.getOrDefault("")
+        // 只按完整码边界去重，不把长串中的短后缀误判为重复。
         fun isCodeChar(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == '.'
-        val beforeDuplicate = before.endsWith(value) &&
-            (before.length == value.length || !isCodeChar(before[before.length - value.length - 1]))
-        val afterDuplicate = after.startsWith(value) &&
-            (after.length == value.length || !isCodeChar(after[value.length]))
-        if (beforeDuplicate || afterDuplicate) {
-            AppLog.info("[SCAN_DIAG] exact adjacent duplicate ignored editor=${currentInputEditorInfo?.packageName}")
+        fun containsWholeCode(source: String): Boolean {
+            var from = 0
+            while (from <= source.length - value.length) {
+                val found = source.indexOf(value, from)
+                if (found < 0) return false
+                val end = found + value.length
+                val leftBoundary = found == 0 || !isCodeChar(source[found - 1])
+                val rightBoundary = end == source.length || !isCodeChar(source[end])
+                if (leftBoundary && rightBoundary) return true
+                from = found + 1
+            }
+            return false
+        }
+        val fieldAlreadyHasCode = containsWholeCode(before + selected + after)
+        val clipboardAlreadyHasCode = runCatching {
+            val clip = getSystemService(ClipboardManager::class.java)?.primaryClip
+            clip != null && clip.itemCount > 0 &&
+                clip.getItemAt(0).coerceToText(this).toString().trim() == value
+        }.getOrDefault(false)
+        if (fieldAlreadyHasCode || clipboardAlreadyHasCode) {
+            AppLog.info("[SCAN_DIAG] duplicate scan ignored fieldMatch=$fieldAlreadyHasCode clipboardMatch=$clipboardAlreadyHasCode editor=${currentInputEditorInfo?.packageName}")
             return
         }
 
@@ -1461,6 +1476,21 @@ class QingjianInputMethodService :
     override fun openFunctions() = openPanel(PanelKind.FUNCTIONS)
 
     private fun openBarcodeScanner() {
+        // 悬浮扫码直接从输入法服务启动非焦点前台服务，不经过 Activity。
+        // Activity 即使只闪现一帧也可能让微信/企业微信暂时收起输入法或切换编辑器焦点。
+        if (ScanPreferences.isFloating(this) &&
+            android.provider.Settings.canDrawOverlays(this) &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching {
+                ContextCompat.startForegroundService(this, Intent(this, ScanOverlayService::class.java))
+            }.onFailure {
+                AppLog.error("[SCAN_DIAG] direct floating scanner start failed: ${it.javaClass.simpleName}: ${it.message}")
+                toast("悬浮扫码启动失败，请检查相机和悬浮窗权限")
+            }
+            return
+        }
+        // 普通全屏模式或尚未授权时沿用 Activity 流程（Activity 会处理权限申请）。
         startActivity(Intent(this, BarcodeScannerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
