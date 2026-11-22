@@ -202,30 +202,47 @@ class QingjianInputMethodService :
      * 短信验证码优先按验证码样式展示；普通文本作为剪贴板快捷上屏入口。
      */
     private fun showLatestClipboardNotice(preferredCode: String? = null) {
-        val bar = panel?.bar ?: return
-        if (shownPreedit.isNotEmpty()) return
-        if (android.os.SystemClock.elapsedRealtime() < scanActionNoticeUntil) return
+        val bar = panel?.bar
+        if (bar == null) {
+            AppLog.debug("[CLIPBOARD_NOTICE] skip: candidate bar missing panel=${panel != null} panelKind=${activePanelState}")
+            return
+        }
+        if (shownPreedit.isNotEmpty()) {
+            AppLog.debug("[CLIPBOARD_NOTICE] skip: preedit not empty length=${shownPreedit.length}")
+            return
+        }
+        val scanSuppressionRemaining = scanActionNoticeUntil - android.os.SystemClock.elapsedRealtime()
+        if (scanSuppressionRemaining > 0) {
+            AppLog.debug("[CLIPBOARD_NOTICE] skip: scan notice suppression remainingMs=$scanSuppressionRemaining")
+            return
+        }
         // 某些输入框切换/面板初始化期间 CandidateBarView 已创建但还未挂载到可见窗口；
         // 这种情况下不能提前记录 lastHash，否则窗口真正显示后同一条新剪贴板会被当成旧提示跳过。
         if (!bar.isAttachedToWindow || !bar.isShown) {
-            AppLog.info("[CLIPBOARD_NOTICE] defer: candidate bar is not attached/visible")
+            AppLog.info("[CLIPBOARD_NOTICE] defer: attached=${bar.isAttachedToWindow} shown=${bar.isShown} visibility=${bar.visibility} size=${bar.width}x${bar.height} preferredCode=${preferredCode != null}")
             return
         }
 
         val manager = getSystemService(ClipboardManager::class.java)
-        val clip = runCatching { manager?.primaryClip }.getOrNull()
+        val clip = runCatching { manager?.primaryClip }
+            .onFailure { AppLog.warn("[CLIPBOARD_NOTICE] primaryClip read failed: ${it.javaClass.simpleName}") }
+            .getOrNull()
         val description = clip?.description
         val sensitive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             description?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true
+        AppLog.info("[CLIPBOARD_NOTICE] clipPresent=${clip != null} itemCount=${clip?.itemCount ?: -1} timestamp=${description?.timestamp ?: -1L} sensitive=$sensitive preferredCode=${preferredCode != null}")
 
         // 敏感剪贴板不能回退显示历史中的旧内容；可信的短信验证码广播则允许直接显示。
         if (preferredCode == null && clip != null && (sensitive || clip.itemCount <= 0)) {
+            AppLog.info("[CLIPBOARD_NOTICE] clear: sensitive=$sensitive itemCount=${clip.itemCount}")
             bar.clearNotice()
             return
         }
         val item = clip?.takeIf { !sensitive && it.itemCount > 0 }?.getItemAt(0)
         val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }
+            .onFailure { AppLog.warn("[CLIPBOARD_NOTICE] text conversion failed: ${it.javaClass.simpleName}") }
             .getOrNull()?.takeIf { it.isNotEmpty() }
+        AppLog.debug("[CLIPBOARD_NOTICE] system text length=${systemText?.length ?: 0}")
 
         // 系统 primaryClip 是当前剪贴板的唯一实时来源；历史列表可能因 ROM 时间戳异常、
         // JNI 写入延迟或同步排序而暂时停留在旧条目，因此只能作为系统读取失败时的兜底。
@@ -240,7 +257,15 @@ class QingjianInputMethodService :
         val text = preferredCode?.trim()?.takeIf { it.isNotEmpty() }
             ?: systemText
             ?: historyText
+        val source = when {
+            preferredCode != null -> "sms_broadcast"
+            systemText != null -> "system_primary_clip"
+            historyText != null -> "history_fallback"
+            else -> "none"
+        }
+        AppLog.info("[CLIPBOARD_NOTICE] selected source=$source length=${text?.length ?: 0} historyLength=${historyText?.length ?: 0}")
         if (text.isNullOrEmpty()) {
+            AppLog.info("[CLIPBOARD_NOTICE] clear: no usable text")
             bar.clearNotice()
             return
         }
@@ -253,12 +278,15 @@ class QingjianInputMethodService :
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
         // 内容变化就刷新，不再只依赖部分 ROM 可能不更新的 ClipDescription.timestamp。
         // 短信验证码广播是一次明确的新事件，即使验证码相同也允许重新提示。
-        if (preferredCode == null && lastHash == contentHash) return
+        if (preferredCode == null && lastHash == contentHash) {
+            AppLog.debug("[CLIPBOARD_NOTICE] duplicate skipped source=$source length=${text.length}")
+            return
+        }
 
         // 不清空/重置候选栏底层状态。CandidateBarView 的主动提示层会临时覆盖候选，
         // 候选刷新不会将通知吞掉；5 秒后自动恢复当前候选栏。
         bar.showPersistentNotice(text) { commitText(text) }
-        AppLog.info("[CLIPBOARD_NOTICE] displayed new clipboard item length=${text.length}")
+        AppLog.info("[CLIPBOARD_NOTICE] displayed source=$source length=${text.length} attached=${bar.isAttachedToWindow} shown=${bar.isShown}")
         prefs.edit()
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
             .putString("clipboard_notice_last_hash", contentHash)
