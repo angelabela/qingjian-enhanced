@@ -150,7 +150,7 @@
 - 源码核对：#532 的 `apps/android/core/Cargo.toml` 为 `0.3.10-dev`，按 Gradle 公式计算 versionCode 为 `310`；#538 当前源码为 `0.3.12-dev`，按同一公式计算为 `312`。
 - 异常：本次检查未找到成功交付的 `0.3.11-dev` APK；旧档案写入的 `30310/30312` 与当前 Gradle 公式计算值不一致。versionCode 目前按源码推算，未下载 APK 读取 Manifest。
 - 处理边界：本次不修改应用源码、版本配置或 PROJECT_RULES；仅记录实际源码值和差异。
-- 当前状态：**未解决**。下一次 APK 交付前需核对版本序列、versionCode 公式与旧档案，确保可覆盖升级。
+- 当前状态：**未解决**。按最新成功交付 `0.3.12-dev`，下一次新可用 APK 应为 `0.3.13-dev`（按当前 Gradle 公式计算 versionCode=313）；需先核对 `0.3.11-dev` 缺失记录、旧档案 `303xx` 值及 PROJECT_RULES 中的历史快照，确保 versionCode 单调且可覆盖升级。
 
 ## 新问题记录模板
 
