@@ -13,7 +13,7 @@ import android.graphics.Shader
 import android.graphics.Matrix
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
-internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0, private val fitMode: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
+internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
     private var player: MediaPlayer? = null
     private var output: Surface? = null
     private var prepared = false
@@ -80,25 +80,15 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { applyVideoTransform() }
 
-    /** 0=适应面板，1=拉伸，2=裁剪填满，3=100%原始像素尺寸。 */
+    /** 等比例铺满整个输入法面板；超出面板的部分居中裁切，不拉伸画面。 */
     private fun applyVideoTransform() {
         if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) return
-        val matrix = Matrix()
         val sx = width.toFloat() / videoWidth
         val sy = height.toFloat() / videoHeight
-        when (fitMode.coerceIn(0, 3)) {
-            0 -> {
-                val scale = minOf(sx, sy)
-                matrix.setScale(scale, scale)
-                matrix.postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
-            }
-            1 -> matrix.setScale(sx, sy)
-            2 -> {
-                val scale = maxOf(sx, sy)
-                matrix.setScale(scale, scale)
-                matrix.postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
-            }
-            3 -> matrix.setTranslate((width - videoWidth) / 2f, (height - videoHeight) / 2f)
+        val scale = maxOf(sx, sy)
+        val matrix = Matrix().apply {
+            setScale(scale, scale)
+            postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
         }
         setTransform(matrix)
     }

@@ -16,11 +16,11 @@
 ## 当前版本基线
 
 - 最新交付给用户测试的 APK：GitHub Actions #527，签名 Release 构建成功、固定签名验证通过，artifact 已下载并核对；本轮浮窗扫码整体重构、视频背景和按键效果改动均待用户设备实测。
-- APP 测试版本：`0.3.9-dev`，`versionCode=30309`（`apps/android/core/Cargo.toml` 为版本来源；`apps/android/app/build.gradle.kts` 按 主*10000+次*100+修订 计算）。保留 `-dev` 后缀。
+- APP 下一测试版本：`0.3.10-dev`，`versionCode=30310`（本轮代码提交后待签名构建）（`apps/android/core/Cargo.toml` 为版本来源；`apps/android/app/build.gradle.kts` 按 主*10000+次*100+修订 计算）。保留 `-dev` 后缀。
 - 工作流：`android-signed-apk` #527；run ID `45039384235`；提交 `6c298a4315d39ec165f1404a5d7a51e2df9b5b2f`；Build、固定签名和 Verify 步骤均成功；artifact `qingjian-android-signed`，ID `14760888930`，ZIP SHA-256 `6d4863fb3da13913b2d3dc7e35a0dfe9e3733df205302cdc4ebc9023635dc9d3`。
 - APK：`qingjian-android-signed.apk`，188,659,509 bytes；APK SHA-256 `66216ed8d78893c7b0fa0fcb08c88858e75e5eb1a59438dc17b064db97d7bb6f`。签名证书 CN=Qingjian，SHA-256 `10be9cc45f931581203433b7c1095ca9689bb643463821ef9b108314aa958b72`，与 #516 固定证书一致。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45039384235；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14760888930/zip
-- 本轮功能：扫码悬浮窗标题栏、相机预览和控件统一为单一 WindowManager 窗口；保留原扫码/识图/前缀过滤/闪光灯/拍照/扫描框/拖动缩放功能和图标；前缀编辑时单窗口临时获取焦点；保留标题栏玻璃模糊和圆角。按键透明度/磨砂效果集中在按键效果面板；边框/背景色块直接点击选择。视频背景在关闭背景光效时保持候选栏、键盘、底部操作条透明显示，并新增适应面板/拉伸/裁剪/100% 四种视频区域模式。全部待用户安装实测。
-- 用户约定：可用 APP 版本从 `0.3.4` 基线逐次递增 patch；本次源码版本 `0.3.8-dev` / `30308`。版本号与 workflow run number 独立；不移除 `-dev` 后缀。
+- 本轮改动（待构建）：移除扫码浮窗 FLAG_BLUR_BEHIND，避免标题栏模糊影响整个屏幕；从「键盘背景动效」页删除重复的按键透明度/磨砂控件，保留「按键效果」页管理；撤销视频区域四模式，改为等比例铺满面板、居中裁切；将输入法窗口、候选栏、键盘容器和底部操作区设为透明，视频启用时自动降低键帽不透明度，修复视频被主题色遮挡的问题。
+- 用户约定：可用 APP 版本从 `0.3.4` 基线逐次递增 patch；当前已交付版本 `0.3.9-dev` / `30309`，本轮待构建版本 `0.3.10-dev` / `30310`。版本号与 workflow run number 独立；不移除 `-dev` 后缀。
 - APP 版本号与 GitHub Actions 工作流编号完全独立，不得互相替代。
 
 ## 当前已知待验证事项

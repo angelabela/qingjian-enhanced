@@ -488,8 +488,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             addView(toolbar)
         }
         // Switch 自身必须保留触摸序列；不能把它交给会消费事件的标题栏拖动监听。
-        // 标题栏独立成一个小型悬浮窗口：BLUR_BEHIND 只覆盖标题栏范围，
-        // 避免把整块相机预览也一起模糊。
+        // 标题栏与相机预览属于同一窗口，不启用系统级窗口后方模糊，避免影响整块屏幕。
         headerView = header
 
         val resize = TextView(this).apply {
@@ -527,10 +526,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = dp(windowPrefs.getInt(KEY_WINDOW_X_DP, 16))
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                setBlurBehindRadius(dp(24))
-            }
         }
         overlayRoot = FrameLayout(this).apply {
             isFocusableInTouchMode = true

@@ -557,6 +557,9 @@ class QingjianInputMethodService :
     }
 
     override fun onCreateInputView(): View {
+        // 输入法窗口本身必须透明，否则视频 TextureView 的半透明画面会与系统主题底色混合，
+        // 造成候选栏、键盘与底部操作区仍像覆盖着一层纯主题色。
+        window?.window?.setBackgroundDrawableResource(android.R.color.transparent)
         val viewBuildStartedAt = android.os.SystemClock.elapsedRealtime()
         // 键盘重建，开着的语音面板跟着没了
         voice.cancel()

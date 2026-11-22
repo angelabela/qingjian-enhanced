@@ -347,7 +347,6 @@ class InputPanel(
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
     private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
-    private val videoBackgroundFitMode = dynamicBackgroundPrefs.getInt(DynamicBackgroundActivity.KEY_FIT_MODE, 0).coerceIn(0, 3)
 
     val candidateTextStyleConfig = app.qingjian.inputmethod.candidates.CandidateTextStyleEngine.Config.forPreset(
         palette.text, settings.fontWeight, settings.candidateTextPreset,
@@ -371,7 +370,8 @@ class InputPanel(
         )
         cloudSuggestions.setAnchorView(this)
     }
-    private val keyBackgroundAlpha = dynamicBackgroundPrefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
+    // 视频背景启用时自动降低键帽不透明度，让视频能够透过键帽显示；用户设置的透明度比例仍然生效。
+    private val keyBackgroundAlpha = dynamicBackgroundPrefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f * if (videoBackgroundUri != null) 0.48f else 1f
     private val keyBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("keyboard_key_frosted", false)
     val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = transparentBackground,
         keyBackgroundAlpha = keyBackgroundAlpha, keyBackgroundFrosted = keyBackgroundFrosted,
@@ -398,6 +398,7 @@ class InputPanel(
         orientation = LinearLayout.VERTICAL
         clipChildren = false
         clipToPadding = false
+        setBackgroundColor(Color.TRANSPARENT)
         addView(bar)
         addView(keyboard)
         val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
@@ -406,7 +407,8 @@ class InputPanel(
         }
     }
 
-    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur, videoBackgroundFitMode) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
+    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
+        setBackgroundColor(Color.TRANSPARENT)
         clipChildren = false
         clipToPadding = false
     }
@@ -466,9 +468,8 @@ class InputPanel(
         val alpha = prefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
         val brightness = prefs.getInt("video_brightness", 100).coerceIn(0, 200)
         val blur = if (prefs.getBoolean("video_frosted", true)) prefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
-        val fitMode = prefs.getInt(DynamicBackgroundActivity.KEY_FIT_MODE, 0).coerceIn(0, 3)
-        stack.updateVideoBackground(uri, alpha, brightness, blur, fitMode)
-        val keyAlpha = prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
+        stack.updateVideoBackground(uri, alpha, brightness, blur)
+        val keyAlpha = prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f * if (uri != null) 0.48f else 1f
         val keyFrosted = prefs.getBoolean("keyboard_key_frosted", false)
         keyboard.setKeySurface(keyAlpha, keyFrosted)
         keyboard.setMarqueeEnabled(prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false))
@@ -714,16 +715,15 @@ class InputPanel(
         videoAlpha: Float,
         videoBrightness: Int,
         videoBlur: Int,
-        videoFitMode: Int,
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
-        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur, videoFitMode).apply { onAverageLuminance = onVideoLuminance } }
+        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
         private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
 
-        fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int, fitMode: Int) {
+        fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
             videoBackground?.let { removeView(it) }
             videoTint?.let(::removeView)
-            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur, fitMode).apply { onAverageLuminance = onVideoLuminance } }
+            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply { onAverageLuminance = onVideoLuminance } }
             videoTint = makeVideoTint(context, uri, brightness)
             videoBackground?.let { addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
             videoTint?.let { addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
