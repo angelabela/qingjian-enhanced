@@ -22,7 +22,7 @@
 - Artifact：`qingjian-android-signed`；ID `14765077119`；大小 `154,488,827 bytes`；ZIP SHA-256 `d3f5979d7815f26f261c312a0ef4cea50e358c159a6edadcbed895e858c066b8`；有效期至 `2026-12-22T17:28:36Z`。运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45049084378；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14765077119/zip
 - #538 提交改动：扩展剪贴板监听、输入法焦点、扫码前缀和相机帧诊断日志；日志行增加线程名与 elapsed time；日志包清单增加文件行数和导出条目统计；移除不存在的 JNI `Native.flushLogging()/Dispatch.flush()` 调用，按同步写入的 RollingFileAppender 记录导出边界。
 - 上一份已核实成功交付为 #532：源码版本 `0.3.10-dev`，按同一公式计算 `versionCode=310`；run ID `45044951413`，提交 `3d1e1538342e7dd18320d195644b340a81633a15`，artifact ID `14763401892`。#533–#537 因 Rust 日志 flush API 编译错误失败；#538 已通过完整构建与签名验证。
-- 当前分支 HEAD 为 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd`，`apps/android/core/Cargo.toml` 版本为 `0.3.12-dev`，与 #538 构建提交一致。
+- 本次 APK 构建的应用源码提交为 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd`，`apps/android/core/Cargo.toml` 版本为 `0.3.12-dev`。随后仅将档案文件提交为 `3b25cc1106ebfcd9e34e5588d55e7f48a37b4818`（PROJECT_STATUS）、`9372f35fdc76d4b8ef800aee0c13a965dd914d0d`（BUG_TRACKER）和 `011b48054c476ddeb0e70ceacb1857cc41ecaf7b`（CHANGELOG）；当前分支 HEAD 为最后一个档案提交。未修改应用源码或工作流。
 - 版本序列需继续核对：已核实 #532 为 `0.3.10-dev`，#538 为 `0.3.12-dev`，本次检查未找到成功交付的 `0.3.11-dev` APK。旧档案中 `30310/30312` 的 versionCode 记录与当前 Gradle 公式不一致；当前源码公式计算值分别为 `310/312`。未擅自改动应用源码或版本规则，下一次交付前需统一版本序列和档案。
 - Debug 监控：最新名为 `android-debug` 的运行仍是 #571（分支 `feature/android-optional-trigram-model`，提交 `1fc9c71979415edd8626746bd5fd48d93d34f08c`，2026-11-21T12:21:48Z 完成）。该工作流实际执行 `assembleRelease`、固定签名和签名验证，artifact 也是 `qingjian-android-signed`；目标分支未列入该工作流 push 分支范围，因此当前目标分支没有真正的 Debug APK 运行。
 
