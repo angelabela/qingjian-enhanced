@@ -4,6 +4,14 @@
 可选的「网盘：[名称](链接)」一行放 GitHub 下载不方便时的网盘地址，官网单独显示成按钮，不算更新条目。
 发版时 CI 从这里取该版本的说明写进 GitHub Release，并汇总成官网下载页用的 `releases.json`（`tools/release/releases_json.py`）。
 
+## 0.3.5-dev · 2026-11-22 · beta
+
+- 扫码悬浮窗口标题栏整区可按住拖动，同时保留控件短按操作
+- 扫码识别 Wi-Fi 信息或网址后提供快捷提示，5 秒无操作自动收起；Wi-Fi 接入遵循 Android 系统确认机制
+- 剪贴板条目按内容显示加入 Wi-Fi / 访问网址快捷图标；普通内容隐藏图标，删除操作改由左右滑动完成
+- 新增独立「按键效果」设置页，集中管理按键透明度、磨砂效果，并提供 26 个字母按键跑马灯开关
+- 测试构建：GitHub Actions #492，固定签名验证通过；尚待用户安装验收
+
 ## 0.3.4 · 未发布 · stable
 
 - 当前为开发基线；项目状态、版本规则与问题追踪分别维护在 [PROJECT_STATUS.md](PROJECT_STATUS.md)、[PROJECT_RULES.md](PROJECT_RULES.md)、[BUG_TRACKER.md](BUG_TRACKER.md)。
