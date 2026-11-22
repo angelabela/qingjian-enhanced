@@ -24,10 +24,11 @@ class SmsCodeReceiver : BroadcastReceiver() {
         val body = messages.joinToString("") { it.messageBody.orEmpty() }
         val code = extractCode(body) ?: return
 
-        // 自动复制，随后通知当前输入法候选栏提供一键上屏入口。
+        // 先持久化验证码，再写系统剪贴板，确保监听器触发时能识别验证码。
+        prefs.edit().putString(KEY_LATEST, code).putLong(KEY_LATEST_AT, System.currentTimeMillis()).apply()
+        // 自动复制；提示展示一次后不再重复弹出，后续由用户在剪贴板面板手动粘贴。
         context.getSystemService(ClipboardManager::class.java)
             .setPrimaryClip(ClipData.newPlainText("短信验证码", code))
-        prefs.edit().putString(KEY_LATEST, code).putLong(KEY_LATEST_AT, System.currentTimeMillis()).apply()
         context.sendBroadcast(
             Intent(ACTION_CODE_READY).setPackage(context.packageName).putExtra(EXTRA_CODE, code),
         )

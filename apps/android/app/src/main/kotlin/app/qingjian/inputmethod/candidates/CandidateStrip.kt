@@ -305,6 +305,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val leftInset = leftInsetPx(viewWidth)
         canvas.translate(leftInset, 0f)
         val contentViewWidth = (viewWidth - leftInset).toInt().coerceAtLeast(1)
+        // 硬裁剪候选绘制视口，滑动和入场动画中的字形、释义、图标都不能越过左侧内边距。
+        canvas.clipRect(scrollX.toFloat(), 0f, (scrollX + contentViewWidth).toFloat(), barHeight)
         val image = image
         if (image == null) {
             drawFallback(canvas, scrollX, contentViewWidth)

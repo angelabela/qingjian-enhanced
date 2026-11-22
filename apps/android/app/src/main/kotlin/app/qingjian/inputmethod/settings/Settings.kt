@@ -113,7 +113,7 @@ data class Settings(
     enum class Layout { QWERTY, NINE_KEY, ZHUYIN, SHUANGPIN, WUBI }
 
     enum class KeySoundStyle(val label: String) {
-        SYSTEM("系统按键音"), CRISP("清脆短音"), SOFT("柔和短音"), MECHANICAL("机械短音"), BUBBLE("轻提示音");
+        SYSTEM("系统按键音"), CRISP("清脆点击"), SOFT("柔和轻触"), MECHANICAL("机械按键"), BUBBLE("轻柔确认");
         companion object { fun of(value: String?): KeySoundStyle = entries.firstOrNull { it.name == value } ?: SYSTEM }
     }
 

@@ -207,12 +207,16 @@ class QingjianInputMethodService :
         val savedAt = prefs.getLong(SmsCodeReceiver.KEY_LATEST_AT, 0L)
         val isLatestCode = savedCode == text && savedAt > 0L &&
             System.currentTimeMillis() - savedAt in 0L..(10 * 60 * 1000L)
+        // 同一条内容只自动展示一次；只持久化 SHA-256，不保存剪贴板正文。
+        val contentHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        if (prefs.getString("clipboard_notice_last_hash", null) == contentHash) return
+        prefs.edit().putString("clipboard_notice_last_hash", contentHash).apply()
         bar.show("", emptyList())
-        if (isLatestCode) {
-            bar.showPersistentNotice("验证码 $text · 点击上屏") { commitText(text) }
-        } else {
-            bar.showPersistentNotice("剪贴板内容 · 点击上屏") { commitText(text) }
-        }
+        // 直接显示内容本身；Toolbar.drawNotice 单行显示并在末尾省略，5 秒后自动关闭。
+        // 后续需要再次使用时，到剪贴板面板手动粘贴。
+        bar.showPersistentNotice(text) { commitText(text) }
     }
 
     /** 短信验证码开关变化时只刷新常用功能图标，不重建输入法窗口。 */
