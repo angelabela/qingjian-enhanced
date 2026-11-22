@@ -26,6 +26,8 @@ class KeyPainter(
     private var keyBackgroundAlpha: Float = 1f,
     private var keyBackgroundFrosted: Boolean = false,
     private val textEffectPreset: Settings.TextEffectPreset = Settings.TextEffectPreset.STANDARD,
+    private var customBorderColor: Int = 0,
+    private var customBackgroundColor: Int = 0,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -66,10 +68,20 @@ class KeyPainter(
         val key = slot.key
         val bounds = slot.bounds
         val brand = key is Key.Enter
-        drawPlate(
-            canvas, bounds,
-            keyFillColor(key, down, brand),
-        )
+        val baseFill = keyFillColor(key, down, brand)
+        drawPlate(canvas, bounds, if (customBackgroundColor != 0) customBackgroundColor else baseFill)
+        if (customBorderColor != 0) {
+            fill.shader = null
+            fill.style = Paint.Style.STROKE
+            fill.strokeWidth = 1.25f * density
+            fill.color = customBorderColor
+            val inset = fill.strokeWidth / 2f
+            canvas.drawRoundRect(
+                RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset),
+                (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill,
+            )
+            fill.style = Paint.Style.FILL
+        }
         if (marqueeEnabled && key is Key.Letter) key.label.firstOrNull()?.let { drawLetterMarquee(canvas, bounds, it) }
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
