@@ -191,9 +191,17 @@ class QingjianInputMethodService :
     /** 短信验证码只通过本机广播送到候选条；短信正文不进入输入法服务。 */
     private val smsCodeListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            val code = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)?.takeIf { it.matches(Regex("\\d{4,6}")) } ?: return
-            // Receiver 已将验证码写入持久化设置并复制到系统剪贴板；面板关闭时也不会丢失。
-            if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice(preferredCode = code)
+            val rawCode = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)
+            val code = rawCode?.takeIf { it.matches(Regex("\\d{4,6}")) }
+            if (code == null) {
+                AppLog.warn("[SMS_CODE_DIAG] code-ready listener received invalid payload present=${rawCode != null} length=${rawCode?.length ?: 0}")
+                return
+            }
+            val visible = isInputViewShown
+            val emptyPreedit = shownPreedit.isEmpty()
+            AppLog.info("[SMS_CODE_DIAG] code-ready listener received length=${code.length} inputViewShown=$visible emptyPreedit=$emptyPreedit")
+            if (visible && emptyPreedit) showLatestClipboardNotice(preferredCode = code)
+            else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
         }
     }
 
