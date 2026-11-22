@@ -293,7 +293,9 @@ class Composer(private val engine: Engine, private val host: Host) {
         val prefix = structuredTokenBuffer.toString()
         val baseTexts = base.mapTo(HashSet()) { it.text }
         structuredCompletions = if (
-            composing && !privateInput && !directInput && prefix.length >= 2
+            // 数字+冒号（如 2: / 4: / 5:）是用户常用的编号前缀，不应立刻弹出
+            // 历史结构化编码候选；至少出现一个字母后才开始匹配，避免候选栏被旧编码污染。
+            composing && !privateInput && !directInput && prefix.length >= 2 && prefix.any { it.isLetter() }
         ) {
             host.structuredTokenSuggestions(prefix)
                 .filter { it != prefix && it !in baseTexts }
