@@ -6,6 +6,8 @@
 
 ## 0.3.4 · 未发布 · stable
 
+- 当前为开发基线；项目状态、版本规则与问题追踪分别维护在 [PROJECT_STATUS.md](PROJECT_STATUS.md)、[PROJECT_RULES.md](PROJECT_RULES.md)、[BUG_TRACKER.md](BUG_TRACKER.md)。
+
 ## 0.3.3 · 2026-11-07 · stable
 
 网盘：[夸克网盘](https://pan.quark.cn/s/39763f78102d)
