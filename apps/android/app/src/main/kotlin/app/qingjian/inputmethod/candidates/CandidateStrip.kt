@@ -282,12 +282,15 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     fun candidateRevealOffsetPx(index: Int): Float = candidateRevealOffset(index)
 
     /** 液态玻璃选中层：使用当前主题强调色，坐标与候选/释义共用同一套几何。 */
-    private fun drawLiquidGlass(canvas: Canvas, index: Int, scrollX: Int) {
+    private fun drawLiquidGlass(canvas: Canvas, index: Int) {
         val rect = candidateEffectRect(index) ?: return
-        rect.offset(-scrollX.toFloat(), 0f)
-        rect.inset(-4f * density, -3f * density)
-        rect.top = rect.top.coerceAtLeast(1f * density)
-        rect.bottom = rect.bottom.coerceAtMost(barHeight - 1f * density)
+        // View 的 Canvas 已经随 scrollX 平移；这里只补候选自身的显现位移，
+        // 不能再次减 scrollX，否则滚动后选中层会与真实候选错位。
+        rect.offset(candidateRevealOffset(index), 0f)
+        rect.inset(-4f * density, -4f * density)
+        // 描边以路径为中心绘制，预留完整描边宽度，避免顶部/底部被 View 边界裁掉。
+        rect.top = rect.top.coerceAtLeast(3f * density)
+        rect.bottom = rect.bottom.coerceAtMost(barHeight - 3f * density)
         if (rect.width() <= 0f || rect.height() <= 0f) return
         val radius = 10f * density
         val tint = glassTint and 0x00FFFFFF
@@ -368,7 +371,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             canvas.drawBitmap(bitmap, src, dst, null)
         }
         // 长按选中只保留液态玻璃底层，旧的高亮文字样式不再参与绘制。
-        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex, scrollX)
+        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex)
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
             if (image.emoji.contains(index)) return@forEachIndexed

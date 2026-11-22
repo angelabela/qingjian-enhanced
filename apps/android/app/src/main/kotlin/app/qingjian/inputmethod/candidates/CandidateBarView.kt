@@ -357,8 +357,11 @@ class CandidateBarView(
         if (startedAt <= 0L || strip.candidates.isEmpty()) return
         val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
         val rect = strip.candidateEffectRect(0) ?: return
-        // 与候选文字显现动画使用同一位移，滚动时也始终减去同一个 scrollX。
-        rect.offset(stripWidth * 0.05f - scrollX + strip.candidateRevealOffsetPx(0), 0f)
+        // View 的 Canvas 已随 scrollX 平移；首选特效只补候选栏左内边距与文字显现位移。
+        // 不重复减 scrollX，否则候选滚动后特效会留在旧位置。
+        rect.offset(stripWidth * 0.05f + strip.candidateRevealOffsetPx(0), 0f)
+        rect.top = rect.top.coerceAtLeast(3f * density)
+        rect.bottom = rect.bottom.coerceAtMost(height - 3f * density)
         if (rect.right <= 0f || rect.left >= stripWidth) return
         val phase = (elapsed % FIRST_CANDIDATE_PULSE_PERIOD_MS).toFloat() /
             FIRST_CANDIDATE_PULSE_PERIOD_MS

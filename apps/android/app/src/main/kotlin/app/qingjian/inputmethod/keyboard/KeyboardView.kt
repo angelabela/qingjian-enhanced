@@ -749,11 +749,20 @@ class KeyboardView(
         val dx = event.getX(at) - spaceAnchorX
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
-        // 无拼音但存在候选时，空格水平滑动优先用于候选预选；左滑切到后一个，右滑返回前一个。
-        if (!cursorMode && !candidateSwipeMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_STEP_DP && abs(dx) > abs(dy)) {
+        // 无拼音且存在候选时，候选滑动必须先于光标移动判断。
+        // 旧逻辑等到 24dp 才尝试候选，但光标在 14dp 就已进入 cursorMode，
+        // 导致后续滑动永远无法切换候选；长按已进入光标模式时也应允许候选手势接管。
+        if (!candidateSwipeMode &&
+            abs(dx) >= metrics.density * CANDIDATE_SWIPE_START_DP &&
+            abs(dx) > abs(dy)
+        ) {
             timer.removeCallbacks(spaceHold)
-            candidateSwipeMode = listener.onCandidateSwipeStart()
-            candidateSwipeLastStep = 0
+            val started = listener.onCandidateSwipeStart()
+            if (started) {
+                candidateSwipeMode = true
+                cursorMode = false
+                candidateSwipeLastStep = 0
+            }
         }
         if (candidateSwipeMode) {
             val currentStep = (-dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
@@ -839,6 +848,7 @@ class KeyboardView(
          */
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
+        const val CANDIDATE_SWIPE_START_DP = 12f
         const val CANDIDATE_SWIPE_STEP_DP = 24f
         const val SPACE_CLIPBOARD_SWIPE_DP = 22f
         const val SPACE_CLIPBOARD_SLOPE = 1.2f
