@@ -9,6 +9,9 @@ internal object Native {
     /** 日志接到 logcat 并写进 [logDir]，见 [AppLog]。 */
     external fun initLogging(logDir: String)
 
+    /** Flush pending log writes before exporting diagnostics. */
+    external fun flushLogging()
+
     external fun setVerboseLog(on: Boolean)
 
     /** [level]：0 错误、1 警告、2 信息、其余调试。 */
