@@ -330,15 +330,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         if (::headerWindowParams.isInitialized &&
                             (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
                             headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                            updateHeaderWindowLayout()
+                            // 切换悬浮标题栏焦点可能与输入法窗口重排竞争；隔离窗口更新异常，避免二次点按崩溃。
+                            runCatching { updateHeaderWindowLayout() }
                         }
                         prefixInput.post {
                             if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
-                            if (!prefixInput.hasFocus()) prefixInput.requestFocus()
-                            if (!prefixImeRequested) {
-                                prefixImeRequested = true
-                                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                                    ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                            runCatching {
+                                if (!prefixInput.hasFocus()) prefixInput.requestFocus()
+                                if (!prefixImeRequested && prefixInput.hasFocus()) {
+                                    prefixImeRequested = true
+                                    (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                                        ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                                }
+                            }.onFailure {
+                                prefixImeRequested = false
+                                scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
                             }
                         }
                     }
@@ -821,9 +827,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
             headerWindowParams.x = windowParams.x
             headerWindowParams.height = headerHeight
-            headerWindowParams.y = overlayTopY
             headerWindowParams.width = windowParams.width
+            // 先按完整窗口组高度校正位置，再把最终坐标同步给标题栏。
+            // 旧顺序先写标题栏 y、后 clamp 预览 y，拖到顶部继续上推时两层会分离。
             setOverlayTop(overlayTopY)
+            headerWindowParams.y = overlayTopY
         }
         // 预览先更新，标题栏后更新并保持在上层；1px 重叠消除接缝但不会允许预览越过标题栏。
         runCatching { windowManager.updateViewLayout(root, windowParams) }
