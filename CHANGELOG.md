@@ -1,3 +1,15 @@
+## 0.3.12-dev · 2026-11-22 · beta
+
+- 扩展剪贴板监听、输入法启动与编辑器属性、扫码前缀焦点和相机分析帧的诊断日志，便于定位最新复制内容、焦点切换和扫码状态
+- 每条日志增加线程名与运行时长；日志包清单增加日志文件行数，并记录导出文件数、日志条目数和归档条目数
+- 修正日志导出处理：移除不存在的 JNI `Native.flushLogging()/Dispatch.flush()` 调用，利用同步写入的日志文件并记录明确的导出边界
+- 延续视频背景全宽测量、扫码标题栏不透明及预览区衔接、前缀输入框焦点重试等修复；以上项目仍待设备实测
+- 固定签名交付：GitHub Actions `android-signed-apk` #538，run ID `45049084378`；提交 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd`；源码 `versionName=0.3.12-dev`，Gradle 公式计算 `versionCode=312`
+- 构建与签名：Release 构建成功；APK Signature Scheme v2 验证通过；证书 SHA-256 `10be9cc45f931581203433b7c1095ca9689bb643463821ef9b108314aa958b72`
+- Artifact：`qingjian-android-signed`（ID `14765077119`，154,488,827 bytes，ZIP SHA-256 `d3f5979d7815f26f261c312a0ef4cea50e358c159a6edadcbed895e858c066b8`）；运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45049084378；下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14765077119/zip
+- CI 构建和固定签名验证通过，**待用户安装验收**；不得将 CI 成功视为设备问题已解决
+
+
 # 更新日志
 
 ## 0.3.11-dev · 2026-11-23 · beta
@@ -5,7 +17,7 @@
 - 修正视频背景层的宽度测量，确保视频覆盖整个输入法面板，而不是只显示在左侧
 - 扫码浮窗标题栏改为不透明主题底色，并消除标题栏与相机预览区域之间的视觉留白
 - 优化扫码前缀输入框的焦点切换与软键盘弹出：请求失败自动重试，重复点击可补发，并增加焦点诊断日志
-- 测试构建：等待 GitHub Actions 固定签名构建与验证
+- 版本核验：本次未找到独立成功交付的 `0.3.11-dev` APK；#532 实际构建版本为 `0.3.10-dev`，#538 实际构建版本为 `0.3.12-dev`。本节变更代码随 #538 进入签名 APK，但不得将 workflow run number 当作 APP 版本。
 
 
 ## 0.3.10-dev · 2026-11-23 · beta
@@ -14,7 +26,7 @@
 - 「键盘背景动效」页移除重复的按键透明度和磨砂选项；功能与设置保留在「按键效果」页
 - 视频背景恢复等比例铺满输入法面板的默认显示方式，超出区域居中裁切，移除四种显示模式选项
 - 修复视频背景被输入法窗口及键帽主题色遮挡的问题，让候选栏、键盘和底部操作区共同显示视频背景
-- 本轮代码已提交，等待 GitHub Actions 固定签名构建与验证
+- 固定签名构建记录：GitHub Actions `android-signed-apk` #532，run ID `45044951413`，提交 `3d1e1538342e7dd18320d195644b340a81633a15`；源码 `versionName=0.3.10-dev`，Gradle 公式计算 `versionCode=310`；构建和 APK Signature Scheme v2 验证通过，证书 SHA-256 与固定证书一致。Artifact `qingjian-android-signed`（ID `14763401892`，154,485,592 bytes，ZIP SHA-256 `1d9e45ff67d3f59d76f41ccd103c875acddb08a86e984786a0770b0fb5caf688`）；运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45044951413；下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14763401892/zip。后续 #538 已交付更新的 `0.3.12-dev`；本包仍待设备验收。
 
 
 一个版本一节，标题写「版本 · 日期 · 渠道」（渠道是更新渠道：定期发的版本标 stable，中间放给测试者的版本标 alpha / beta / rc、版本号带同名预发布后缀），正文一行一条、面向用户的措辞。
