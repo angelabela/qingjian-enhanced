@@ -40,6 +40,8 @@ class KeyPainter(
     }
     private val bubble = RectF()
     private var marqueeEnabled = false
+    private var edgeGlowEnabled = false
+    private var threeDimensionalEnabled = false
     private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * density
@@ -53,6 +55,16 @@ class KeyPainter(
     }
 
     fun setMarqueeEnabled(enabled: Boolean) { marqueeEnabled = enabled }
+
+    fun setCustomKeyColors(borderColor: Int, backgroundColor: Int) {
+        customBorderColor = borderColor
+        customBackgroundColor = backgroundColor
+    }
+
+    fun setKeyStyleEffects(edgeGlow: Boolean, threeDimensional: Boolean) {
+        edgeGlowEnabled = edgeGlow
+        threeDimensionalEnabled = threeDimensional
+    }
 
     var shift = ShiftState.OFF
     var chinese = true
@@ -69,6 +81,7 @@ class KeyPainter(
         val bounds = slot.bounds
         val brand = key is Key.Enter
         val baseFill = keyFillColor(key, down, brand)
+        if (threeDimensionalEnabled) drawKeyDepth(canvas, bounds)
         drawPlate(canvas, bounds, if (customBackgroundColor != 0) customBackgroundColor else baseFill)
         if (customBorderColor != 0) {
             fill.shader = null
@@ -82,6 +95,8 @@ class KeyPainter(
             )
             fill.style = Paint.Style.FILL
         }
+        if (threeDimensionalEnabled) drawKey3dHighlight(canvas, bounds)
+        if (edgeGlowEnabled) drawKeyEdgeGlow(canvas, bounds)
         if (marqueeEnabled && key is Key.Letter) key.label.firstOrNull()?.let { drawLetterMarquee(canvas, bounds, it) }
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
@@ -157,6 +172,49 @@ class KeyPainter(
     }
 
     /** 手势提示直接显示在键帽内：上滑靠上、下滑靠下；优先完整文字，确实放不下才换语义图标。 */
+    /** 立体键帽底部加深阴影，模拟独立悬浮的键帽厚度。 */
+    private fun drawKeyDepth(canvas: Canvas, bounds: RectF) {
+        fill.shader = null
+        fill.style = Paint.Style.FILL
+        fill.color = withAlpha(Color.BLACK, 0x72)
+        val offset = 2.2f * density
+        val depth = RectF(bounds.left, bounds.top + offset, bounds.right, bounds.bottom + offset)
+        canvas.drawRoundRect(depth, metrics.radius, metrics.radius, fill)
+    }
+
+    /** 立体效果的顶部高光和底部暗边，保持按键本身点击区域与大小不变。 */
+    private fun drawKey3dHighlight(canvas: Canvas, bounds: RectF) {
+        fill.shader = null
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = 0.75f * density
+        fill.color = withAlpha(Color.WHITE, 0x86)
+        val inset = 0.8f * density
+        val inner = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
+        canvas.drawRoundRect(inner, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+        fill.color = withAlpha(Color.BLACK, 0x38)
+        fill.strokeWidth = 0.9f * density
+        canvas.drawLine(bounds.left + metrics.radius, bounds.bottom - inset, bounds.right - metrics.radius, bounds.bottom - inset, fill)
+        fill.style = Paint.Style.FILL
+    }
+
+    /** 边缘发光使用柔和外扩描边；关闭开关时不会额外创建动画或改变键帽布局。 */
+    private fun drawKeyEdgeGlow(canvas: Canvas, bounds: RectF) {
+        val color = if (customBorderColor != 0) customBorderColor else palette.brand
+        val inset = 1.1f * density
+        val outline = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
+        fill.shader = null
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = 1.4f * density
+        fill.color = withAlpha(color, 0xD8)
+        fill.setShadowLayer(5.5f * density, 0f, 0f, withAlpha(color, 0xA8))
+        canvas.drawRoundRect(outline, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+        fill.clearShadowLayer()
+        fill.strokeWidth = 0.65f * density
+        fill.color = withAlpha(Color.WHITE, 0x58)
+        canvas.drawRoundRect(outline, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+        fill.style = Paint.Style.FILL
+    }
+
     /** A-Z 字母按顺序追逐发光，带渐隐光尾；功能键不参与。 */
     private fun drawLetterMarquee(canvas: Canvas, bounds: RectF, letter: Char) {
         // 按真实 QWERTY 键位依次追逐：先 QWERTY 顶排，再 ASDF...、ZXCV...
