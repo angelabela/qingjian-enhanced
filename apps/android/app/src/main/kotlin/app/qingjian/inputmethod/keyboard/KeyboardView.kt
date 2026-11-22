@@ -750,7 +750,7 @@ class KeyboardView(
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
         // 无拼音但存在候选时，空格水平滑动优先用于候选预选；左滑切到后一个，右滑返回前一个。
-        if (!cursorMode && !candidateSwipeMode && abs(dx) >= metrics.density * 18f && abs(dx) > abs(dy)) {
+        if (!cursorMode && !candidateSwipeMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_STEP_DP && abs(dx) > abs(dy)) {
             timer.removeCallbacks(spaceHold)
             candidateSwipeMode = listener.onCandidateSwipeStart()
             candidateSwipeLastStep = 0
