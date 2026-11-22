@@ -1,3 +1,10 @@
+## 最新日志分析与修复（2026-11-23）
+
+- 上传日志包包含本地 11 月 23 日日志；当前分支日志轮转代码已按 Asia/Shanghai 系统本地日期工作，保留 30 天，无需重复修改。
+- 最新交付基线：#542 / APP 0.3.13-dev / versionCode 313；本轮开发版本 0.3.14-dev / versionCode 314，待 CI。
+- 剪贴板提示增加候选栏可见后有限重试；扫码前缀输入等待窗口焦点后请求 IME；视频背景层覆盖底部导航 inset；扫码标题栏改为实色不透明并收紧高度。
+- 设备端仍待安装测试；本次日志没有短信验证码接收事件，短信链路尚未验收。
+
 # 青简输入法项目状态档案
 
 > 本文件是持续开发的入口。每次开始开发先读本文件、PROJECT_RULES.md、BUG_TRACKER.md、CHANGELOG.md，再核对 GitHub 当前分支、源码和最新工作流。源码与工作流事实优先于本文件；发现不一致时先修正档案。
@@ -15,9 +22,9 @@
 
 ## 当前版本基线与最新交付
 
-- 当前开发中的下一版：`0.3.13-dev`，按当前 Gradle 公式计算 `versionCode=313`。尚未构建成功前，不视为可安装交付。
+- 当前开发中的下一版：`0.3.14-dev`，按当前 Gradle 公式计算 `versionCode=314`。尚未构建成功前，不视为可安装交付。
 - 用户版本规则：以 `0.3.4` 为起始基线；每次成功交付可用 APK 后递增 patch 位；保留源码中的 `-dev` 后缀。APP 版本号与 GitHub Actions run number 分开管理。
-- 最新成功构建、固定签名验证通过且 artifact 可用的 APK：`versionName=0.3.12-dev`。按当前 `apps/android/app/build.gradle.kts` 的公式（主版本 × 10000 + 次版本 × 100 + 修订版本）计算，`versionCode=312`；该值来自源码计算，未下载 APK 直接读取 Manifest。
+- 最新成功构建、固定签名验证通过且 artifact 可用的 APK：`versionName=0.3.13-dev`（#542）。按当前 `apps/android/app/build.gradle.kts` 的公式计算，`versionCode=313`。
 - 最新交付：`android-signed-apk` #538；run ID `45049084378`；分支 `feature/workflow-444-model-coordination`；提交 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd`；完成时间 `2026-11-22T17:28:45Z`。Build、Verify APK signature、Upload signed APK 均成功。
 - 固定签名：APK Signature Scheme v2 验证通过；证书 SHA-256 `10be9cc45f931581203433b7c1095ca9689bb643463821ef9b108314aa958b72`，与既有固定签名证书一致。
 - Artifact：`qingjian-android-signed`；ID `14765077119`；大小 `154,488,827 bytes`；ZIP SHA-256 `d3f5979d7815f26f261c312a0ef4cea50e358c159a6edadcbed895e858c066b8`；有效期至 `2026-12-22T17:28:36Z`。运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45049084378；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14765077119/zip
@@ -37,7 +44,7 @@
 
 ## 下一步事项
 
-- 本轮 0.3.13-dev 需验证日志是否在手机本地零点切换，并核对 ZIP 的文件数、行数、SHA-256 与最新记录时间。
+- 本轮 0.3.14-dev 已针对最新日志暴露的剪贴板提示时机、扫码前缀窗口焦点、视频背景底部覆盖问题修改；等待 CI 构建与设备验收。日志轮转源码已按本地日期命名并保留 30 天。
 - 同时验证 BJ-041、BJ-042、BJ-043 的实际设备表现；CI 成功不等于设备问题已解决。
 - 下一次 APK 构建前，先核对 `0.3.11-dev` 是否有独立交付记录，并统一 `versionName`、Gradle 计算的 `versionCode` 与档案记录。
 - 单独审查 Debug 工作流，使其真正执行 Debug variant；本次监控没有修改工作流或应用源码。
