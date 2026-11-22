@@ -40,6 +40,12 @@ object AppLog {
         recordExitReasons(context)
     }
 
+    /** Write an export boundary marker and flush the native logger. */
+    fun flushForExport() {
+        info("log export boundary: " + java.time.Instant.now())
+        if (ready) runCatching { Native.flushLogging() }
+    }
+
     fun verbose(context: Context): Boolean = prefs(context).getBoolean(KEY_VERBOSE, false)
 
     fun setVerbose(context: Context, on: Boolean) {
