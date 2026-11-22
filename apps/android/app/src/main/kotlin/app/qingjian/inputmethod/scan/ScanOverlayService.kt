@@ -3,7 +3,6 @@ package app.qingjian.inputmethod.scan
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.Dialog
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -97,11 +96,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     private lateinit var windowManager: WindowManager
     private lateinit var windowParams: WindowManager.LayoutParams
-    private lateinit var headerWindowParams: WindowManager.LayoutParams
-    /** 标题栏+预览作为一个整体移动；root 的 y 仅表示预览起点。 */
     private var overlayTopY = 0
     private lateinit var headerView: View
-    private var headerDialog: Dialog? = null
+    private lateinit var overlayRoot: FrameLayout
     private lateinit var root: FrameLayout
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
@@ -132,19 +129,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var prefixEditingRequested = false
     private var prefixEditorHadFocus = false
     private var prefixImeRequested = false
-    /** Dialog 焦点/IME 弹出可能改变其真实屏幕位置；测量后把相机窗重新贴齐标题栏。 */
-    private val alignPreviewToHeader = Runnable {
-        if (!::root.isInitialized || !::headerView.isInitialized ||
-            !::windowParams.isInitialized || !root.isAttachedToWindow || !headerView.isAttachedToWindow) return@Runnable
-        val location = IntArray(2)
-        headerView.getLocationOnScreen(location)
-        val overlap = resources.displayMetrics.density.toInt().coerceAtLeast(1)
-        val desiredPreviewY = (location[1] + headerView.height - overlap).coerceAtLeast(0)
-        if (windowParams.y != desiredPreviewY) {
-            windowParams.y = desiredPreviewY
-            runCatching { windowManager.updateViewLayout(root, windowParams) }
-        }
-    }
     private val executor = Executors.newSingleThreadExecutor()
     private val zxingFallbackExecutor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
@@ -348,31 +332,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
             prefixImeRequested = false
             ScanPreferences.setPrefixEditorActive(true)
 
-            val window = headerDialog?.window
-            if (window == null || headerDialog?.isShowing != true) {
-                prefixEditingRequested = false
-                ScanPreferences.setPrefixEditorActive(false)
-                scanDiag("prefix editor click ignored: header dialog not showing", warning = true)
-                return@setOnClickListener
-            }
-
             runCatching {
-                headerWindowParams.flags = headerWindowParams.flags and
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-                updateHeaderWindowLayout()
+                windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                windowManager.updateViewLayout(overlayRoot, windowParams)
                 prefixInput.post outer@{
                     if (!prefixEditingRequested || prefixEditor !== prefixInput) return@outer
                     runCatching {
+                        overlayRoot.requestFocus()
                         prefixInput.requestFocus()
-                        // 延后一帧等待 Dialog 的焦点标志生效；后续点击不再重复请求 IME。
                         prefixInput.post inner@{
                             if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@inner
                             prefixImeRequested = true
-                            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-                            imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
-                            headerView.removeCallbacks(alignPreviewToHeader)
-                            headerView.post(alignPreviewToHeader)
+                            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                                ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
                         }
                     }.onFailure {
                         prefixImeRequested = false
@@ -541,9 +514,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
         val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), maxWidth)
         val height = dp(windowPrefs.getInt(KEY_HEIGHT_DP, 360)).coerceIn(dp(220), maxHeight)
+        val headerHeightEstimate = dp(if (width < dp(300)) 84 else 44)
         windowParams = WindowManager.LayoutParams(
-            width,
-            height,
+            width, height + headerHeightEstimate,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -553,94 +526,39 @@ class ScanOverlayService : Service(), LifecycleOwner {
             gravity = Gravity.TOP or Gravity.START
             x = dp(windowPrefs.getInt(KEY_WINDOW_X_DP, 16))
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
-        headerWindowParams = WindowManager.LayoutParams(
-            windowParams.width,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = windowParams.x
-            y = 0
-            // 不启用 FLAG_BLUR_BEHIND；系统背景模糊的圆角形状由 Dialog decor 的均匀圆角 Outline 提供。
+        overlayRoot = FrameLayout(this).apply {
+            isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            clipChildren = false
+            clipToPadding = false
+            setBackgroundColor(Color.TRANSPARENT)
         }
-        // 标题栏使用独立 Window 的系统背景模糊；相机预览在另一个 Window 中，
-        // 因此不会被模糊。圆角遮罩由 Dialog decor 与 headerView 双层裁剪。
-        root.alpha = 0f
-        root.scaleX = 0.94f
-        root.scaleY = 0.94f
-        windowManager.addView(root, windowParams)
-        scanDiag("overlay root attached width=${windowParams.width} height=${windowParams.height} type=${windowParams.type}")
-        // 窗口以轻微缩放+淡入出现；不改变最终窗口尺寸和触摸坐标。
-        root.animate().alpha(1f).scaleX(1f).scaleY(1f)
+        overlayRoot.addView(headerView, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        overlayRoot.addView(root, FrameLayout.LayoutParams(-1, height, Gravity.TOP).apply {
+            topMargin = headerHeightEstimate
+        })
+        overlayRoot.alpha = 0f
+        overlayRoot.scaleX = 0.94f
+        overlayRoot.scaleY = 0.94f
+        windowManager.addView(overlayRoot, windowParams)
+        scanDiag("single overlay attached width=${windowParams.width} height=${windowParams.height} type=${windowParams.type}")
+        overlayRoot.animate().alpha(1f).scaleX(1f).scaleY(1f)
             .setDuration(220L)
             .setInterpolator(android.view.animation.DecelerateInterpolator(1.35f))
             .start()
-        // 预览根视图加入 Window 后再恢复快门坐标，避免首次 post 时尚未测量导致回退到默认位置。
         restoreCaptureButtonPosition()
-        headerDialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar).apply {
-            setContentView(headerView)
-            setCancelable(false)
-            window?.apply {
-                setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                // 输入前缀时系统 IME 弹出不能单独平移/缩放标题栏，否则会和相机预览错位。
-                setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-                // Dialog 背景保持透明；系统背景模糊的几何边界由下面设置的 decor Outline 决定。
-                val roundedWindowMask = roundedHeaderMask()
-                setBackgroundDrawable(roundedWindowMask)
-                addFlags(
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                )
-                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                setDimAmount(0f)
-                setElevation(0f)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // 只设置一次窗口背景模糊；实际模糊形状由 show() 后的 decor Outline 提供。
-                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    attributes = headerWindowParams
-                    setBackgroundBlurRadius((24f * resources.displayMetrics.density).toInt())
-                } else {
-                    clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    attributes = headerWindowParams
-                }
-            }
-            headerView.alpha = 0f
-            show()
-            headerView.animate().alpha(1f).setDuration(200L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator(1.2f)).start()
-            window?.apply {
-                setLayout(headerWindowParams.width, WindowManager.LayoutParams.WRAP_CONTENT)
-                // 保持窗口范围仅覆盖标题栏；圆角与描边由标题栏 View 自己裁剪。
-                decorView.setPadding(0, 0, 0, 0)
-                // Decor 的均匀圆角 Outline 决定系统模糊范围；背景 Drawable 只负责保持窗口近乎透明。
-                val roundedMask = roundedHeaderMask()
-                setBackgroundDrawable(roundedMask)
-                decorView.background = roundedMask
-                // 对 Dialog 的 decor 层也执行轮廓裁剪，避免系统模糊和内容绘制越过顶部圆角。
-                decorView.clipToOutline = true
-                decorView.elevation = 0f
-                decorView.translationZ = 0f
-                decorView.setLayerType(View.LAYER_TYPE_NONE, null)
-                (decorView as? ViewGroup)?.clipChildren = true
-                decorView.outlineProvider = headerOutlineProvider(16f * resources.displayMetrics.density)
-                decorView.invalidateOutline()
-                attributes = headerWindowParams
-            }
-        }
         headerView.post {
-            val measuredHeaderHeight = headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight
-            if (measuredHeaderHeight > 0) {
-                headerWindowParams.height = measuredHeaderHeight
-                val overlap = (resources.displayMetrics.density).toInt().coerceAtLeast(1)
-                overlayTopY = (windowParams.y - measuredHeaderHeight + overlap).coerceAtLeast(0)
+            val actualHeaderHeight = headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight
+            if (actualHeaderHeight > 0 && actualHeaderHeight != headerHeightEstimate) {
+                val previewParams = root.layoutParams as? FrameLayout.LayoutParams
+                previewParams?.topMargin = actualHeaderHeight
+                if (previewParams != null) root.layoutParams = previewParams
+                windowParams.height = (windowParams.height + actualHeaderHeight - headerHeightEstimate)
+                    .coerceAtLeast(actualHeaderHeight + dp(220))
+                runCatching { windowManager.updateViewLayout(overlayRoot, windowParams) }
             }
-            updateOverlayPositions()
         }
     }
 
@@ -661,7 +579,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             downRawX = event.rawX
             downRawY = event.rawY
             startX = windowParams.x
-            startGroupY = overlayTopY
+            startGroupY = windowParams.y
         }
 
         private fun updateDrag(event: MotionEvent) {
@@ -841,13 +759,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
     }
 
-    /** 以标题栏顶部为唯一坐标，预览始终从标题栏底边下方 1px 开始。 */
+    /** 单窗口统一维护坐标，预览始终位于标题栏下方。 */
     private fun setOverlayTop(requestedTop: Int) {
-        if (!::windowParams.isInitialized || !::headerWindowParams.isInitialized) return
-        val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerWindowParams.height).coerceAtLeast(0)
-        val overlap = resources.displayMetrics.density.toInt().coerceAtLeast(1)
-        val previewHeight = root.height.takeIf { it > 0 } ?: windowParams.height
-        val combinedHeight = (headerHeight + previewHeight - overlap).coerceAtLeast(headerHeight)
+        if (!::windowParams.isInitialized || !::overlayRoot.isInitialized) return
         val displayHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             windowManager.currentWindowMetrics.bounds.height()
         } else {
@@ -856,70 +770,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
             windowManager.defaultDisplay.getRealMetrics(metrics)
             metrics.heightPixels
         }
-        val maxTop = (displayHeight - combinedHeight).coerceAtLeast(0)
-        overlayTopY = requestedTop.coerceIn(0, maxTop)
-        windowParams.y = overlayTopY + headerHeight - overlap
+        overlayTopY = requestedTop.coerceIn(0, (displayHeight - windowParams.height).coerceAtLeast(0))
+        windowParams.y = overlayTopY
     }
 
-    /** 同步更新相机内容窗与独立标题栏窗，二者始终作为一个整体移动。 */
     private fun updateOverlayPositions() {
-        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) {
-            val measuredHeight = (headerView.height.takeIf { it > 0 } ?: headerView.measuredHeight)
-                .coerceAtLeast(0)
-            val headerHeight = measuredHeight.takeIf { it > 0 } ?: headerWindowParams.height
-            headerWindowParams.x = windowParams.x
-            headerWindowParams.height = headerHeight
-            headerWindowParams.width = windowParams.width
-            // 先按完整窗口组高度校正位置，再把最终坐标同步给标题栏。
-            // 旧顺序先写标题栏 y、后 clamp 预览 y，拖到顶部继续上推时两层会分离。
-            setOverlayTop(overlayTopY)
-            headerWindowParams.y = overlayTopY
-        }
-        // 预览先更新，标题栏后更新并保持在上层；1px 重叠消除接缝但不会允许预览越过标题栏。
-        runCatching { windowManager.updateViewLayout(root, windowParams) }
-        if (::headerWindowParams.isInitialized && ::headerView.isInitialized) updateHeaderWindowLayout()
+        if (!::overlayRoot.isInitialized || !::windowParams.isInitialized) return
+        setOverlayTop(windowParams.y)
+        runCatching { windowManager.updateViewLayout(overlayRoot, windowParams) }
     }
-
-    /** 通过标题栏 Dialog 的 Window 更新位置、尺寸与焦点标志。 */
-    private fun updateHeaderWindowLayout() {
-        val window = headerDialog?.window ?: return
-        runCatching {
-            // width/height 已包含在 headerWindowParams 中，只提交一次 Window 属性更新。
-            window.attributes = headerWindowParams
-            window.decorView.invalidateOutline()
-            headerView.invalidateOutline()
-            // Window 属性落地后读取真实屏幕坐标，再以标题栏底边反算相机窗 y。
-            // 用实测位置抵消 Dialog decor/系统栏/IME 布局造成的坐标偏移。
-            headerView.removeCallbacks(alignPreviewToHeader)
-            headerView.post(alignPreviewToHeader)
-        }
-    }
-
-    /** Dialog 背景保持近乎透明；系统模糊的形状由 decor 的 headerOutlineProvider 提供。 */
-    private fun roundedHeaderMask() = GradientDrawable().apply {
-        // 避免 Dialog 默认背景形成色块；真正的模糊裁剪轮廓由 decor Outline 决定。
-        setColor(0x01000000)
-        val radius = 16f * resources.displayMetrics.density
-        cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-    }
-
-    /**
-     * 系统窗口模糊读取 decor 的均匀圆角 Outline。
-     * 轮廓底边向下延伸一个半径，View 自身的 clipToOutline 会裁掉超出部分，
-     * 视觉上仍保持标题栏底边为直线，同时让系统模糊只认顶部圆角矩形。
-     */
-    private fun headerOutlineProvider(radiusPx: Float): ViewOutlineProvider =
-        object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                if (view.width <= 0 || view.height <= 0) {
-                    outline.setEmpty()
-                    return
-                }
-                val radius = radiusPx.coerceAtMost(view.width / 2f)
-                outline.setRoundRect(0, 0, view.width, view.height + radius.toInt(), radius)
-                outline.alpha = 1f
-            }
-        }
 
     private fun setScanShape(square: Boolean, persist: Boolean = true) {
         squareScanShape = square
@@ -955,9 +814,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             editor.clearFocus()
         }
-        if (::headerWindowParams.isInitialized) {
-            headerWindowParams.flags = headerWindowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            updateHeaderWindowLayout()
+        if (::windowParams.isInitialized && ::overlayRoot.isInitialized) {
+            windowParams.flags = windowParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            updateOverlayPositions()
         }
     }
 
@@ -1016,7 +875,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 moveRawX = event.rawX
                 moveRawY = event.rawY
                 moveStartX = windowParams.x
-                moveStartY = overlayTopY
+                moveStartY = windowParams.y
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -1070,7 +929,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
         windowPrefs.edit()
             .putInt(KEY_WIDTH_DP, (windowParams.width / density).toInt())
-            .putInt(KEY_HEIGHT_DP, (windowParams.height / density).toInt())
+            .putInt(KEY_HEIGHT_DP, ((windowParams.height - (if (::headerView.isInitialized) headerView.height else 0)).coerceAtLeast(0) / density).toInt())
             .apply()
     }
 
@@ -1510,9 +1369,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         // 正在处理的 ML Kit Task 完成后才关闭识别器，避免 close 与识别任务竞争。
         if (!processing.get()) closeMlKitClients()
         saveWindowSize()
-        runCatching { headerDialog?.dismiss() }
-        headerDialog = null
-        if (::root.isInitialized) runCatching { windowManager.removeView(root) }
+        if (::overlayRoot.isInitialized) runCatching { windowManager.removeView(overlayRoot) }
         executor.shutdown()
         zxingFallbackExecutor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
