@@ -28,13 +28,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         it.isFakeBoldText = fontWeight.weight >= 600
     }
     private val fill = Paint()
-    private val glassFill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glassEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val glassHighlight = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val glassBloom = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x263D9BFF
-        maskFilter = android.graphics.BlurMaskFilter(5f * density, android.graphics.BlurMaskFilter.Blur.NORMAL)
-    }
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
     }
@@ -281,39 +274,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 候选文字显现动画当前的横向位移，供外层首选特效与文字保持同步。 */
     fun candidateRevealOffsetPx(index: Int): Float = candidateRevealOffset(index)
 
-    /** 液态玻璃选中层：使用当前主题强调色，坐标与候选/释义共用同一套几何。 */
-    private fun drawLiquidGlass(canvas: Canvas, index: Int) {
-        val rect = candidateEffectRect(index) ?: return
-        // View 的 Canvas 已经随 scrollX 平移；这里只补候选自身的显现位移，
-        // 不能再次减 scrollX，否则滚动后选中层会与真实候选错位。
-        rect.offset(candidateRevealOffset(index), 0f)
-        rect.inset(-4f * density, -4f * density)
-        // 描边以路径为中心绘制，预留完整描边宽度，避免顶部/底部被 View 边界裁掉。
-        rect.top = rect.top.coerceAtLeast(3f * density)
-        rect.bottom = rect.bottom.coerceAtMost(barHeight - 3f * density)
-        if (rect.width() <= 0f || rect.height() <= 0f) return
-        val radius = 10f * density
-        val tint = glassTint and 0x00FFFFFF
-        glassFill.shader = android.graphics.LinearGradient(
-            rect.left, rect.top, rect.right, rect.bottom,
-            intArrayOf(0x55FFFFFF, tint or 0x55303030, tint or 0x22303030),
-            floatArrayOf(0f, 0.46f, 1f), android.graphics.Shader.TileMode.CLAMP,
-        )
-        glassFill.alpha = 255
-        canvas.drawRoundRect(rect, radius, radius, glassFill)
-        glassFill.shader = null
-        glassEdge.color = tint or 0xCC000000.toInt()
-        glassEdge.strokeWidth = 1.25f * density
-        canvas.drawRoundRect(rect, radius, radius, glassEdge)
-        glassHighlight.color = 0xBFFFFFFF.toInt()
-        glassHighlight.strokeWidth = 1.35f * density
-        val topHighlight = RectF(rect.left + 3f * density, rect.top + 1.5f * density,
-            rect.right - 3f * density, rect.top + 9f * density)
-        if (topHighlight.width() > 0f) canvas.drawArc(topHighlight, 190f, 160f, false, glassHighlight)
-        glassBloom.color = tint or 0x26000000
-        canvas.drawRoundRect(rect, radius, radius, glassBloom)
-    }
-
     /** 点在拼音行上（视图坐标，拼音行不随候选滚动）：光标该落在第几个字之后；不在拼音行上为 -1。 */
     fun caretAt(x: Float, y: Float): Int = image?.caretAt(x, y) ?: -1
 
@@ -335,11 +295,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         )
     }
 
+    /** 左侧内边距与触摸命中共用，避免视觉位置和点击位置产生偏差。 */
+    fun leftInsetPx(viewWidth: Int): Float = maxOf(16f * density, viewWidth * 0.06f)
+
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int, selectedIndex: Int = -1) {
         advanceTextFade()
         val layer = canvas.saveLayer(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, null)
-        val leftInset = (viewWidth * 0.05f).roundToInt().toFloat()
+        val leftInset = leftInsetPx(viewWidth)
         canvas.translate(leftInset, 0f)
         val contentViewWidth = (viewWidth - leftInset).toInt().coerceAtLeast(1)
         val image = image
@@ -370,8 +333,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             dst.set(scrollX, 0, scrollX + src.width(), top)
             canvas.drawBitmap(bitmap, src, dst, null)
         }
-        // 长按选中只保留液态玻璃底层，旧的高亮文字样式不再参与绘制。
-        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex)
+        // 选中/首选高亮统一由 CandidateBarView 绘制，确保同一时刻只有一个高亮层。
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
             if (image.emoji.contains(index)) return@forEachIndexed
@@ -499,7 +461,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int, fadeTop: Float, leftInset: Float) {
         // 渐变仅覆盖候选栏最左侧窄边缘，并向左移到视图物理边界；
         // 左侧留白不再被长渐变带覆盖，首个候选词不会被遮掉。
-        val fadeWidth = minOf(12f * density, viewWidth.toFloat() + leftInset).coerceAtLeast(1f)
+        val fadeWidth = minOf(22f * density, viewWidth.toFloat() + leftInset).coerceAtLeast(1f)
         val left = scrollX.toFloat() - leftInset
         val right = scrollX.toFloat() + viewWidth
         leftFadePaint.shader = android.graphics.LinearGradient(
