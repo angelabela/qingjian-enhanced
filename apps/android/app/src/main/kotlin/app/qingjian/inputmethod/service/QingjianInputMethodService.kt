@@ -178,9 +178,9 @@ class QingjianInputMethodService :
         if (isInputViewShown && shownPreedit.isEmpty()) {
             showLatestClipboardNotice()
             val handler = Handler(mainLooper)
-            listOf(120L, 360L, 720L).forEach { delay ->
+            listOf(120L, 360L, 720L, 1_200L, 1_800L).forEach { delay ->
                 handler.postDelayed({
-                    // 某些 ROM 的 primaryClip 会晚于监听回调完成更新，延迟复读并再次收录。
+                    // 某些 ROM/应用会异步提交 primaryClip，多次读取系统当前剪贴板直到新内容可见。
                     clipboardWatcher.capture()
                     if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
                 }, delay)
@@ -249,7 +249,8 @@ class QingjianInputMethodService :
         // 短信验证码广播是一次明确的新事件，即使验证码相同也允许重新提示。
         if (preferredCode == null && lastHash == contentHash) return
 
-        bar.show("", emptyList())
+        // 不清空/重置候选栏底层状态。CandidateBarView 的主动提示层会临时覆盖候选，
+        // 候选刷新不会将通知吞掉；5 秒后自动恢复当前候选栏。
         bar.showPersistentNotice(text) { commitText(text) }
         prefs.edit()
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
