@@ -784,6 +784,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
         runCatching { windowManager.updateViewLayout(overlayRoot, windowParams) }
     }
 
+    /** 标题栏在统一窗口中仍保留顶部圆角裁剪轮廓。 */
+    private fun headerOutlineProvider(radiusPx: Float): ViewOutlineProvider =
+        object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                if (view.width <= 0 || view.height <= 0) {
+                    outline.setEmpty()
+                    return
+                }
+                val radius = radiusPx.coerceAtMost(view.width / 2f)
+                outline.setRoundRect(0, 0, view.width, view.height + radius.toInt(), radius)
+                outline.alpha = 1f
+            }
+        }
+
     private fun setScanShape(square: Boolean, persist: Boolean = true) {
         squareScanShape = square
         if (persist) windowPrefs.edit().putBoolean(KEY_SQUARE_SCAN_SHAPE, square).apply()
