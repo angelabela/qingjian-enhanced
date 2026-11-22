@@ -169,13 +169,17 @@ class QingjianInputMethodService :
     private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
-        // 系统剪贴板回调有时早于 ROM 完成 primaryClip 更新；立即读取后再做短延迟复查。
-        // 这样既覆盖系统剪贴板刚更新的时序，也覆盖 ClipboardWatcher 异步收录历史的时序。
+        // 先主动收录当前剪贴板，再刷新显示；部分 ROM 的 primaryClip 更新会晚于回调。
         if (isInputViewShown && shownPreedit.isEmpty()) {
+            clipboardWatcher.capture()
             showLatestClipboardNotice()
+            val handler = Handler(mainLooper)
             listOf(120L, 360L, 720L).forEach { delay ->
-                Handler(mainLooper).postDelayed({
-                    if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+                handler.postDelayed({
+                    if (isInputViewShown && shownPreedit.isEmpty()) {
+                        clipboardWatcher.capture()
+                        showLatestClipboardNotice()
+                    }
                 }, delay)
             }
         }
@@ -197,44 +201,51 @@ class QingjianInputMethodService :
     private fun showLatestClipboardNotice(preferredCode: String? = null) {
         val bar = panel?.bar ?: return
         if (shownPreedit.isNotEmpty()) return
+
         val manager = getSystemService(ClipboardManager::class.java)
         val clip = runCatching { manager?.primaryClip }.getOrNull()
         val description = clip?.description
         val sensitive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             description?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true
+
+        // 敏感剪贴板不能回退显示历史中的旧内容；可信的短信验证码广播则允许直接显示。
+        if (preferredCode == null && clip != null && (sensitive || clip.itemCount <= 0)) {
+            bar.clearNotice()
+            return
+        }
         val item = clip?.takeIf { !sensitive && it.itemCount > 0 }?.getItemAt(0)
-        // 有些应用复制的是 URI/Intent 文本而不是 ClipData.Item.text；必须走 coerceToText，
-        // 否则剪贴板历史可能已收录，顶部提示却读到 null。
-        val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }.getOrNull()
-        // 兜底读取输入法已收录的最新一条文本，覆盖部分 ROM 延迟开放 primaryClip 的情况。
-        val text = systemText?.takeIf { it.isNotEmpty() }
-            ?: runCatching {
+        val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }
+            .getOrNull()?.takeIf { it.isNotEmpty() }
+
+        // 输入法历史明确按“最新在前”排列。先主动 capture 后优先读历史，
+        // 防止部分 ROM 的 primaryClip 暂时返回旧条目时覆盖已经收录的新内容。
+        val settings = Settings.load(this)
+        val historyText = if (settings.recordClipboard) {
+            runCatching {
                 app.qingjian.inputmethod.core.store.ClipboardStore
-                    .list(this, Settings.load(this).clipboardLimit)
+                    .list(this, settings.clipboardLimit)
                     .firstOrNull()?.text?.trim()
             }.getOrNull()?.takeIf { it.isNotEmpty() }
+        } else null
+        val text = preferredCode?.trim()?.takeIf { it.isNotEmpty() }
+            ?: historyText
+            ?: systemText
         if (text.isNullOrEmpty()) {
             bar.clearNotice()
             return
         }
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        val savedCode = preferredCode ?: prefs.getString(SmsCodeReceiver.KEY_LATEST, null)
-        val savedAt = prefs.getLong(SmsCodeReceiver.KEY_LATEST_AT, 0L)
-        val isLatestCode = savedCode == text && savedAt > 0L &&
-            System.currentTimeMillis() - savedAt in 0L..(10 * 60 * 1000L)
-        // 按剪贴板事件时间戳去重：相同文本再次复制属于新事件，仍应显示一次。
-        // 仅在确认提示已交给候选条后写入标记，避免面板尚未就绪时误标记导致永不显示。
         val clipTimestamp = description?.timestamp ?: 0L
         val contentHash = java.security.MessageDigest.getInstance("SHA-256")
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
-        val lastTimestamp = prefs.getLong("clipboard_notice_last_timestamp", -1L)
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
-        if (clipTimestamp > 0L && lastTimestamp == clipTimestamp) return
-        if (clipTimestamp <= 0L && lastHash == contentHash) return
+        // 内容变化就刷新，不再只依赖部分 ROM 可能不更新的 ClipDescription.timestamp。
+        // 短信验证码广播是一次明确的新事件，即使验证码相同也允许重新提示。
+        if (preferredCode == null && lastHash == contentHash) return
+
         bar.show("", emptyList())
-        // 直接显示内容本身；Toolbar.drawNotice 单行显示并在末尾省略，5 秒后自动关闭。
         bar.showPersistentNotice(text) { commitText(text) }
         prefs.edit()
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
@@ -1971,7 +1982,10 @@ class QingjianInputMethodService :
         closePanel()
         composer.abandon()
         val bar = TranslateBar(
-            this, Palette.of(this), partner = "英",
+            this,
+            Palette.of(this),
+            transparentBackground = panel?.editorBackgroundTransparent == true,
+            partner = "英",
             onSource = quickTranslate::onSource,
             onConfirm = { closeEditor() },
             onCancel = {

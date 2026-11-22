@@ -384,6 +384,9 @@ class InputPanel(
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
     val aiChatEditor: AiChatPanel? get() = chatPanel
 
+    /** 快捷翻译等浮动编辑条使用与键盘相同的动态光效/视频背景透明策略。 */
+    val editorBackgroundTransparent: Boolean get() = transparentBackground
+
     private val bottomInset = navigationBarHeight(context)
 
     // 云联想使用独立悬浮 Tips，不加入垂直布局、不挤占候选栏和键盘高度。
@@ -626,10 +629,19 @@ class InputPanel(
 
     /** 编辑条（常用语编辑框、快捷翻译）摆在最上面（键盘照常可打）；[editor] 为 null 收起。 */
     fun showEditor(editor: View?) {
-        root.getChildAt(0)?.takeIf { it is FloatingEditor }?.let(root::removeView)
+        // 编辑条必须放在 Stack 的 main 内容层中：视频背景先绘制，编辑条再叠在其上；
+        // 之前放到 root 外层会让编辑条与视频背景脱离，始终露出默认纯色底。
+        main.getChildAt(0)?.takeIf { it is FloatingEditor }?.let(main::removeView)
         editor?.let {
             applyFontWeight(it)
-            root.addView(it, 0)
+            main.addView(
+                it,
+                0,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
         }
     }
 

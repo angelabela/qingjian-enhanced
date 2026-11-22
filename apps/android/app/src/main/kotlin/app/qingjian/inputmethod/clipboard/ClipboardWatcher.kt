@@ -54,7 +54,8 @@ class ClipboardWatcher(private val context: Context) {
             }
             return
         }
-        val text = item.text?.toString() ?: return
+        // 某些应用复制的是 URI/Intent：text 为空但系统仍可转换成可粘贴文本。
+        val text = runCatching { item.coerceToText(context)?.toString() }.getOrNull() ?: return
         if (firstRecord && text != ClipboardSync.lastReceived) {
             ClipboardStore.add(context, text, settings.clipboardLimit)
             ClipboardSync.changed()

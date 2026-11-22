@@ -117,6 +117,16 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var camera: Camera? = null
     private var torchEnabled = false
     private val themePalette by lazy { runCatching { Palette.of(this) }.getOrNull() }
+
+    /** 把当前主题品牌色融入磨砂玻璃底色，同时保留主题表面的明暗层次。 */
+    private fun adaptiveGlassColor(base: Int, brand: Int, mix: Float, alpha: Int): Int {
+        val amount = mix.coerceIn(0f, 1f)
+        val red = (Color.red(base) * (1f - amount) + Color.red(brand) * amount).toInt()
+        val green = (Color.green(base) * (1f - amount) + Color.green(brand) * amount).toInt()
+        val blue = (Color.blue(base) * (1f - amount) + Color.blue(brand) * amount).toInt()
+        return Color.argb(alpha.coerceIn(0, 255), red, green, blue)
+    }
+
     private lateinit var torchButton: ScanToolbarIconView
     private var prefixEditor: EditText? = null
     private var prefixEditingRequested = false
@@ -424,8 +434,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(
-                    (themePalette?.surface ?: 0xFF303846.toInt()).let { (it and 0x00FFFFFF) or (0xB0 shl 24) },
-                    (themePalette?.board ?: 0xFF252D39.toInt()).let { (it and 0x00FFFFFF) or (0xB8 shl 24) },
+                    adaptiveGlassColor(
+                        themePalette?.surface ?: 0xFF303846.toInt(),
+                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                        0.28f,
+                        0xB0,
+                    ),
+                    adaptiveGlassColor(
+                        themePalette?.board ?: 0xFF252D39.toInt(),
+                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                        0.22f,
+                        0xB8,
+                    ),
                 ),
             ).apply {
                 // 顶部保留两个圆角，底边保持直线并与预览重叠，避免透出底色形成缝隙。
