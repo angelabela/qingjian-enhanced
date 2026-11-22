@@ -131,6 +131,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var prefixEditor: EditText? = null
     private var prefixEditingRequested = false
     private var prefixEditorHadFocus = false
+    private var prefixImeRequested = false
     private val executor = Executors.newSingleThreadExecutor()
     private val zxingFallbackExecutor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
@@ -318,30 +319,38 @@ class ScanOverlayService : Service(), LifecycleOwner {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         prefixInput.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                prefixEditingRequested = true
-                ScanPreferences.setPrefixEditorActive(true)
-                if (::headerWindowParams.isInitialized &&
-                    (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                    headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                    updateHeaderWindowLayout()
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 输入框保留系统长按选词/光标手势，不让标题栏父容器抢走触摸序列。
+                    prefixInput.parent?.requestDisallowInterceptTouchEvent(true)
+                    // 只在首次进入编辑态时切换窗口焦点并请求 IME；后续点按/长按不重复 showSoftInput。
+                    if (!prefixEditingRequested) {
+                        prefixEditingRequested = true
+                        ScanPreferences.setPrefixEditorActive(true)
+                        if (::headerWindowParams.isInitialized &&
+                            (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                            headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                            updateHeaderWindowLayout()
+                        }
+                        prefixInput.post {
+                            if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
+                            if (!prefixInput.hasFocus()) prefixInput.requestFocus()
+                            if (!prefixImeRequested) {
+                                prefixImeRequested = true
+                                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                                    ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                            }
+                        }
+                    }
                 }
-                prefixInput.post {
-                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
-                    prefixInput.requestFocus()
-                    (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                        ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
-                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    prefixInput.parent?.requestDisallowInterceptTouchEvent(false)
             }
             false
         }
         prefixInput.setOnFocusChangeListener { _, focused ->
-            if (focused) {
-                prefixEditorHadFocus = true
-            } else if (prefixEditingRequested && prefixEditorHadFocus) {
-                // 忽略窗口切换焦点过程中的初始失焦；真正编辑完成/离开时才关闭编辑态。
-                finishPrefixEditing()
-            }
+            // IME/悬浮窗口焦点交接时可能短暂失焦，不在这里关闭编辑态或隐藏键盘。
+            if (focused) prefixEditorHadFocus = true
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -608,14 +617,26 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private var startX = 0
         private var startGroupY = 0
         init { isClickable = true }
+
+        private fun captureDragStart(event: MotionEvent) {
+            downRawX = event.rawX
+            downRawY = event.rawY
+            startX = windowParams.x
+            startGroupY = overlayTopY
+        }
+
+        private fun updateDrag(event: MotionEvent) {
+            windowParams.x = (startX + event.rawX - downRawX).toInt()
+                .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+            setOverlayTop(startGroupY + (event.rawY - downRawY).toInt())
+            updateOverlayPositions()
+        }
+
         override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     dragging = false
-                    downRawX = event.rawX
-                    downRawY = event.rawY
-                    startX = windowParams.x
-                    startGroupY = overlayTopY
+                    captureDragStart(event)
                     return false
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -632,17 +653,29 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             return dragging
         }
+
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
-                MotionEvent.ACTION_MOVE -> if (dragging) {
-                    windowParams.x = (startX + event.rawX - downRawX).toInt()
-                        .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                    setOverlayTop(startGroupY + (event.rawY - downRawY).toInt())
-                    updateOverlayPositions()
+                MotionEvent.ACTION_DOWN -> {
+                    // 空白区域没有子 View 成为 touch target，后续 MOVE 不一定再经过 onIntercept；
+                    // 因此父容器自己也完整处理空白区域的长按拖动序列。
+                    if (!dragging) captureDragStart(event)
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging &&
+                        (kotlin.math.abs(event.rawX - downRawX) > touchSlop ||
+                         kotlin.math.abs(event.rawY - downRawY) > touchSlop)) {
+                        dragging = true
+                        finishPrefixEditing()
+                    }
+                    if (dragging) updateDrag(event)
+                    return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragging) saveWindowPosition()
                     dragging = false
+                    return true
                 }
             }
             return true
@@ -801,9 +834,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private fun updateHeaderWindowLayout() {
         val window = headerDialog?.window ?: return
         runCatching {
+            // width/height 已包含在 headerWindowParams 中，只提交一次 Window 属性更新。
             window.attributes = headerWindowParams
-            window.setLayout(headerWindowParams.width, headerWindowParams.height)
-            // 窗口移动/缩放会重新布局 decor；主动刷新自定义裁剪轮廓，避免圆角外的矩形残留。
             window.decorView.invalidateOutline()
             headerView.invalidateOutline()
         }
@@ -860,10 +892,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         prefixEditingRequested = false
         prefixEditorHadFocus = false
+        prefixImeRequested = false
         ScanPreferences.setPrefixEditorActive(false)
         if (editor?.hasFocus() == true) {
-            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                ?.hideSoftInputFromWindow(editor.windowToken, 0)
+            runCatching {
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(editor.windowToken, 0)
+            }
             editor.clearFocus()
         }
         if (::headerWindowParams.isInitialized) {
@@ -1581,7 +1616,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    if (!verticalZoomGesture && kotlin.math.abs(dy) > touchSlop &&
+                    // 上下滑变焦仅允许从扫描框外开始；扫描框内部的上下拖动只用于移动/调整扫描框。
+                    if (!touchInScanArea && !verticalZoomGesture &&
+                        kotlin.math.abs(dy) > touchSlop &&
                         kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.15f
                     ) {
                         verticalZoomGesture = true
