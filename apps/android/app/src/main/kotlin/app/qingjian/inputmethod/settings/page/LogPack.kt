@@ -66,7 +66,7 @@ object LogPack {
                     throw IOException("log changed while snapshotting: ${file.name}")
                 }
                 val text = String(bytes, StandardCharsets.UTF_8)
-                val lineCount = if (text.isEmpty()) 0 else text.count { it == '\\n' } + if (text.endsWith("\\n")) 0 else 1
+                val lineCount = if (text.isEmpty()) 0 else text.count { it == '\n' } + if (text.endsWith("\n")) 0 else 1
                 val latest = text.lineSequence().filter { it.isNotBlank() }.lastOrNull()
                     ?.takeWhile { !it.isWhitespace() }.orEmpty()
                 val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -87,17 +87,17 @@ object LogPack {
         val totalBytes = snapshots.sumOf { it.bytes.size.toLong() }
         val latestRecord = snapshots.map { it.latestTimestamp }.filter { it.isNotBlank() }.maxOrNull().orEmpty()
         val manifest = buildString {
-            append("export_time=").append(exportTime).append('\\n')
-            append("timezone=").append(java.util.TimeZone.getDefault().id).append('\\n')
-            append("log_file_count=").append(snapshots.size).append('\\n')
-            append("total_log_bytes=").append(totalBytes).append('\\n')
-            append("latest_record_time=").append(latestRecord).append('\\n')
+            append("export_time=").append(exportTime).append('\n')
+            append("timezone=").append(java.util.TimeZone.getDefault().id).append('\n')
+            append("log_file_count=").append(snapshots.size).append('\n')
+            append("total_log_bytes=").append(totalBytes).append('\n')
+            append("latest_record_time=").append(latestRecord).append('\n')
             snapshots.forEach { item ->
                 append(item.file.name).append(" bytes=").append(item.bytes.size)
                     .append(" modified=").append(java.time.Instant.ofEpochMilli(item.modified))
                     .append(" line_count=").append(item.lineCount)
                     .append(" sha256=").append(item.sha256)
-                    .append(" latest_record=").append(item.latestTimestamp).append('\\n')
+                    .append(" latest_record=").append(item.latestTimestamp).append('\n')
             }
         }
         val texts = listOf("settings.txt" to settings(context), "device.txt" to device(context), "log_manifest.txt" to manifest)
