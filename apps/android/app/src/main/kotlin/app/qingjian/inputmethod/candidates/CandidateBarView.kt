@@ -293,6 +293,9 @@ class CandidateBarView(
         invalidate()
     }
 
+    /** 当前是否仍有可见的持久提示；同一剪贴板内容在提示消失后允许再次显示。 */
+    fun hasPersistentNotice(): Boolean = notice != null && noticeOverridesCandidates
+
     /** 短信验证码等需要用户主动处理的提示：不自动消失，点击或开始输入后收起。 */
     fun showPersistentNotice(message: String, action: () -> Unit) {
         notice = message to action

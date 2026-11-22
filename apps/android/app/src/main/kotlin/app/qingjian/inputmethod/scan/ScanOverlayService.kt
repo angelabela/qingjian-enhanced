@@ -95,6 +95,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     override val lifecycle: Lifecycle get() = lifecycleRegistry
 
     private lateinit var windowManager: WindowManager
+    /** 悬浮窗 View 必须使用关联显示器的 WindowContext，避免 Android 16 浮动工具栏取 Display 时崩溃。 */
+    private lateinit var overlayContext: Context
     private lateinit var windowParams: WindowManager.LayoutParams
     private var overlayTopY = 0
     private lateinit var headerView: View
@@ -182,7 +184,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             stopSelf()
             return
         }
-        windowManager = getSystemService(WindowManager::class.java)
+        overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        } else this
+        windowManager = overlayContext.getSystemService(WindowManager::class.java)
+        scanDiag("overlay window context created sdk=${Build.VERSION.SDK_INT} displayAssociated=${runCatching { overlayContext.display != null }.getOrDefault(false)}")
         // 悬浮窗每次新建都以连续扫码为默认模式；识图模式只在当前窗口内由用户主动切换。
         ocrMode = false
         squareScanShape = windowPrefs.getBoolean(KEY_SQUARE_SCAN_SHAPE, false)
@@ -225,17 +231,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     private fun buildOverlay() {
-        val density = resources.displayMetrics.density
+        val viewContext = overlayContext
+        val density = viewContext.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
-        preview = PreviewView(this).apply {
+        preview = PreviewView(viewContext).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
             // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
             setBackgroundColor(Color.TRANSPARENT)
         }
-        scanArea = ScanAreaView(this)
-        root = FrameLayout(this).apply {
+        scanArea = ScanAreaView(viewContext)
+        root = FrameLayout(viewContext).apply {
             background = GradientDrawable().apply {
                 setColor(0x01000000)
                 // 相机区域顶部保持直边，与标题栏下边缘拼成一体；只圆润窗口底部。
@@ -254,11 +261,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
         root.addView(scanArea, FrameLayout.LayoutParams(-1, -1))
 
         // 自适应紧凑标题栏：宽度足够时前缀、过滤开关和图标保持同一行；不足时才换成两行。
-        val prefixRow = LinearLayout(this).apply {
+        val prefixRow = LinearLayout(viewContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val prefixInput = EditText(this).apply {
+        val prefixInput = EditText(viewContext).apply {
             setSingleLine(true)
             textSize = 13f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
@@ -274,7 +281,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         prefixEditor = prefixInput
         prefixRow.addView(prefixInput, LinearLayout.LayoutParams(dp(112), dp(36)))
 
-        val prefixSwitch = Switch(this).apply {
+        val prefixSwitch = Switch(viewContext).apply {
             text = "过滤"
             textSize = 11f
             setTextColor(themePalette?.text ?: 0xFFFFFFFF.toInt())
@@ -339,6 +346,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 windowManager.updateViewLayout(overlayRoot, windowParams)
+                // 先把焦点交给悬浮窗根节点和前缀框，再等待 WindowManager 完成窗口焦点切换。
+                overlayRoot.requestFocus()
+                prefixInput.requestFocus()
+                scanDiag("prefix focus requested root=${overlayRoot.hasFocus()} editor=${prefixInput.hasFocus()} window=${overlayRoot.hasWindowFocus()}")
                 fun requestPrefixImeWhenWindowReady(attempt: Int) {
                     prefixInput.postDelayed({
                         if (!prefixEditingRequested || prefixEditor !== prefixInput) return@postDelayed
@@ -350,7 +361,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         runCatching {
                             overlayRoot.requestFocus()
                             prefixInput.requestFocus()
-                            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                            val imm = overlayContext.getSystemService(InputMethodManager::class.java)
                             val accepted = imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
                             prefixImeRequested = accepted
                             scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()} attempt=${attempt + 1}")
@@ -382,7 +393,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
 
         // 标题栏用图标切换模式：扫码状态显示相机图标，识图状态显示二维码图标。
-        modeButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "切换到拍照识图").apply {
+        modeButton = ScanToolbarIconView(viewContext, PanelIcons.Icon.CAMERA, "切换到拍照识图").apply {
             setOnClickListener {
                 setOcrMode(!ocrMode)
                 Toast.makeText(
@@ -393,12 +404,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
 
-        val toolbar = LinearLayout(this).apply {
+        val toolbar = LinearLayout(viewContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
         // 横向布局时用独立弹性间隔把工具按钮推到右侧，前缀区本身只占实际内容宽度。
-        val headerSpacer = View(this)
+        val headerSpacer = View(viewContext)
         toolbar.addView(modeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         shapeButton = ScanToolbarIconView(
             this,
@@ -408,11 +419,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setOnClickListener { setScanShape(!squareScanShape) }
         }
         toolbar.addView(shapeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
-        torchButton = ScanToolbarIconView(this, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
+        torchButton = ScanToolbarIconView(viewContext, PanelIcons.Icon.FLASHLIGHT, "打开手电筒").apply {
             setOnClickListener { finishPrefixEditing(); toggleTorch() }
         }
         toolbar.addView(torchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
-        captureButton = ScanToolbarIconView(this, PanelIcons.Icon.CAMERA, "拍照识别文字").apply {
+        captureButton = ScanToolbarIconView(viewContext, PanelIcons.Icon.CAMERA, "拍照识别文字").apply {
             setIconColor(0xFFFFFFFF.toInt())
             visibility = if (ocrMode) View.VISIBLE else View.GONE
             isEnabled = ocrMode
@@ -427,13 +438,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 if (ocrMode) capturePhotoForOcr()
             }
         }
-        val closeButton = ScanToolbarIconView(this, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
+        val closeButton = ScanToolbarIconView(viewContext, PanelIcons.Icon.CLOSE, "关闭扫码窗口").apply {
             setOnClickListener { scanDiag("close button tapped", warning = true); finishPrefixEditing(); stopSelf() }
         }
         toolbar.addView(closeButton, LinearLayout.LayoutParams(dp(36), dp(40)))
         // 整个标题栏由 DraggableHeaderLayout 统一处理拖动；子控件短按仍由自身接收。
 
-        val header = object : DraggableHeaderLayout(this) {
+        val header = object : DraggableHeaderLayout(viewContext) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
                 // 340dp 默认窗口可容纳紧凑单行；只有小于约 300dp 才换成两行。
@@ -483,7 +494,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         // 标题栏与相机预览属于同一窗口，不启用系统级窗口后方模糊，避免影响整块屏幕。
         headerView = header
 
-        val resize = TextView(this).apply {
+        val resize = TextView(viewContext).apply {
             text = "↘"
             textSize = 25f
             // 仅保留中性白色的缩放提示，不给相机画面叠加主题色底块。
@@ -519,7 +530,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
-        overlayRoot = FrameLayout(this).apply {
+        overlayRoot = FrameLayout(viewContext).apply {
             isFocusableInTouchMode = true
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             clipChildren = false

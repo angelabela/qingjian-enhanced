@@ -724,6 +724,7 @@ class InputPanel(
         private val videoBottomExtension: Int,
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
+        private var lastVideoMeasureSignature: String? = null
         private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
         private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
 
@@ -788,6 +789,11 @@ class InputPanel(
                 child.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY))
             }
             setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), main.measuredHeight)
+            val signature = "stack=${measuredWidth}x${measuredHeight} main=${main.measuredWidth}x${main.measuredHeight} video=${videoBackground?.measuredWidth ?: 0}x${videoBackground?.measuredHeight ?: 0} bottomExtension=$videoBottomExtension"
+            if (signature != lastVideoMeasureSignature) {
+                lastVideoMeasureSignature = signature
+                AppLog.info("[VIDEO_BG_DIAG] $signature")
+            }
         }
     }
 

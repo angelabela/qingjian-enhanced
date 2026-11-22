@@ -316,8 +316,8 @@ class QingjianInputMethodService :
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
         // 内容变化就刷新，不再只依赖部分 ROM 可能不更新的 ClipDescription.timestamp。
         // 短信验证码广播是一次明确的新事件，即使验证码相同也允许重新提示。
-        if (preferredCode == null && lastHash == contentHash) {
-            AppLog.debug("[CLIPBOARD_NOTICE] duplicate skipped source=$source length=${text.length}")
+        if (preferredCode == null && lastHash == contentHash && bar.hasPersistentNotice()) {
+            AppLog.debug("[CLIPBOARD_NOTICE] duplicate skipped because same notice is still visible source=$source length=${text.length}")
             return
         }
 

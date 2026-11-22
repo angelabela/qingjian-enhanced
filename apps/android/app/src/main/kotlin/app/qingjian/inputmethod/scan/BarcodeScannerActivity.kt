@@ -108,7 +108,7 @@ class BarcodeScannerActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(10), dp(16), dp(10))
-            setBackgroundColor(0xCC101522.toInt())
+            setBackgroundColor(0xFF101522.toInt())
             addView(TextView(this@BarcodeScannerActivity).apply {
                 text = if (floatingMode) "扫码窗口 · 按住标题可移动" else "二维码 / 条形码 · 持续扫描"
                 textSize = 16f
