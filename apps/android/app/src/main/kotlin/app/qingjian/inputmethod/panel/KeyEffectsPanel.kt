@@ -21,6 +21,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private val alpha get() = prefs.getInt(KEY_ALPHA, 100).coerceIn(0, 100)
     private val frosted get() = prefs.getBoolean(KEY_FROSTED, false)
     private val marquee get() = prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false)
+    private val edgeGlow get() = prefs.getBoolean(KEY_EDGE_GLOW, false)
+    private val threeDimensional get() = prefs.getBoolean(KEY_3D, false)
     private val borderIndex get() = prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)
     private val backgroundIndex get() = prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)
     private fun top() = card.top + ink.dp(12f)
@@ -28,7 +30,9 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private fun alphaTrackY() = alphaTop() + ink.dp(40f)
     private fun frostedTop() = alphaTop() + ink.dp(60f)
     private fun marqueeTop() = frostedTop() + ink.dp(48f)
-    private fun borderTop() = marqueeTop() + ink.dp(48f)
+    private fun edgeGlowTop() = marqueeTop() + ink.dp(48f)
+    private fun threeDimensionalTop() = edgeGlowTop() + ink.dp(48f)
+    private fun borderTop() = threeDimensionalTop() + ink.dp(48f)
     private fun backgroundTop() = borderTop() + ink.dp(56f)
     private fun contentBottom() = backgroundTop() + ink.dp(56f)
 
@@ -62,6 +66,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         canvas.drawCircle(progressX, trackY, ink.dp(6f), ink.fill)
         drawToggle(canvas, frostedTop(), "按键磨砂效果", frosted, "开启后键帽增加柔和玻璃雾面")
         drawToggle(canvas, marqueeTop(), "字母按键跑马灯", marquee, "A-Z 依次流动，带彩虹渐变光尾")
+        drawToggle(canvas, edgeGlowTop(), "边缘发光效果", edgeGlow, "按键轮廓增加柔和外扩光晕")
+        drawToggle(canvas, threeDimensionalTop(), "立体按键效果", threeDimensional, "增加底部厚度阴影与顶部高光")
         drawColorChoice(canvas, borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
         drawColorChoice(canvas, backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
         canvas.restore()
@@ -107,8 +113,14 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         if (contentY >= frostedTop() && contentY < marqueeTop()) {
             prefs.edit().putBoolean(KEY_FROSTED, !frosted).apply()
             notifyChanged()
-        } else if (contentY >= marqueeTop() && contentY < borderTop()) {
+        } else if (contentY >= marqueeTop() && contentY < edgeGlowTop()) {
             prefs.edit().putBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, !marquee).apply()
+            notifyChanged()
+        } else if (contentY >= edgeGlowTop() && contentY < threeDimensionalTop()) {
+            prefs.edit().putBoolean(KEY_EDGE_GLOW, !edgeGlow).apply()
+            notifyChanged()
+        } else if (contentY >= threeDimensionalTop() && contentY < borderTop()) {
+            prefs.edit().putBoolean(KEY_3D, !threeDimensional).apply()
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
             prefs.edit().putInt(KEY_BORDER_INDEX, (borderIndex + 1) % BORDER_COLORS.size).apply()
@@ -155,6 +167,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private companion object {
         const val KEY_ALPHA = "keyboard_key_alpha"
         const val KEY_FROSTED = "keyboard_key_frosted"
+        const val KEY_EDGE_GLOW = "keyboard_key_edge_glow"
+        const val KEY_3D = "keyboard_key_3d"
         const val KEY_BORDER_INDEX = "keyboard_key_border_index"
         const val KEY_BACKGROUND_INDEX = "keyboard_key_background_index"
         val BORDER_COLORS = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
