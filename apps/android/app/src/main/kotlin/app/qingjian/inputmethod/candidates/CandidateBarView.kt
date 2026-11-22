@@ -121,8 +121,11 @@ class CandidateBarView(
         strokeCap = Paint.Cap.ROUND
         strokeWidth = 1.8f * density
     }
-    private var firstCandidatePulseStartedAt = 0L
-    private var highlightedFirstCandidate: String? = null
+    private var activePulseIndex = -1
+    private var activePulseStartedAt = 0L
+    private val pulseMaskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+    }
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
@@ -227,15 +230,9 @@ class CandidateBarView(
         else visibleCaretIndex = visibleCaretIndex.coerceIn(0, preedit.length)
         val preserveScroll = lastShownPreedit == preedit && lastShownCandidates != null
         val previousScroll = scrollX
-        val nextFirstCandidate = candidates.firstOrNull()?.text
-        if (nextFirstCandidate == null) {
-            firstCandidatePulseStartedAt = 0L
-            highlightedFirstCandidate = null
-        } else if (nextFirstCandidate != highlightedFirstCandidate) {
-            // 特效跟随首候选词本身：候选重排/新一轮首选变化时才重新开始，不再 1.5 秒后自动熄灭。
-            highlightedFirstCandidate = nextFirstCandidate
-            firstCandidatePulseStartedAt = android.os.SystemClock.uptimeMillis()
-        }
+        // 新候选帧到来时重置高亮跟踪；后续手势选中变化由 drawCandidatePulse 实时跟随。
+        activePulseIndex = -1
+        activePulseStartedAt = 0L
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
         gestureSelectionIndex = -1
@@ -388,21 +385,26 @@ class CandidateBarView(
 
     /** 首选或当前选中词及其释义共用同一套呼吸高亮。 */
     private fun drawCandidatePulse(canvas: Canvas, index: Int) {
-        val startedAt = firstCandidatePulseStartedAt
-        if (startedAt <= 0L || index !in strip.candidates.indices) return
-        val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
+        if (index !in strip.candidates.indices) return
+        val now = android.os.SystemClock.uptimeMillis()
+        // 高亮框的动画状态绑定当前候选下标；空格手势滑到下一个词时，特效框立即跟随。
+        if (activePulseIndex != index) {
+            activePulseIndex = index
+            activePulseStartedAt = now
+        }
+        val elapsed = now - activePulseStartedAt
         val rect = strip.candidateEffectRect(index) ?: return
-        // View 的 Canvas 已随 scrollX 平移；首选特效只补候选栏左内边距与文字显现位移。
-        // 不重复减 scrollX，否则候选滚动后特效会留在旧位置。
+        // View Canvas 已由 scrollX 平移；候选与高亮框统一使用内容坐标，再补左内边距。
         rect.offset(strip.leftInsetPx(stripWidth) + strip.candidateRevealOffsetPx(index), 0f)
         rect.top = rect.top.coerceAtLeast(3f * density)
         rect.bottom = rect.bottom.coerceAtMost(height - 3f * density)
-        if (rect.right <= 0f || rect.left >= stripWidth) return
+        if (rect.right <= scrollX || rect.left >= scrollX + stripWidth) return
         val phase = (elapsed % FIRST_CANDIDATE_PULSE_PERIOD_MS).toFloat() /
             FIRST_CANDIDATE_PULSE_PERIOD_MS
         val breath = (0.5f + 0.5f * sin(phase * (Math.PI * 2.0).toFloat()))
-        val save = canvas.save()
-        canvas.clipRect(0f, 0f, stripWidth.toFloat(), height.toFloat())
+        val layerBounds = android.graphics.RectF(scrollX.toFloat(), 0f, (scrollX + stripWidth).toFloat(), height.toFloat())
+        val layer = canvas.saveLayer(layerBounds, null)
+        canvas.clipRect(scrollX.toFloat(), 0f, (scrollX + stripWidth).toFloat(), height.toFloat())
         val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
         val accent = palette.brand
         firstCandidateGlow.shader = android.graphics.LinearGradient(
@@ -425,7 +427,25 @@ class CandidateBarView(
         val shineY = rect.top + 2f * density
         canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
         firstCandidateSheen.shader = null
-        canvas.restoreToCount(save)
+
+        // 选中框也套用候选文字相同的左右渐隐遮罩，滑到边缘时不会留下完整发光框。
+        val leftEdge = scrollX + strip.leftInsetPx(stripWidth)
+        val rightEdge = scrollX + stripWidth
+        val fadeWidth = minOf(30f * density, stripWidth.toFloat()).coerceAtLeast(1f)
+        pulseMaskPaint.shader = android.graphics.LinearGradient(
+            leftEdge, 0f, leftEdge + fadeWidth, 0f,
+            intArrayOf(0x00000000, 0xFF000000.toInt()),
+            floatArrayOf(0f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(scrollX.toFloat(), 0f, rightEdge.toFloat(), height.toFloat(), pulseMaskPaint)
+        pulseMaskPaint.shader = android.graphics.LinearGradient(
+            rightEdge - fadeWidth, 0f, rightEdge.toFloat(), 0f,
+            intArrayOf(0xFF000000.toInt(), 0x00000000),
+            floatArrayOf(0f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(scrollX.toFloat(), 0f, rightEdge.toFloat(), height.toFloat(), pulseMaskPaint)
+        pulseMaskPaint.shader = null
+        canvas.restoreToCount(layer)
         postInvalidateOnAnimation()
     }
 

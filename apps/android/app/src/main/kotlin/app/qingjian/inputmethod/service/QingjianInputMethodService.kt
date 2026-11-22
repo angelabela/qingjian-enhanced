@@ -194,9 +194,17 @@ class QingjianInputMethodService :
         val description = clip?.description
         val sensitive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             description?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true
-        val text = if (!sensitive && clip != null && clip.itemCount > 0) {
-            runCatching { clip.getItemAt(0).text?.toString()?.trim() }.getOrNull()
-        } else null
+        val item = clip?.takeIf { !sensitive && it.itemCount > 0 }?.getItemAt(0)
+        // 有些应用复制的是 URI/Intent 文本而不是 ClipData.Item.text；必须走 coerceToText，
+        // 否则剪贴板历史可能已收录，顶部提示却读到 null。
+        val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }.getOrNull()
+        // 兜底读取输入法已收录的最新一条文本，覆盖部分 ROM 延迟开放 primaryClip 的情况。
+        val text = systemText?.takeIf { it.isNotEmpty() }
+            ?: runCatching {
+                app.qingjian.inputmethod.core.store.ClipboardStore
+                    .list(this, Settings.load(this).clipboardLimit)
+                    .firstOrNull()?.text?.trim()
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
         if (text.isNullOrEmpty()) {
             bar.clearNotice()
             return
@@ -207,16 +215,23 @@ class QingjianInputMethodService :
         val savedAt = prefs.getLong(SmsCodeReceiver.KEY_LATEST_AT, 0L)
         val isLatestCode = savedCode == text && savedAt > 0L &&
             System.currentTimeMillis() - savedAt in 0L..(10 * 60 * 1000L)
-        // 同一条内容只自动展示一次；只持久化 SHA-256，不保存剪贴板正文。
+        // 按剪贴板事件时间戳去重：相同文本再次复制属于新事件，仍应显示一次。
+        // 仅在确认提示已交给候选条后写入标记，避免面板尚未就绪时误标记导致永不显示。
+        val clipTimestamp = description?.timestamp ?: 0L
         val contentHash = java.security.MessageDigest.getInstance("SHA-256")
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
-        if (prefs.getString("clipboard_notice_last_hash", null) == contentHash) return
-        prefs.edit().putString("clipboard_notice_last_hash", contentHash).apply()
+        val lastTimestamp = prefs.getLong("clipboard_notice_last_timestamp", -1L)
+        val lastHash = prefs.getString("clipboard_notice_last_hash", null)
+        if (clipTimestamp > 0L && lastTimestamp == clipTimestamp) return
+        if (clipTimestamp <= 0L && lastHash == contentHash) return
         bar.show("", emptyList())
         // 直接显示内容本身；Toolbar.drawNotice 单行显示并在末尾省略，5 秒后自动关闭。
-        // 后续需要再次使用时，到剪贴板面板手动粘贴。
         bar.showPersistentNotice(text) { commitText(text) }
+        prefs.edit()
+            .putLong("clipboard_notice_last_timestamp", clipTimestamp)
+            .putString("clipboard_notice_last_hash", contentHash)
+            .apply()
     }
 
     /** 短信验证码开关变化时只刷新常用功能图标，不重建输入法窗口。 */
@@ -640,6 +655,10 @@ class QingjianInputMethodService :
         // 键盘弹出时补录历史，并读取系统剪贴板最新文本；无内容则不显示提示。
         clipboardWatcher.capture()
         showLatestClipboardNotice()
+        // 部分系统在输入法窗口启动的首帧仍返回旧剪贴板；稍后重读一次，避免捕获时序竞态。
+        Handler(mainLooper).postDelayed({
+            if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+        }, 180L)
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
         runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
