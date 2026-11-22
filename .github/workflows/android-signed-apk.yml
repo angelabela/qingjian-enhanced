@@ -4,7 +4,6 @@
 # 551: one-shot clipboard notices, strict candidate clipping, bundled CC0 key sounds.
 # 550: mascot bubble spacing, cloud-tip shutdown, character bounce and spacebar edge glow.
 name: android-signed-apk
-# 0.3.14-dev: build fixes for clipboard notice timing, scanner prefix focus, and full-panel video background.
 # Workflow 252: persistent-signature validation for keycap transparency and video-panel fixes.
 
 on:

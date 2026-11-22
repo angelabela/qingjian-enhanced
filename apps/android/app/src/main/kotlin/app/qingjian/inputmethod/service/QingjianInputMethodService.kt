@@ -167,6 +167,35 @@ class QingjianInputMethodService :
             (restarting || clipboardPanelOwnerFieldId == info.fieldId)
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
+    private var clipboardNoticeRetryPending = false
+
+    /** 候选栏在输入法窗口刚显示时可能仍不可见；等待布局完成后再展示最新剪贴板。 */
+    private fun scheduleClipboardNoticeRetry(preferredCode: String? = null) {
+        if (clipboardNoticeRetryPending) return
+        clipboardNoticeRetryPending = true
+        val delays = longArrayOf(80L, 180L, 360L, 700L, 1_200L, 1_800L)
+        fun retry(index: Int) {
+            if (index >= delays.size) {
+                clipboardNoticeRetryPending = false
+                AppLog.info("[CLIPBOARD_NOTICE] retry exhausted while candidate bar stayed hidden")
+                return
+            }
+            Handler(mainLooper).postDelayed({
+                if (!isInputViewShown || shownPreedit.isNotEmpty()) {
+                    clipboardNoticeRetryPending = false
+                    return@postDelayed
+                }
+                val bar = panel?.bar
+                if (bar?.isAttachedToWindow == true && bar.isShown) {
+                    clipboardNoticeRetryPending = false
+                    AppLog.info("[CLIPBOARD_NOTICE] candidate bar became visible; retrying latest content")
+                    showLatestClipboardNotice(preferredCode)
+                } else retry(index + 1)
+            }, delays[index])
+        }
+        retry(0)
+    }
+
     private var lastClipboardPhoneNumber = ""
     private var lastClipboardPhonePromptAt = 0L
     private var scanActionNoticeUntil = 0L
@@ -228,6 +257,7 @@ class QingjianInputMethodService :
         // 这种情况下不能提前记录 lastHash，否则窗口真正显示后同一条新剪贴板会被当成旧提示跳过。
         if (!bar.isAttachedToWindow || !bar.isShown) {
             AppLog.info("[CLIPBOARD_NOTICE] defer: attached=${bar.isAttachedToWindow} shown=${bar.isShown} visibility=${bar.visibility} size=${bar.width}x${bar.height} preferredCode=${preferredCode != null}")
+            scheduleClipboardNoticeRetry(preferredCode)
             return
         }
 

@@ -339,23 +339,30 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 windowManager.updateViewLayout(overlayRoot, windowParams)
-                prefixInput.post outer@{
-                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@outer
-                    runCatching {
-                        overlayRoot.requestFocus()
-                        prefixInput.requestFocus()
-                        prefixInput.post inner@{
-                            if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@inner
+                fun requestPrefixImeWhenWindowReady(attempt: Int) {
+                    prefixInput.postDelayed({
+                        if (!prefixEditingRequested || prefixEditor !== prefixInput) return@postDelayed
+                        if (!overlayRoot.hasWindowFocus()) {
+                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                            else scanDiag("prefix window focus timeout attempts=${attempt + 1}", warning = true)
+                            return@postDelayed
+                        }
+                        runCatching {
+                            overlayRoot.requestFocus()
+                            prefixInput.requestFocus()
                             val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
                             val accepted = imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
                             prefixImeRequested = accepted
-                            scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()}")
+                            scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()} attempt=${attempt + 1}")
+                            if (!accepted && attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                        }.onFailure {
+                            prefixImeRequested = false
+                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                            else scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
                         }
-                    }.onFailure {
-                        prefixImeRequested = false
-                        scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
-                    }
+                    }, if (attempt == 0) 80L else 60L)
                 }
+                requestPrefixImeWhenWindowReady(0)
             }.onFailure {
                 prefixEditingRequested = false
                 ScanPreferences.setPrefixEditorActive(false)
@@ -451,37 +458,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec)
             }
         }.apply {
-            setPadding(dp(7), dp(2), dp(7), dp(2))
+            // 标题栏使用完全不透明的主题表面色，避免相机画面从标题栏透出。
+            setPadding(dp(7), dp(2), dp(7), 0)
             gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(
-                    adaptiveGlassColor(
-                        themePalette?.surface ?: 0xFF303846.toInt(),
-                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.72f,
-                        0xFF,
-                    ),
-                    adaptiveGlassColor(
-                        themePalette?.board ?: 0xFF252D39.toInt(),
-                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.58f,
-                        0xFF,
-                    ),
-                ),
-            ).apply {
-                // 顶部保留两个圆角，底边保持直线并与预览重叠，避免透出底色形成缝隙。
+            background = GradientDrawable().apply {
+                setColor(themePalette?.surface ?: 0xFF303846.toInt())
                 cornerRadii = floatArrayOf(
                     dp(16).toFloat(), dp(16).toFloat(),
                     dp(16).toFloat(), dp(16).toFloat(),
                     0f, 0f, 0f, 0f,
                 )
-                setStroke(dp(1), adaptiveGlassColor(
-                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                    1f,
-                    0xFF,
-                ))
+                setStroke(dp(1), themePalette?.brand ?: 0xFF55E6D0.toInt())
             }
             // 使用显式凸轮廓裁剪，而不是依赖透明背景 drawable 自动生成 Outline。
             // 全透明 drawable 在部分 Android 窗口实现中没有有效 outline，移动窗口时会露出矩形角。
@@ -518,7 +505,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
         val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), maxWidth)
         val height = dp(windowPrefs.getInt(KEY_HEIGHT_DP, 360)).coerceIn(dp(220), maxHeight)
-        val headerHeightEstimate = dp(if (width < dp(300)) 84 else 44)
+        val headerHeightEstimate = dp(if (width < dp(300)) 82 else 42)
         windowParams = WindowManager.LayoutParams(
             width, height + headerHeightEstimate,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,

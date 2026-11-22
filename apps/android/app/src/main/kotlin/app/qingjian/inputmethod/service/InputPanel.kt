@@ -407,7 +407,13 @@ class InputPanel(
         }
     }
 
-    private val stack = Stack(context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
+    private val videoBottomExtension = if (!floating && (!settings.fullscreenAdapt ||
+        (settings.bottomLeft == BottomAction.NONE && settings.bottomRight == BottomAction.NONE))) bottomInset else 0
+
+    private val stack = Stack(
+        context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur,
+        videoBottomExtension,
+    ) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
         setBackgroundColor(Color.TRANSPARENT)
         clipChildren = false
         clipToPadding = false
@@ -715,6 +721,7 @@ class InputPanel(
         videoAlpha: Float,
         videoBrightness: Int,
         videoBlur: Int,
+        private val videoBottomExtension: Int,
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
         private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
@@ -758,11 +765,16 @@ class InputPanel(
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             measureChild(main, widthMeasureSpec, heightMeasureSpec)
             val height = MeasureSpec.makeMeasureSpec(main.measuredHeight, MeasureSpec.EXACTLY)
+            // 视频层延伸到 root 为导航栏预留的底部 inset；Stack 自身高度保持不变。
+            val videoHeight = MeasureSpec.makeMeasureSpec(
+                main.measuredHeight + videoBottomExtension,
+                MeasureSpec.EXACTLY,
+            )
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
                 if (child === videoBackground || child === videoTint) {
-                    child.measure(widthMeasureSpec, height)
+                    child.measure(widthMeasureSpec, videoHeight)
                     continue
                 }
                 if (child is CloudSuggestionsView) {
