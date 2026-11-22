@@ -10,12 +10,15 @@ import android.view.TextureView
 import android.os.Build
 import android.graphics.RenderEffect
 import android.graphics.Shader
+import android.graphics.Matrix
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
-internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
+internal class DynamicVideoBackgroundView(context: Context, private val videoUri: Uri, alpha: Float, blurRadiusDp: Int = 0, private val fitMode: Int = 0) : TextureView(context), TextureView.SurfaceTextureListener {
     private var player: MediaPlayer? = null
     private var output: Surface? = null
     private var prepared = false
+    private var videoWidth = 0
+    private var videoHeight = 0
     var onAverageLuminance: ((Float) -> Unit)? = null
     private var lastLuminanceSampleAt = 0L
     init {
@@ -36,6 +39,11 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         try {
             media.setSurface(target)
             media.setDataSource(context, videoUri)
+            media.setOnVideoSizeChangedListener { _, width, height ->
+                videoWidth = width
+                videoHeight = height
+                applyVideoTransform()
+            }
             media.isLooping = true
             media.setVolume(0f, 0f)
             media.setOnPreparedListener { ready ->
@@ -70,7 +78,30 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             releasePlayer()
         }
     }
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) = Unit
+    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { applyVideoTransform() }
+
+    /** 0=适应面板，1=拉伸，2=裁剪填满，3=100%原始像素尺寸。 */
+    private fun applyVideoTransform() {
+        if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) return
+        val matrix = Matrix()
+        val sx = width.toFloat() / videoWidth
+        val sy = height.toFloat() / videoHeight
+        when (fitMode.coerceIn(0, 3)) {
+            0 -> {
+                val scale = minOf(sx, sy)
+                matrix.setScale(scale, scale)
+                matrix.postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
+            }
+            1 -> matrix.setScale(sx, sy)
+            2 -> {
+                val scale = maxOf(sx, sy)
+                matrix.setScale(scale, scale)
+                matrix.postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
+            }
+            3 -> matrix.setTranslate((width - videoWidth) / 2f, (height - videoHeight) / 2f)
+        }
+        setTransform(matrix)
+    }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         val now = SystemClock.elapsedRealtime()
@@ -103,6 +134,8 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             runCatching { media.setOnPreparedListener(null); media.setOnErrorListener(null); if (wasPrepared && media.isPlaying) media.stop(); media.release() }
         }
         player = null
+        videoWidth = 0
+        videoHeight = 0
         output?.release()
         output = null
     }
