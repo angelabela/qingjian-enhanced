@@ -297,7 +297,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 左侧内边距与触摸命中共用，避免视觉位置和点击位置产生偏差。 */
     // 左侧保留明显的安全留白，滚动候选在进入可视区时先渐显，避免贴边或露出半个字。
-    fun leftInsetPx(viewWidth: Int): Float = maxOf(30f * density, viewWidth * 0.075f)
+    fun leftInsetPx(viewWidth: Int): Float = maxOf(16f * density, viewWidth * 0.045f)
 
     /** [scrollX] 是视图已经滚过去的距离，画布已经按它平移过。 */
     fun draw(canvas: Canvas, scrollX: Int, viewWidth: Int, selectedIndex: Int = -1) {
@@ -462,7 +462,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 左侧候选区保留固定内边距，并在内容进入视口时渐显；滚动后遮罩仍锚定在内容视口边缘。 */
     private fun applyLeftFade(canvas: Canvas, scrollX: Int, viewWidth: Int) {
-        val fadeWidth = minOf(30f * density, viewWidth.toFloat()).coerceAtLeast(1f)
+        val fadeWidth = minOf(16f * density, viewWidth.toFloat()).coerceAtLeast(1f)
         // draw() 已将画布向右平移 leftInset；从 scrollX 开始，正好对应候选内容的可视左边缘。
         val left = scrollX.toFloat()
         val right = scrollX.toFloat() + viewWidth
