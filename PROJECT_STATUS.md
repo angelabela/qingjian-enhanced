@@ -15,12 +15,12 @@
 
 ## 当前版本基线
 
-- 最近交付给用户测试的 APK：492 号工作流，签名 Release 构建成功并已下载交付；用户尚未反馈本轮功能实测结果。
-- APP 测试版本：`0.3.5-dev`，`versionCode=30500`（由 `apps/android/core/Cargo.toml` 与 `apps/android/app/build.gradle.kts` 核对）。保留 `-dev` 后缀，没有擅自改为正式版。
-- 工作流：`android-signed-apk` #492；run ID `45020293420`；提交 `0b5e3ec9d1f53e130174fd5f3540563bbd501baf`；签名验证步骤通过；artifact `qingjian-android-signed`，ID `14753507016`，ZIP SHA-256 `02d23465504301a77650447dfd5e47ca0900507841e3393d36dc6e37b7faa497`。
-- APK：`qingjian-android-signed.apk`，188,659,509 bytes。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45020293420
-- 本轮四项功能已进入签名测试包：扫码标题栏整区拖动；扫码识别 Wi-Fi/网址后 5 秒提示及相应动作；剪贴板 Wi-Fi/网址快捷操作图标与滑动删除；独立按键效果页（透明度、磨砂、26 字母跑马灯）。均待用户安装实测。
-- 用户约定：可用 APP 版本按 `0.3.4` 基线逐次递增 patch；当前测试构建 `0.3.5-dev` / `30500`。后续版本仍须核对所有版本来源与发布约定，不能擅自移除 `-dev`。
+- 最新交付给用户测试的 APK：GitHub Actions #516，签名 Release 构建成功、签名验证通过、APK artifact 已下载并核对；本轮功能尚待用户设备实测。
+- APP 测试版本：`0.3.8-dev`，`versionCode=30308`（`apps/android/core/Cargo.toml` 为版本来源；`apps/android/app/build.gradle.kts` 按 主*10000+次*100+修订 计算）。保留 `-dev` 后缀。
+- 工作流：`android-signed-apk` #516；run ID `45033003050`；提交 `504187b0268c984a0a84d886e05776e6d02dfd56`；Build、固定签名和 Verify 步骤均成功；artifact `qingjian-android-signed`，ID `14758359215`，ZIP SHA-256 `29bbc4c868b7586aced0cc5a742e87e85ea9f5881e6ca5125cb7a2e3cbbecaba`。
+- APK：`qingjian-android-signed.apk`，188,659,509 bytes；APK SHA-256 `1ab509cc1cce5447be91ce044e8beb2e75376f22b581765a0df17f28c828a93b`。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45033003050；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14758359215/zip
+- 本轮交付功能：扫码前缀框重复点击焦点/IME 处理与标题栏—相机预览对齐修正；按键边缘发光、立体效果开关及即时刷新；剪贴板新内容提示覆盖候选栏、候选刷新不吞提示、延迟复读及未显示时不提前消费去重状态。全部待用户安装实测。
+- 用户约定：可用 APP 版本从 `0.3.4` 基线逐次递增 patch；本次源码版本 `0.3.8-dev` / `30308`。版本号与 workflow run number 独立；不移除 `-dev` 后缀。
 - APP 版本号与 GitHub Actions 工作流编号完全独立，不得互相替代。
 
 ## 当前已知待验证事项
