@@ -600,7 +600,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
      * 子控件先正常处理点击；手指移动超过 touch slop 才由父容器拦截并拖动整个窗口组。
      * 模式、闪光灯、关闭按钮和前缀输入框因此既能短按操作，也能按住拖动。
      */
-    private inner class DraggableHeaderLayout(context: Context) : LinearLayout(context) {
+    private open inner class DraggableHeaderLayout(context: Context) : LinearLayout(context) {
         private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
         private var dragging = false
         private var downRawX = 0f
