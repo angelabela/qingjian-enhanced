@@ -172,17 +172,17 @@ class QingjianInputMethodService :
     private var scanActionNoticeUntil = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
-        // 先主动收录当前剪贴板，再刷新显示；部分 ROM 的 primaryClip 更新会晚于回调。
+        // 系统剪贴板监听与输入法面板生命周期解耦：面板关闭时也先收录最新内容。
+        // 展示提示仍要求键盘可见，避免后台弹出 UI。
+        clipboardWatcher.capture()
         if (isInputViewShown && shownPreedit.isEmpty()) {
-            clipboardWatcher.capture()
             showLatestClipboardNotice()
             val handler = Handler(mainLooper)
             listOf(120L, 360L, 720L).forEach { delay ->
                 handler.postDelayed({
-                    if (isInputViewShown && shownPreedit.isEmpty()) {
-                        clipboardWatcher.capture()
-                        showLatestClipboardNotice()
-                    }
+                    // 某些 ROM 的 primaryClip 会晚于监听回调完成更新，延迟复读并再次收录。
+                    clipboardWatcher.capture()
+                    if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
                 }, delay)
             }
         }
@@ -347,13 +347,8 @@ class QingjianInputMethodService :
             return false
         }
         val fieldAlreadyHasCode = containsWholeCode(before + selected + after)
-        val clipboardAlreadyHasCode = runCatching {
-            val clip = getSystemService(ClipboardManager::class.java)?.primaryClip
-            clip != null && clip.itemCount > 0 &&
-                clip.getItemAt(0).coerceToText(this).toString().trim() == value
-        }.getOrDefault(false)
-        if (fieldAlreadyHasCode || clipboardAlreadyHasCode) {
-            AppLog.info("[SCAN_DIAG] duplicate scan ignored fieldMatch=$fieldAlreadyHasCode clipboardMatch=$clipboardAlreadyHasCode editor=${currentInputEditorInfo?.packageName}")
+        if (fieldAlreadyHasCode) {
+            AppLog.info("[SCAN_DIAG] duplicate scan ignored fieldMatch=true editor=${currentInputEditorInfo?.packageName}")
             return
         }
 
@@ -372,10 +367,16 @@ class QingjianInputMethodService :
             return
         }
 
+        // 只在系统剪贴板为空时补入扫码内容；已有内容不被扫码结果覆盖。
         runCatching {
-            getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
-        }.onFailure { android.util.Log.w("QingjianScan", "Unable to copy scan result", it) }
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            val current = clipboard?.primaryClip
+            val currentText = current?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+            if (currentText.isEmpty()) {
+                clipboard?.setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+            }
+        }.onFailure { android.util.Log.w("QingjianScan", "Unable to preserve/fill system clipboard", it) }
 
         if (enter) {
             val newlineCommitted = runCatching { connection.commitText("\n", 1) }.getOrDefault(false)
