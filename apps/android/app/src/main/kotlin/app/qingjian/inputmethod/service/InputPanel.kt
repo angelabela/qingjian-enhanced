@@ -470,6 +470,8 @@ class InputPanel(
         val keyFrosted = prefs.getBoolean("keyboard_key_frosted", false)
         keyboard.setKeySurface(keyAlpha, keyFrosted)
         keyboard.setMarqueeEnabled(prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false))
+        // 边缘发光、立体键帽和自定义颜色在同一 Painter 中立即刷新，不依赖关闭/重开面板。
+        keyboard.refreshKeyEffects()
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
