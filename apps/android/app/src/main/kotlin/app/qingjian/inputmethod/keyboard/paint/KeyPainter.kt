@@ -147,12 +147,19 @@ class KeyPainter(
     /** 手势提示直接显示在键帽内：上滑靠上、下滑靠下；优先完整文字，确实放不下才换语义图标。 */
     /** A-Z 字母按顺序追逐发光，带渐隐光尾；功能键不参与。 */
     private fun drawLetterMarquee(canvas: Canvas, bounds: RectF, letter: Char) {
-        val index = letter.lowercaseChar().code - 'a'.code
-        if (index !in 0..25) return
-        val phase = (SystemClock.uptimeMillis() % 2_600L).toFloat() / 100f
+        // 按真实 QWERTY 键位依次追逐：先 QWERTY 顶排，再 ASDF...、ZXCV...
+        val index = QWERTY_ORDER.indexOf(letter.lowercaseChar())
+        if (index < 0) return
+        val now = SystemClock.uptimeMillis()
+        // 2.6s -> 6.5s：速度降低 60%（保留原有亮度/拖尾观感）。
+        val phase = (now % MARQUEE_CYCLE_MS).toFloat() / MARQUEE_STEP_MS
         val trail = (phase - index + 26f) % 26f
         if (trail > 4.8f) return
-        val strength = (1f - trail / 4.8f).coerceIn(0f, 1f)
+        val travelStrength = (1f - trail / 4.8f).coerceIn(0f, 1f)
+        // 呼吸光：缓慢明暗起伏，不改变字母追逐顺序。
+        val breathePhase = (now % BREATH_CYCLE_MS).toFloat() / BREATH_CYCLE_MS
+        val breathe = 0.68f + 0.32f * (0.5f + 0.5f * kotlin.math.sin(breathePhase * (2f * Math.PI).toFloat()))
+        val strength = travelStrength * breathe
         val hue = (172f + phase * (360f / 26f)) % 360f
         val color = Color.HSVToColor((48 + 207 * strength).toInt(), floatArrayOf(hue, 0.92f, 1f))
         val inset = 0.8f * density
@@ -461,6 +468,10 @@ class KeyPainter(
     private fun scaleOf(sp: Float) = if (sp > HINT_MAX_SP) textScale else 1f
 
     private companion object {
+        const val MARQUEE_CYCLE_MS = 6_500L
+        const val MARQUEE_STEP_MS = 250f
+        const val BREATH_CYCLE_MS = 2_400L
+        const val QWERTY_ORDER = "qwertyuiopasdfghjklzxcvbnm"
         val EDIT_GESTURE_KEYS = setOf('z', 'x', 'c', 'v')
         const val PRESSED_BRAND_SHADE = 0x33000000
 
