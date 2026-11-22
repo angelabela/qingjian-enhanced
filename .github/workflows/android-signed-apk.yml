@@ -1,3 +1,4 @@
+# 553: clipboard latest preview fallback and one-event dedupe; candidate pulse fade and gesture-follow tracking.
 # 552: candidate edge fade, scan duplicate suppression, focus-safe floating scanner, candidate swipe reveal.
 # 551: one-shot clipboard notices, strict candidate clipping, bundled CC0 key sounds.
 # 550: mascot bubble spacing, cloud-tip shutdown, character bounce and spacebar edge glow.
