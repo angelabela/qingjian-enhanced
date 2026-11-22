@@ -244,12 +244,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     dp(18).toFloat(), dp(18).toFloat(),
                     dp(18).toFloat(), dp(18).toFloat(),
                 )
-                setStroke(dp(1), adaptiveGlassColor(
-                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                    1f,
-                    0xD0,
-                ))
+                setStroke(dp(1), 0x66FFFFFF)
             }
             clipToOutline = true
             clipChildren = true
@@ -459,7 +454,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     dp(16).toFloat(), dp(16).toFloat(),
                     0f, 0f, 0f, 0f,
                 )
-                setStroke(dp(1), 0x66FFFFFF)
+                setStroke(dp(1), adaptiveGlassColor(
+                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                    themePalette?.brand ?: 0xFF55E6D0.toInt(),
+                    1f,
+                    0xD0,
+                ))
             }
             // 使用显式凸轮廓裁剪，而不是依赖透明背景 drawable 自动生成 Outline。
             // 全透明 drawable 在部分 Android 窗口实现中没有有效 outline，移动窗口时会露出矩形角。
