@@ -147,12 +147,15 @@ class CandidateBarView(
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
     /** 工具栏位置上的一句提示与点它要做的事；null 是没有提示。几秒后、出候选或点过就收起。 */
     private var notice: Pair<String, () -> Unit>? = null
+    /** 验证码/剪贴板等主动提示短暂覆盖候选栏，避免下一帧候选刷新将提示立即清掉。 */
+    private var noticeOverridesCandidates = false
     private val clearNotice = Runnable {
         notice = null
+        noticeOverridesCandidates = false
         invalidate()
     }
 
-    private val toolbarShown: Boolean get() = !resizing && strip.isEmpty && notice == null
+    private val toolbarShown: Boolean get() = !resizing && (noticeOverridesCandidates || strip.isEmpty && notice == null)
 
     /** 候选能用的宽度：有 ⌄ 时让出那一格。 */
     private val stripWidth: Int get() = if (expandable) width - expandSlot.toInt() else width
@@ -237,7 +240,8 @@ class CandidateBarView(
         lastShownCandidates = candidates.toList()
         gestureSelectionIndex = -1
         closePopup()
-        if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
+        // 只有用户真正开始组合输入时才清除提示；空 preedit 状态下的候选帧刷新不能吞掉提示。
+        if (preedit.isNotEmpty()) clearNotice.run()
         strip.show(preedit, candidates, animateCandidates)
         scroller.forceFinished(true)
         if (!preserveScroll) scrollTo(0, 0)
@@ -283,6 +287,7 @@ class CandidateBarView(
     /** 在工具栏的位置放一句提示 [message]，点它执行 [action]（打开对应的设置页）。 */
     fun showNotice(message: String, action: () -> Unit) {
         notice = message to action
+        noticeOverridesCandidates = false
         removeCallbacks(clearNotice)
         postDelayed(clearNotice, NOTICE_MS)
         invalidate()
@@ -291,6 +296,7 @@ class CandidateBarView(
     /** 短信验证码等需要用户主动处理的提示：不自动消失，点击或开始输入后收起。 */
     fun showPersistentNotice(message: String, action: () -> Unit) {
         notice = message to action
+        noticeOverridesCandidates = true
         removeCallbacks(clearNotice)
         // 验证码/剪贴板提示只保留 5 秒；用户未点击时自动收起，点击时由 tap() 立即清除。
         postDelayed(clearNotice, NOTICE_MS)
@@ -302,6 +308,7 @@ class CandidateBarView(
         removeCallbacks(clearNotice)
         if (notice != null) {
             notice = null
+            noticeOverridesCandidates = false
             invalidate()
         }
     }
@@ -331,7 +338,8 @@ class CandidateBarView(
 
     override fun onDraw(canvas: Canvas) = when {
         resizing -> resizeHandle.draw(canvas, width)
-        strip.isEmpty && notice != null -> toolbar.drawNotice(canvas, width, notice!!.first)
+        notice != null && (noticeOverridesCandidates || strip.isEmpty) ->
+            toolbar.drawNotice(canvas, width, notice!!.first)
         strip.isEmpty -> {
             toolbar.draw(canvas, width)
             postInvalidateOnAnimation()
@@ -518,6 +526,13 @@ class CandidateBarView(
     }
 
     private fun tap(x: Float, y: Float) {
+        // 主动提示显示期间，点击候选栏任意区域都执行提示动作，而不是误选被临时覆盖的候选。
+        if (notice != null && noticeOverridesCandidates) {
+            val action = notice!!.second
+            clearNotice.run()
+            action()
+            return
+        }
         if (expandable && x >= stripWidth) {
             listener.onExpand()
             return
