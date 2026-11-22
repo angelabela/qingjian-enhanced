@@ -276,7 +276,18 @@ class CandidateBarView(
     fun showPersistentNotice(message: String, action: () -> Unit) {
         notice = message to action
         removeCallbacks(clearNotice)
+        // 验证码/剪贴板提示只保留 5 秒；用户未点击时自动收起，点击时由 tap() 立即清除。
+        postDelayed(clearNotice, NOTICE_MS)
         invalidate()
+    }
+
+    /** 没有可用剪贴板内容时立即收起旧提示，避免展示过期验证码/文本。 */
+    fun clearNotice() {
+        removeCallbacks(clearNotice)
+        if (notice != null) {
+            notice = null
+            invalidate()
+        }
     }
 
     /** 进入拖动调高度（功能面板里点「键盘高度」）。 */
