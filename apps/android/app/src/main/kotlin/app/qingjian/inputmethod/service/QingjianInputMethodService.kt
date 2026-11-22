@@ -169,14 +169,49 @@ class QingjianInputMethodService :
     private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
+        // 剪贴板变化时即使键盘面板未打开也由系统监听；仅在输入视图可见且未输入拼音时刷新提示。
+        if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
     }
 
     /** 短信验证码只通过本机广播送到候选条；短信正文不进入输入法服务。 */
     private val smsCodeListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val code = intent.getStringExtra(SmsCodeReceiver.EXTRA_CODE)?.takeIf { it.matches(Regex("\\d{4,6}")) } ?: return
-            panel?.bar?.show("", emptyList())
-            panel?.bar?.showPersistentNotice("验证码 $code · 点击上屏") { commitText(code) }
+            // Receiver 已将验证码写入持久化设置并复制到系统剪贴板；面板关闭时也不会丢失。
+            if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice(preferredCode = code)
+        }
+    }
+
+    /**
+     * 键盘每次打开都直接读取系统剪贴板最新文本，不依赖面板打开时才开始监听。
+     * 短信验证码优先按验证码样式展示；普通文本作为剪贴板快捷上屏入口。
+     */
+    private fun showLatestClipboardNotice(preferredCode: String? = null) {
+        val bar = panel?.bar ?: return
+        if (shownPreedit.isNotEmpty()) return
+        val manager = getSystemService(ClipboardManager::class.java)
+        val clip = runCatching { manager?.primaryClip }.getOrNull()
+        val description = clip?.description
+        val sensitive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            description?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true
+        val text = if (!sensitive && clip != null && clip.itemCount > 0) {
+            runCatching { clip.getItemAt(0).text?.toString()?.trim() }.getOrNull()
+        } else null
+        if (text.isNullOrEmpty()) {
+            bar.clearNotice()
+            return
+        }
+
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val savedCode = preferredCode ?: prefs.getString(SmsCodeReceiver.KEY_LATEST, null)
+        val savedAt = prefs.getLong(SmsCodeReceiver.KEY_LATEST_AT, 0L)
+        val isLatestCode = savedCode == text && savedAt > 0L &&
+            System.currentTimeMillis() - savedAt in 0L..(10 * 60 * 1000L)
+        bar.show("", emptyList())
+        if (isLatestCode) {
+            bar.showPersistentNotice("验证码 $text · 点击上屏") { commitText(text) }
+        } else {
+            bar.showPersistentNotice("剪贴板内容 · 点击上屏") { commitText(text) }
         }
     }
 
@@ -583,8 +618,9 @@ class QingjianInputMethodService :
         cloud.sync()
         // 上次读通讯录时系统给了空结果（「仅在使用中允许」时后台读不到），键盘弹出时再读
         contacts.retryIfEmpty()
-        // 键盘弹出时按设置补录剪贴板历史，不显示临时提示。
+        // 键盘弹出时补录历史，并读取系统剪贴板最新文本；无内容则不显示提示。
         clipboardWatcher.capture()
+        showLatestClipboardNotice()
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
         runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
@@ -605,6 +641,8 @@ class QingjianInputMethodService :
     override fun onWindowShown() {
         super.onWindowShown()
         AppLog.info("window shown")
+        // 同一编辑器中再次展开键盘时也刷新一次最新验证码/剪贴板内容。
+        showLatestClipboardNotice()
         // 定时学习数据落盘只在键盘可见期间运行；隐藏后由 onFinishInputView 负责最终落盘。
         candidateRerankHandler.removeCallbacks(learningFlushRunnable)
         candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
