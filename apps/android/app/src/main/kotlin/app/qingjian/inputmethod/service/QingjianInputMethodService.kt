@@ -654,7 +654,13 @@ class QingjianInputMethodService :
         val nextFieldId = attribute.fieldId
         val previousEditorPackage = lastInputEditorPackage
         val previousFieldId = lastInputEditorFieldId
-        android.util.Log.i("QingjianScanDiag", "onStartInput previous=$previousEditorPackage/$previousFieldId next=$nextEditorPackage/$nextFieldId restarting=$restarting floating=${ScanPreferences.isFloating(this)} prefixEditing=${ScanPreferences.isPrefixEditorActive()}")
+        AppLog.info(
+            "[IME_DIAG] startInput previous=$previousEditorPackage/$previousFieldId next=$nextEditorPackage/$nextFieldId " +
+                "restarting=$restarting inputType=0x${Integer.toHexString(attribute.inputType)} " +
+                "imeOptions=0x${Integer.toHexString(attribute.imeOptions)} private=${attribute.wantsPrivacy()} " +
+                "password=${attribute.wantsPasswordSuggestions()} floating=${ScanPreferences.isFloating(this)} " +
+                "prefixEditing=${ScanPreferences.isPrefixEditorActive()}",
+        )
         val editingOwnScanPrefix = nextEditorPackage == packageName && ScanPreferences.isPrefixEditorActive()
         val targetChanged = previousEditorPackage != null &&
             (previousEditorPackage != nextEditorPackage || (previousFieldId != null && previousFieldId != nextFieldId))
@@ -812,6 +818,10 @@ class QingjianInputMethodService :
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
         hasActiveSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        AppLog.debug(
+            "[IME_DIAG] selection old=$oldSelStart/$oldSelEnd new=$newSelStart/$newSelEnd " +
+                "candidates=$candidatesStart/$candidatesEnd selected=$hasActiveSelection editor=${currentInputEditorInfo?.packageName}",
+        )
         maybeShowMascotSemanticReaction(newSelStart, newSelEnd)
         maybeShowMascotSmartInfo(newSelStart, newSelEnd)
         // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。

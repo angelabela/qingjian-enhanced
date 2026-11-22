@@ -121,12 +121,3 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_log<'local>(
     }
 }
 
-/// Flush the active tracing subscriber before an Android log archive is created.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_flushLogging<'local>(
-    _env: JNIEnv<'local>,
-    _this: JObject<'local>,
-) {
-    #[cfg(target_os = "android")]
-    tracing::dispatcher::get_default(|dispatch| dispatch.flush());
-}

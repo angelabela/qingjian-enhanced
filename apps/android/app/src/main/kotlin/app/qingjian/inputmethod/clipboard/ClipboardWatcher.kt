@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.settings.Settings
 import kotlin.concurrent.thread
@@ -23,19 +24,37 @@ class ClipboardWatcher(private val context: Context) {
     private val listener = ClipboardManager.OnPrimaryClipChangedListener { capture() }
 
     fun start() {
+        val available = manager != null
         manager?.addPrimaryClipChangedListener(listener)
+        AppLog.info("[CLIPBOARD_DIAG] watcher started managerAvailable=$available")
     }
 
     fun stop() {
         manager?.removePrimaryClipChangedListener(listener)
+        AppLog.info("[CLIPBOARD_DIAG] watcher stopped")
     }
 
     /** 读取系统当前剪贴板：预览独立于历史记录开关，键盘弹出时也能显示最新文字。 */
     fun capture() {
         val settings = Settings.load(context)
-        if (!settings.recordClipboard) return
-        val clip = runCatching { manager?.primaryClip }.getOrNull() ?: return
-        if (clip.itemCount == 0 || sensitive(clip.description)) return
+        if (!settings.recordClipboard) {
+            AppLog.debug("[CLIPBOARD_DIAG] capture skipped: history recording disabled")
+            return
+        }
+        val clip = runCatching { manager?.primaryClip }
+            .onFailure { AppLog.warn("[CLIPBOARD_DIAG] primaryClip read failed: ${it.javaClass.simpleName}") }
+            .getOrNull() ?: run {
+                AppLog.debug("[CLIPBOARD_DIAG] capture skipped: primaryClip unavailable")
+                return
+            }
+        if (clip.itemCount == 0) {
+            AppLog.debug("[CLIPBOARD_DIAG] capture skipped: clip has no items")
+            return
+        }
+        if (sensitive(clip.description)) {
+            AppLog.info("[CLIPBOARD_DIAG] capture skipped: system marked clip sensitive")
+            return
+        }
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
@@ -55,11 +74,23 @@ class ClipboardWatcher(private val context: Context) {
             return
         }
         // 某些应用复制的是 URI/Intent：text 为空但系统仍可转换成可粘贴文本。
-        val text = runCatching { item.coerceToText(context)?.toString() }.getOrNull() ?: return
-        if (firstSeen("text:$text") && text != ClipboardSync.lastReceived) {
-            ClipboardStore.add(context, text, settings.clipboardLimit)
-            ClipboardSync.changed()
+        val text = runCatching { item.coerceToText(context)?.toString() }
+            .onFailure { AppLog.warn("[CLIPBOARD_DIAG] clip text conversion failed: ${it.javaClass.simpleName}") }
+            .getOrNull() ?: run {
+                AppLog.debug("[CLIPBOARD_DIAG] capture skipped: item has no convertible text")
+                return
+            }
+        if (!firstSeen("text:$text")) {
+            AppLog.debug("[CLIPBOARD_DIAG] duplicate text clip ignored length=${text.length}")
+            return
         }
+        if (text == ClipboardSync.lastReceived) {
+            AppLog.debug("[CLIPBOARD_DIAG] clip ignored: identical to last synchronized item length=${text.length}")
+            return
+        }
+        ClipboardStore.add(context, text, settings.clipboardLimit)
+        AppLog.info("[CLIPBOARD_DIAG] text clip stored length=${text.length} timestamp=${clip.description.timestamp}")
+        ClipboardSync.changed()
     }
 
     /**

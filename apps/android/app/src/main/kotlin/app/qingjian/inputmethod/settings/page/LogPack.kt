@@ -52,10 +52,10 @@ object LogPack {
             append("export_time=").append(exportTime).append('\n')
             append("log_file_count=").append(logs.size).append('\n')
             logs.forEach { file ->
+                val lineCount = runCatching { file.useLines { it.count() } }.getOrDefault(-1)
                 append(file.name).append(" bytes=").append(file.length())
-                    .append(" modified=").append(java.time.Instant.ofEpochMilli(file.lastModified())).append('\n')
-                val tail = runCatching { file.useLines { it.toList().takeLast(1).firstOrNull().orEmpty() } }.getOrDefault("<read failed>")
-                append("last_line=").append(tail.take(300)).append('\n')
+                    .append(" modified=").append(java.time.Instant.ofEpochMilli(file.lastModified()))
+                    .append(" line_count=").append(lineCount).append('\n')
             }
         }
         val texts = listOf("settings.txt" to settings(context), "device.txt" to device(context), "log_manifest.txt" to manifest)
@@ -72,7 +72,10 @@ object LogPack {
                 zip.closeEntry()
             }
         }
-        AppLog.warn("user exported logs (${logs.size} files)")
+        AppLog.info(
+            "[LOG_EXPORT] completed files=${logs.size} logEntries=${logs.sumOf { file -> runCatching { file.useLines { it.count() } }.getOrDefault(0) }} " +
+                "archiveEntries=${logs.size + texts.size} exportTime=${exportTime}",
+        )
         return logs.size + texts.size
     }
 

@@ -40,10 +40,12 @@ object AppLog {
         recordExitReasons(context)
     }
 
-    /** Write an export boundary marker and flush the native logger. */
+    /**
+     * Mark the exact export boundary. RollingFileAppender writes synchronously;
+     * there is no background writer queue to drain before the ZIP reads the files.
+     */
     fun flushForExport() {
         info("log export boundary: " + java.time.Instant.now())
-        if (ready) runCatching { Native.flushLogging() }
     }
 
     fun verbose(context: Context): Boolean = prefs(context).getBoolean(KEY_VERBOSE, false)
@@ -64,7 +66,9 @@ object AppLog {
 
     /** 没装上 so 时退回 logcat。 */
     private fun write(level: Int, priority: Int, message: String) {
-        if (ready) Native.log(level, message) else Log.println(priority, TAG, message)
+        // Add execution context without recording editor text or clipboard contents.
+        val enriched = "thread=${Thread.currentThread().name} elapsed_ms=${android.os.SystemClock.elapsedRealtime()} $message"
+        if (ready) Native.log(level, enriched) else Log.println(priority, TAG, enriched)
     }
 
     /**

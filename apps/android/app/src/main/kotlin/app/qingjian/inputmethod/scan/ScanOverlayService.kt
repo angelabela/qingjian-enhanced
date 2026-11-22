@@ -134,6 +134,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private val processing = AtomicBoolean(false)
     private val lifecycleGuard = Any()
     private val clientsClosed = AtomicBoolean(false)
+    private val analyzedFrameCount = java.util.concurrent.atomic.AtomicLong()
+    private val barcodeResultFrameCount = java.util.concurrent.atomic.AtomicLong()
     @Volatile private var shuttingDown = false
     @Volatile private var startupFailed = false
     private var analysisUseCase: ImageAnalysis? = null
@@ -360,6 +362,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         prefixInput.setOnFocusChangeListener { _, focused ->
+            scanDiag("prefix editor focus changed focused=$focused requested=$prefixEditingRequested imeRequested=$prefixImeRequested")
             if (focused) prefixEditorHadFocus = true
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
@@ -810,6 +813,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     private fun finishPrefixEditing() {
+        scanDiag("finish prefix editing requested=$prefixEditingRequested hadFocus=$prefixEditorHadFocus imeRequested=$prefixImeRequested")
         val editor = prefixEditor
         // 预览层也会调用本方法。只有用户确实编辑过前缀时，才允许隐藏软键盘；
         // 否则悬浮标题栏的 windowToken 可能连带关闭微信/Excel 当前使用的输入法。
@@ -1005,9 +1009,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     runCatching { proxy.close() }
                 } else {
                     try {
+                        val frameNumber = analyzedFrameCount.incrementAndGet()
+                        if (frameNumber == 1L || frameNumber % 120L == 0L) {
+                            scanDiag("camera analysis active frames=$frameNumber size=${proxy.width}x${proxy.height} rotation=${proxy.imageInfo.rotationDegrees} ocrMode=$ocrMode")
+                        }
                         val deferredFrameRelease = AtomicBoolean(false)
                         scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
                             .addOnSuccessListener { codes ->
+                                if (codes.isNotEmpty()) {
+                                    val hits = barcodeResultFrameCount.incrementAndGet()
+                                    scanDiag("ML Kit returned ${codes.size} barcode candidates; hitFrames=$hits")
+                                }
                                 // ML Kit 没有命中时，交给 ZXing Java 再尝试一次；其反色与两种二值化策略
                                 // 可补足低对比、反白、细条码等场景。异步解码期间保留 ImageProxy。
                                 if (codes.isEmpty() && android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
@@ -1069,7 +1081,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
                             }
                             .addOnFailureListener { error ->
-                                android.util.Log.w(TAG, "Barcode frame analysis failed", error)
+                                scanDiag("ML Kit frame analysis failed: ${error.javaClass.simpleName}: ${error.message}", warning = true)
                             }
                             .addOnCompleteListener {
                                 if (!deferredFrameRelease.get()) {
@@ -1088,6 +1100,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             provider.unbindAll()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis, capture)
+            scanDiag("camera bound lens=back preview=1280x720 analysis=1920x1080 capture=1280x720")
             cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
             // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
             preview.post {
@@ -1184,6 +1197,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 两种扫描模式明确互斥：拍照识图时暂停条码分析并显示拍照按钮。 */
     private fun setOcrMode(enabled: Boolean) {
+        scanDiag("scan mode changed mode=" + (if (enabled) "ocr" else "barcode"))
         ocrMode = enabled
         windowPrefs.edit().putBoolean(KEY_OCR_MODE, enabled).apply()
         if (::modeButton.isInitialized) {
