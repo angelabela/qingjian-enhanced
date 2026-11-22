@@ -759,6 +759,19 @@ class KeyboardView(
         val dx = event.getX(at) - spaceAnchorX
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
+        // 候选横向预选期间一旦明显改为上下滑，立即取消预选，不提交当前候选。
+        if (candidateSwipeMode &&
+            abs(dy) >= metrics.density * CANDIDATE_SWIPE_START_DP &&
+            abs(dy) > abs(dx)
+        ) {
+            listener.onCandidateSwipeEnd(commit = false)
+            candidateSwipeMode = false
+            candidateSwipeLastStep = 0
+            timer.removeCallbacks(spaceHold)
+            cursorMode = false
+            invalidate()
+            return
+        }
         // 无拼音且存在候选时，候选滑动必须先于光标移动判断。
         // 旧逻辑等到 24dp 才尝试候选，但光标在 14dp 就已进入 cursorMode，
         // 导致后续滑动永远无法切换候选；长按已进入光标模式时也应允许候选手势接管。
