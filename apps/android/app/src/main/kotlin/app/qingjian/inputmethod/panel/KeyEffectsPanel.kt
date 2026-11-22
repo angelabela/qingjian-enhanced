@@ -21,12 +21,16 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private val alpha get() = prefs.getInt(KEY_ALPHA, 100).coerceIn(0, 100)
     private val frosted get() = prefs.getBoolean(KEY_FROSTED, false)
     private val marquee get() = prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false)
+    private val borderIndex get() = prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)
+    private val backgroundIndex get() = prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)
     private fun top() = card.top + ink.dp(12f)
     private fun alphaTop() = top() + ink.dp(4f)
     private fun alphaTrackY() = alphaTop() + ink.dp(40f)
     private fun frostedTop() = alphaTop() + ink.dp(60f)
     private fun marqueeTop() = frostedTop() + ink.dp(48f)
-    private fun contentBottom() = marqueeTop() + ink.dp(48f)
+    private fun borderTop() = marqueeTop() + ink.dp(48f)
+    private fun backgroundTop() = borderTop() + ink.dp(56f)
+    private fun contentBottom() = backgroundTop() + ink.dp(56f)
 
     private fun notifyChanged() {
         context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
@@ -58,8 +62,31 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         canvas.drawCircle(progressX, trackY, ink.dp(6f), ink.fill)
         drawToggle(canvas, frostedTop(), "按键磨砂效果", frosted, "开启后键帽增加柔和玻璃雾面")
         drawToggle(canvas, marqueeTop(), "字母按键跑马灯", marquee, "A-Z 依次流动，带彩虹渐变光尾")
+        drawColorChoice(canvas, borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
+        drawColorChoice(canvas, backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
         canvas.restore()
         if (marquee && isShown) postInvalidateDelayed(32L)
+    }
+
+    private fun drawColorChoice(canvas: Canvas, rowTop: Float, label: String, colors: IntArray, selected: Int) {
+        ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(14f), rowTop + ink.dp(18f), card.right - ink.dp(12f))
+        val swatchSize = ink.dp(19f)
+        val gap = ink.dp(9f)
+        val total = colors.size * swatchSize + (colors.size - 1) * gap
+        var x = card.left + ink.dp(14f)
+        val y = rowTop + ink.dp(28f)
+        colors.forEachIndexed { index, color ->
+            ink.fill.color = color
+            canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f, ink.fill)
+            if (index == selected) {
+                ink.fill.style = Paint.Style.STROKE
+                ink.fill.strokeWidth = ink.dp(2f)
+                ink.fill.color = palette.text
+                canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f + ink.dp(2f), ink.fill)
+                ink.fill.style = Paint.Style.FILL
+            }
+            x += swatchSize + gap
+        }
     }
 
     private fun drawToggle(canvas: Canvas, rowTop: Float, label: String, enabled: Boolean, note: String) {
@@ -80,8 +107,14 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         if (contentY >= frostedTop() && contentY < marqueeTop()) {
             prefs.edit().putBoolean(KEY_FROSTED, !frosted).apply()
             notifyChanged()
-        } else if (contentY >= marqueeTop() && contentY < contentBottom()) {
+        } else if (contentY >= marqueeTop() && contentY < borderTop()) {
             prefs.edit().putBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, !marquee).apply()
+            notifyChanged()
+        } else if (contentY >= borderTop() && contentY < backgroundTop()) {
+            prefs.edit().putInt(KEY_BORDER_INDEX, (borderIndex + 1) % BORDER_COLORS.size).apply()
+            notifyChanged()
+        } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
+            prefs.edit().putInt(KEY_BACKGROUND_INDEX, (backgroundIndex + 1) % BACKGROUND_COLORS.size).apply()
             notifyChanged()
         }
     }
@@ -122,5 +155,9 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private companion object {
         const val KEY_ALPHA = "keyboard_key_alpha"
         const val KEY_FROSTED = "keyboard_key_frosted"
+        const val KEY_BORDER_INDEX = "keyboard_key_border_index"
+        const val KEY_BACKGROUND_INDEX = "keyboard_key_background_index"
+        val BORDER_COLORS = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
+        val BACKGROUND_COLORS = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
     }
 }
