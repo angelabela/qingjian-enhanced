@@ -34,6 +34,7 @@ import app.qingjian.inputmethod.cloud.AiChatGenerator
 import app.qingjian.inputmethod.cloud.AiExpressionGroup
 import app.qingjian.inputmethod.candidates.StripSource
 import app.qingjian.inputmethod.core.frame.Candidate
+import app.qingjian.inputmethod.core.AppLog
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.keyboard.BottomActionsView
 import app.qingjian.inputmethod.keyboard.KeyboardView
