@@ -310,9 +310,14 @@ class CandidateBarView(
             postInvalidateOnAnimation()
         }
         else -> {
-            strip.draw(canvas, scrollX, stripWidth, if (gestureSelectionIndex >= 0) gestureSelectionIndex else popupIndex)
-            // 拼音行不再绘制额外竖线，避免字母尾部出现像输入光标一样的干扰线。
-            drawFirstCandidatePulse(canvas)
+            val activeHighlightIndex = when {
+                gestureSelectionIndex in strip.candidates.indices -> gestureSelectionIndex
+                popupIndex in strip.candidates.indices -> popupIndex
+                else -> 0
+            }
+            strip.draw(canvas, scrollX, stripWidth)
+            // 选中候选与首选共用同一套呼吸光效；有选中项时首选光效自动让位。
+            drawCandidatePulse(canvas, activeHighlightIndex)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
             drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
@@ -330,7 +335,7 @@ class CandidateBarView(
         popup.showing -> onPopupTouch(event)
         else -> {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                onPreedit = !strip.isEmpty && strip.caretAt(event.x - stripWidth * 0.05f, event.y) >= 0
+                onPreedit = !strip.isEmpty && strip.caretAt(event.x - strip.leftInsetPx(stripWidth), event.y) >= 0
                 dragCaret = -1
                 // 长按一触发 GestureDetector 就不再给拖动；按在拼音行上先停一停再拖也要跟
                 gestures.setIsLongpressEnabled(!onPreedit)
@@ -351,15 +356,15 @@ class CandidateBarView(
         }
     }
 
-    /** 首选词及其释义共享呼吸高亮；输入候选和后续联想候选均生效。 */
-    private fun drawFirstCandidatePulse(canvas: Canvas) {
+    /** 首选或当前选中词及其释义共用同一套呼吸高亮。 */
+    private fun drawCandidatePulse(canvas: Canvas, index: Int) {
         val startedAt = firstCandidatePulseStartedAt
-        if (startedAt <= 0L || strip.candidates.isEmpty()) return
+        if (startedAt <= 0L || index !in strip.candidates.indices) return
         val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
-        val rect = strip.candidateEffectRect(0) ?: return
+        val rect = strip.candidateEffectRect(index) ?: return
         // View 的 Canvas 已随 scrollX 平移；首选特效只补候选栏左内边距与文字显现位移。
         // 不重复减 scrollX，否则候选滚动后特效会留在旧位置。
-        rect.offset(stripWidth * 0.05f + strip.candidateRevealOffsetPx(0), 0f)
+        rect.offset(strip.leftInsetPx(stripWidth) + strip.candidateRevealOffsetPx(index), 0f)
         rect.top = rect.top.coerceAtLeast(3f * density)
         rect.bottom = rect.bottom.coerceAtMost(height - 3f * density)
         if (rect.right <= 0f || rect.left >= stripWidth) return
@@ -408,7 +413,7 @@ class CandidateBarView(
     private fun smartActionAt(index: Int, text: String, contentX: Float, y: Float): String? {
         val actions = smartActions(text)
         if (actions.isEmpty()) return null
-        val rect = strip.wordRect(index)?.apply { offset(stripWidth * 0.05f, 0f) } ?: return null
+        val rect = strip.wordRect(index)?.apply { offset(strip.leftInsetPx(stripWidth), 0f) } ?: return null
         // 快捷按钮固定在候选格底部的独立操作行，不再压在候选文字上。
         val cy = rect.bottom - 9f * density
         if (y !in (cy - 9f * density)..(cy + 9f * density)) return null
@@ -422,7 +427,7 @@ class CandidateBarView(
     private fun drawSmartActions(canvas: Canvas) {
         strip.candidates.forEachIndexed { index, candidate ->
             val actions = smartActions(candidate.text)
-            val rect = strip.wordRect(index)?.apply { offset(stripWidth * 0.05f, 0f) } ?: return@forEachIndexed
+            val rect = strip.wordRect(index)?.apply { offset(strip.leftInsetPx(stripWidth), 0f) } ?: return@forEachIndexed
             actions.forEachIndexed { i, action ->
                 val cx = rect.right - (11f + i * 21f) * density - scrollX
                 val cy = rect.bottom - 9f * density
@@ -453,7 +458,7 @@ class CandidateBarView(
      * 拼音行按视图坐标画、不随候选滚动；新的一帧到了缝的位置会变，所以每次按手指重新找。
      */
     private fun dragCaret(x: Float) {
-        val caret = strip.caretNear(x - stripWidth * 0.05f)
+        val caret = strip.caretNear(x - strip.leftInsetPx(stripWidth))
         if (caret < 0 || caret == dragCaret) return
         dragCaret = caret
         visibleCaretIndex = caret
@@ -468,7 +473,7 @@ class CandidateBarView(
             return
         }
         // 拼音行钉在视口上，不随候选滚动，按视图坐标查
-        val caret = strip.caretAt(x - stripWidth * 0.05f, y)
+        val caret = strip.caretAt(x - strip.leftInsetPx(stripWidth), y)
         if (caret >= 0) {
             visibleCaretIndex = caret
             invalidate()
@@ -476,7 +481,7 @@ class CandidateBarView(
             return
         }
         if (!strip.isEmpty) {
-            strip.indexAt(x + scrollX - stripWidth * 0.05f).takeIf { it >= 0 }?.let { index ->
+            strip.indexAt(x + scrollX - strip.leftInsetPx(stripWidth)).takeIf { it >= 0 }?.let { index ->
                 val text = strip.candidates.getOrNull(index)?.text.orEmpty()
                 smartActionAt(index, text, x + scrollX, y)?.let { action ->
                     listener.onSmartAction(text, action)
@@ -506,7 +511,7 @@ class CandidateBarView(
      */
     private fun openTranslations(event: MotionEvent) {
         if (event.x >= stripWidth) return
-        val index = strip.indexAt(event.x + scrollX - stripWidth * 0.05f)
+        val index = strip.indexAt(event.x + scrollX - strip.leftInsetPx(stripWidth))
         val candidate = strip.candidates.getOrNull(index) ?: return
         val senses = candidate.senses
         if (senses.isEmpty() && !candidate.forgettable) return
