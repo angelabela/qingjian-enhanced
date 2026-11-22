@@ -22,6 +22,7 @@ import java.util.zip.ZipOutputStream
 object LogPack {
     /** 存到用户选的位置（SAF），返回写进去几个文件；一个日志都没有时不写，返回 0。 */
     fun save(context: Context, target: Uri): Int {
+        AppLog.flushForExport()
         if (logs(context).isEmpty()) return 0
         val output = context.contentResolver.openOutputStream(target, "wt") ?: error("cannot open export target")
         return write(context, output)
@@ -29,6 +30,7 @@ object LogPack {
 
     /** 打到 [LogShareProvider] 的目录里给分享用（只留这一份）；没有日志返回 null。 */
     fun forSharing(context: Context, name: String): File? {
+        AppLog.flushForExport()
         if (logs(context).isEmpty()) return null
         val dir = LogShareProvider.shareDir(context)
         dir.deleteRecursively()
@@ -43,8 +45,20 @@ object LogPack {
 
     /** 文字的两份先算好再开压缩包：算到一半出错不留下半个包。写完关掉 [output]。 */
     private fun write(context: Context, output: OutputStream): Int {
+        AppLog.flushForExport()
+        val exportTime = java.time.Instant.now()
         val logs = logs(context)
-        val texts = listOf("settings.txt" to settings(context), "device.txt" to device(context))
+        val manifest = buildString {
+            append("export_time=").append(exportTime).append('\n')
+            append("log_file_count=").append(logs.size).append('\n')
+            logs.forEach { file ->
+                append(file.name).append(" bytes=").append(file.length())
+                    .append(" modified=").append(java.time.Instant.ofEpochMilli(file.lastModified())).append('\n')
+                val tail = runCatching { file.useLines { it.toList().takeLast(1).firstOrNull().orEmpty() } }.getOrDefault("<read failed>")
+                append("last_line=").append(tail.take(300)).append('\n')
+            }
+        }
+        val texts = listOf("settings.txt" to settings(context), "device.txt" to device(context), "log_manifest.txt" to manifest)
         ZipOutputStream(output).use { zip ->
             for (file in logs) {
                 val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
