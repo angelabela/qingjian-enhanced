@@ -268,34 +268,46 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     fun candidateEffectRect(index: Int): RectF? {
         val frame = image ?: return wordRect(index)
         val result = wordRect(index) ?: return null
+        // wordRect() 已处理无拼音候选行的垂直居中；释义命中框也必须应用同一偏移。
+        val shift = if (frame.candidatesTop == 0) {
+            ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
+        } else 0f
         frame.hits.filter { it.candidate == index && it.sense != null }.forEach { hit ->
-            result.union(hit.rect)
+            result.union(RectF(hit.rect).apply { offset(0f, shift) })
         }
         return result
     }
 
-    /** 长按候选的液态玻璃选中层；只绘制玻璃底与高光，文字继续使用普通候选样式。 */
-    private fun drawLiquidGlass(canvas: Canvas, index: Int, scrollX: Int, shift: Int) {
+    /** 候选文字显现动画当前的横向位移，供外层首选特效与文字保持同步。 */
+    fun candidateRevealOffsetPx(index: Int): Float = candidateRevealOffset(index)
+
+    /** 液态玻璃选中层：使用当前主题强调色，坐标与候选/释义共用同一套几何。 */
+    private fun drawLiquidGlass(canvas: Canvas, index: Int, scrollX: Int) {
         val rect = candidateEffectRect(index) ?: return
-        rect.offset(-scrollX.toFloat(), shift.toFloat())
+        rect.offset(-scrollX.toFloat(), 0f)
         rect.inset(-4f * density, -3f * density)
+        rect.top = rect.top.coerceAtLeast(1f * density)
+        rect.bottom = rect.bottom.coerceAtMost(barHeight - 1f * density)
+        if (rect.width() <= 0f || rect.height() <= 0f) return
         val radius = 10f * density
+        val tint = glassTint and 0x00FFFFFF
         glassFill.shader = android.graphics.LinearGradient(
             rect.left, rect.top, rect.right, rect.bottom,
-            intArrayOf(0x66FFFFFF, (glassTint and 0x00FFFFFF) or 0x33202020, 0x223F9FFF),
-            floatArrayOf(0f, 0.48f, 1f), android.graphics.Shader.TileMode.CLAMP,
+            intArrayOf(0x55FFFFFF, tint or 0x55303030, tint or 0x22303030),
+            floatArrayOf(0f, 0.46f, 1f), android.graphics.Shader.TileMode.CLAMP,
         )
-        glassFill.alpha = 210
+        glassFill.alpha = 255
         canvas.drawRoundRect(rect, radius, radius, glassFill)
         glassFill.shader = null
-        glassEdge.color = 0xBFFFFFFF.toInt()
-        glassEdge.strokeWidth = 1.1f * density
+        glassEdge.color = tint or 0xCC000000.toInt()
+        glassEdge.strokeWidth = 1.25f * density
         canvas.drawRoundRect(rect, radius, radius, glassEdge)
-        glassHighlight.color = 0x88FFFFFF.toInt()
-        glassHighlight.strokeWidth = 1.4f * density
+        glassHighlight.color = 0xBFFFFFFF.toInt()
+        glassHighlight.strokeWidth = 1.35f * density
         val topHighlight = RectF(rect.left + 3f * density, rect.top + 1.5f * density,
             rect.right - 3f * density, rect.top + 9f * density)
-        canvas.drawArc(topHighlight, 190f, 160f, false, glassHighlight)
+        if (topHighlight.width() > 0f) canvas.drawArc(topHighlight, 190f, 160f, false, glassHighlight)
+        glassBloom.color = tint or 0x26000000
         canvas.drawRoundRect(rect, radius, radius, glassBloom)
     }
 
@@ -356,7 +368,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             canvas.drawBitmap(bitmap, src, dst, null)
         }
         // 长按选中只保留液态玻璃底层，旧的高亮文字样式不再参与绘制。
-        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex, scrollX, shift)
+        if (selectedIndex in candidates.indices) drawLiquidGlass(canvas, selectedIndex, scrollX)
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
             if (image.emoji.contains(index)) return@forEachIndexed

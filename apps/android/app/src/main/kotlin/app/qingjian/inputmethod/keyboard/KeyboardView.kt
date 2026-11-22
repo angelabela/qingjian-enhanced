@@ -53,6 +53,11 @@ class KeyboardView(
         /** 长按空格左右滑：光标挪 [steps] 格，负数往左。 */
         fun onCursorMove(steps: Int)
 
+        /** 无拼音但有候选时，空格左右滑动用于预选候选。 */
+        fun onCandidateSwipeStart(): Boolean
+        fun onCandidateSwipe(steps: Int)
+        fun onCandidateSwipeEnd(commit: Boolean)
+
         /** 九宫格拼音列里点了一项。 */
         fun onSideItem(item: String)
 
@@ -128,6 +133,8 @@ class KeyboardView(
     private var cursorMode = false
     private var voiceMode = false
     private var clipboardMode = false
+    private var candidateSwipeMode = false
+    private var candidateSwipeLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
     /**
@@ -399,13 +406,17 @@ class KeyboardView(
                 val movedCursor = pointer == spacePointer && cursorMode
                 val spoke = pointer == spacePointer && voiceMode
                 val openClipboard = pointer == spacePointer && clipboardMode
-                val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode
+                val selectedBySwipe = pointer == spacePointer && candidateSwipeMode
+                val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode && !candidateSwipeMode
+                if (selectedBySwipe) listener.onCandidateSwipeEnd(commit = true)
                 if (pointer == spacePointer) {
                     timer.removeCallbacks(spaceHold)
                     spacePointer = -1
                     cursorMode = false
                     voiceMode = false
                     clipboardMode = false
+                    candidateSwipeMode = false
+                    candidateSwipeLastStep = 0
                 }
                 if (pointer == longPressPointer) {
                     timer.removeCallbacks(longPress)
@@ -422,6 +433,7 @@ class KeyboardView(
                     }
                     openClipboard -> listener.onOpenClipboard()
                     spoke -> listener.onVoiceRelease(cancel = false)
+                    selectedBySwipe -> Unit
                     movedCursor -> Unit
                     spaceTap && slot?.key is Key.Space -> {
                         tapFeedback()
@@ -737,6 +749,21 @@ class KeyboardView(
         val dx = event.getX(at) - spaceAnchorX
         val step = metrics.density * CURSOR_STEP_DP
         val dy = event.getY(at) - spaceAnchorY
+        // 无拼音但存在候选时，空格水平滑动优先用于候选预选；左滑切到后一个，右滑返回前一个。
+        if (!cursorMode && !candidateSwipeMode && abs(dx) >= metrics.density * 18f && abs(dx) > abs(dy)) {
+            timer.removeCallbacks(spaceHold)
+            candidateSwipeMode = listener.onCandidateSwipeStart()
+            candidateSwipeLastStep = 0
+        }
+        if (candidateSwipeMode) {
+            val currentStep = (-dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
+            val delta = currentStep - candidateSwipeLastStep
+            if (delta != 0) {
+                candidateSwipeLastStep = currentStep
+                listener.onCandidateSwipe(delta)
+            }
+            return
+        }
         // 空格键明显向下滑时打开剪贴板；优先于横向挪光标，且不依赖「空格移动光标」设置。
         if (!cursorMode && gestureAction(Key.Space(), upward = false) == Settings.GestureAction.DEFAULT &&
             dy > metrics.density * SPACE_CLIPBOARD_SWIPE_DP && dy > abs(dx) * SPACE_CLIPBOARD_SLOPE) {
@@ -765,10 +792,13 @@ class KeyboardView(
         timer.removeCallbacks(spaceHold)
         // 说着话的手指被系统收走（来电、键盘重建）：当取消
         if (voiceMode) listener.onVoiceRelease(cancel = true)
+        if (candidateSwipeMode) listener.onCandidateSwipeEnd(commit = false)
         spacePointer = -1
         cursorMode = false
         voiceMode = false
         clipboardMode = false
+        candidateSwipeMode = false
+        candidateSwipeLastStep = 0
         longPressPointer = -1
         if (choicePopup.showing) choicePopup.finish()
     }
@@ -809,6 +839,7 @@ class KeyboardView(
          */
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
+        const val CANDIDATE_SWIPE_STEP_DP = 24f
         const val SPACE_CLIPBOARD_SWIPE_DP = 22f
         const val SPACE_CLIPBOARD_SLOPE = 1.2f
     }

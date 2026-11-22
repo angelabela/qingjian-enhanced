@@ -71,7 +71,7 @@ class CandidateBarView(
     private var adaptiveVideoTextColor: Int? = null
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 66f * density * maxOf(1f, textScale)
-    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.board, palette.text, candidateTextStyles)
+    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.brand, palette.text, candidateTextStyles)
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
@@ -114,7 +114,12 @@ class CandidateBarView(
     private val firstCandidateRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = palette.brand
         style = Paint.Style.STROKE
-        strokeWidth = 1.6f * density
+        strokeWidth = 1.5f * density
+    }
+    private val firstCandidateSheen = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 1.8f * density
     }
     private var firstCandidatePulseStartedAt = 0L
     private var highlightedFirstCandidate: String? = null
@@ -151,6 +156,8 @@ class CandidateBarView(
 
     /** 气泡对着的候选下标；气泡开着时高亮跟到它上面。 */
     private var popupIndex = -1
+    /** 空格左右滑动时临时预选的候选；抬手提交，滑动过程只更新高亮。 */
+    private var gestureSelectionIndex = -1
 
     /** 气泡里「删除」那一项的下标；这个候选删不了时为 -1。 */
     private var forgetItem = -1
@@ -231,6 +238,7 @@ class CandidateBarView(
         }
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
+        gestureSelectionIndex = -1
         closePopup()
         if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
         strip.show(preedit, candidates, animateCandidates)
@@ -238,6 +246,22 @@ class CandidateBarView(
         if (!preserveScroll) scrollTo(0, 0)
         repaint()
         if (preserveScroll) scrollTo(previousScroll.coerceIn(0, maxScroll()), 0)
+    }
+
+    /** 空格横滑预选候选；不重绘 Rust 位图，只更新独立选中层。 */
+    fun setGestureSelection(index: Int) {
+        val next = index.takeIf { it in strip.candidates.indices } ?: -1
+        if (gestureSelectionIndex == next) return
+        gestureSelectionIndex = next
+        invalidate()
+    }
+
+    /** 提交或取消空格横滑预选。 */
+    fun finishGestureSelection(commit: Boolean) {
+        val selected = gestureSelectionIndex
+        gestureSelectionIndex = -1
+        invalidate()
+        if (commit && selected in strip.candidates.indices) listener.onSelect(selected)
     }
 
     /** 在工具栏的位置放一句提示 [message]，点它执行 [action]（打开对应的设置页）。 */
@@ -262,7 +286,8 @@ class CandidateBarView(
 
     /** 按当前高亮重画位图：新的一帧到了、或长按气泡换了对着的候选。 */
     private fun repaint() {
-        strip.paint(if (strip.isEmpty) null else source.render(popupIndex, palette.dark, stripWidth))
+        // 旧 Rust 选中底色会残留在位图里；选中态统一由上层液态玻璃绘制。
+        strip.paint(if (strip.isEmpty) null else source.render(-1, palette.dark, stripWidth))
         invalidate()
     }
 
@@ -285,7 +310,7 @@ class CandidateBarView(
             postInvalidateOnAnimation()
         }
         else -> {
-            strip.draw(canvas, scrollX, stripWidth, popupIndex)
+            strip.draw(canvas, scrollX, stripWidth, if (gestureSelectionIndex >= 0) gestureSelectionIndex else popupIndex)
             // 拼音行不再绘制额外竖线，避免字母尾部出现像输入光标一样的干扰线。
             drawFirstCandidatePulse(canvas)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
@@ -332,18 +357,36 @@ class CandidateBarView(
         if (startedAt <= 0L || strip.candidates.isEmpty()) return
         val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
         val rect = strip.candidateEffectRect(0) ?: return
-        rect.offset(stripWidth * 0.05f - scrollX, 0f)
+        // 与候选文字显现动画使用同一位移，滚动时也始终减去同一个 scrollX。
+        rect.offset(stripWidth * 0.05f - scrollX + strip.candidateRevealOffsetPx(0), 0f)
         if (rect.right <= 0f || rect.left >= stripWidth) return
         val phase = (elapsed % FIRST_CANDIDATE_PULSE_PERIOD_MS).toFloat() /
             FIRST_CANDIDATE_PULSE_PERIOD_MS
         val breath = (0.5f + 0.5f * sin(phase * (Math.PI * 2.0).toFloat()))
         val save = canvas.save()
         canvas.clipRect(0f, 0f, stripWidth.toFloat(), height.toFloat())
-        val glow = android.graphics.RectF(rect).apply { inset(-2.5f * density, -2f * density) }
-        firstCandidateGlow.alpha = (12f + breath * 24f).toInt()
-        canvas.drawRoundRect(glow, 9f * density, 9f * density, firstCandidateGlow)
-        firstCandidateRing.alpha = (90f + breath * 110f).toInt()
-        canvas.drawRoundRect(glow, 9f * density, 9f * density, firstCandidateRing)
+        val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
+        val accent = palette.brand
+        firstCandidateGlow.shader = android.graphics.LinearGradient(
+            glow.left, glow.top, glow.right, glow.bottom,
+            intArrayOf((accent and 0x00FFFFFF) or 0x26303030, (accent and 0x00FFFFFF) or 0x50303030, (accent and 0x00FFFFFF) or 0x20303030),
+            floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
+        canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+        firstCandidateGlow.shader = null
+        val outline = android.graphics.RectF(rect).apply { inset(-1.2f * density, -1f * density) }
+        firstCandidateRing.color = accent
+        firstCandidateRing.alpha = (135f + breath * 105f).toInt()
+        canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+        firstCandidateSheen.shader = android.graphics.LinearGradient(
+            rect.left, rect.top, rect.right, rect.top,
+            intArrayOf(0x00FFFFFF, 0xBFFFFFFF, 0x00FFFFFF),
+            floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
+        )
+        val shineY = rect.top + 2f * density
+        canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
+        firstCandidateSheen.shader = null
         canvas.restoreToCount(save)
         postInvalidateOnAnimation()
     }

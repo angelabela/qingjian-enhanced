@@ -135,6 +135,8 @@ class QingjianInputMethodService :
     private var candidateRerankSequence = 0
     /** 显示顺序到 Rust 原始候选下标的映射，确保重排后点击仍选中正确候选。 */
     private var candidateIndexMap: List<Int> = emptyList()
+    /** 空格左右滑动时预选的后续候选下标；只在无拼音候选态启用。 */
+    private var spaceCandidateSwipeIndex = -1
 
     /** 当前输入框的回车键文字，见 [enterLabel]。 */
     private var enterLabel: String? = null
@@ -1346,6 +1348,32 @@ class QingjianInputMethodService :
     }
 
     override fun onCursorMove(steps: Int) = composer.moveCursor(steps)
+
+    override fun onCandidateSwipeStart(): Boolean {
+        if (shownPreedit.isNotEmpty() || shownCandidates.isEmpty() || editor != null) return false
+        if (panel?.openPanel != null) return false
+        spaceCandidateSwipeIndex = 0
+        panel?.bar?.setGestureSelection(spaceCandidateSwipeIndex)
+        return true
+    }
+
+    override fun onCandidateSwipe(steps: Int) {
+        if (spaceCandidateSwipeIndex < 0 || shownCandidates.isEmpty()) return
+        val next = (spaceCandidateSwipeIndex + steps).coerceIn(0, shownCandidates.lastIndex)
+        if (next == spaceCandidateSwipeIndex) return
+        spaceCandidateSwipeIndex = next
+        panel?.bar?.setGestureSelection(next)
+    }
+
+    override fun onCandidateSwipeEnd(commit: Boolean) {
+        val selected = spaceCandidateSwipeIndex
+        spaceCandidateSwipeIndex = -1
+        panel?.bar?.setGestureSelection(-1)
+        if (commit && selected in shownCandidates.indices) {
+            cancelPendingCandidateRerank()
+            composer.select(originalCandidateIndex(selected))
+        }
+    }
 
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
