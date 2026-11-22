@@ -762,12 +762,7 @@ class InputPanel(
                 val child = getChildAt(i)
                 if (child === main) continue
                 if (child === videoBackground || child === videoTint) {
-                    // TextureView 在 AT_MOST 宽度约束下可能按视频纹理的固有尺寸测量，
-                    // 导致视频只覆盖面板左侧。背景层必须与 Stack 的实际宽度严格一致。
-                    val backgroundWidth = main.measuredWidth.takeIf { it > 0 }
-                        ?: MeasureSpec.getSize(widthMeasureSpec)
-                    val exactBackgroundWidth = MeasureSpec.makeMeasureSpec(backgroundWidth, MeasureSpec.EXACTLY)
-                    child.measure(exactBackgroundWidth, height)
+                    child.measure(widthMeasureSpec, height)
                     continue
                 }
                 if (child is CloudSuggestionsView) {
