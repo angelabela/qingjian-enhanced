@@ -132,6 +132,19 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var prefixEditingRequested = false
     private var prefixEditorHadFocus = false
     private var prefixImeRequested = false
+    /** Dialog 焦点/IME 弹出可能改变其真实屏幕位置；测量后把相机窗重新贴齐标题栏。 */
+    private val alignPreviewToHeader = Runnable {
+        if (!::root.isInitialized || !::headerView.isInitialized ||
+            !::windowParams.isInitialized || !root.isAttachedToWindow || !headerView.isAttachedToWindow) return@Runnable
+        val location = IntArray(2)
+        headerView.getLocationOnScreen(location)
+        val overlap = resources.displayMetrics.density.toInt().coerceAtLeast(1)
+        val desiredPreviewY = (location[1] + headerView.height - overlap).coerceAtLeast(0)
+        if (windowParams.y != desiredPreviewY) {
+            windowParams.y = desiredPreviewY
+            runCatching { windowManager.updateViewLayout(root, windowParams) }
+        }
+    }
     private val executor = Executors.newSingleThreadExecutor()
     private val zxingFallbackExecutor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
@@ -318,44 +331,62 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
+        // 触摸监听只保护 EditText 的系统长按选词手势，不在 DOWN 中切换窗口焦点；
+        // 编辑态统一从 click 回调进入，避免同一触摸序列重入 Dialog/IME 的 WindowManager。
         prefixInput.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    // 输入框保留系统长按选词/光标手势，不让标题栏父容器抢走触摸序列。
-                    prefixInput.parent?.requestDisallowInterceptTouchEvent(true)
-                    // 只在首次进入编辑态时切换窗口焦点并请求 IME；后续点按/长按不重复 showSoftInput。
-                    if (!prefixEditingRequested) {
-                        prefixEditingRequested = true
-                        ScanPreferences.setPrefixEditorActive(true)
-                        if (::headerWindowParams.isInitialized &&
-                            (headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                            headerWindowParams.flags = headerWindowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                            // 切换悬浮标题栏焦点可能与输入法窗口重排竞争；隔离窗口更新异常，避免二次点按崩溃。
-                            runCatching { updateHeaderWindowLayout() }
-                        }
-                        prefixInput.post {
-                            if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
-                            runCatching {
-                                if (!prefixInput.hasFocus()) prefixInput.requestFocus()
-                                if (!prefixImeRequested && prefixInput.hasFocus()) {
-                                    prefixImeRequested = true
-                                    (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                                        ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
-                                }
-                            }.onFailure {
-                                prefixImeRequested = false
-                                scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
-                            }
-                        }
-                    }
-                }
+                MotionEvent.ACTION_DOWN -> prefixInput.parent?.requestDisallowInterceptTouchEvent(true)
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
                     prefixInput.parent?.requestDisallowInterceptTouchEvent(false)
             }
             false
         }
+        prefixInput.setOnClickListener {
+            if (prefixEditingRequested) return@setOnClickListener
+            prefixEditingRequested = true
+            prefixEditorHadFocus = false
+            prefixImeRequested = false
+            ScanPreferences.setPrefixEditorActive(true)
+
+            val window = headerDialog?.window
+            if (window == null || headerDialog?.isShowing != true) {
+                prefixEditingRequested = false
+                ScanPreferences.setPrefixEditorActive(false)
+                scanDiag("prefix editor click ignored: header dialog not showing", warning = true)
+                return@setOnClickListener
+            }
+
+            runCatching {
+                headerWindowParams.flags = headerWindowParams.flags and
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+                updateHeaderWindowLayout()
+                prefixInput.post {
+                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
+                    runCatching {
+                        prefixInput.requestFocus()
+                        // 延后一帧等待 Dialog 的焦点标志生效；后续点击不再重复请求 IME。
+                        prefixInput.post {
+                            if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@post
+                            prefixImeRequested = true
+                            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                            imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
+                            headerView.removeCallbacks(alignPreviewToHeader)
+                            headerView.post(alignPreviewToHeader)
+                        }
+                    }.onFailure {
+                        prefixImeRequested = false
+                        scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
+                    }
+                }
+            }.onFailure {
+                prefixEditingRequested = false
+                ScanPreferences.setPrefixEditorActive(false)
+                prefixImeRequested = false
+                scanDiag("prefix editor window activation failed: ${it.javaClass.simpleName}", warning = true)
+            }
+        }
         prefixInput.setOnFocusChangeListener { _, focused ->
-            // IME/悬浮窗口焦点交接时可能短暂失焦，不在这里关闭编辑态或隐藏键盘。
             if (focused) prefixEditorHadFocus = true
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
@@ -556,6 +587,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             setCancelable(false)
             window?.apply {
                 setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                // 输入前缀时系统 IME 弹出不能单独平移/缩放标题栏，否则会和相机预览错位。
+                setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
                 // Dialog 背景保持透明；系统背景模糊的几何边界由下面设置的 decor Outline 决定。
                 val roundedWindowMask = roundedHeaderMask()
                 setBackgroundDrawable(roundedWindowMask)
@@ -813,8 +846,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (!::windowParams.isInitialized || !::headerWindowParams.isInitialized) return
         val headerHeight = (headerView.height.takeIf { it > 0 } ?: headerWindowParams.height).coerceAtLeast(0)
         val overlap = resources.displayMetrics.density.toInt().coerceAtLeast(1)
-        val combinedHeight = (headerHeight + windowParams.height - overlap).coerceAtLeast(headerHeight)
-        val maxTop = (resources.displayMetrics.heightPixels - combinedHeight).coerceAtLeast(0)
+        val previewHeight = root.height.takeIf { it > 0 } ?: windowParams.height
+        val combinedHeight = (headerHeight + previewHeight - overlap).coerceAtLeast(headerHeight)
+        val displayHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            windowManager.currentWindowMetrics.bounds.height()
+        } else {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            metrics.heightPixels
+        }
+        val maxTop = (displayHeight - combinedHeight).coerceAtLeast(0)
         overlayTopY = requestedTop.coerceIn(0, maxTop)
         windowParams.y = overlayTopY + headerHeight - overlap
     }
@@ -846,6 +888,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             window.attributes = headerWindowParams
             window.decorView.invalidateOutline()
             headerView.invalidateOutline()
+            // Window 属性落地后读取真实屏幕坐标，再以标题栏底边反算相机窗 y。
+            // 用实测位置抵消 Dialog decor/系统栏/IME 布局造成的坐标偏移。
+            headerView.removeCallbacks(alignPreviewToHeader)
+            headerView.post(alignPreviewToHeader)
         }
     }
 
