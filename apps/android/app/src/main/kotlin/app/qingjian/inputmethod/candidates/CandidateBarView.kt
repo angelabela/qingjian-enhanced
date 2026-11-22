@@ -381,7 +381,7 @@ class CandidateBarView(
         canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
         firstCandidateSheen.shader = android.graphics.LinearGradient(
             rect.left, rect.top, rect.right, rect.top,
-            intArrayOf(0x00FFFFFF, 0xBFFFFFFF, 0x00FFFFFF),
+            intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
             floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
         )
         val shineY = rect.top + 2f * density
