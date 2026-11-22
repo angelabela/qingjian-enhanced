@@ -790,7 +790,7 @@ class Composer(private val engine: Engine, private val host: Host) {
             .map { Candidate(text = it, senses = emptyList()) }).distinctBy { it.text }
         val prefix = structuredTokenBuffer.toString()
         // 连续联想只保留真正补全当前前缀的词；与 Core 候选、标点候选去重，避免同一词出现两次。
-        structuredCompletions = if (prefix.length >= 2) {
+        structuredCompletions = if (prefix.length >= 2 && prefix.any { it.isLetter() }) {
             host.structuredTokenSuggestions(prefix)
                 .asSequence()
                 .filter { it.isNotBlank() && it != prefix }
