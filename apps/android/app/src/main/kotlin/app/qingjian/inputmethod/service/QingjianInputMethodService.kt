@@ -205,6 +205,12 @@ class QingjianInputMethodService :
         val bar = panel?.bar ?: return
         if (shownPreedit.isNotEmpty()) return
         if (android.os.SystemClock.elapsedRealtime() < scanActionNoticeUntil) return
+        // 某些输入框切换/面板初始化期间 CandidateBarView 已创建但还未挂载到可见窗口；
+        // 这种情况下不能提前记录 lastHash，否则窗口真正显示后同一条新剪贴板会被当成旧提示跳过。
+        if (!bar.isAttachedToWindow || !bar.isShown) {
+            AppLog.info("[CLIPBOARD_NOTICE] defer: candidate bar is not attached/visible")
+            return
+        }
 
         val manager = getSystemService(ClipboardManager::class.java)
         val clip = runCatching { manager?.primaryClip }.getOrNull()
@@ -252,6 +258,7 @@ class QingjianInputMethodService :
         // 不清空/重置候选栏底层状态。CandidateBarView 的主动提示层会临时覆盖候选，
         // 候选刷新不会将通知吞掉；5 秒后自动恢复当前候选栏。
         bar.showPersistentNotice(text) { commitText(text) }
+        AppLog.info("[CLIPBOARD_NOTICE] displayed new clipboard item length=${text.length}")
         prefs.edit()
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
             .putString("clipboard_notice_last_hash", contentHash)
