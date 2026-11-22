@@ -325,8 +325,36 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             false
         }
+        // 焦点窗口切换在部分 Android 版本/厂商 ROM 上是异步的。
+        // 不把 showSoftInput 的“请求已发送”误记为成功；失败时短间隔重试，
+        // 并允许用户再次点击输入框触发补偿请求。
+        fun requestPrefixIme(attempt: Int = 0) {
+            if (!prefixEditingRequested || prefixEditor !== prefixInput) return
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+            if (!overlayRoot.hasWindowFocus()) overlayRoot.requestFocus()
+            if (!prefixInput.hasFocus()) prefixInput.requestFocus()
+            val accepted = runCatching {
+                imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
+            }.getOrDefault(false)
+            val active = runCatching { imm?.isActive(prefixInput) == true }.getOrDefault(false)
+            scanDiag("prefix IME attempt=$attempt windowFocus=${overlayRoot.hasWindowFocus()} editorFocus=${prefixInput.hasFocus()} active=$active accepted=$accepted")
+            if (accepted || active) {
+                prefixImeRequested = true
+            } else if (attempt < 8) {
+                prefixImeRequested = false
+                prefixInput.postDelayed({ requestPrefixIme(attempt + 1) }, 90L + attempt * 55L)
+            } else {
+                prefixImeRequested = false
+                scanDiag("prefix IME request exhausted retries; waiting for another tap", warning = true)
+            }
+        }
+
         prefixInput.setOnClickListener {
-            if (prefixEditingRequested) return@setOnClickListener
+            scanDiag("prefix editor tapped editing=$prefixEditingRequested windowFocus=${overlayRoot.hasWindowFocus()} editorFocus=${prefixInput.hasFocus()}")
+            if (prefixEditingRequested) {
+                if (!prefixImeRequested) requestPrefixIme()
+                return@setOnClickListener
+            }
             prefixEditingRequested = true
             prefixEditorHadFocus = false
             prefixImeRequested = false
@@ -336,21 +364,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 windowManager.updateViewLayout(overlayRoot, windowParams)
-                prefixInput.post outer@{
-                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@outer
-                    runCatching {
-                        overlayRoot.requestFocus()
-                        prefixInput.requestFocus()
-                        prefixInput.post inner@{
-                            if (!prefixEditingRequested || !prefixInput.hasFocus() || prefixImeRequested) return@inner
-                            prefixImeRequested = true
-                            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
-                                ?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT)
-                        }
-                    }.onFailure {
-                        prefixImeRequested = false
-                        scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
-                    }
+                prefixInput.post {
+                    if (!prefixEditingRequested || prefixEditor !== prefixInput) return@post
+                    overlayRoot.requestFocus()
+                    prefixInput.requestFocus()
+                    requestPrefixIme()
                 }
             }.onFailure {
                 prefixEditingRequested = false
@@ -360,7 +378,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         prefixInput.setOnFocusChangeListener { _, focused ->
-            if (focused) prefixEditorHadFocus = true
+            if (focused) {
+                prefixEditorHadFocus = true
+                if (prefixEditingRequested && !prefixImeRequested) prefixInput.post { requestPrefixIme() }
+            } else {
+                scanDiag("prefix editor lost focus editing=$prefixEditingRequested imeRequested=$prefixImeRequested")
+            }
         }
         prefixInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -448,24 +471,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }.apply {
             setPadding(dp(7), dp(2), dp(7), dp(2))
             gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(
-                    adaptiveGlassColor(
-                        themePalette?.surface ?: 0xFF303846.toInt(),
-                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.72f,
-                        0xD8,
-                    ),
-                    adaptiveGlassColor(
-                        themePalette?.board ?: 0xFF252D39.toInt(),
-                        themePalette?.brand ?: 0xFF55E6D0.toInt(),
-                        0.58f,
-                        0xD8,
-                    ),
-                ),
-            ).apply {
-                // 顶部保留两个圆角，底边保持直线并与预览重叠，避免透出底色形成缝隙。
+            // 标题栏使用完全不透明的主题底色，不再叠加玻璃透明/渐变效果。
+            background = GradientDrawable().apply {
+                val base = themePalette?.surface ?: 0xFF303846.toInt()
+                setColor(Color.argb(255, Color.red(base), Color.green(base), Color.blue(base)))
+                // 顶部保留两个圆角，底边保持直线，与相机预览区域无缝衔接。
                 cornerRadii = floatArrayOf(
                     dp(16).toFloat(), dp(16).toFloat(),
                     dp(16).toFloat(), dp(16).toFloat(),
