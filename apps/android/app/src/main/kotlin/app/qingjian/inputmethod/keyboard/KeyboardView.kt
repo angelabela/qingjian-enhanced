@@ -849,7 +849,7 @@ class KeyboardView(
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
         const val CANDIDATE_SWIPE_START_DP = 12f
-        const val CANDIDATE_SWIPE_STEP_DP = 18f
+        const val CANDIDATE_SWIPE_STEP_DP = 10f
         const val SPACE_CLIPBOARD_SWIPE_DP = 22f
         const val SPACE_CLIPBOARD_SLOPE = 1.2f
     }
