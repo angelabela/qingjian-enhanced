@@ -404,7 +404,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         attachHeaderDrag(prefixRow)
         attachHeaderDrag(toolbar)
 
-        val header = object : LinearLayout(this) {
+        val header = object : DraggableHeaderLayout(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                 val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
                 // 340dp 默认窗口可容纳紧凑单行；只有小于约 300dp 才换成两行。
@@ -470,7 +470,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
             addView(headerSpacer)
             addView(toolbar)
         }
-        attachHeaderDrag(header)
         // Switch 自身必须保留触摸序列；不能把它交给会消费事件的标题栏拖动监听。
         // 标题栏独立成一个小型悬浮窗口：BLUR_BEHIND 只覆盖标题栏范围，
         // 避免把整块相机预览也一起模糊。
@@ -600,18 +599,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
     }
 
     /**
-     * 标题栏空白区域按下即可开始跟手拖动，不再等待长按计时；
-     * 子控件（模式、闪光灯、关闭、前缀输入）不挂拖动监听，点击行为互不干扰。
+     * 子控件先正常处理点击；手指移动超过 touch slop 才由父容器拦截并拖动整个窗口组。
+     * 模式、闪光灯、关闭按钮和前缀输入框因此既能短按操作，也能按住拖动。
      */
-    private fun attachHeaderDrag(view: View) {
-        var dragging = false
-        var downRawX = 0f
-        var downRawY = 0f
-        var startX = 0
-        var startGroupY = 0
-        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
-        view.isClickable = true
-        view.setOnTouchListener { _, event ->
+    private inner class DraggableHeaderLayout(context: Context) : LinearLayout(context) {
+        private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+        private var dragging = false
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startX = 0
+        private var startGroupY = 0
+        init { isClickable = true }
+        override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     dragging = false
@@ -619,30 +618,36 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     downRawY = event.rawY
                     startX = windowParams.x
                     startGroupY = overlayTopY
-                    true
+                    return false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!dragging &&
-                        (kotlin.math.abs(event.rawX - downRawX) > slop ||
-                         kotlin.math.abs(event.rawY - downRawY) > slop)) {
+                        (kotlin.math.abs(event.rawX - downRawX) > touchSlop ||
+                         kotlin.math.abs(event.rawY - downRawY) > touchSlop)) {
                         dragging = true
                         finishPrefixEditing()
+                        return true
                     }
-                    if (dragging) {
-                        windowParams.x = (startX + event.rawX - downRawX).toInt()
-                            .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
-                        setOverlayTop(startGroupY + (event.rawY - downRawY).toInt())
-                        updateOverlayPositions()
-                    }
-                    true
+                    return dragging
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> return dragging
+            }
+            return dragging
+        }
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> if (dragging) {
+                    windowParams.x = (startX + event.rawX - downRawX).toInt()
+                        .coerceIn(0, (resources.displayMetrics.widthPixels - windowParams.width).coerceAtLeast(0))
+                    setOverlayTop(startGroupY + (event.rawY - downRawY).toInt())
+                    updateOverlayPositions()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragging) saveWindowPosition()
                     dragging = false
-                    true
                 }
-                else -> true
             }
+            return true
         }
     }
 

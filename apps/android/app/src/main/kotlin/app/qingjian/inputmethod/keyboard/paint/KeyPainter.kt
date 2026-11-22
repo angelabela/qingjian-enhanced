@@ -1,6 +1,8 @@
 package app.qingjian.inputmethod.keyboard.paint
 
 import android.graphics.Canvas
+import android.graphics.Color
+import android.os.SystemClock
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
@@ -35,6 +37,7 @@ class KeyPainter(
         isFakeBoldText = fontWeight.weight >= 600
     }
     private val bubble = RectF()
+    private var marqueeEnabled = false
     private val gestureHint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * density
@@ -46,6 +49,8 @@ class KeyPainter(
         keyBackgroundAlpha = alpha.coerceIn(0f, 1f)
         keyBackgroundFrosted = frosted
     }
+
+    fun setMarqueeEnabled(enabled: Boolean) { marqueeEnabled = enabled }
 
     var shift = ShiftState.OFF
     var chinese = true
@@ -65,6 +70,7 @@ class KeyPainter(
             canvas, bounds,
             keyFillColor(key, down, brand),
         )
+        if (marqueeEnabled && key is Key.Letter) drawLetterMarquee(canvas, bounds, key.char)
         if (brand && down) {
             fill.color = PRESSED_BRAND_SHADE
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
@@ -139,6 +145,28 @@ class KeyPainter(
     }
 
     /** 手势提示直接显示在键帽内：上滑靠上、下滑靠下；优先完整文字，确实放不下才换语义图标。 */
+    /** A-Z 字母按顺序追逐发光，带渐隐光尾；功能键不参与。 */
+    private fun drawLetterMarquee(canvas: Canvas, bounds: RectF, letter: Char) {
+        val index = letter.lowercaseChar().code - 'a'.code
+        if (index !in 0..25) return
+        val phase = (SystemClock.uptimeMillis() % 2_600L).toFloat() / 100f
+        val trail = (phase - index + 26f) % 26f
+        if (trail > 4.8f) return
+        val strength = (1f - trail / 4.8f).coerceIn(0f, 1f)
+        val hue = (172f + phase * (360f / 26f)) % 360f
+        val color = Color.HSVToColor((48 + 207 * strength).toInt(), floatArrayOf(hue, 0.92f, 1f))
+        val inset = 0.8f * density
+        val outline = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
+        fill.shader = null
+        fill.style = Paint.Style.STROKE
+        fill.strokeWidth = (0.7f + 1.5f * strength) * density
+        fill.color = color
+        fill.setShadowLayer(4.5f * density * strength, 0f, 0f, color)
+        canvas.drawRoundRect(outline, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
+        fill.clearShadowLayer()
+        fill.style = Paint.Style.FILL
+    }
+
     fun drawGestureHints(canvas: Canvas, slot: KeySlot, upLabel: String?, downLabel: String?) {
         if (upLabel == null && downLabel == null) return
         val b = slot.bounds

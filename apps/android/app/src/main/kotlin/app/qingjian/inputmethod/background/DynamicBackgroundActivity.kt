@@ -51,6 +51,7 @@ class DynamicBackgroundActivity : Activity() {
         const val KEY_BLUR = "video_blur"
         const val KEY_MODE = "video_mode" // 0 视频；1 原有光效；2 视频与光效叠加
         const val KEY_FROSTED = "video_frosted"
+        const val KEY_KEYBOARD_MARQUEE = "keyboard_key_marquee"
         const val ACTION_SETTINGS_CHANGED = "app.qingjian.inputmethod.action.DYNAMIC_BACKGROUND_CHANGED"
         const val REQUEST_VIDEO = 731
     }

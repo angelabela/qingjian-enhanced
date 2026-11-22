@@ -89,6 +89,8 @@ import app.qingjian.inputmethod.translate.TranslateBar
 import app.qingjian.inputmethod.voice.VoiceInput
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.scan.ScanPreferences
+import app.qingjian.inputmethod.scan.ScanContent
+import app.qingjian.inputmethod.scan.WifiJoinActivity
 import app.qingjian.inputmethod.scan.ScanOverlayService
 import androidx.core.content.ContextCompat
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
@@ -167,6 +169,7 @@ class QingjianInputMethodService :
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
     private var lastClipboardPhoneNumber = ""
     private var lastClipboardPhonePromptAt = 0L
+    private var scanActionNoticeUntil = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
         // 先主动收录当前剪贴板，再刷新显示；部分 ROM 的 primaryClip 更新会晚于回调。
@@ -201,6 +204,7 @@ class QingjianInputMethodService :
     private fun showLatestClipboardNotice(preferredCode: String? = null) {
         val bar = panel?.bar ?: return
         if (shownPreedit.isNotEmpty()) return
+        if (android.os.SystemClock.elapsedRealtime() < scanActionNoticeUntil) return
 
         val manager = getSystemService(ClipboardManager::class.java)
         val clip = runCatching { manager?.primaryClip }.getOrNull()
@@ -269,11 +273,42 @@ class QingjianInputMethodService :
     }
 
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
+    /** Wi-Fi / 网址扫码结果复用验证码提示栏，5 秒未点击自动收起。 */
+    private fun showScanActionNotice(value: String) {
+        val bar = panel?.bar ?: return
+        val wifi = ScanContent.parseWifi(value)
+        if (wifi != null) {
+            scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
+            bar.showPersistentNotice("发现 Wi-Fi「${wifi.ssid}」，点击加入") {
+                scanActionNoticeUntil = 0L
+                startActivity(Intent(this, WifiJoinActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(WifiJoinActivity.EXTRA_SSID, wifi.ssid)
+                    putExtra(WifiJoinActivity.EXTRA_PASSWORD, wifi.password)
+                    putExtra(WifiJoinActivity.EXTRA_SECURITY, wifi.security)
+                    putExtra(WifiJoinActivity.EXTRA_HIDDEN, wifi.hidden)
+                })
+            }
+            return
+        }
+        val url = ScanContent.webUrl(value) ?: return
+        scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
+        bar.showPersistentNotice("发现网址，点击访问") {
+            scanActionNoticeUntil = 0L
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure {
+                android.widget.Toast.makeText(this, "无法打开此网址", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private val scanResultListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
                 ?: run { AppLog.warn("[SCAN_DIAG] result broadcast empty"); return }
             commitScanResult(value, intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false), 0)
+            showScanActionNotice(value)
         }
     }
 

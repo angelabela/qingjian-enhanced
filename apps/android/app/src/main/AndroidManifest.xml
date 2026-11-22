@@ -18,6 +18,9 @@
 
     <!-- 云联想「只在 Wi-Fi 下使用」要看当前网络（见 cloud/Network.kt） -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
 
     <!-- 语音输入录音（见 voice/EngineRecognizer.kt）；用到时由 voice/MicrophonePermissionActivity.kt 弹框申请 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -72,6 +75,7 @@
         </service>
         <activity android:name=".service.SmartActionActivity" android:exported="false" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
+        <activity android:name=".scan.WifiJoinActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
         <service
             android:name=".scan.ScanOverlayService"
             android:exported="false"

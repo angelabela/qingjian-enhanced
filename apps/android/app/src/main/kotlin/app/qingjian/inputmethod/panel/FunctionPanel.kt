@@ -124,6 +124,7 @@ class FunctionPanel(
                     invalidate()
                 },
                 Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
+                Feature(Icon.KEYBOARD, "按键效果") { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)

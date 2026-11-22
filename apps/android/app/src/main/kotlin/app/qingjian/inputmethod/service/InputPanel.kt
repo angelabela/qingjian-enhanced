@@ -43,6 +43,8 @@ import app.qingjian.inputmethod.panel.CatalogPanel
 import app.qingjian.inputmethod.panel.ContextToolsPanel
 import app.qingjian.inputmethod.panel.FunctionPanel
 import app.qingjian.inputmethod.panel.DynamicBackgroundPanel
+import app.qingjian.inputmethod.panel.KeyEffectsPanel
+import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.panel.KeyboardPickerPanel
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.panel.PanelKind
@@ -371,7 +373,8 @@ class InputPanel(
     private val keyBackgroundAlpha = dynamicBackgroundPrefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
     private val keyBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("keyboard_key_frosted", false)
     val keyboard = KeyboardView(context, palette, settings, keyboardListener, transparentBackground = transparentBackground,
-        keyBackgroundAlpha = keyBackgroundAlpha, keyBackgroundFrosted = keyBackgroundFrosted)
+        keyBackgroundAlpha = keyBackgroundAlpha, keyBackgroundFrosted = keyBackgroundFrosted,
+        keyMarqueeEnabled = dynamicBackgroundPrefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false))
 
     /** 开着的面板；null 是键盘。 */
     var openPanel: PanelKind? = null
@@ -466,6 +469,7 @@ class InputPanel(
         val keyAlpha = prefs.getInt("keyboard_key_alpha", 100).coerceIn(0, 100) / 100f
         val keyFrosted = prefs.getBoolean("keyboard_key_frosted", false)
         keyboard.setKeySurface(keyAlpha, keyFrosted)
+        keyboard.setMarqueeEnabled(prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false))
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
@@ -527,6 +531,7 @@ class InputPanel(
         val panel = when (kind) {
             PanelKind.FUNCTIONS -> FunctionPanel(context, palette, actions, header, settings)
             PanelKind.DYNAMIC_BACKGROUND -> DynamicBackgroundPanel(context, palette, actions, header)
+            PanelKind.KEY_EFFECTS -> KeyEffectsPanel(context, palette, actions, header)
             PanelKind.KEYBOARDS -> KeyboardPickerPanel(context, palette, actions, header, settings.layout)
             PanelKind.TOOLBAR -> ToolbarPanel(context, palette, actions, header, settings.toolbar)
             PanelKind.SYMBOLS, PanelKind.EMOJI -> CatalogPanel(

@@ -33,6 +33,7 @@ class KeyboardView(
     transparentBackground: Boolean = settings.keyboardBackgroundEffect,
     keyBackgroundAlpha: Float = 1f,
     keyBackgroundFrosted: Boolean = false,
+    keyMarqueeEnabled: Boolean = false,
 ) : View(context) {
     enum class EditShortcut { SELECT_ALL, CUT, COPY, PASTE }
 
@@ -86,6 +87,7 @@ class KeyboardView(
     private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
     private val painter = KeyPainter(palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.fontWeight,
         keyBackgroundAlpha, keyBackgroundFrosted, settings.keyboardTextPreset)
+    private var marqueeEnabled = keyMarqueeEnabled
     private val side = SideColumn(metrics.density) { item ->
         tapFeedback()
         listener.onSideItem(item)
@@ -211,11 +213,19 @@ class KeyboardView(
     val baseHeight: Float get() = metrics.baseHeight
 
     init {
+        painter.setMarqueeEnabled(keyMarqueeEnabled)
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
     fun setKeySurface(alpha: Float, frosted: Boolean) {
         painter.setKeySurface(alpha, frosted)
+        invalidate()
+    }
+
+    fun setMarqueeEnabled(enabled: Boolean) {
+        if (marqueeEnabled == enabled) return
+        marqueeEnabled = enabled
+        painter.setMarqueeEnabled(enabled)
         invalidate()
     }
 

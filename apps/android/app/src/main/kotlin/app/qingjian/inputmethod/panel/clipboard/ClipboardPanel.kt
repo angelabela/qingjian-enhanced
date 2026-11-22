@@ -2,6 +2,8 @@ package app.qingjian.inputmethod.panel.clipboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -23,6 +25,8 @@ import app.qingjian.inputmethod.core.store.CodeView
 import app.qingjian.inputmethod.core.store.PhraseItem
 import app.qingjian.inputmethod.core.store.PhrasePage
 import app.qingjian.inputmethod.core.store.PhraseRules
+import app.qingjian.inputmethod.scan.ScanContent
+import app.qingjian.inputmethod.scan.WifiJoinActivity
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
@@ -313,7 +317,7 @@ class ClipboardPanel(
         var y = ink.dp(2f)
         for (i in 0 until count) {
             tops[i] = y
-            y += contentHeight(i) + ink.dp(CARD_PADDING_DP) * 2 + (if (i == expanded) ink.dp(ACTIONS_DP) else 0f)
+            y += contentHeight(i) + ink.dp(CARD_PADDING_DP) * 2 + (if (i == expanded && actionLabels().isNotEmpty()) ink.dp(ACTIONS_DP) else 0f)
             bottoms[i] = y
             y += ink.dp(CARD_GAP_DP)
         }
@@ -398,20 +402,24 @@ class ClipboardPanel(
         }
         val open = i == expanded
         ink.icon(canvas, if (open) Icon.COLLAPSE else Icon.EXPAND, width - margin - ink.dp(CHEVRON_DP) / 2, top + padding + ink.dp(11f), 20f, palette.gloss)
-        if (open) drawActions(canvas, bottom - ink.dp(ACTIONS_DP), bottom)
+        if (open && actionLabels().isNotEmpty()) drawActions(canvas, bottom - ink.dp(ACTIONS_DP), bottom)
     }
 
-    private fun actionLabels(): List<Pair<Icon, String>> = if (showingPhrases) {
-        listOf(Icon.PEN to "编辑", Icon.TOP to "移至首位", Icon.TRASH to "删除")
-    } else if (clips.getOrNull(expanded)?.image != null) {
-        listOf(Icon.TRASH to "删除")
-    } else {
-        listOf(Icon.PEN to "编辑", Icon.PLUS to "常用语", Icon.SPLIT to "拆词", Icon.CAMERA to "二维码", Icon.TRASH to "删除")
+    private fun actionLabels(): List<Pair<Icon, String>> {
+        if (showingPhrases) return listOf(Icon.PEN to "编辑", Icon.TOP to "移至首位", Icon.TRASH to "删除")
+        val clip = clips.getOrNull(expanded) ?: return emptyList()
+        val contextual = when {
+            ScanContent.parseWifi(clip.text) != null -> listOf(Icon.LOCK to "加入 WiFi")
+            ScanContent.webUrl(clip.text) != null -> listOf(Icon.GLOBE to "访问网址")
+            else -> emptyList()
+        }
+        if (clip.image != null) return contextual
+        return contextual + listOf(Icon.PEN to "编辑", Icon.PLUS to "常用语", Icon.SPLIT to "拆词", Icon.CAMERA to "二维码")
     }
 
     /** 每个操作的宽度：96dp，剪贴板文字的四个在窄屏上放不下时均分卡片宽度。 */
     private fun actionWidth() =
-        minOf(ink.dp(96f), (width - ink.dp(2 * (CARD_MARGIN_DP + CARD_PADDING_DP))) / actionLabels().size)
+        if (actionLabels().isEmpty()) 0f else minOf(ink.dp(96f), (width - ink.dp(2 * (CARD_MARGIN_DP + CARD_PADDING_DP))) / actionLabels().size)
 
     private fun drawActions(canvas: Canvas, top: Float, bottom: Float) {
         val cy = (top + bottom) / 2 - ink.dp(4f)
@@ -670,7 +678,7 @@ class ClipboardPanel(
     private fun tapList(x: Float, y: Float) {
         val i = (0 until count).firstOrNull { y >= tops[it] && y < bottoms[it] } ?: return
         val chevron = x > width - ink.dp(CARD_MARGIN_DP + CHEVRON_DP + 8f) && y < tops[i] + ink.dp(CARD_PADDING_DP + 30f)
-        val inActions = i == expanded && y > bottoms[i] - ink.dp(ACTIONS_DP)
+        val inActions = i == expanded && actionLabels().isNotEmpty() && y > bottoms[i] - ink.dp(ACTIONS_DP)
         when {
             chevron -> {
                 expanded = if (expanded == i) -1 else i
@@ -695,6 +703,20 @@ class ClipboardPanel(
             return
         }
         when (label) {
+            "加入 WiFi" -> {
+                val wifi = ScanContent.parseWifi(clips.getOrNull(i)?.text.orEmpty()) ?: return
+                context.startActivity(Intent(context, WifiJoinActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(WifiJoinActivity.EXTRA_SSID, wifi.ssid)
+                    putExtra(WifiJoinActivity.EXTRA_PASSWORD, wifi.password)
+                    putExtra(WifiJoinActivity.EXTRA_SECURITY, wifi.security)
+                    putExtra(WifiJoinActivity.EXTRA_HIDDEN, wifi.hidden)
+                })
+            }
+            "访问网址" -> {
+                val url = ScanContent.webUrl(clips.getOrNull(i)?.text.orEmpty()) ?: return
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
             "编辑" -> actions.editClip(i, clips[i].text)
             "常用语" -> {
                 val clipText = clips.getOrNull(i)?.text.orEmpty()
