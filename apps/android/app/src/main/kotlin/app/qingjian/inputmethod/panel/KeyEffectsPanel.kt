@@ -123,12 +123,26 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             prefs.edit().putBoolean(KEY_3D, !threeDimensional).apply()
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
-            prefs.edit().putInt(KEY_BORDER_INDEX, (borderIndex + 1) % BORDER_COLORS.size).apply()
-            notifyChanged()
+            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX)
         } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
-            prefs.edit().putInt(KEY_BACKGROUND_INDEX, (backgroundIndex + 1) % BACKGROUND_COLORS.size).apply()
-            notifyChanged()
+            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX)
         }
+    }
+
+    /** 按实际色块坐标命中，允许直接选择颜色。 */
+    private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String) {
+        val swatchSize = ink.dp(19f)
+        val gap = ink.dp(9f)
+        val startX = card.left + ink.dp(14f)
+        val centerY = rowTop + ink.dp(28f) + swatchSize / 2f
+        if (kotlin.math.abs(contentY - centerY) > ink.dp(22f)) return
+        val index = (0 until 5).minByOrNull { i ->
+            kotlin.math.abs(x - (startX + i * (swatchSize + gap) + swatchSize / 2f))
+        } ?: return
+        val centerX = startX + index * (swatchSize + gap) + swatchSize / 2f
+        if (kotlin.math.abs(x - centerX) > swatchSize * 0.9f) return
+        prefs.edit().putInt(key, index).apply()
+        notifyChanged()
     }
 
     @SuppressLint("ClickableViewAccessibility")
