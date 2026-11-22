@@ -155,66 +155,62 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     override fun onCreate() {
         super.onCreate()
-        scanDiag("onCreate pid=${android.os.Process.myPid()}")
-        prefixEditingRequested = false
-        prefixEditorHadFocus = false
-        ScanPreferences.setPrefixEditorActive(false)
-        createNotificationChannel()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        // Android 14+ 要求 CAMERA 已授权；Android 16 还会校验 camera 前台服务的启动资格。
-        // 启动条件不满足时安全退出，不能让异常从 Service.onCreate 传播并杀掉输入法进程。
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            startupFailed = true
-            scanDiag("camera foreground service not started: CAMERA permission missing", warning = true)
-            stopSelf()
-            return
-        }
+        var startupStage = "initialization"
         try {
-            startForeground(NOTIFICATION_ID, buildNotification())
-        } catch (error: SecurityException) {
+            scanDiag("onCreate pid=${android.os.Process.myPid()}")
+            prefixEditingRequested = false
+            prefixEditorHadFocus = false
+            ScanPreferences.setPrefixEditorActive(false)
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            startupStage = "notification channel"
+            createNotificationChannel()
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                startupFailed = true
+                scanDiag("startup stopped: CAMERA permission missing", warning = true)
+                stopSelf()
+                return
+            }
+            startupStage = "camera foreground service"
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            } catch (error: SecurityException) {
+                startupFailed = true
+                scanDiag("foreground service rejected: ${error.javaClass.simpleName}: ${error.message}", warning = true)
+                AppLog.error("[SCAN_DIAG] foreground service stack=${android.util.Log.getStackTraceString(error)}")
+                stopSelf()
+                return
+            }
+            startupStage = "overlay window context"
+            overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else this
+            windowManager = overlayContext.getSystemService(WindowManager::class.java)
+            scanDiag("overlay window context created sdk=${Build.VERSION.SDK_INT} displayAssociated=${runCatching { overlayContext.display != null }.getOrDefault(false)}")
+            startupStage = "barcode recognizers"
+            ocrMode = false
+            squareScanShape = windowPrefs.getBoolean(KEY_SQUARE_SCAN_SHAPE, false)
+            windowPrefs.edit().putBoolean(KEY_OCR_MODE, false).apply()
+            textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+            scanner = BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(
+                Barcode.FORMAT_QR_CODE, Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93,
+                Barcode.FORMAT_CODABAR, Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_ITF,
+                Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E, Barcode.FORMAT_PDF417, Barcode.FORMAT_AZTEC, Barcode.FORMAT_DATA_MATRIX,
+            ).build())
+            startupStage = "overlay view creation"
+            buildOverlay()
+            startupStage = "camera provider request"
+            startCamera()
+            scanDiag("scanner startup sequence accepted")
+        } catch (error: Exception) {
             startupFailed = true
-            scanDiag("camera foreground service rejected: ${error.javaClass.simpleName}: ${error.message}", warning = true)
+            val detail = "startup failed stage=$startupStage error=${error.javaClass.simpleName}: ${error.message}"
+            scanDiag(detail, warning = true)
+            android.util.Log.e(TAG, detail, error)
+            AppLog.error("[SCAN_DIAG] $detail\n${android.util.Log.getStackTraceString(error)}")
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             stopSelf()
-            return
-        } catch (error: RuntimeException) {
-            startupFailed = true
-            scanDiag("camera foreground service startup failed: ${error.javaClass.simpleName}: ${error.message}", warning = true)
-            stopSelf()
-            return
         }
-        overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-        } else this
-        windowManager = overlayContext.getSystemService(WindowManager::class.java)
-        scanDiag("overlay window context created sdk=${Build.VERSION.SDK_INT} displayAssociated=${runCatching { overlayContext.display != null }.getOrDefault(false)}")
-        // 悬浮窗每次新建都以连续扫码为默认模式；识图模式只在当前窗口内由用户主动切换。
-        ocrMode = false
-        squareScanShape = windowPrefs.getBoolean(KEY_SQUARE_SCAN_SHAPE, false)
-        windowPrefs.edit().putBoolean(KEY_OCR_MODE, false).apply()
-        textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-        scanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder().setBarcodeFormats(
-                Barcode.FORMAT_QR_CODE,
-                Barcode.FORMAT_CODE_128,
-                Barcode.FORMAT_CODE_39,
-                Barcode.FORMAT_CODE_93,
-                Barcode.FORMAT_CODABAR,
-                Barcode.FORMAT_EAN_13,
-                Barcode.FORMAT_EAN_8,
-                Barcode.FORMAT_ITF,
-                Barcode.FORMAT_UPC_A,
-                Barcode.FORMAT_UPC_E,
-                Barcode.FORMAT_PDF417,
-                Barcode.FORMAT_AZTEC,
-                Barcode.FORMAT_DATA_MATRIX,
-            ).build(),
-        )
-        buildOverlay()
-        startCamera()
     }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (startupFailed) {
             stopSelf(startId)
@@ -986,6 +982,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             if (shuttingDown || lifecycle.currentState == Lifecycle.State.DESTROYED) return@addListener
+            try {
             val provider = future.get()
             cameraProvider = provider
             val previewBuilder = Preview.Builder()
@@ -1124,6 +1121,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
             torchButton.isEnabled = camera?.cameraInfo?.hasFlashUnit() == true
             torchButton.alpha = if (torchButton.isEnabled) 1f else 0.4f
             torchButton.contentDescription = if (torchButton.isEnabled) "打开手电筒" else "当前摄像头没有闪光灯"
+            } catch (error: Exception) {
+                val detail = "camera binding failed: ${error.javaClass.simpleName}: ${error.message}"
+                scanDiag(detail, warning = true)
+                android.util.Log.e(TAG, detail, error)
+                AppLog.error("[SCAN_DIAG] $detail\n${android.util.Log.getStackTraceString(error)}")
+                stopSelf()
+            }
         }, ContextCompat.getMainExecutor(this))
     }
 

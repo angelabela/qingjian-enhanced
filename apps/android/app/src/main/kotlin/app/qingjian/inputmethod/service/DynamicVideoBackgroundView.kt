@@ -11,6 +11,7 @@ import android.os.Build
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.Matrix
+import android.graphics.RectF
 import app.qingjian.inputmethod.core.AppLog
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
@@ -93,18 +94,19 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         applyVideoTransform()
     }
 
-    /** 等比例铺满整个输入法面板；超出面板的部分居中裁切，不拉伸画面。 */
+    /** 完整显示视频源画面并铺满整个输入法面板；按面板宽高分别缩放，不裁切、不留黑边。 */
     private fun applyVideoTransform() {
         if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) return
-        val sx = width.toFloat() / videoWidth
-        val sy = height.toFloat() / videoHeight
-        val scale = maxOf(sx, sy)
+        val source = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
+        val destination = RectF(0f, 0f, width.toFloat(), height.toFloat())
         val matrix = Matrix().apply {
-            setScale(scale, scale)
-            postTranslate((width - videoWidth * scale) / 2f, (height - videoHeight * scale) / 2f)
+            // FILL 使用独立的横纵缩放比例，保证视频每一帧完整映射到面板区域。
+            setRectToRect(source, destination, Matrix.ScaleToFit.FILL)
         }
         setTransform(matrix)
-        AppLog.debug("[VIDEO_BG_DIAG] transform view=${width}x${height} source=${videoWidth}x${videoHeight} scale=$scale")
+        val scaleX = width.toFloat() / videoWidth
+        val scaleY = height.toFloat() / videoHeight
+        AppLog.info("[VIDEO_BG_DIAG] full-frame fill view=${width}x${height} source=${videoWidth}x${videoHeight} scaleX=$scaleX scaleY=$scaleY crop=false")
     }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {

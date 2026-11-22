@@ -314,10 +314,11 @@ class QingjianInputMethodService :
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
-        // 内容变化就刷新，不再只依赖部分 ROM 可能不更新的 ClipDescription.timestamp。
-        // 短信验证码广播是一次明确的新事件，即使验证码相同也允许重新提示。
-        if (preferredCode == null && lastHash == contentHash && bar.hasPersistentNotice()) {
-            AppLog.debug("[CLIPBOARD_NOTICE] duplicate skipped because same notice is still visible source=$source length=${text.length}")
+        // 同一条剪贴板内容只提示一次：去重状态保存在设置中，不随键盘隐藏、
+        // 候选栏提示 5 秒后消失或输入法面板重建而重置。系统剪贴板原文不会被清空。
+        // 只有内容哈希变化时才显示下一条；短信广播属于独立事件，仍允许相同验证码再次提示。
+        if (preferredCode == null && lastHash == contentHash) {
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: content was already shown source=$source length=${text.length}")
             return
         }
 
