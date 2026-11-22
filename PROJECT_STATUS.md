@@ -15,11 +15,11 @@
 
 ## 当前版本基线
 
-- 最新交付给用户测试的 APK：GitHub Actions #516，签名 Release 构建成功、签名验证通过、APK artifact 已下载并核对；本轮功能尚待用户设备实测。
-- APP 测试版本：`0.3.8-dev`，`versionCode=30308`（`apps/android/core/Cargo.toml` 为版本来源；`apps/android/app/build.gradle.kts` 按 主*10000+次*100+修订 计算）。保留 `-dev` 后缀。
-- 工作流：`android-signed-apk` #516；run ID `45033003050`；提交 `504187b0268c984a0a84d886e05776e6d02dfd56`；Build、固定签名和 Verify 步骤均成功；artifact `qingjian-android-signed`，ID `14758359215`，ZIP SHA-256 `29bbc4c868b7586aced0cc5a742e87e85ea9f5881e6ca5125cb7a2e3cbbecaba`。
-- APK：`qingjian-android-signed.apk`，188,659,509 bytes；APK SHA-256 `1ab509cc1cce5447be91ce044e8beb2e75376f22b581765a0df17f28c828a93b`。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45033003050；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14758359215/zip
-- 本轮交付功能：扫码前缀框重复点击焦点/IME 处理与标题栏—相机预览对齐修正；按键边缘发光、立体效果开关及即时刷新；剪贴板新内容提示覆盖候选栏、候选刷新不吞提示、延迟复读及未显示时不提前消费去重状态。全部待用户安装实测。
+- 最新交付给用户测试的 APK：GitHub Actions #527，签名 Release 构建成功、固定签名验证通过，artifact 已下载并核对；本轮浮窗扫码整体重构、视频背景和按键效果改动均待用户设备实测。
+- APP 测试版本：`0.3.9-dev`，`versionCode=30309`（`apps/android/core/Cargo.toml` 为版本来源；`apps/android/app/build.gradle.kts` 按 主*10000+次*100+修订 计算）。保留 `-dev` 后缀。
+- 工作流：`android-signed-apk` #527；run ID `45039384235`；提交 `6c298a4315d39ec165f1404a5d7a51e2df9b5b2f`；Build、固定签名和 Verify 步骤均成功；artifact `qingjian-android-signed`，ID `14760888930`，ZIP SHA-256 `6d4863fb3da13913b2d3dc7e35a0dfe9e3733df205302cdc4ebc9023635dc9d3`。
+- APK：`qingjian-android-signed.apk`，188,659,509 bytes；APK SHA-256 `66216ed8d78893c7b0fa0fcb08c88858e75e5eb1a59438dc17b064db97d7bb6f`。签名证书 CN=Qingjian，SHA-256 `10be9cc45f931581203433b7c1095ca9689bb643463821ef9b108314aa958b72`，与 #516 固定证书一致。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45039384235；artifact 下载入口：https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14760888930/zip
+- 本轮功能：扫码悬浮窗标题栏、相机预览和控件统一为单一 WindowManager 窗口；保留原扫码/识图/前缀过滤/闪光灯/拍照/扫描框/拖动缩放功能和图标；前缀编辑时单窗口临时获取焦点；保留标题栏玻璃模糊和圆角。按键透明度/磨砂效果集中在按键效果面板；边框/背景色块直接点击选择。视频背景在关闭背景光效时保持候选栏、键盘、底部操作条透明显示，并新增适应面板/拉伸/裁剪/100% 四种视频区域模式。全部待用户安装实测。
 - 用户约定：可用 APP 版本从 `0.3.4` 基线逐次递增 patch；本次源码版本 `0.3.8-dev` / `30308`。版本号与 workflow run number 独立；不移除 `-dev` 后缀。
 - APP 版本号与 GitHub Actions 工作流编号完全独立，不得互相替代。
 
