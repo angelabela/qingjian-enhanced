@@ -15,12 +15,12 @@
 
 ## 当前版本基线
 
-- 最近交付给用户测试的 APK：486 号工作流（用户在 2026-11-22 确认已下载；此前对话记录该构建签名验证通过）。
-- 用户约定的当前 APP 版本基线：`0.3.4`。
-- 源码核对结果：`apps/android/core/Cargo.toml` 当前写的是 `0.3.4-dev`；`apps/android/app/build.gradle.kts` 从该 Cargo.toml 读取版本，`versionName` 使用完整值，`versionCode` 按主*10000 + 次*100 + 修订计算。因此源码配置对应 `versionName=0.3.4-dev`、`versionCode=30400`。
-- `CHANGELOG.md` 顶部目前有 `0.3.4 · 未发布 · stable` 条目。
-- **注意：用户口头所说的“APP 版本 0.3.4”与源码开发标识 `0.3.4-dev` 存在后缀差异。** 不要悄悄删掉 `-dev`；下一次准备可用 APK 时，按用户规则将应用版本升级到 `0.3.5`，并先核对所有版本来源及发布约定。
-- 下一次可用 APK 版本：`0.3.5`；之后依次 `0.3.6`、`0.3.7`……
+- 最近交付给用户测试的 APK：492 号工作流，签名 Release 构建成功并已下载交付；用户尚未反馈本轮功能实测结果。
+- APP 测试版本：`0.3.5-dev`，`versionCode=30500`（由 `apps/android/core/Cargo.toml` 与 `apps/android/app/build.gradle.kts` 核对）。保留 `-dev` 后缀，没有擅自改为正式版。
+- 工作流：`android-signed-apk` #492；run ID `45020293420`；提交 `0b5e3ec9d1f53e130174fd5f3540563bbd501baf`；签名验证步骤通过；artifact `qingjian-android-signed`，ID `14753507016`，ZIP SHA-256 `02d23465504301a77650447dfd5e47ca0900507841e3393d36dc6e37b7faa497`。
+- APK：`qingjian-android-signed.apk`，188,659,509 bytes。工作流链接：https://github.com/angelabela/qingjian-enhanced/actions/runs/45020293420
+- 本轮四项功能已进入签名测试包：扫码标题栏整区拖动；扫码识别 Wi-Fi/网址后 5 秒提示及相应动作；剪贴板 Wi-Fi/网址快捷操作图标与滑动删除；独立按键效果页（透明度、磨砂、26 字母跑马灯）。均待用户安装实测。
+- 用户约定：可用 APP 版本按 `0.3.4` 基线逐次递增 patch；当前测试构建 `0.3.5-dev` / `30500`。后续版本仍须核对所有版本来源与发布约定，不能擅自移除 `-dev`。
 - APP 版本号与 GitHub Actions 工作流编号完全独立，不得互相替代。
 
 ## 当前已知待验证事项
