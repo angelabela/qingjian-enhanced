@@ -527,6 +527,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
             x = dp(windowPrefs.getInt(KEY_WINDOW_X_DP, 16))
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                setBlurBehindRadius(dp(24))
+            }
         }
         overlayRoot = FrameLayout(this).apply {
             isFocusableInTouchMode = true
