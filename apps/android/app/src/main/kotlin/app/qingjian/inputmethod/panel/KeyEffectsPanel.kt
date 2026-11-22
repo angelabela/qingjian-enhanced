@@ -123,20 +123,20 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             prefs.edit().putBoolean(KEY_3D, !threeDimensional).apply()
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
-            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX)
+            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX, BORDER_COLORS)
         } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
-            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX)
+            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX, BACKGROUND_COLORS)
         }
     }
 
     /** 按实际色块坐标命中，允许直接选择颜色。 */
-    private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String) {
+    private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String, colors: IntArray) {
         val swatchSize = ink.dp(19f)
         val gap = ink.dp(9f)
         val startX = card.left + ink.dp(14f)
         val centerY = rowTop + ink.dp(28f) + swatchSize / 2f
         if (kotlin.math.abs(contentY - centerY) > ink.dp(22f)) return
-        val index = (0 until 5).minByOrNull { i ->
+        val index = colors.indices.minByOrNull { i ->
             kotlin.math.abs(x - (startX + i * (swatchSize + gap) + swatchSize / 2f))
         } ?: return
         val centerX = startX + index * (swatchSize + gap) + swatchSize / 2f
