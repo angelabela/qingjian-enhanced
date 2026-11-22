@@ -23,8 +23,9 @@ class DynamicBackgroundPanel(
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
     private val rowHeight get() = ink.dp(66f)
-    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
+    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度", "视频区域适配")
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
+    private val fitLabels = listOf("适应面板", "拉伸", "裁剪", "100%")
 
     private fun notifyChanged() {
         context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
@@ -58,6 +59,7 @@ class DynamicBackgroundPanel(
                 4 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
                 5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
                 6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
+                7 -> fitLabels[prefs.getInt(DynamicBackgroundActivity.KEY_FIT_MODE, 0).coerceIn(0, 3)]
                 else -> ""
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
@@ -105,6 +107,7 @@ class DynamicBackgroundPanel(
                 notifyChanged()
             }
             3 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
+            7 -> update { putInt(DynamicBackgroundActivity.KEY_FIT_MODE, (prefs.getInt(DynamicBackgroundActivity.KEY_FIT_MODE, 0) + 1) % 4) }
             in 4..6 -> {
                 // 滑块只允许从实际轨道/滑块附近启动；整行点击不再意外改变数值。
                 val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
