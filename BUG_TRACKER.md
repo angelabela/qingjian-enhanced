@@ -6,7 +6,7 @@
 - 影响模块：`service/InputPanel.kt`、`service/DynamicVideoBackgroundView.kt`
 - 期望：视频背景覆盖候选栏、键盘和底部操作区域的完整面板宽度，保持比例、不拉伸。
 - 本轮处理：Stack 测量视频背景层时强制使用与主内容一致的 EXACTLY 宽度，避免 TextureView 在宽度约束下采用纹理固有尺寸。
-- 当前状态：**待 #529 设备验证**。
+- 当前状态：**已修复待验证**。修复代码进入 #538（APP 0.3.12-dev，源码计算 versionCode=312），固定签名构建与 v2 签名验证通过；尚无用户设备实测确认。
 
 ## BJ-042：扫码标题栏透明且预览区存在留白
 
@@ -14,7 +14,7 @@
 - 影响模块：`scan/ScanOverlayService.kt`
 - 期望：标题栏为不透明主题底色；标题栏底边与相机预览区域直接衔接，不留缝。
 - 本轮处理：移除半透明渐变玻璃背景，改用不透明主题 surface 色；保留顶部圆角、底边直线。
-- 当前状态：**待 #529 设备验证**。
+- 当前状态：**已修复待验证**。修复代码进入 #538（APP 0.3.12-dev，源码计算 versionCode=312），固定签名构建与 v2 签名验证通过；尚无用户设备实测确认。
 
 ## BJ-043：扫码前缀输入框需多次点击才能输入
 
@@ -23,7 +23,7 @@
 - 期望：首次点击前缀框即可获得焦点并弹出输入法；输入过程中扫码窗口不应意外关闭或导致键盘消失。
 - 日志分析：现有代码在调用 `showSoftInput()` 前就把请求标记为已发出，未检查系统是否接受请求；窗口焦点切换又是异步的。上传日志未包含每次前缀点击、窗口焦点和 IME 请求结果，因此尚不能仅凭旧日志确认唯一根因。
 - 本轮处理：软键盘请求增加状态检查与最多 8 次延迟重试；允许重复点击补发请求；增加窗口焦点、编辑框焦点、IME active/accepted 诊断日志。
-- 当前状态：**待 #529 设备验证**。
+- 当前状态：**已修复待验证**。修复代码进入 #538（APP 0.3.12-dev，源码计算 versionCode=312），固定签名构建与 v2 签名验证通过；尚无用户设备实测确认。
 
 
 > 状态必须依据用户实测和当前源码更新。CI 通过不代表设备问题已解决。新增问题时分配稳定编号，不因工作流编号变化而改号。
@@ -122,6 +122,35 @@
 - 根因：单窗口重构后仍保留 `FLAG_BLUR_BEHIND` / `setBlurBehindRadius`；系统窗口后方模糊作用范围并非标题栏局部，导致整屏背景模糊。
 - 本次修复：0.3.10-dev 移除系统级后方模糊，不再启用 blur-behind；扫码标题栏保留原有布局、按钮和图标。
 - 当前状态：**待用户验证**。
+
+## CI-001：Rust 日志导出调用不存在的 Dispatch.flush
+
+- 首次记录：2026-11-22，GitHub Actions #533–#537 连续构建失败。
+- 影响模块：`apps/android/core/src/jni/logging.rs`、`apps/android/app/src/main/kotlin/app/qingjian/inputmethod/core/AppLog.kt`、`core/Native.kt`。
+- 失败步骤：`Build APK with the persistent release key`；Gradle 的 `:app:cargoNdk` 任务失败，后续签名验证与 artifact 上传均跳过。
+- 关键错误：Rust E0599，`no method named flush found for reference &Dispatch`，位置 `apps/android/core/src/jni/logging.rs:131`；原调用为 `tracing::dispatcher::get_default(|dispatch| dispatch.flush())`。
+- 根因：当前 tracing 的 `Dispatch` 没有该 `flush()` 方法，JNI 日志刷新桥接调用了不存在的 API。
+- 本轮处理：提交 `0d30a9de4196ddb29e56e25f770ffc65a7f6fdfd` 移除 `Native.flushLogging()` JNI 桥接；`AppLog.flushForExport()` 改为写入导出边界标记，依据同步写入的 RollingFileAppender 不再调用虚构的队列 flush。
+- 验证：#538 的 Rust/Android 构建、固定签名 v2 验证和 artifact 上传全部成功；运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45049084378。
+- 当前状态：**已修复待验证**（CI 编译问题已通过 #538 验证；日志导出内容仍待用户设备验收）。
+
+## CI-002：android-debug 工作流未生成真正的 Debug APK
+
+- 首次记录：2026-11-22 监控核查。
+- 影响文件：`.github/workflows/android-debug.yml`。
+- 当前行为：工作流名为 `android-debug`，但执行 `./gradlew assembleRelease`，准备固定 Release 密钥、验证签名并上传 `qingjian-android-signed`；没有执行 `assembleDebug`。
+- 分支范围：push 分支列表不包含 `feature/workflow-444-model-coordination`。
+- 最近运行：#571，分支 `feature/android-optional-trigram-model`，提交 `1fc9c71979415edd8626746bd5fd48d93d34f08c`，成功生成的仍是固定签名 Release APK。
+- 当前状态：**未解决**。本次监控仅检查，没有修改工作流。
+
+## REL-001：APP 版本序列与 versionCode 档案记录不一致
+
+- 首次记录：2026-11-22 监控核查。
+- 用户规则：以 `0.3.4` 为基线，每次成功交付可用 APK 后 patch 递增；保留 `-dev` 后缀，APP 版本与 workflow run number 分开。
+- 源码核对：#532 的 `apps/android/core/Cargo.toml` 为 `0.3.10-dev`，按 Gradle 公式计算 versionCode 为 `310`；#538 当前源码为 `0.3.12-dev`，按同一公式计算为 `312`。
+- 异常：本次检查未找到成功交付的 `0.3.11-dev` APK；旧档案写入的 `30310/30312` 与当前 Gradle 公式计算值不一致。versionCode 目前按源码推算，未下载 APK 读取 Manifest。
+- 处理边界：本次不修改应用源码、版本配置或 PROJECT_RULES；仅记录实际源码值和差异。
+- 当前状态：**未解决**。下一次 APK 交付前需核对版本序列、versionCode 公式与旧档案，确保可覆盖升级。
 
 ## 新问题记录模板
 
