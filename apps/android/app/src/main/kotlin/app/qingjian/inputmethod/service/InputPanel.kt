@@ -551,6 +551,10 @@ class InputPanel(
             .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
     }
 
+    /** 将云 Tips 锚定到当前编辑器光标上方；保留服务层的既有定位接口。 */
+    fun updateCloudTipsAnchor(screenX: Float, screenY: Float) =
+        cloudSuggestions.updateEditorAnchor(screenX, screenY)
+
     private var smartSuggestionItems: List<String> = emptyList()
     private var smartSuggestionSelection: ((String) -> Unit)? = null
 
