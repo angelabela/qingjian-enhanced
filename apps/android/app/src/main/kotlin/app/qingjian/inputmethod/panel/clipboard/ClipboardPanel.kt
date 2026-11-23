@@ -760,25 +760,33 @@ class ClipboardPanel(
         return null
     }
 
-    private fun decodeThumbnail(path: String): Bitmap? = try {
-        if (!File(path).isFile) return null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(path, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        val target = ink.dp(IMAGE_DP).toInt().coerceAtLeast(1)
-        var sample = 1
-        while (maxOf(bounds.outWidth / (sample * 2), bounds.outHeight / (sample * 2)) >= target) {
-            sample *= 2
+    private fun decodeThumbnail(path: String): Bitmap? {
+        return try {
+            if (!File(path).isFile) {
+                null
+            } else {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    null
+                } else {
+                    val target = ink.dp(IMAGE_DP).toInt().coerceAtLeast(1)
+                    var sample = 1
+                    while (maxOf(bounds.outWidth / (sample * 2), bounds.outHeight / (sample * 2)) >= target) {
+                        sample *= 2
+                    }
+                    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inDither = true
+                    })
+                }
+            }
+        } catch (_: OutOfMemoryError) {
+            null
+        } catch (_: Exception) {
+            null
         }
-        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.RGB_565
-            inDither = true
-        })
-    } catch (_: OutOfMemoryError) {
-        null
-    } catch (_: Exception) {
-        null
     }
 
     private fun actionRowTop() = headerHeight + ink.dp(SUMMARY_DP)
