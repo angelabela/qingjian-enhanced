@@ -162,9 +162,12 @@ class QingjianInputMethodService :
         kind == PanelKind.CLIPBOARD || kind == PanelKind.PHRASES
 
     private fun shouldKeepClipboardPanel(info: EditorInfo, restarting: Boolean): Boolean =
-        isClipboardPanel() &&
-            clipboardPanelEditorPackage == info.packageName &&
-            (restarting || clipboardPanelOwnerFieldId == info.fieldId)
+        isClipboardPanel() && (
+            // 搜索框属于剪贴板面板自身，焦点切入时不能让 onStartInput 卸载面板。
+            (info.packageName == packageName && ClipboardPanel.isSearchEditorActive(this)) ||
+                (clipboardPanelEditorPackage == info.packageName &&
+                    (restarting || clipboardPanelOwnerFieldId == info.fieldId))
+        )
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
     private var clipboardNoticeRetryPending = false
@@ -747,9 +750,11 @@ class QingjianInputMethodService :
                 "prefixEditing=${ScanPreferences.isPrefixEditorActive()}",
         )
         val editingOwnScanPrefix = nextEditorPackage == packageName && ScanPreferences.isPrefixEditorActive()
+        val editingClipboardSearch = nextEditorPackage == packageName && ClipboardPanel.isSearchEditorActive(this)
+        val editingInternalEditor = editingOwnScanPrefix || editingClipboardSearch
         val targetChanged = previousEditorPackage != null &&
             (previousEditorPackage != nextEditorPackage || (previousFieldId != null && previousFieldId != nextFieldId))
-        if (!restarting && !editingOwnScanPrefix && targetChanged && ScanPreferences.isFloating(this)) {
+        if (!restarting && !editingInternalEditor && targetChanged && ScanPreferences.isFloating(this)) {
             AppLog.info("[SCAN_DIAG] stop floating scanner: input target changed $previousEditorPackage/$previousFieldId -> $nextEditorPackage/$nextFieldId")
             // 直接停止已运行的前台悬浮服务；不要为了发送 ACTION_STOP 再 startService，
             // Android 12+ 可能因此触发前台服务启动限制并影响输入法生命周期。
@@ -757,7 +762,7 @@ class QingjianInputMethodService :
                 stopService(Intent(this, ScanOverlayService::class.java))
             }.onFailure { AppLog.warn("[SCAN_DIAG] unable to stop floating scanner: ${it.message}") }
         }
-        if (!editingOwnScanPrefix) {
+        if (!editingInternalEditor) {
             lastInputEditorPackage = nextEditorPackage
             lastInputEditorFieldId = nextFieldId
         }
