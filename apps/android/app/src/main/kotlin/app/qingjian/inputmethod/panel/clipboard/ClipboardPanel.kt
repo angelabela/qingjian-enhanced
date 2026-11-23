@@ -14,6 +14,11 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.graphics.drawable.ColorDrawable
+import android.widget.PopupWindow
+import android.icu.text.Transliterator
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -74,7 +79,13 @@ class ClipboardPanel(
 
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var searchQuery = ""
-    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index -> searchQuery.isBlank() || clips[index].text.contains(searchQuery, ignoreCase = true) }
+    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index ->
+        searchQuery.isBlank() ||
+            clips[index].text.contains(searchQuery, ignoreCase = true) ||
+            pinyinInitials(clips[index].text).contains(searchQuery, ignoreCase = true)
+    }
+    private fun pinyinInitials(text: String): String = HAN_TO_LATIN.transliterate(text)
+        .lowercase().split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchEditing = false
@@ -185,12 +196,81 @@ class ClipboardPanel(
 
     private fun groupTop() = height - ink.dp(GROUP_BAR_DP)
 
-    /** 搜索直接接收青简自己的按键事件，避免输入法再次请求启动自身造成 InputConnection 冲突。 */
+    /** 点击搜索框后弹出独立的 26 键 QWERTY 小键盘，不依赖系统输入法或输入连接。 */
+    private var searchPopup: PopupWindow? = null
+
     private fun openSearchEditor() {
-        searchEditing = true
-        context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
-        invalidate()
+        searchPopup?.dismiss()
+        val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+        val popupWidth = (width - ink.dp(16f)).toInt().coerceAtLeast(ink.dp(250f).toInt())
+        val keyHeight = ink.dp(42f)
+        val rowGap = ink.dp(6f)
+        val popupHeight = (keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
+        val keyboard = object : View(context) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val keys = ArrayList<Pair<Char, RectF>>()
+            private val gap = ink.dp(4f)
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                super.onSizeChanged(w, h, oldw, oldh)
+                keys.clear()
+                rows.forEachIndexed { row, letters ->
+                    val usable = w - ink.dp(20f)
+                    val kw = (usable - gap * (letters.length - 1)) / letters.length
+                    val rw = kw * letters.length + gap * (letters.length - 1)
+                    val left = (w - rw) / 2f
+                    val top = ink.dp(8f) + row * (keyHeight + rowGap)
+                    letters.forEachIndexed { col, ch ->
+                        val x = left + col * (kw + gap)
+                        keys += ch to RectF(x, top, x + kw, top + keyHeight)
+                    }
+                }
+            }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                keys.forEach { (ch, r) ->
+                    paint.style = Paint.Style.FILL
+                    paint.color = palette.surface
+                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = ink.dp(1f)
+                    paint.color = palette.brand
+                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.style = Paint.Style.FILL
+                    paint.color = palette.text
+                    paint.textAlign = Paint.Align.CENTER
+                    paint.textSize = ink.dp(18f)
+                    canvas.drawText(ch.toString(), r.centerX(), r.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
+                }
+            }
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    keys.firstOrNull { it.second.contains(event.x, event.y) }?.first?.let { ch ->
+                        searchQuery += ch
+                        expanded = -1
+                        layouts.clear()
+                        listScroll.reset()
+                        invalidate()
+                    }
+                }
+                return true
+            }
+        }
+        val popup = PopupWindow(keyboard, popupWidth, popupHeight, false).apply {
+            isFocusable = false
+            isTouchable = true
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(palette.board))
+            elevation = ink.dp(12f)
+            setClippingEnabled(true)
+            setOnDismissListener { if (searchPopup === this) searchPopup = null }
+        }
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        popup.showAtLocation(this, Gravity.TOP or Gravity.START,
+            (location[0] + searchRect.left).toInt().coerceAtLeast(0),
+            (location[1] + searchRect.bottom + ink.dp(6f)).toInt())
+        searchPopup = popup
+        Haptics.tap(context)
     }
 
     private fun applySearchKey(key: Key): Boolean {
@@ -228,6 +308,8 @@ class ClipboardPanel(
     }
 
     override fun onDetachedFromWindow() {
+        searchPopup?.dismiss()
+        searchPopup = null
         searchEditing = false
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
@@ -241,7 +323,7 @@ class ClipboardPanel(
         if (!showingPhrases) {
             // 搜索框固定占面板宽度 30%，三个功能按钮均分剩余空间。
             searchRect.set(ink.dp(8f), searchTop + ink.dp(2f),
-                ink.dp(8f) + width * 0.30f, searchTop + ink.dp(38f))
+                ink.dp(8f) + width * 0.27f, searchTop + ink.dp(38f))
             deleteBackwardRect.set(deleteBackwardBounds())
             pasteToggleRect.set(pasteToggleBounds())
             pasteNextCellRect.set(pasteNextCellBounds())
@@ -923,6 +1005,7 @@ class ClipboardPanel(
     }
 
     companion object {
+        private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
         private const val CLIPS = 0
         private const val PHRASES = 1
         private const val AUTO_MEMORY_GROUP = "自动记忆"
