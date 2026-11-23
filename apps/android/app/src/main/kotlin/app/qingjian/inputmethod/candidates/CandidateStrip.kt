@@ -17,7 +17,8 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private val transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight)) {
+class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
+    private val fallbackBackgroundColor: Int = markColor) {
     private val textStyles = CandidateTextStyleEngine(density, 20f * density * textScale, candidateTextColor, fontWeight, styleConfig)
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
@@ -233,7 +234,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         } else null
     }
 
-    fun indexAt(contentX: Float): Int {
+    /** 背景模式切换时重新处理当前帧，避免旧的实底位图遮住视频或主题底色。 */
+    fun setTransparentBackground(enabled: Boolean) {
+        if (transparentBackground == enabled) return
+        transparentBackground = enabled
+        image?.let { paint(it) }
+    }
+
+    fun indexAt(contentX: Float) {
         val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()
@@ -494,7 +502,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     private fun drawFallback(canvas: Canvas, scrollX: Int, viewWidth: Int) {
         if (!transparentBackground) {
-            fill.color = 0xFFF2F3F5.toInt()
+            fill.color = fallbackBackgroundColor
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
         }
         fallbackRects.clear()

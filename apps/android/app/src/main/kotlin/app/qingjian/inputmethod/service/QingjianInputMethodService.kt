@@ -314,16 +314,16 @@ class QingjianInputMethodService :
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
-        // 同一条剪贴板内容只提示一次：去重状态保存在设置中，不随键盘隐藏、
-        // 候选栏提示 5 秒后消失或输入法面板重建而重置。系统剪贴板原文不会被清空。
-        // 只有内容哈希变化时才显示下一条；短信广播属于独立事件，仍允许相同验证码再次提示。
-        if (preferredCode == null && lastHash == contentHash) {
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: content was already shown source=$source length=${text.length}")
+        val lastTimestamp = prefs.getLong("clipboard_notice_last_timestamp", 0L)
+        // 相同文本在不同时间再次复制（验证码尤其常见）属于新的剪贴板事件；
+        // 只有内容哈希与系统剪贴板时间戳都相同，才判定为重复回调。
+        if (preferredCode == null && lastHash == contentHash &&
+            (clipTimestamp <= 0L || clipTimestamp == lastTimestamp)
+        ) {
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: same content event source=$source length=${text.length} timestamp=$clipTimestamp")
             return
         }
-
-        // 不清空/重置候选栏底层状态。CandidateBarView 的主动提示层会临时覆盖候选，
-        // 候选刷新不会将通知吞掉；5 秒后自动恢复当前候选栏。
+        // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
         bar.showPersistentNotice(text) { commitText(text) }
         AppLog.info("[CLIPBOARD_NOTICE] displayed source=$source length=${text.length} attached=${bar.isAttachedToWindow} shown=${bar.isShown}")
         prefs.edit()
@@ -354,7 +354,7 @@ class QingjianInputMethodService :
         val wifi = ScanContent.parseWifi(value)
         if (wifi != null) {
             scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
-            bar.showPersistentNotice("发现 Wi-Fi「${wifi.ssid}」，点击加入") {
+            bar.showPersistentNotice("发现 Wi-Fi「${wifi.ssid}」，点击加入", autoDismissMs = 5_000L) {
                 scanActionNoticeUntil = 0L
                 startActivity(Intent(this, WifiJoinActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -368,7 +368,7 @@ class QingjianInputMethodService :
         }
         val url = ScanContent.webUrl(value) ?: return
         scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
-        bar.showPersistentNotice("发现网址，点击访问") {
+        bar.showPersistentNotice("发现网址，点击访问", autoDismissMs = 5_000L) {
             scanActionNoticeUntil = 0L
             runCatching {
                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

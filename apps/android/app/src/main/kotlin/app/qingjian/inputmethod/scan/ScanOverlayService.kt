@@ -328,54 +328,46 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        // 触摸监听只保护 EditText 的系统长按选词手势，不在 DOWN 中切换窗口焦点；
-        // 编辑态统一从 click 回调进入，避免同一触摸序列重入 Dialog/IME 的 WindowManager。
-        prefixInput.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> prefixInput.parent?.requestDisallowInterceptTouchEvent(true)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                    prefixInput.parent?.requestDisallowInterceptTouchEvent(false)
-            }
-            false
-        }
-        prefixInput.setOnClickListener {
-            scanDiag("prefix click requested=$prefixEditingRequested focused=${prefixInput.hasFocus()} windowFocusable=${windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0} textLength=${prefixInput.text?.length ?: 0}")
-            if (prefixEditingRequested) return@setOnClickListener
+        // 第一次触摸按下就先把窗口切换为可聚焦，避免等 ACTION_UP 的 click 回调后
+        // 才更新 WindowManager flags，导致用户必须再次点击才能真正进入输入状态。
+        fun beginPrefixEditing() {
+            scanDiag("prefix activate requested=$prefixEditingRequested focused=${prefixInput.hasFocus()} windowFocusable=${windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0} textLength=${prefixInput.text?.length ?: 0}")
+            if (prefixEditingRequested) return
             prefixEditingRequested = true
             prefixEditorHadFocus = false
             prefixImeRequested = false
             ScanPreferences.setPrefixEditorActive(true)
-
             runCatching {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 windowManager.updateViewLayout(overlayRoot, windowParams)
-                // 先把焦点交给悬浮窗根节点和前缀框，再等待 WindowManager 完成窗口焦点切换。
-                overlayRoot.requestFocus()
+                overlayRoot.requestFocusFromTouch()
+                prefixInput.requestFocusFromTouch()
                 prefixInput.requestFocus()
                 scanDiag("prefix focus requested root=${overlayRoot.hasFocus()} editor=${prefixInput.hasFocus()} window=${overlayRoot.hasWindowFocus()}")
                 fun requestPrefixImeWhenWindowReady(attempt: Int) {
                     prefixInput.postDelayed({
                         if (!prefixEditingRequested || prefixEditor !== prefixInput) return@postDelayed
                         if (!overlayRoot.hasWindowFocus()) {
-                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (attempt < 15) requestPrefixImeWhenWindowReady(attempt + 1)
                             else scanDiag("prefix window focus timeout attempts=${attempt + 1}", warning = true)
                             return@postDelayed
                         }
                         runCatching {
-                            overlayRoot.requestFocus()
+                            overlayRoot.requestFocusFromTouch()
+                            prefixInput.requestFocusFromTouch()
                             prefixInput.requestFocus()
                             val imm = overlayContext.getSystemService(InputMethodManager::class.java)
                             val accepted = imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
                             prefixImeRequested = accepted
                             scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()} attempt=${attempt + 1}")
-                            if (!accepted && attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (!accepted && attempt < 15) requestPrefixImeWhenWindowReady(attempt + 1)
                         }.onFailure {
                             prefixImeRequested = false
-                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (attempt < 15) requestPrefixImeWhenWindowReady(attempt + 1)
                             else scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
                         }
-                    }, if (attempt == 0) 80L else 60L)
+                    }, 60L)
                 }
                 requestPrefixImeWhenWindowReady(0)
             }.onFailure {
@@ -385,6 +377,18 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 scanDiag("prefix editor window activation failed: ${it.javaClass.simpleName}", warning = true)
             }
         }
+        prefixInput.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    prefixInput.parent?.requestDisallowInterceptTouchEvent(true)
+                    beginPrefixEditing()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    prefixInput.parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            false
+        }
+        prefixInput.setOnClickListener { beginPrefixEditing() }
         prefixInput.setOnFocusChangeListener { _, focused ->
             scanDiag("prefix editor focus changed focused=$focused requested=$prefixEditingRequested imeRequested=$prefixImeRequested")
             if (focused) prefixEditorHadFocus = true

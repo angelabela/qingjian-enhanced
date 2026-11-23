@@ -33,7 +33,7 @@ class CandidateBarView(
     tools: List<ToolbarTool>,
     private val listener: Listener,
     fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
-    private val transparentBackground: Boolean = false,
+    private var transparentBackground: Boolean = false,
     private val candidateTextStyles: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(palette.text, fontWeight),
 ) : View(context) {
     interface Listener {
@@ -71,7 +71,10 @@ class CandidateBarView(
     private var adaptiveVideoTextColor: Int? = null
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 66f * density * maxOf(1f, textScale)
-    private val strip = CandidateStrip(density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground, palette.brand, palette.text, candidateTextStyles)
+    private val strip = CandidateStrip(
+        density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
+        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board,
+    )
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
@@ -296,13 +299,22 @@ class CandidateBarView(
     /** 当前是否仍有可见的持久提示；同一剪贴板内容在提示消失后允许再次显示。 */
     fun hasPersistentNotice(): Boolean = notice != null && noticeOverridesCandidates
 
-    /** 短信验证码等需要用户主动处理的提示：不自动消失，点击或开始输入后收起。 */
-    fun showPersistentNotice(message: String, action: () -> Unit) {
+    /** 短信验证码/剪贴板等主动提示默认持续显示；可为扫码快捷动作单独指定自动收起时间。 */
+    fun showPersistentNotice(message: String, autoDismissMs: Long? = null, action: () -> Unit) {
         notice = message to action
         noticeOverridesCandidates = true
         removeCallbacks(clearNotice)
-        // 验证码/剪贴板提示只保留 5 秒；用户未点击时自动收起，点击时由 tap() 立即清除。
-        postDelayed(clearNotice, NOTICE_MS)
+        if (autoDismissMs != null && autoDismissMs > 0L) postDelayed(clearNotice, autoDismissMs)
+        invalidate()
+    }
+
+    /** 动态背景开关变化时同步更新候选条底色及 Rust 位图透明处理。 */
+    fun setTransparentBackground(enabled: Boolean, backgroundColor: Int) {
+        if (transparentBackground != enabled) {
+            transparentBackground = enabled
+            strip.setTransparentBackground(enabled)
+        }
+        setBackgroundColor(if (enabled) android.graphics.Color.TRANSPARENT else backgroundColor)
         invalidate()
     }
 

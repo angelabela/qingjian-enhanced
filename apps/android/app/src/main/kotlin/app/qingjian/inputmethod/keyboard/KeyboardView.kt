@@ -30,7 +30,7 @@ class KeyboardView(
     private val palette: Palette,
     private val settings: Settings,
     private val listener: Listener,
-    transparentBackground: Boolean = settings.keyboardBackgroundEffect,
+    private var transparentBackground: Boolean = settings.keyboardBackgroundEffect,
     keyBackgroundAlpha: Float = 1f,
     keyBackgroundFrosted: Boolean = false,
     keyMarqueeEnabled: Boolean = false,
@@ -227,6 +227,14 @@ class KeyboardView(
 
     fun setKeySurface(alpha: Float, frosted: Boolean) {
         painter.setKeySurface(alpha, frosted)
+        invalidate()
+    }
+
+    /** 与候选栏同步切换主题实底/动态背景透明模式。 */
+    fun setTransparentBackground(enabled: Boolean, backgroundColor: Int) {
+        if (transparentBackground == enabled) return
+        transparentBackground = enabled
+        setBackgroundColor(if (enabled) android.graphics.Color.TRANSPARENT else backgroundColor)
         invalidate()
     }
 
