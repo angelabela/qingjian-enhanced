@@ -552,7 +552,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
         )
         overlayRoot = object : FrameLayout(viewContext) {
             override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-                previewResizeDetector.onTouchEvent(event)
+                // 缩放手势只在相机预览区生效；标题栏按钮、前缀输入框仍保留原有点击与拖动。
+                val pointersInsidePreview = ::headerView.isInitialized &&
+                    (0 until event.pointerCount).all { event.getY(it) >= headerView.bottom }
+                if (pointersInsidePreview || previewResizeDetector.isInProgress) {
+                    previewResizeDetector.onTouchEvent(event)
+                }
                 return previewResizeDetector.isInProgress || super.onInterceptTouchEvent(event)
             }
         }.apply {
