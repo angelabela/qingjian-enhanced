@@ -295,7 +295,7 @@ class ClipboardPanel(
         runCatching {
             val dir = ClipboardImageProvider.imageDir(context).apply { mkdirs() }
             val expiry = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
-            dir.listFiles()?.filter { it.name.startsWith("qingjian-qr-") && it.lastModified() < expiry }?.forEach(File::delete)
+            dir.listFiles()?.filter { it.name.startsWith("qingjian-qr-") && it.lastModified() < expiry }?.forEach { it.delete() }
             val file = File.createTempFile("qingjian-qr-", ".png", dir)
             FileOutputStream(file).use { output ->
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "二维码保存失败" }
