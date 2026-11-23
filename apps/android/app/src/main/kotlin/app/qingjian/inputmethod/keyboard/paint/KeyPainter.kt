@@ -176,24 +176,41 @@ class KeyPainter(
     private fun drawKeyDepth(canvas: Canvas, bounds: RectF) {
         fill.shader = null
         fill.style = Paint.Style.FILL
-        fill.color = withAlpha(Color.BLACK, 0x72)
-        val offset = 2.2f * density
+        val offset = 5.2f * density
         val depth = RectF(bounds.left, bounds.top + offset, bounds.right, bounds.bottom + offset)
-        canvas.drawRoundRect(depth, metrics.radius, metrics.radius, fill)
+        fill.color = Color.BLACK
+        fill.setShadowLayer(4.5f * density, 0f, 2.2f * density, withAlpha(Color.BLACK, 0xA8))
+        canvas.drawRoundRect(depth, metrics.radius + 1.2f * density, metrics.radius + 1.2f * density, fill)
+        fill.clearShadowLayer()
+        fill.shader = LinearGradient(
+            depth.left, depth.top, depth.left, depth.bottom,
+            intArrayOf(0xFF555B66.toInt(), 0xFF252A32.toInt(), 0xFF090B10.toInt()),
+            floatArrayOf(0f, 0.48f, 1f), Shader.TileMode.CLAMP,
+        )
+        canvas.drawRoundRect(depth, metrics.radius + 1.2f * density, metrics.radius + 1.2f * density, fill)
+        fill.shader = null
+        fill.color = withAlpha(Color.BLACK, 0xB8)
+        canvas.drawLine(depth.left + metrics.radius, depth.bottom - 0.8f * density,
+            depth.right - metrics.radius, depth.bottom - 0.8f * density, fill)
     }
 
-    /** 立体效果的顶部高光和底部暗边，保持按键本身点击区域与大小不变。 */
+    /** 更明显的顶面倒角：上沿亮边、侧边反光、下沿深色压边形成独立键帽的立体层次。 */
     private fun drawKey3dHighlight(canvas: Canvas, bounds: RectF) {
         fill.shader = null
         fill.style = Paint.Style.STROKE
-        fill.strokeWidth = 0.75f * density
-        fill.color = withAlpha(Color.WHITE, 0x86)
-        val inset = 0.8f * density
+        val inset = 0.9f * density
         val inner = RectF(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
+        fill.strokeWidth = 1.15f * density
+        fill.color = withAlpha(Color.WHITE, 0xD8)
         canvas.drawRoundRect(inner, (metrics.radius - inset).coerceAtLeast(1f), (metrics.radius - inset).coerceAtLeast(1f), fill)
-        fill.color = withAlpha(Color.BLACK, 0x38)
-        fill.strokeWidth = 0.9f * density
-        canvas.drawLine(bounds.left + metrics.radius, bounds.bottom - inset, bounds.right - metrics.radius, bounds.bottom - inset, fill)
+        fill.strokeWidth = 1.0f * density
+        fill.color = withAlpha(Color.WHITE, 0x78)
+        canvas.drawLine(bounds.left + metrics.radius, bounds.top + 1.4f * density,
+            bounds.right - metrics.radius, bounds.top + 1.4f * density, fill)
+        fill.color = withAlpha(Color.BLACK, 0xA8)
+        fill.strokeWidth = 1.5f * density
+        canvas.drawLine(bounds.left + metrics.radius * 0.7f, bounds.bottom - 1.2f * density,
+            bounds.right - metrics.radius * 0.7f, bounds.bottom - 1.2f * density, fill)
         fill.style = Paint.Style.FILL
     }
 
