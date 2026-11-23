@@ -411,7 +411,7 @@ class InputPanel(
         setBackgroundColor(Color.TRANSPARENT)
         addView(bar)
         addView(keyboard)
-        bottomActions?.let(::addView)
+        bottomActions?.let { addView(it) }
     }
 
     private val videoBottomExtension = if (!floating && (!settings.fullscreenAdapt ||
