@@ -20,6 +20,8 @@ dependencyResolutionManagement {
             url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
         }
         mavenCentral()
+        // Binary Eye 使用的 ZXing-C++ Android 绑定发布在 JitPack。
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
