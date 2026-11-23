@@ -21,6 +21,7 @@ import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Size
+import android.util.Rational
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -47,6 +48,8 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
@@ -1126,8 +1129,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
             }
             provider.unbindAll()
-            camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis, capture)
-            scanDiag("camera bound lens=back preview=1440x1080 analysis=1920x1080 capture=1440x1080")
+            // 相机视场固定采用设备全屏宽高比初始化，与浮窗后续缩放解耦。
+            // PreviewView 仍按浮窗大小铺满显示；窗口变形只改变可视裁切，不改变相机全屏基准视场。
+            val displayMetrics = resources.displayMetrics
+            val fullScreenAspect = Rational(
+                displayMetrics.widthPixels.coerceAtLeast(1),
+                displayMetrics.heightPixels.coerceAtLeast(1),
+            )
+            val fullScreenViewPort = ViewPort.Builder(
+                fullScreenAspect,
+                preview.display?.rotation ?: android.view.Surface.ROTATION_0,
+            ).setScaleType(ViewPort.FILL_CENTER).build()
+            val cameraUseCases = UseCaseGroup.Builder()
+                .setViewPort(fullScreenViewPort)
+                .addUseCase(cameraPreview)
+                .addUseCase(analysis)
+                .addUseCase(capture)
+                .build()
+            camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraUseCases)
+            scanDiag("camera bound lens=back viewport=fullscreen:${displayMetrics.widthPixels}x${displayMetrics.heightPixels} preview=1440x1080 analysis=1920x1080 capture=1440x1080")
             cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
             // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
             preview.post {
