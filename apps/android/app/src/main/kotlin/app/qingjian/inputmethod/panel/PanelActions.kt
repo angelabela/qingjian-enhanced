@@ -66,6 +66,9 @@ interface PanelActions {
     /** 就地改一个选项设置（[Settings] 里的键，值是选项的名字）。 */
     fun setChoice(key: String, value: String)
 
+    /** 就地改一个整数设置（例如候选字号）。 */
+    fun setIntChoice(key: String, value: Int)
+
     /** 剪贴板里点了一张图（图片文件路径）：发进输入框，输入框不收图片就放回系统剪贴板。 */
     fun commitImage(path: String)
 
