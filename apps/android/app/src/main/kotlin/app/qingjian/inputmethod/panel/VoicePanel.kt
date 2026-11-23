@@ -64,6 +64,11 @@ class VoicePanel(
             7 -> PhysicsWaveView.Style.SPHERICAL_PARTICLE_MESH
             8 -> PhysicsWaveView.Style.REALTIME_WAVEFORM
             9 -> PhysicsWaveView.Style.WAVEFORM_SPECTRUM
+            10 -> PhysicsWaveView.Style.MIRRORED_BARS
+            11 -> PhysicsWaveView.Style.DUAL_LAYER_BARS
+            12 -> PhysicsWaveView.Style.PARTICLE_MATRIX
+            13 -> PhysicsWaveView.Style.STEPPED_BARS
+            14 -> PhysicsWaveView.Style.PERSPECTIVE_TUNNEL
             else -> PhysicsWaveView.Style.SPECTRUM_BARS
         }
         color = palette.brand
@@ -73,6 +78,7 @@ class VoicePanel(
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
+    private val physicsBands = FloatArray(18)
     private var touchTarget = Target.NONE
     private var lastTargetHapticAt = 0L
     var target = Target.NONE
@@ -236,12 +242,12 @@ class VoicePanel(
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
         // 物理动效使用18个均匀频带；48段频谱仍完整提供给频谱柱和融合效果。
-        val physicsBands = FloatArray(18) { band ->
-            val start = band * SAMPLE_COUNT / 18
-            val end = (band + 1) * SAMPLE_COUNT / 18
+        for (band in physicsBands.indices) {
+            val start = band * SAMPLE_COUNT / physicsBands.size
+            val end = (band + 1) * SAMPLE_COUNT / physicsBands.size
             var sum = 0f
             for (i in start until end) sum += spectrumBands[i]
-            (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
+            physicsBands[band] = (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
         }
         overlay.updateSpectrum(spectrumBands)
         overlay.update(physicsBands)
@@ -340,16 +346,16 @@ class VoicePanel(
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
         const val ANIMATION_DISABLED = -2
-        const val ANIMATION_RANDOM_INDEX = 10
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "每次启动随机")
+        const val ANIMATION_RANDOM_INDEX = 15
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, ANIMATION_DISABLED)
             return when {
                 selected == ANIMATION_DISABLED -> ANIMATION_DISABLED
-                selected == -1 -> kotlin.random.Random.nextInt(10)
-                else -> selected.coerceIn(0, 9)
+                selected == -1 -> kotlin.random.Random.nextInt(15)
+                else -> selected.coerceIn(0, 14)
             }
         }
     }
