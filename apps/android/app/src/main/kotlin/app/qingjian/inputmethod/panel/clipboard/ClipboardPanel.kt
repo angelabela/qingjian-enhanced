@@ -338,23 +338,15 @@ class ClipboardPanel(
             if (bottom < list.top || top > list.bottom) continue
             val phase = ((i % 3) + 1) / 3f
             val strength = (kotlin.math.abs(scrollMotion) / ink.dp(32f).coerceAtLeast(1f)).coerceIn(0f, 1f)
-            val parallax = scrollMotion * phase * 1.18f
-            val motionAlpha = (255 - strength * 128f).toInt().coerceIn(118, 255)
+            val horizontalDrift = scrollMotion * phase * 0.22f
+            val motionAlpha = (255 - strength * 72f).toInt().coerceIn(150, 255)
             val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(3f), width.toFloat(), bottom + ink.dp(3f), motionAlpha)
             canvas.save()
-            canvas.translate(0f, parallax)
-            val stretch = 1f + strength * 0.035f * if (scrollMotion < 0f) -1f else 1f
-            canvas.scale(1f, stretch, width / 2f, (top + bottom) / 2f)
+            canvas.translate(horizontalDrift, 0f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
-            if (strength > 0.025f) {
-                scrollGlowPaint.strokeWidth = ink.dp(2.8f)
-                scrollGlowPaint.color = (palette.brand and 0x00FFFFFF) or ((strength * 220f).toInt().coerceIn(0, 220) shl 24)
-                val glowRect = RectF(ink.dp(CARD_MARGIN_DP), top + ink.dp(1f), width - ink.dp(CARD_MARGIN_DP), bottom - ink.dp(1f))
-                canvas.drawRoundRect(glowRect, ink.dp(12f), ink.dp(12f), scrollGlowPaint)
-            }
             canvas.restore()
             canvas.restoreToCount(cardLayer)
         }
