@@ -195,10 +195,6 @@ class CandidateBarView(
         }
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
-            if (onPreedit) {
-                dragCaret(e2.x)
-                return true
-            }
             if (toolbarShown) {
                 toolbar.scrollTo(toolbar.offset + dx, width)
                 invalidate()
@@ -209,7 +205,6 @@ class CandidateBarView(
         }
 
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-            if (onPreedit) return true
             if (toolbarShown) {
                 scroller.fling(toolbar.offset.toInt(), 0, -vx.toInt(), 0, 0, toolbar.maxOffset(width).toInt(), 0, 0)
             } else {
@@ -396,9 +391,6 @@ class CandidateBarView(
             }
             // 拼音光标拖动不再只依赖 GestureDetector 的 onScroll 阈值回调；
             // 直接消费每一帧 ACTION_MOVE，避免悬浮层/父容器分发导致拖动时光标不更新。
-            if (onPreedit && event.actionMasked == MotionEvent.ACTION_MOVE) {
-                dragCaret(event.x)
-            }
             val handled = gestures.onTouchEvent(event)
             if (onPreedit && (event.actionMasked == MotionEvent.ACTION_UP ||
                 event.actionMasked == MotionEvent.ACTION_CANCEL)) {
