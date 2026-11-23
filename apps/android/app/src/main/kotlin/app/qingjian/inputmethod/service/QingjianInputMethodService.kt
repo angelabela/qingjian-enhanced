@@ -168,6 +168,8 @@ class QingjianInputMethodService :
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
     private var clipboardNoticeRetryPending = false
+    /** 输入组合期间收到新剪贴板/验证码事件时，等组合结束再显示。 */
+    private var clipboardNoticePending = false
 
     /** 候选栏在输入法窗口刚显示时可能仍不可见；等待布局完成后再展示最新剪贴板。 */
     private fun scheduleClipboardNoticeRetry(preferredCode: String? = null) {
@@ -211,8 +213,12 @@ class QingjianInputMethodService :
                     // 某些 ROM/应用会异步提交 primaryClip，多次读取系统当前剪贴板直到新内容可见。
                     clipboardWatcher.capture()
                     if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+                    else if (isInputViewShown) clipboardNoticePending = true
                 }, delay)
             }
+        } else if (isInputViewShown) {
+            // 用户正在组句时不覆盖输入内容；记录事件，等 preedit 清空后再显示最新剪贴板。
+            clipboardNoticePending = true
         }
     }
 
@@ -229,7 +235,10 @@ class QingjianInputMethodService :
             val emptyPreedit = shownPreedit.isEmpty()
             AppLog.info("[SMS_CODE_DIAG] code-ready listener received length=${code.length} inputViewShown=$visible emptyPreedit=$emptyPreedit")
             if (visible && emptyPreedit) showLatestClipboardNotice(preferredCode = code)
-            else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
+            else if (visible) {
+                clipboardNoticePending = true
+                AppLog.info("[SMS_CODE_DIAG] notice deferred until composition ends")
+            } else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
         }
     }
 
@@ -1078,7 +1087,6 @@ class QingjianInputMethodService :
             AppLog.debug("candidate render skipped: identical snapshot size=${candidates.size}")
             return
         }
-        val wasComposing = shownPreedit.isNotEmpty()
         candidateRerankSequence++
         candidateRerankRunnable?.let(candidateRerankHandler::removeCallbacks)
         candidateRerankRunnable = null
@@ -1086,8 +1094,9 @@ class QingjianInputMethodService :
         shownCandidates = candidates
         candidateIndexMap = candidates.indices.toList()
         renderShownComposition(preedit, candidates, animateCandidates)
-        // 组合输入结束后重读系统剪贴板，避免提示曾被输入动作清除后无法恢复。
-        if (wasComposing && preedit.isEmpty()) {
+        // 组合输入期间若收到复制/验证码事件，等输入结束后再显示系统当前剪贴板。
+        if (preedit.isEmpty() && clipboardNoticePending) {
+            clipboardNoticePending = false
             Handler(mainLooper).post {
                 if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
             }
