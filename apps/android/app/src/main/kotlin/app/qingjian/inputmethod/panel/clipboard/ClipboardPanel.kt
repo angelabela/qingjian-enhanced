@@ -323,6 +323,7 @@ class ClipboardPanel(
             isFocusable = false
             isTouchable = true
             isOutsideTouchable = false
+            if (android.os.Build.VERSION.SDK_INT >= 29) setTouchModal(false)
             setBackgroundDrawable(ColorDrawable(palette.board))
             elevation = ink.dp(12f)
             setClippingEnabled(true)
@@ -784,7 +785,7 @@ class ClipboardPanel(
                     }
                     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
                         inSampleSize = sample
-                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
                         inDither = true
                     })
                 }
