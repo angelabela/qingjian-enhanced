@@ -29,6 +29,8 @@ import android.hardware.camera2.CaptureRequest
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
@@ -94,6 +96,7 @@ class BarcodeScannerActivity : ComponentActivity() {
                 Barcode.FORMAT_AZTEC,
                 Barcode.FORMAT_DATA_MATRIX,
             )
+            .enableAllPotentialBarcodes()
             .build()
         scanner = BarcodeScanning.getClient(options)
 
@@ -231,14 +234,18 @@ class BarcodeScannerActivity : ComponentActivity() {
         future.addListener({
             val provider = future.get()
             cameraProvider = provider
+            val maxResolution = ResolutionSelector.Builder()
+                .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                .build()
             val previewBuilder = Preview.Builder()
+                .setResolutionSelector(maxResolution)
             applyScanCaptureQuality(previewBuilder)
             val cameraPreview = previewBuilder.build().also {
                 it.setSurfaceProvider(preview.surfaceProvider)
             }
             val analysisBuilder = ImageAnalysis.Builder()
-                // 1080p 分析提高远距离/小尺寸码的有效像素；只保留最新帧避免堆积。
-                .setTargetResolution(Size(1920, 1080))
+                // 使用设备支持的最高分析分辨率；只保留最新帧，避免高像素堆积。
+                .setResolutionSelector(maxResolution)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
