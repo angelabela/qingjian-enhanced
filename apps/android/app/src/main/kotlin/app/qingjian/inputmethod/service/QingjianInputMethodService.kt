@@ -168,32 +168,45 @@ class QingjianInputMethodService :
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
     private var clipboardNoticeRetryPending = false
+    private val clipboardNoticeHandler = Handler(mainLooper)
+    private var clipboardNoticeRetryRunnable: Runnable? = null
+    private var pendingClipboardPreferredCode: String? = null
 
-    /** 候选栏在输入法窗口刚显示时可能仍不可见；等待布局完成后再展示最新剪贴板。 */
+    private fun cancelClipboardNoticeRetry() {
+        clipboardNoticeRetryRunnable?.let(clipboardNoticeHandler::removeCallbacks)
+        clipboardNoticeRetryRunnable = null
+        pendingClipboardPreferredCode = null
+        clipboardNoticeRetryPending = false
+    }
+
+    /** 生命周期、剪贴板监听和验证码广播共用一个可取消的重试队列。 */
     private fun scheduleClipboardNoticeRetry(preferredCode: String? = null) {
-        if (clipboardNoticeRetryPending) return
+        pendingClipboardPreferredCode = preferredCode
+        if (clipboardNoticeRetryRunnable != null) return
         clipboardNoticeRetryPending = true
-        val delays = longArrayOf(80L, 180L, 360L, 700L, 1_200L, 1_800L)
-        fun retry(index: Int) {
-            if (index >= delays.size) {
-                clipboardNoticeRetryPending = false
-                AppLog.info("[CLIPBOARD_NOTICE] retry exhausted while candidate bar stayed hidden")
-                return
-            }
-            Handler(mainLooper).postDelayed({
+        val delays = longArrayOf(120L, 260L, 520L, 900L, 1_500L)
+        var attempt = 0
+        val retry = object : Runnable {
+            override fun run() {
                 if (!isInputViewShown || shownPreedit.isNotEmpty()) {
-                    clipboardNoticeRetryPending = false
-                    return@postDelayed
+                    cancelClipboardNoticeRetry()
+                    return
                 }
-                val bar = panel?.bar
-                if (bar?.isAttachedToWindow == true && bar.isShown) {
-                    clipboardNoticeRetryPending = false
-                    AppLog.info("[CLIPBOARD_NOTICE] candidate bar became visible; retrying latest content")
-                    showLatestClipboardNotice(preferredCode)
-                } else retry(index + 1)
-            }, delays[index])
+                clipboardWatcher.capture()
+                if (showLatestClipboardNotice(pendingClipboardPreferredCode)) {
+                    cancelClipboardNoticeRetry()
+                    return
+                }
+                if (attempt >= delays.size) {
+                    AppLog.info("[CLIPBOARD_NOTICE] coalesced retry exhausted")
+                    cancelClipboardNoticeRetry()
+                    return
+                }
+                clipboardNoticeHandler.postDelayed(this, delays[attempt++])
+            }
         }
-        retry(0)
+        clipboardNoticeRetryRunnable = retry
+        clipboardNoticeHandler.postDelayed(retry, 80L)
     }
 
     private var lastClipboardPhoneNumber = ""
@@ -206,14 +219,7 @@ class QingjianInputMethodService :
         clipboardWatcher.capture()
         if (isInputViewShown && shownPreedit.isEmpty()) {
             showLatestClipboardNotice()
-            val handler = Handler(mainLooper)
-            listOf(120L, 360L, 720L, 1_200L, 1_800L).forEach { delay ->
-                handler.postDelayed({
-                    // 某些 ROM/应用会异步提交 primaryClip，多次读取系统当前剪贴板直到新内容可见。
-                    clipboardWatcher.capture()
-                    if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
-                }, delay)
-            }
+            scheduleClipboardNoticeRetry()
         }
     }
 
@@ -229,8 +235,10 @@ class QingjianInputMethodService :
             val visible = isInputViewShown
             val emptyPreedit = shownPreedit.isEmpty()
             AppLog.info("[SMS_CODE_DIAG] code-ready listener received length=${code.length} inputViewShown=$visible emptyPreedit=$emptyPreedit")
-            if (visible && emptyPreedit) showLatestClipboardNotice(preferredCode = code)
-            else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
+            if (visible && emptyPreedit) {
+                showLatestClipboardNotice(preferredCode = code)
+                scheduleClipboardNoticeRetry(preferredCode = code)
+            } else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
         }
     }
 
@@ -238,27 +246,27 @@ class QingjianInputMethodService :
      * 键盘每次打开都直接读取系统剪贴板最新文本，不依赖面板打开时才开始监听。
      * 短信验证码优先按验证码样式展示；普通文本作为剪贴板快捷上屏入口。
      */
-    private fun showLatestClipboardNotice(preferredCode: String? = null) {
+    private fun showLatestClipboardNotice(preferredCode: String? = null): Boolean {
         val bar = panel?.bar
         if (bar == null) {
             AppLog.debug("[CLIPBOARD_NOTICE] skip: candidate bar missing panel=${panel != null} panelKind=${activePanelState}")
-            return
+            return false
         }
         if (shownPreedit.isNotEmpty()) {
             AppLog.debug("[CLIPBOARD_NOTICE] skip: preedit not empty length=${shownPreedit.length}")
-            return
+            return false
         }
         val scanSuppressionRemaining = scanActionNoticeUntil - android.os.SystemClock.elapsedRealtime()
         if (scanSuppressionRemaining > 0) {
             AppLog.debug("[CLIPBOARD_NOTICE] skip: scan notice suppression remainingMs=$scanSuppressionRemaining")
-            return
+            return false
         }
         // 某些输入框切换/面板初始化期间 CandidateBarView 已创建但还未挂载到可见窗口；
         // 这种情况下不能提前记录 lastHash，否则窗口真正显示后同一条新剪贴板会被当成旧提示跳过。
         if (!bar.isAttachedToWindow || !bar.isShown) {
             AppLog.info("[CLIPBOARD_NOTICE] defer: attached=${bar.isAttachedToWindow} shown=${bar.isShown} visibility=${bar.visibility} size=${bar.width}x${bar.height} preferredCode=${preferredCode != null}")
             scheduleClipboardNoticeRetry(preferredCode)
-            return
+            return false
         }
 
         val manager = getSystemService(ClipboardManager::class.java)
@@ -274,7 +282,7 @@ class QingjianInputMethodService :
         if (preferredCode == null && clip != null && (sensitive || clip.itemCount <= 0)) {
             AppLog.info("[CLIPBOARD_NOTICE] clear: sensitive=$sensitive itemCount=${clip.itemCount}")
             bar.clearNotice()
-            return
+            return true
         }
         val item = clip?.takeIf { !sensitive && it.itemCount > 0 }?.getItemAt(0)
         val systemText = runCatching { item?.coerceToText(this)?.toString()?.trim() }
@@ -303,9 +311,8 @@ class QingjianInputMethodService :
         }
         AppLog.info("[CLIPBOARD_NOTICE] selected source=$source length=${text?.length ?: 0} historyLength=${historyText?.length ?: 0}")
         if (text.isNullOrEmpty()) {
-            AppLog.info("[CLIPBOARD_NOTICE] clear: no usable text")
-            bar.clearNotice()
-            return
+            AppLog.info("[CLIPBOARD_NOTICE] no usable text yet; retry may still capture a late primaryClip")
+            return false
         }
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
@@ -314,12 +321,12 @@ class QingjianInputMethodService :
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
-        // 同一条剪贴板内容只提示一次：去重状态保存在设置中，不随键盘隐藏、
-        // 候选栏提示 5 秒后消失或输入法面板重建而重置。系统剪贴板原文不会被清空。
-        // 只有内容哈希变化时才显示下一条；短信广播属于独立事件，仍允许相同验证码再次提示。
-        if (preferredCode == null && lastHash == contentHash) {
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: content was already shown source=$source length=${text.length}")
-            return
+        val lastTimestamp = prefs.getLong("clipboard_notice_last_timestamp", Long.MIN_VALUE)
+        // 普通剪贴板与短信验证码统一按内容和系统事件时间戳去重。
+        // 再次复制完全相同的文字时 timestamp 会更新，因此仍作为新事件显示。
+        if (lastHash == contentHash && lastTimestamp == clipTimestamp) {
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: same content event source=$source length=${text.length} timestamp=$clipTimestamp")
+            return true
         }
 
         // 不清空/重置候选栏底层状态。CandidateBarView 的主动提示层会临时覆盖候选，
@@ -330,6 +337,7 @@ class QingjianInputMethodService :
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
             .putString("clipboard_notice_last_hash", contentHash)
             .apply()
+        return true
     }
 
     /** 短信验证码开关变化时只刷新常用功能图标，不重建输入法窗口。 */
@@ -599,6 +607,7 @@ class QingjianInputMethodService :
 
     override fun onDestroy() {
         AppLog.info("ime destroy")
+        cancelClipboardNoticeRetry()
         clipboardWatcher.stop()
         getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipboardPhoneListener)
         contacts.stop()
@@ -794,12 +803,7 @@ class QingjianInputMethodService :
         // 键盘弹出时补录历史，并读取系统剪贴板最新文本；无内容则不显示提示。
         clipboardWatcher.capture()
         showLatestClipboardNotice()
-        // 部分系统在输入法窗口启动的首帧仍返回旧剪贴板；稍后重读一次，避免捕获时序竞态。
-        listOf(180L, 420L, 800L).forEach { delay ->
-            Handler(mainLooper).postDelayed({
-                if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
-            }, delay)
-        }
+        scheduleClipboardNoticeRetry()
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
         runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
@@ -822,6 +826,7 @@ class QingjianInputMethodService :
         AppLog.info("window shown")
         // 同一编辑器中再次展开键盘时也刷新一次最新验证码/剪贴板内容。
         showLatestClipboardNotice()
+        scheduleClipboardNoticeRetry()
         // 定时学习数据落盘只在键盘可见期间运行；隐藏后由 onFinishInputView 负责最终落盘。
         candidateRerankHandler.removeCallbacks(learningFlushRunnable)
         candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
@@ -830,6 +835,7 @@ class QingjianInputMethodService :
     override fun onWindowHidden() {
         super.onWindowHidden()
         AppLog.info("window hidden")
+        cancelClipboardNoticeRetry()
         android.util.Log.w("QingjianScanDiag", "IME window hidden editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
         // 隐藏键盘后停止周期性落盘，取消未执行的候选重排，并释放常驻本地 AI 引擎。
         candidateRerankHandler.removeCallbacks(learningFlushRunnable)

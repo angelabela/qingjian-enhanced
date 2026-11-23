@@ -726,16 +726,42 @@ class InputPanel(
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
         private var lastVideoMeasureSignature: String? = null
+        private var currentVideoUri: String? = videoUri
         private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
         private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
 
         fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
-            videoBackground?.let { removeView(it) }
+            val normalizedUri = uri?.takeIf { it.isNotBlank() }
+            if (normalizedUri != currentVideoUri) {
+                videoBackground?.let { removeView(it) }
+                currentVideoUri = normalizedUri
+                videoBackground = normalizedUri?.let {
+                    DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply {
+                        onAverageLuminance = onVideoLuminance
+                    }
+                }
+                videoBackground?.let {
+                    addView(it, 0, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.TOP,
+                    ))
+                }
+                AppLog.info("[VIDEO_BG_DIAG] video source changed enabled=${normalizedUri != null} viewCreated=${videoBackground != null}")
+            } else {
+                // 仅设置透明度/磨砂/亮度时保留 TextureView 与 Surface，避免视频层闪断。
+                videoBackground?.updateAppearance(alpha, blur)
+            }
             videoTint?.let(::removeView)
-            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply { onAverageLuminance = onVideoLuminance } }
-            videoTint = makeVideoTint(context, uri, brightness)
-            videoBackground?.let { addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
-            videoTint?.let { addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
+            videoTint = makeVideoTint(context, normalizedUri, brightness)
+            videoTint?.let {
+                addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.TOP,
+                ))
+            }
+            requestLayout()
             invalidate()
         }
 
@@ -766,8 +792,11 @@ class InputPanel(
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             measureChild(main, widthMeasureSpec, heightMeasureSpec)
-            val height = MeasureSpec.makeMeasureSpec(main.measuredHeight, MeasureSpec.EXACTLY)
-            // 视频层延伸到 root 为导航栏预留的底部 inset；Stack 自身高度保持不变。
+            // 视频层按输入法面板实际宽度精确测量，并延伸到导航栏预留的底部区域。
+            val videoWidthSize = MeasureSpec.getSize(widthMeasureSpec)
+            val videoWidth = if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) {
+                widthMeasureSpec
+            } else MeasureSpec.makeMeasureSpec(videoWidthSize, MeasureSpec.EXACTLY)
             val videoHeight = MeasureSpec.makeMeasureSpec(
                 main.measuredHeight + videoBottomExtension,
                 MeasureSpec.EXACTLY,
@@ -776,7 +805,7 @@ class InputPanel(
                 val child = getChildAt(i)
                 if (child === main) continue
                 if (child === videoBackground || child === videoTint) {
-                    child.measure(widthMeasureSpec, videoHeight)
+                    child.measure(videoWidth, videoHeight)
                     continue
                 }
                 if (child is CloudSuggestionsView) {
