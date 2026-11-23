@@ -1017,7 +1017,7 @@ class QingjianInputMethodService :
     private fun refreshSmartInfoSuggestions() {
         val currentPanel = panel ?: return
         if (editor != null || currentPanel.openPanel != null || shownPreedit.isNotEmpty()) return
-        val before = currentInputConnection?.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+        val before = currentInputConnection?.getTextBeforeCursor(160, 0)?.toString().orEmpty()
         if (SmartInfoProvider.TRIGGERS.any { before.endsWith(it) }) {
             smartInfoSequence++
             return
@@ -1043,7 +1043,7 @@ class QingjianInputMethodService :
             ) return@postDelayed
             val liveConnection = currentInputConnection ?: return@postDelayed
             val liveBefore = runCatching {
-                liveConnection.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                liveConnection.getTextBeforeCursor(160, 0)?.toString().orEmpty()
             }.getOrDefault("")
             if (liveBefore != before) return@postDelayed
             LocalAiModelManager.generateSuggestions(this, before) { result ->
@@ -1052,7 +1052,7 @@ class QingjianInputMethodService :
                     currentPanel.openPanel != null || shownPreedit.isNotEmpty()
                 ) return@generateSuggestions
                 val latest = runCatching {
-                    currentInputConnection?.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                    currentInputConnection?.getTextBeforeCursor(160, 0)?.toString().orEmpty()
                 }.getOrDefault("")
                 if (latest != before) return@generateSuggestions
                 val suggestions = result.getOrDefault(emptyList())
@@ -1060,7 +1060,7 @@ class QingjianInputMethodService :
                     if (selected.isBlank() || request != localAiSuggestionSequence) return@showSmartSuggestions
                     val connection = currentInputConnection ?: return@showSmartSuggestions
                     val currentText = runCatching {
-                        connection.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                        connection.getTextBeforeCursor(160, 0)?.toString().orEmpty()
                     }.getOrDefault("")
                     if (currentText != before) return@showSmartSuggestions
                     connection.commitText(selected, 1)
@@ -1139,8 +1139,8 @@ class QingjianInputMethodService :
         if (candidates.size < 2 || preedit.isBlank() || composer.privateInput ||
             composer.directInput || !composer.chinese || editor != null) return
         val input = currentInputConnection ?: return
-        val before = runCatching { input.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
-        val after = runCatching { input.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
+        val before = runCatching { input.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { input.getTextAfterCursor(48, 0)?.toString().orEmpty() }.getOrDefault("")
         if (before.isBlank() && after.isBlank()) return
         val candidateTexts = candidates.map { it.text }
         if (candidateTexts.distinct().size != candidateTexts.size) return
@@ -1153,8 +1153,8 @@ class QingjianInputMethodService :
                     currentInputEditorInfo?.packageName == editorPackage
                 ) {
                     val liveInput = currentInputConnection
-                    val liveBefore = runCatching { liveInput?.getTextBeforeCursor(64, 0)?.toString().orEmpty() }.getOrDefault("")
-                    val liveAfter = runCatching { liveInput?.getTextAfterCursor(32, 0)?.toString().orEmpty() }.getOrDefault("")
+                    val liveBefore = runCatching { liveInput?.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+                    val liveAfter = runCatching { liveInput?.getTextAfterCursor(48, 0)?.toString().orEmpty() }.getOrDefault("")
                     if (liveBefore == before && liveAfter == after) {
                         val remaining = candidates.indices.toMutableList()
                         val order = ranked.mapNotNull { value ->
