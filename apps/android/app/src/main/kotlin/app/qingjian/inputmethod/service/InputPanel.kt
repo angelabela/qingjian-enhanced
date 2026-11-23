@@ -356,6 +356,14 @@ class InputPanel(
     val bar = CandidateBarView(context, palette, settings.candidateFontSize / 20f, stripSource, settings.toolbar, barListener,
         settings.fontWeight, true, candidateTextStyleConfig).apply {
         setBackgroundColor(Color.TRANSPARENT)
+        // 首帧尚未取得视频亮度时先按主题给出可读颜色；光效模式按配色组选择黑/白高对比文字。
+        setAdaptiveTextColor(
+            when {
+                videoBackgroundUri != null -> if (palette.dark) Color.WHITE else Color.BLACK
+                backgroundEffectActive -> if (settings.keyboardBackgroundStyle in 5..6) Color.WHITE else Color.BLACK
+                else -> null
+            },
+        )
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
@@ -491,7 +499,17 @@ class InputPanel(
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
+        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
         transparentBackground = effectEnabled || uri != null
+        // 候选文字与背景模式同步：视频先用主题对比色并随后按视频帧亮度微调；光效按色组切换；
+        // 两种动态背景都关闭时清除旧的自适应颜色，恢复当前候选文字样式配置。
+        bar.setAdaptiveTextColor(
+            when {
+                uri != null -> if (palette.dark) Color.WHITE else Color.BLACK
+                effectEnabled -> if (style in 5..6) Color.WHITE else Color.BLACK
+                else -> null
+            },
+        )
         // 候选栏始终透明；静态主题底色由 root 绘制，开启视频时则透出同一纹理层。
         bar.setTransparentBackground(true, palette.board)
         keyboard.setTransparentBackground(transparentBackground, palette.board)
@@ -501,7 +519,6 @@ class InputPanel(
             is AiChatPanel -> active.setTransparentBackground(transparentBackground)
             is AiExpressionPanel -> active.setTransparentBackground(transparentBackground)
         }
-        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
         root.background = when {
             effectEnabled -> FlowingKeyboardBackgroundDrawable(palette, style)
             uri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
@@ -804,8 +821,8 @@ class InputPanel(
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             measureChild(main, widthMeasureSpec, heightMeasureSpec)
-            val height = MeasureSpec.makeMeasureSpec(main.measuredHeight, MeasureSpec.EXACTLY)
-            // 视频层延伸到 root 为导航栏预留的底部 inset；Stack 自身高度保持不变。
+            val contentWidth = MeasureSpec.makeMeasureSpec(main.measuredWidth, MeasureSpec.EXACTLY)
+            // 视频层延伸到 root 为导航栏预留的底部 inset；宽度严格跟随实际面板内容宽度。
             val videoHeight = MeasureSpec.makeMeasureSpec(
                 main.measuredHeight + videoBottomExtension,
                 MeasureSpec.EXACTLY,
@@ -814,7 +831,7 @@ class InputPanel(
                 val child = getChildAt(i)
                 if (child === main) continue
                 if (child === videoBackground || child === videoTint) {
-                    child.measure(widthMeasureSpec, videoHeight)
+                    child.measure(contentWidth, videoHeight)
                     continue
                 }
                 if (child is CloudSuggestionsView) {
@@ -827,8 +844,8 @@ class InputPanel(
                 } else main.measuredHeight
                 child.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY))
             }
-            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), main.measuredHeight)
-            val signature = "stack=${measuredWidth}x${measuredHeight} main=${main.measuredWidth}x${main.measuredHeight} video=${videoBackground?.measuredWidth ?: 0}x${videoBackground?.measuredHeight ?: 0} bottomExtension=$videoBottomExtension"
+            setMeasuredDimension(main.measuredWidth, main.measuredHeight)
+            val signature = "stack=${measuredWidth}x${measuredHeight} main=${main.measuredWidth}x${main.measuredHeight} video=${videoBackground?.measuredWidth ?: 0}x${videoBackground?.measuredHeight ?: 0} tint=${videoTint?.measuredWidth ?: 0}x${videoTint?.measuredHeight ?: 0} bottomExtension=$videoBottomExtension"
             if (signature != lastVideoMeasureSignature) {
                 lastVideoMeasureSignature = signature
                 AppLog.info("[VIDEO_BG_DIAG] $signature")
