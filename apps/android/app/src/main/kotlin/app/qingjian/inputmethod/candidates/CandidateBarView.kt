@@ -126,8 +126,10 @@ class CandidateBarView(
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
     /** 工具栏位置上的一句提示与点它要做的事；null 是没有提示。几秒后、出候选或点过就收起。 */
     private var notice: Pair<String, () -> Unit>? = null
+    private var persistentNotice = false
     private val clearNotice = Runnable {
         notice = null
+        persistentNotice = false
         invalidate()
     }
 
@@ -202,7 +204,7 @@ class CandidateBarView(
         lastShownPreedit = preedit
         lastShownCandidates = candidates.toList()
         closePopup()
-        if (preedit.isNotEmpty() || candidates.isNotEmpty()) clearNotice.run()
+        if (preedit.isNotEmpty()) clearNotice.run()
         strip.show(preedit, candidates, animateCandidates)
         scroller.forceFinished(true)
         scrollTo(0, 0)
@@ -212,6 +214,7 @@ class CandidateBarView(
     /** 在工具栏的位置放一句提示 [message]，点它执行 [action]（打开对应的设置页）。 */
     fun showNotice(message: String, action: () -> Unit) {
         notice = message to action
+        persistentNotice = false
         removeCallbacks(clearNotice)
         postDelayed(clearNotice, NOTICE_MS)
         invalidate()
@@ -220,6 +223,7 @@ class CandidateBarView(
     /** 短信验证码等需要用户主动处理的提示：不自动消失，点击或开始输入后收起。 */
     fun showPersistentNotice(message: String, action: () -> Unit) {
         notice = message to action
+        persistentNotice = true
         removeCallbacks(clearNotice)
         invalidate()
     }
@@ -248,6 +252,7 @@ class CandidateBarView(
 
     override fun onDraw(canvas: Canvas) = when {
         resizing -> resizeHandle.draw(canvas, width)
+        persistentNotice && notice != null -> toolbar.drawNotice(canvas, width, notice!!.first)
         strip.isEmpty && notice != null -> toolbar.drawNotice(canvas, width, notice!!.first)
         strip.isEmpty -> {
             toolbar.draw(canvas, width)
@@ -348,6 +353,12 @@ class CandidateBarView(
     }
 
     private fun tap(x: Float, y: Float) {
+        if (persistentNotice && notice != null) {
+            val action = notice!!.second
+            clearNotice.run()
+            action()
+            return
+        }
         if (expandable && x >= stripWidth) {
             listener.onExpand()
             return
