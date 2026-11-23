@@ -19,9 +19,9 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * 语音频谱动效。前两种是 53 号工作流原有的频谱柱、环形频谱；
- * 后五种沿用 PhysicsWaveView 的物理模型。所有样式共用同一组真实 FFT 频带，
- * 不在识别线程中做绘制或额外音频分析。
+ * 语音频谱动效。基础样式与新增的五种排列共用 48 段真实 FFT 频带；
+ * 物理样式另用 18 个聚合频带驱动弹簧、粒子和流体运动。
+ * 所有绘制都在 View 帧回调中完成，不在识别线程里创建画布对象或额外分析音频。
  */
 class PhysicsWaveView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
