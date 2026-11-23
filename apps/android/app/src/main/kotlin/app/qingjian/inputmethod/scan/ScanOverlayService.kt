@@ -562,6 +562,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }.apply {
             isFocusableInTouchMode = true
+            isClickable = true // 父容器拦截预览区双指缩放后，继续接收完整触摸序列。
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             clipChildren = false
             clipToPadding = false
