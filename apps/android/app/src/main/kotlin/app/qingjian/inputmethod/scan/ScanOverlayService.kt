@@ -1417,13 +1417,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (shuttingDown) return
         android.os.Handler(mainLooper).post {
             if (shuttingDown) return@post
-            // 网址扫码结果同时写入系统剪贴板，方便稍后从剪贴板面板打开或分享。
-            ScanContent.webUrl(value)?.let { url ->
-                runCatching {
-                    getSystemService(ClipboardManager::class.java)
-                        ?.setPrimaryClip(ClipData.newPlainText("扫码网址", url))
-                }.onFailure { scanDiag("copy scanned URL to clipboard failed: ${it.javaClass.simpleName}", warning = true) }
-            }
+            // 剪贴板补录统一由输入法服务按内容去重后完成，扫描端不覆盖现有剪贴板。
             scanDiag("broadcast scan result length=${value.length} editorPrefixActive=${ScanPreferences.isPrefixEditorActive()}")
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
