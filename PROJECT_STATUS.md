@@ -7,7 +7,9 @@
 - 剪贴板提示只在相同内容仍显示时去重；输入组合结束后重新读取系统 primaryClip，避免提示被输入动作清除后无法恢复。
 - 扫码网址/Wi-Fi 提示移除 5 秒自动关闭与临时抑制，保持可见直到点击或新内容替换。
 - APP 版本：0.3.21-dev；按 Gradle 公式 versionCode=321。
-- 本轮代码提交后由 GitHub Actions 构建固定签名 APK；CI 成功不代表设备验收，四项均待新 APK 实测。
+- 最终应用源码提交：`5a2103dbcb8b85052d22156d73e48d73136db96e`；此前 #552–#554 对应中间提交，不作为最终测试包。
+- 最终固定签名工作流：#555 / run ID `45100691585`，当前构建中；运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45100691585。
+- APP 版本：0.3.21-dev / versionCode 321。构建与签名验证尚未完成；完成后仍需用户实机验收。
 
 ---
 
