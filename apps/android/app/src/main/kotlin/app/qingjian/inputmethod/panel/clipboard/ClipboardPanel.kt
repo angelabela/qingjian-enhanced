@@ -385,26 +385,19 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            val phase = ((i % 5) + 1) / 5f
+            val phase = ((i % 4) + 1) / 4f
             val strength = (kotlin.math.abs(scrollMotion) / ink.dp(36f).coerceAtLeast(1f)).coerceIn(0f, 1f)
             val direction = if (scrollMotion < 0f) -1f else 1f
-            // 柔和的纵向浮层：取消旋转和横向甩动，卡片只做轻微升降与缩放，避免视觉抖动。
-            val lift = -direction * strength * ink.dp(7f) * phase
-            val motionAlpha = (255 - strength * 28f).toInt().coerceIn(220, 255)
+            // 改为错列横向滑入与轻淡入，不再使用上一版的纵向升降、缩放和描边光效。
+            val drift = direction * strength * ink.dp(9f) * phase
+            val motionAlpha = (255 - strength * 52f).toInt().coerceIn(190, 255)
             val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(4f), width.toFloat(), bottom + ink.dp(4f), motionAlpha)
             canvas.save()
-            canvas.translate(0f, lift)
-            canvas.scale(1f - strength * 0.004f, 1f - strength * 0.009f, width / 2f, (top + bottom) / 2f)
+            canvas.translate(drift, 0f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
-            if (strength > 0.025f) {
-                scrollGlowPaint.strokeWidth = ink.dp(2.8f)
-                scrollGlowPaint.color = (palette.brand and 0x00FFFFFF) or ((strength * 220f).toInt().coerceIn(0, 220) shl 24)
-                val glowRect = RectF(ink.dp(CARD_MARGIN_DP), top + ink.dp(1f), width - ink.dp(CARD_MARGIN_DP), bottom - ink.dp(1f))
-                canvas.drawRoundRect(glowRect, ink.dp(12f), ink.dp(12f), scrollGlowPaint)
-            }
             canvas.restore()
             canvas.restoreToCount(cardLayer)
         }
