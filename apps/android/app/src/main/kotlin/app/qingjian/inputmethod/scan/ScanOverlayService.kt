@@ -16,7 +16,7 @@ import android.graphics.Paint
 import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import de.markusfisch.android.zxingcpp.ZxingCpp
+import zxingcpp.BarcodeReader
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -104,6 +104,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
     private lateinit var scanner: BarcodeScanner
+    private val binaryEyeReader by lazy { BarcodeReader(BarcodeReader.Options(
+        tryHarder = true, tryRotate = true, tryInvert = true, tryDownscale = true, maxNumberOfSymbols = 1,
+    )) }
     private lateinit var textRecognizer: TextRecognizer
     private var imageCapture: ImageCapture? = null
     @Volatile private var ocrMode = false
@@ -1184,19 +1187,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private fun decodeWithZxing(proxy: androidx.camera.core.ImageProxy): Pair<String, RectF>? {
         val plane = proxy.planes.firstOrNull() ?: return null
         if (proxy.width < 2 || proxy.height < 2) return null
-        val result = ZxingCpp.readYBuffer(
-            plane.buffer.duplicate(),
-            plane.rowStride,
-            android.graphics.Rect(0, 0, proxy.width, proxy.height),
-            proxy.imageInfo.rotationDegrees,
-            ZxingCpp.ReaderOptions(
-                tryHarder = true,
-                tryRotate = true,
-                tryInvert = true,
-                tryDownscale = true,
-                maxNumberOfSymbols = 1,
-            ),
-        )?.firstOrNull() ?: return null
+        val result = runCatching {
+            binaryEyeReader.options.binarizer = BarcodeReader.Binarizer.LOCAL_AVERAGE
+            binaryEyeReader.read(proxy).firstOrNull()
+                ?: run {
+                    binaryEyeReader.options.binarizer = BarcodeReader.Binarizer.GLOBAL_HISTOGRAM
+                    binaryEyeReader.read(proxy).firstOrNull()
+                }
+        }.onFailure { android.util.Log.w(TAG, "Binary Eye ZXing-C++ decode failed", it) }.getOrNull()
+            ?: return null
         val value = result.text.trim()
         if (value.isEmpty()) return null
         val position = result.position
