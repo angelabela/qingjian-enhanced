@@ -94,6 +94,22 @@ class ClipboardPanel(
 
     init { activeInstance = WeakReference(this) }
     private val searchRect = RectF()
+    private val searchCursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.brand
+        strokeWidth = ink.dp(1.3f)
+    }
+    private var searchCursorVisible = true
+    private val searchCursorBlink = object : Runnable {
+        override fun run() {
+            if (!searchEditing || !isAttachedToWindow || showingPhrases) {
+                searchCursorVisible = false
+                return
+            }
+            searchCursorVisible = !searchCursorVisible
+            invalidate()
+            postDelayed(this, 520L)
+        }
+    }
     private var page: PhrasePage = ClipboardStore.phrases(context)
 
     // 自动记忆短语只供输入引擎召回，不作为用户管理的常用语展示。
@@ -205,6 +221,9 @@ class ClipboardPanel(
     private fun openSearchEditor() {
         searchPopup?.dismiss()
         searchEditing = true
+        removeCallbacks(searchCursorBlink)
+        searchCursorVisible = true
+        postDelayed(searchCursorBlink, 520L)
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
@@ -228,6 +247,8 @@ class ClipboardPanel(
             if (isAttachedToWindow) {
                 dragging = true
                 longPressTriggered = true
+                pressedKey = null
+                invalidate()
                 Haptics.tap(context)
             }
         }
@@ -235,6 +256,8 @@ class ClipboardPanel(
             private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val keys = ArrayList<Pair<Char, RectF>>()
             private val gap = ink.dp(4f)
+            private var pressedKey: Char? = null
+            private var downKey: Char? = null
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
@@ -253,15 +276,17 @@ class ClipboardPanel(
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
                 keys.forEach { (ch, r) ->
+                    val pressed = ch == pressedKey
+                    val keyBounds = RectF(r).apply { if (pressed) offset(0f, ink.dp(1.2f)) }
                     paint.style = Paint.Style.FILL
-                    paint.color = palette.surface
-                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.color = if (pressed) palette.brand else palette.surface
+                    canvas.drawRoundRect(keyBounds, ink.dp(8f), ink.dp(8f), paint)
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = ink.dp(1f)
-                    paint.color = palette.brand
-                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.strokeWidth = if (pressed) ink.dp(1.5f) else ink.dp(1f)
+                    paint.color = if (pressed) palette.onBrand else palette.brand
+                    canvas.drawRoundRect(keyBounds, ink.dp(8f), ink.dp(8f), paint)
                     paint.style = Paint.Style.FILL
-                    paint.color = palette.text
+                    paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
                     paint.textSize = ink.dp(18f)
                     canvas.drawText(ch.toString(), r.centerX(), r.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
@@ -274,6 +299,9 @@ class ClipboardPanel(
                         longPressTriggered = false
                         downRawX = event.rawX
                         downRawY = event.rawY
+                        downKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                        pressedKey = downKey
+                        invalidate()
                         popupStartX = popupCurrentX
                         popupStartY = popupCurrentY
                         postDelayed(beginDrag, android.view.ViewConfiguration.getLongPressTimeout().toLong())
@@ -291,26 +319,32 @@ class ClipboardPanel(
                             popupWindow?.update(nextX, nextY, -1, -1)
                         } else if (kotlin.math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) > ink.dp(10f)) {
                             removeCallbacks(beginDrag)
+                            pressedKey = null
+                            invalidate()
                         }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
                         removeCallbacks(beginDrag)
                         if (!dragging && !longPressTriggered) {
-                            keys.firstOrNull { it.second.contains(event.x, event.y) }?.first?.let { ch ->
-                                searchQuery += ch
-                                expanded = -1
-                                layouts.clear()
-                                listScroll.reset()
-                                invalidate()
+                            val releasedKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                            if (downKey != null && releasedKey == downKey) {
+                                updateSearchQuery(searchQuery + downKey)
+                                Haptics.tap(context)
                             }
                         }
+                        pressedKey = null
+                        downKey = null
+                        invalidate()
                         dragging = false
                         longPressTriggered = false
                         return true
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         removeCallbacks(beginDrag)
+                        pressedKey = null
+                        downKey = null
+                        invalidate()
                         dragging = false
                         longPressTriggered = false
                         return true
@@ -330,6 +364,8 @@ class ClipboardPanel(
             setOnDismissListener {
                 if (searchPopup === this) searchPopup = null
                 searchEditing = false
+                removeCallbacks(searchCursorBlink)
+                searchCursorVisible = false
                 context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
                     .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
             }
@@ -348,12 +384,24 @@ class ClipboardPanel(
         Haptics.tap(context)
     }
 
+    private fun updateSearchQuery(value: String) {
+        searchQuery = value
+        expanded = -1
+        layouts.clear()
+        listScroll.reset()
+        searchCursorVisible = true
+        removeCallbacks(searchCursorBlink)
+        if (searchEditing) postDelayed(searchCursorBlink, 520L)
+        invalidate()
+    }
+
     private fun applySearchKey(key: Key): Boolean {
         if (!searchEditing) return false
         val next = when (key) {
             Key.Backspace -> {
                 if (searchQuery.isEmpty()) {
                     searchEditing = false
+                    removeCallbacks(searchCursorBlink)
                     searchPopup?.dismiss()
                     searchPopup = null
                     context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
@@ -369,6 +417,7 @@ class ClipboardPanel(
             is Key.Space -> searchQuery + " "
             is Key.Enter -> {
                 searchEditing = false
+                removeCallbacks(searchCursorBlink)
                 searchPopup?.dismiss()
                 searchPopup = null
                 context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
@@ -378,11 +427,7 @@ class ClipboardPanel(
             }
             else -> return false
         }
-        searchQuery = next
-        expanded = -1
-        layouts.clear()
-        listScroll.reset()
-        invalidate()
+        updateSearchQuery(next)
         return true
     }
 
@@ -390,6 +435,8 @@ class ClipboardPanel(
         searchPopup?.dismiss()
         searchPopup = null
         searchEditing = false
+        removeCallbacks(searchCursorBlink)
+        searchCursorVisible = false
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
         if (activeInstance?.get() === this) activeInstance = null
@@ -408,11 +455,17 @@ class ClipboardPanel(
             pasteNextCellRect.set(pasteNextCellBounds())
             ink.round(canvas, searchRect, 10f, palette.surface)
             ink.icon(canvas, Icon.SEARCH, searchRect.left + ink.dp(14f), searchRect.centerY(), 15f, palette.gloss)
-            val queryLabel = searchQuery.ifEmpty { if (searchEditing) "输入关键词…" else if (clearArmed) "确认清空" else "搜索" }
+            val queryLabel = searchQuery.ifEmpty { if (searchEditing) "" else if (clearArmed) "确认清空" else "搜索" }
             ink.textStart(canvas, queryLabel, 11.5f,
                 if (searchQuery.isEmpty()) palette.gloss else palette.text,
                 searchRect.left + ink.dp(26f), searchRect.centerY() + ink.dp(1f),
                 searchRect.right - ink.dp(30f))
+            if (searchEditing && searchCursorVisible) {
+                val cursorX = (searchRect.left + ink.dp(26f) + ink.measure(searchQuery, 11.5f))
+                    .coerceAtMost(searchRect.right - ink.dp(29f))
+                canvas.drawLine(cursorX, searchRect.centerY() - ink.dp(8f),
+                    cursorX, searchRect.centerY() + ink.dp(8f), searchCursorPaint)
+            }
             if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(11f), searchRect.centerY(), 13f, palette.gloss)
             val resultLabel = "${visibleClipIndices.size}/${clips.size}"
             ink.textStart(canvas, resultLabel, 10.5f, palette.gloss,
@@ -971,6 +1024,8 @@ class ClipboardPanel(
 
     override fun onTap(x: Float, y: Float) {
         if (searchEditing && !searchRect.contains(x, y)) {
+            removeCallbacks(searchCursorBlink)
+            searchCursorVisible = false
             searchPopup?.dismiss()
             searchPopup = null
             searchEditing = false
@@ -996,7 +1051,7 @@ class ClipboardPanel(
                 collapse()
             }
             !showingPhrases && searchRect.contains(x, y) -> {
-                if (x > searchRect.right - ink.dp(26f) && searchQuery.isNotEmpty()) { searchQuery = ""; listScroll.reset(); layouts.clear(); invalidate() }
+                if (x > searchRect.right - ink.dp(26f) && searchQuery.isNotEmpty()) updateSearchQuery("")
                 else openSearchEditor()
             }
             list.contains(x, y) -> tapList(x, y - list.top + listScroll.offset)
@@ -1157,11 +1212,7 @@ class ClipboardPanel(
         fun clearSearchQuery(): Boolean {
             val panel = activeInstance?.get() ?: return false
             if (!panel.searchEditing) return false
-            panel.searchQuery = ""
-            panel.expanded = -1
-            panel.layouts.clear()
-            panel.listScroll.reset()
-            panel.invalidate()
+            panel.updateSearchQuery("")
             return true
         }
 
