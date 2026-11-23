@@ -243,12 +243,12 @@ class ClipboardPanel(
         var popupStartY = 0
         var popupCurrentX = 0
         var popupCurrentY = 0
+        var clearPressedKey: (() -> Unit)? = null
         val beginDrag = Runnable {
             if (isAttachedToWindow) {
                 dragging = true
                 longPressTriggered = true
-                pressedKey = null
-                invalidate()
+                clearPressedKey?.invoke()
                 Haptics.tap(context)
             }
         }
@@ -258,6 +258,7 @@ class ClipboardPanel(
             private val gap = ink.dp(4f)
             private var pressedKey: Char? = null
             private var downKey: Char? = null
+            init { clearPressedKey = { pressedKey = null; invalidate() } }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
@@ -329,8 +330,10 @@ class ClipboardPanel(
                         if (!dragging && !longPressTriggered) {
                             val releasedKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                             if (downKey != null && releasedKey == downKey) {
-                                updateSearchQuery(searchQuery + downKey)
-                                Haptics.tap(context)
+                                downKey?.let { ch ->
+                                    updateSearchQuery(searchQuery + ch)
+                                    Haptics.tap(context)
+                                }
                             }
                         }
                         pressedKey = null
