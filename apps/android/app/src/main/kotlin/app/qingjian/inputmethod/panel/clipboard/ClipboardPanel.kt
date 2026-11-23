@@ -38,6 +38,8 @@ import app.qingjian.inputmethod.core.store.PhraseRules
 import app.qingjian.inputmethod.scan.ScanContent
 import app.qingjian.inputmethod.scan.WifiJoinActivity
 import app.qingjian.inputmethod.keyboard.Haptics
+import app.qingjian.inputmethod.keyboard.layout.Key
+import java.lang.ref.WeakReference
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
@@ -64,6 +66,8 @@ class ClipboardPanel(
     headerHeight: Float,
     phrasesFirst: Boolean,
 ) : PanelView(context, palette, actions, headerHeight) {
+    init { activeInstance = WeakReference(this) }
+
     private val tabs = Tabs(ink, scrollable(true) { _, _ -> false }, Tabs.Style.UNDERLINE).apply {
         labels = listOf("剪贴板", "常用语")
         selected = if (phrasesFirst) PHRASES else CLIPS
@@ -75,7 +79,7 @@ class ClipboardPanel(
     private val visibleClipIndices: List<Int> get() = clips.indices.filter { index -> searchQuery.isBlank() || clips[index].text.contains(searchQuery, ignoreCase = true) }
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
-    private var searchPopup: PopupWindow? = null
+    private var searchEditing = false
     private val searchRect = RectF()
     private var page: PhrasePage = ClipboardStore.phrases(context)
 
@@ -181,73 +185,53 @@ class ClipboardPanel(
 
     private fun groupTop() = height - ink.dp(GROUP_BAR_DP)
 
-    /** 搜索框使用真实 EditText 弹层；弹层附着后再重启输入连接并请求键盘。 */
+    /** 搜索直接接收青简自己的按键事件，避免输入法再次请求启动自身造成 InputConnection 冲突。 */
     private fun openSearchEditor() {
-        searchPopup?.dismiss()
-        val editor = EditText(context).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-            setSingleLine(true)
-            textSize = 13f
-            setTextColor(palette.text)
-            setHintTextColor(palette.gloss)
-            hint = "搜索"
-            setPadding(ink.dp(8f).toInt(), 0, ink.dp(8f).toInt(), 0)
-            setBackgroundColor(Color.TRANSPARENT)
-            setText(searchQuery)
-            setSelection(text?.length ?: 0)
-        }
+        searchEditing = true
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
-        val popup = PopupWindow(editor, searchRect.width().toInt().coerceAtLeast(1), ink.dp(40f).toInt(), true).apply {
-            isFocusable = true
-            isTouchable = true
-            isOutsideTouchable = true
-            setBackgroundDrawable(ColorDrawable(palette.surface))
-            elevation = ink.dp(12f)
-            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            setOnDismissListener {
+        invalidate()
+    }
+
+    private fun applySearchKey(key: Key): Boolean {
+        if (!searchEditing) return false
+        val next = when (key) {
+            Key.Backspace -> {
+                if (searchQuery.isEmpty()) {
+                    searchEditing = false
+                    context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                        .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+                    invalidate()
+                    return true
+                }
+                searchQuery.dropLast(1)
+            }
+            is Key.Letter -> searchQuery + key.char
+            is Key.Digit -> searchQuery + key.digit
+            is Key.Text -> searchQuery + key.text
+            is Key.Space -> searchQuery + " "
+            is Key.Enter -> {
+                searchEditing = false
                 context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
                     .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
-                if (searchPopup === this) searchPopup = null
-            }
-        }
-        editor.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchQuery = s?.toString().orEmpty()
-                expanded = -1
-                layouts.clear()
-                listScroll.reset()
                 invalidate()
+                return true
             }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-        val location = IntArray(2)
-        getLocationOnScreen(location)
-        popup.showAtLocation(this, Gravity.TOP or Gravity.START,
-            location[0] + searchRect.left.toInt(), location[1] + searchRect.top.toInt())
-        searchPopup = popup
-        editor.postDelayed({
-            if (searchPopup !== popup || !popup.isShowing) return@postDelayed
-            editor.requestFocusFromTouch()
-            editor.requestFocus()
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.restartInput(editor)
-            val shown = imm?.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) == true
-            if (!shown) imm?.showSoftInput(editor, InputMethodManager.SHOW_FORCED)
-        }, 90L)
+            else -> return false
+        }
+        searchQuery = next
+        expanded = -1
+        layouts.clear()
+        listScroll.reset()
+        invalidate()
+        return true
     }
 
     override fun onDetachedFromWindow() {
-        searchPopup?.dismiss()
-        searchPopup = null
+        searchEditing = false
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+        if (activeInstance?.get() === this) activeInstance = null
         super.onDetachedFromWindow()
     }
 
@@ -304,7 +288,7 @@ class ClipboardPanel(
         }
         lastDrawnScrollOffset = listScroll.offset
         if (kotlin.math.abs(scrollMotion) > 0.18f) {
-            scrollMotion *= 0.78f
+            scrollMotion *= 0.84f
             postInvalidateOnAnimation()
         } else scrollMotion = 0f
         canvas.save()
@@ -319,17 +303,16 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            val phase = ((i % 4) + 1) / 4f
-            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(32f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val phase = ((i % 5) + 1) / 5f
+            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(36f).coerceAtLeast(1f)).coerceIn(0f, 1f)
             val direction = if (scrollMotion < 0f) -1f else 1f
-            val slide = direction * strength * ink.dp(14f) * phase
-            val tilt = direction * strength * 2.4f * phase
-            val motionAlpha = (255 - strength * 96f).toInt().coerceIn(145, 255)
+            // 柔和的纵向浮层：取消旋转和横向甩动，卡片只做轻微升降与缩放，避免视觉抖动。
+            val lift = -direction * strength * ink.dp(7f) * phase
+            val motionAlpha = (255 - strength * 28f).toInt().coerceIn(220, 255)
             val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(4f), width.toFloat(), bottom + ink.dp(4f), motionAlpha)
             canvas.save()
-            canvas.translate(slide, 0f)
-            canvas.rotate(tilt, width / 2f, (top + bottom) / 2f)
-            canvas.scale(1f - strength * 0.018f, 1f, width / 2f, (top + bottom) / 2f)
+            canvas.translate(0f, lift)
+            canvas.scale(1f - strength * 0.004f, 1f - strength * 0.009f, width / 2f, (top + bottom) / 2f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
@@ -956,9 +939,14 @@ class ClipboardPanel(
         private const val DELETE_REPEAT_INTERVAL_MS = 55L
         private val PREVIEW_BUTTONS = listOf("关闭", "发送")
 
+        private var activeInstance: WeakReference<ClipboardPanel>? = null
+
         fun isSearchEditorActive(context: Context): Boolean =
-            context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
-                .getBoolean(SEARCH_EDITOR_ACTIVE, false)
+            activeInstance?.get()?.searchEditing == true ||
+                context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(SEARCH_EDITOR_ACTIVE, false)
+
+        fun handleSearchKey(key: Key): Boolean = activeInstance?.get()?.applySearchKey(key) == true
 
         /** 常用语停在哪一组：关了面板再开还在这组；加完常用语跳到它所在的组。 */
         var lastGroup = PhraseRules.defaultGroup
