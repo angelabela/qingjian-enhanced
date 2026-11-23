@@ -31,35 +31,34 @@ class WifiJoinActivity : Activity() {
     }
 
     private fun buildNetwork(): WifiNetworkSuggestion? {
-        val builder = WifiNetworkSuggestion.Builder()
-            .setSsid(ssid)
-            .setIsHiddenSsid(hidden)
-        when (security.trim().uppercase().replace(" ", "")) {
-            "NOPASS", "OPEN", "NONE" -> Unit
-            "OWE" -> {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                    Toast.makeText(this, "当前 Android 版本不支持增强型开放 Wi-Fi，请手动连接", Toast.LENGTH_LONG).show()
-                    return null
-                }
-                builder.setIsEnhancedOpen(true)
-            }
-            "WPA3", "SAE", "WPA3-SAE" -> builder.setWpa3Passphrase(password)
-            "WPA", "WPA2", "WPA-PSK", "WPA2-PSK", "WPA/WPA2", "WPA2/WPA3" ->
-                builder.setWpa2Passphrase(password)
-            "WEP", "EAP", "802.1X", "WPA-EAP", "WPA2-EAP" -> {
-                Toast.makeText(this, "识别到的 Wi-Fi 是 $security 加密类型，当前无法自动配置，请在系统 Wi-Fi 页面手动连接", Toast.LENGTH_LONG).show()
-                return null
-            }
-            else -> {
-                Toast.makeText(this, "暂不支持「$security」Wi-Fi 加密类型，请在系统页面手动连接", Toast.LENGTH_LONG).show()
-                return null
-            }
+        val type = security.trim().uppercase().replace(" ", "")
+        val openNetwork = type in setOf("NOPASS", "OPEN", "NONE")
+        val supported = type in setOf(
+            "NOPASS", "OPEN", "NONE", "OWE",
+            "WPA", "WPA2", "WPA-PSK", "WPA2-PSK", "WPA/WPA2", "WPA2/WPA3",
+            "WPA3", "SAE", "WPA3-SAE",
+        )
+        if (!supported) {
+            Toast.makeText(this, "识别到的 Wi-Fi 是 $security 加密类型，当前无法自动配置，请在系统 Wi-Fi 页面手动连接", Toast.LENGTH_LONG).show()
+            return null
         }
-        if (security.uppercase() !in setOf("OPEN", "NOPASS", "NONE", "OWE") && password.isBlank()) {
+        if (!openNetwork && type != "OWE" && password.isBlank()) {
             Toast.makeText(this, "Wi-Fi 密码为空，无法连接", Toast.LENGTH_LONG).show()
             return null
         }
-        return runCatching { builder.build() }.getOrElse {
+
+        val builder = WifiNetworkSuggestion.Builder()
+            .setSsid(ssid)
+            .setIsHiddenSsid(hidden)
+        return runCatching {
+            when (type) {
+                "NOPASS", "OPEN", "NONE" -> Unit
+                "OWE" -> builder.setIsEnhancedOpen(true)
+                "WPA3", "SAE", "WPA3-SAE" -> builder.setWpa3Passphrase(password)
+                else -> builder.setWpa2Passphrase(password)
+            }
+            builder.build()
+        }.getOrElse {
             Toast.makeText(this, "Wi-Fi 参数无效：${it.message ?: "请检查密码和加密类型"}", Toast.LENGTH_LONG).show()
             null
         }

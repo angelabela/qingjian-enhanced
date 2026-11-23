@@ -490,7 +490,6 @@ class KeyboardView(
     /** 只有从 Z/X/C/V 键开始并明显向下滑动才触发编辑操作；水平偏移过大则交还原手势。 */
     private fun trackEditShortcut(event: MotionEvent) {
         if (editPointer < 0 || editTriggered || editAction == null) return
-        val sourceKey = pressed[editPointer]?.key ?: return
         // Z/X/C/V 是固定编辑快捷键，不能被自定义下滑动作覆盖。
         val at = event.findPointerIndex(editPointer)
         if (at < 0) return

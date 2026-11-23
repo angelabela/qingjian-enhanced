@@ -28,7 +28,6 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ViewOutlineProvider
 import android.view.ViewGroup
-import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -964,7 +963,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     (availableHeight * 3f / 4f).toInt(),
                 ).coerceAtLeast((220 * density).toInt())
                 val minSize = (220 * density).toInt()
-                val delta = maxOf(event.rawX - resizeRawX, (event.rawY - resizeRawY) * 0.75f)
+                val deltaX = event.rawX - resizeRawX
+                val deltaY = (event.rawY - resizeRawY) * 0.75f
+                val delta = if (kotlin.math.abs(deltaX) >= kotlin.math.abs(deltaY)) deltaX else deltaY
                 windowParams.width = (resizeStartW + delta).toInt().coerceIn(minSize, maxOf(minSize, maxW))
                 windowParams.height = (windowParams.width * 4f / 3f).toInt() + headerHeight - (1 * density).toInt()
                 updateOverlayPositions()
