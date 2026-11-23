@@ -170,6 +170,7 @@ class QingjianInputMethodService :
     private var clipboardNoticeRetryPending = false
     /** 输入组合期间收到新剪贴板/验证码事件时，等组合结束再显示。 */
     private var clipboardNoticePending = false
+    private var pendingClipboardNoticeCode: String? = null
 
     /** 候选栏在输入法窗口刚显示时可能仍不可见；等待布局完成后再展示最新剪贴板。 */
     private fun scheduleClipboardNoticeRetry(preferredCode: String? = null) {
@@ -236,6 +237,7 @@ class QingjianInputMethodService :
             AppLog.info("[SMS_CODE_DIAG] code-ready listener received length=${code.length} inputViewShown=$visible emptyPreedit=$emptyPreedit")
             if (visible && emptyPreedit) showLatestClipboardNotice(preferredCode = code)
             else if (visible) {
+                pendingClipboardNoticeCode = code
                 clipboardNoticePending = true
                 AppLog.info("[SMS_CODE_DIAG] notice deferred until composition ends")
             } else AppLog.info("[SMS_CODE_DIAG] notice deferred by input state")
@@ -1097,8 +1099,10 @@ class QingjianInputMethodService :
         // 组合输入期间若收到复制/验证码事件，等输入结束后再显示系统当前剪贴板。
         if (preedit.isEmpty() && clipboardNoticePending) {
             clipboardNoticePending = false
+            val preferredCode = pendingClipboardNoticeCode
+            pendingClipboardNoticeCode = null
             Handler(mainLooper).post {
-                if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+                if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice(preferredCode)
             }
         }
         scheduleCandidateRerank(preedit, candidates)
