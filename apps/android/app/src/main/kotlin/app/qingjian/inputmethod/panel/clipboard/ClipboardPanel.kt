@@ -199,6 +199,8 @@ class ClipboardPanel(
             setText(searchQuery)
             setSelection(text?.length ?: 0)
         }
+        context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
         val popup = PopupWindow(editor, searchRect.width().toInt().coerceAtLeast(1), ink.dp(40f).toInt(), true).apply {
             isFocusable = true
             isTouchable = true
@@ -208,7 +210,11 @@ class ClipboardPanel(
             inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            setOnDismissListener { if (searchPopup === this) searchPopup = null }
+            setOnDismissListener {
+                context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                    .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+                if (searchPopup === this) searchPopup = null
+            }
         }
         editor.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -238,19 +244,15 @@ class ClipboardPanel(
     }
 
     override fun onDetachedFromWindow() {
-        searchPopup?.dismiss(); searchPopup = null; super.onDetachedFromWindow()
+        searchPopup?.dismiss()
+        searchPopup = null
+        context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, if (showingPhrases) Icon.PLUS else Icon.TRASH)
-        val summary = if (showingPhrases) {
-            "共 ${page.phrases.count { it.group != AUTO_MEMORY_GROUP }} 条常用语，打输入码可直接出"
-        } else ""
-        val summaryCenterY = headerHeight + ink.dp(SUMMARY_DP) / 2
-        if (showingPhrases) {
-            pasteToggleRect.setEmpty()
-            ink.text(canvas, summary, 12.5f, palette.gloss, width / 2f, summaryCenterY)
-        }
         val searchTop = headerHeight + ink.dp(SUMMARY_DP)
         if (!showingPhrases) {
             // 搜索框固定占面板宽度 30%，三个功能按钮均分剩余空间。
@@ -267,6 +269,10 @@ class ClipboardPanel(
                 searchRect.left + ink.dp(26f), searchRect.centerY() + ink.dp(1f),
                 searchRect.right - ink.dp(30f))
             if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(11f), searchRect.centerY(), 13f, palette.gloss)
+            val resultLabel = "${visibleClipIndices.size}/${clips.size}"
+            ink.textStart(canvas, resultLabel, 10.5f, palette.gloss,
+                searchRect.right + ink.dp(5f), searchRect.centerY() + ink.dp(1f),
+                deleteBackwardBounds().left - ink.dp(4f))
             ink.round(canvas, deleteBackwardRect, 10f, palette.surface)
             ink.icon(canvas, Icon.BACKSPACE, deleteBackwardRect.centerX(), deleteBackwardRect.centerY(), 18f, palette.text)
             ink.round(canvas, pasteToggleRect, 10f, if (pasteEnter) palette.brand else palette.surface)
@@ -279,7 +285,7 @@ class ClipboardPanel(
             pasteToggleRect.setEmpty()
             pasteNextCellRect.setEmpty()
         }
-        val listTop = if (showingPhrases) searchTop else searchTop + ink.dp(SEARCH_BAR_DP)
+        val listTop = if (showingPhrases) headerHeight + ink.dp(6f) else searchTop + ink.dp(SEARCH_BAR_DP)
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, listTop, width.toFloat(), listBottom)
         arrange()
@@ -313,15 +319,17 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            val phase = ((i % 3) + 1) / 3f
+            val phase = ((i % 4) + 1) / 4f
             val strength = (kotlin.math.abs(scrollMotion) / ink.dp(32f).coerceAtLeast(1f)).coerceIn(0f, 1f)
-            val parallax = scrollMotion * phase * 1.18f
-            val motionAlpha = (255 - strength * 128f).toInt().coerceIn(118, 255)
-            val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(3f), width.toFloat(), bottom + ink.dp(3f), motionAlpha)
+            val direction = if (scrollMotion < 0f) -1f else 1f
+            val slide = direction * strength * ink.dp(14f) * phase
+            val tilt = direction * strength * 2.4f * phase
+            val motionAlpha = (255 - strength * 96f).toInt().coerceIn(145, 255)
+            val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(4f), width.toFloat(), bottom + ink.dp(4f), motionAlpha)
             canvas.save()
-            canvas.translate(0f, parallax)
-            val stretch = 1f + strength * 0.035f * if (scrollMotion < 0f) -1f else 1f
-            canvas.scale(1f, stretch, width / 2f, (top + bottom) / 2f)
+            canvas.translate(slide, 0f)
+            canvas.rotate(tilt, width / 2f, (top + bottom) / 2f)
+            canvas.scale(1f - strength * 0.018f, 1f, width / 2f, (top + bottom) / 2f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
@@ -613,11 +621,11 @@ class ClipboardPanel(
 
     private fun actionRowTop() = headerHeight + ink.dp(SUMMARY_DP)
     private fun actionButtonBounds(index: Int): RectF {
-        val left = ink.dp(8f) + width * 0.30f + ink.dp(6f)
+        // 按图标的实际绘制宽度与固定留白定宽，三个按钮靠右排列。
+        val buttonWidth = ink.dp(18f + 14f)
+        val gap = ink.dp(6f)
         val right = width - ink.dp(8f)
-        val gap = ink.dp(4f)
-        val buttonWidth = ((right - left - gap * 2f) / 3f).coerceAtLeast(ink.dp(1f))
-        val buttonLeft = left + index * (buttonWidth + gap)
+        val buttonLeft = right - (3 - index) * (buttonWidth + gap) + gap
         return RectF(buttonLeft, actionRowTop() + ink.dp(2f), buttonLeft + buttonWidth, actionRowTop() + ink.dp(38f))
     }
     private fun deleteBackwardBounds(): RectF = actionButtonBounds(0)
@@ -931,6 +939,8 @@ class ClipboardPanel(
         private const val PHRASES = 1
         private const val AUTO_MEMORY_GROUP = "自动记忆"
         private const val SUMMARY_DP = 4f
+        private const val SEARCH_STATE_PREFS = "clipboard_search_state"
+        private const val SEARCH_EDITOR_ACTIVE = "search_editor_active"
         private const val SEARCH_BAR_DP = 42f
         private const val GROUP_BAR_DP = 48f
         private const val CARD_MARGIN_DP = 10f
@@ -945,6 +955,10 @@ class ClipboardPanel(
         private const val SWIPE_DIRECTION_RATIO = 1.25f
         private const val DELETE_REPEAT_INTERVAL_MS = 55L
         private val PREVIEW_BUTTONS = listOf("关闭", "发送")
+
+        fun isSearchEditorActive(context: Context): Boolean =
+            context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                .getBoolean(SEARCH_EDITOR_ACTIVE, false)
 
         /** 常用语停在哪一组：关了面板再开还在这组；加完常用语跳到它所在的组。 */
         var lastGroup = PhraseRules.defaultGroup
