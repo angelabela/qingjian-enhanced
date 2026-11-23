@@ -2219,11 +2219,18 @@ class QingjianInputMethodService :
 
     override fun onSwipe(input: String) = composer.onSwipe(input)
 
-    override fun onBackspaceDown() = composer.onBackspaceDown()
+    override fun onBackspaceDown() {
+        if (ClipboardPanel.isSearchEditorActive(this)) return
+        composer.onBackspaceDown()
+    }
 
-    override fun onClearAll() = composer.clearAll()
+    override fun onClearAll() {
+        if (!ClipboardPanel.clearSearchQuery()) composer.clearAll()
+    }
 
-    override fun onClearBeforeCursor() = composer.clearBeforeCursor()
+    override fun onClearBeforeCursor() {
+        if (!ClipboardPanel.clearSearchQuery()) composer.clearBeforeCursor()
+    }
 
 
     // 回车键写的字（发送、搜索…）照搬到面板右边的键上；多行框没有动作，写「完成」
