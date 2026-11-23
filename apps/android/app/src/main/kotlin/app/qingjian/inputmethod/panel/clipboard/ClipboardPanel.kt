@@ -54,6 +54,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.Executors
 
 /**
  * 剪贴板与常用语：表头两个页签，下面一张张圆角卡片，点卡片上屏，点右边 ⌄ 展开。
@@ -127,6 +128,7 @@ class ClipboardPanel(
     private val card = RectF()
     private val layouts = HashMap<String, StaticLayout>()
     private val thumbnails = HashMap<String, Bitmap?>()
+    private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val scrollGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -738,12 +740,45 @@ class ClipboardPanel(
         }
     }
 
-    private fun thumbnail(path: String): Bitmap? = thumbnails.getOrPut(path) {
+    /** 图片解码放到单线程后台执行，避免剪贴板面板绘制期间阻塞输入法主线程。 */
+    private fun thumbnail(path: String): Bitmap? {
+        if (thumbnails.containsKey(path)) return thumbnails[path]
+        synchronized(pendingThumbnails) {
+            if (!pendingThumbnails.add(path)) return null
+        }
+        IMAGE_DECODER.execute {
+            val bitmap = decodeThumbnail(path)
+            synchronized(pendingThumbnails) { pendingThumbnails.remove(path) }
+            post {
+                if (thumbnails.size >= 32 && !thumbnails.containsKey(path)) {
+                    thumbnails.keys.firstOrNull()?.let { thumbnails.remove(it) }
+                }
+                thumbnails[path] = bitmap
+                if (isAttachedToWindow) invalidate()
+            }
+        }
+        return null
+    }
+
+    private fun decodeThumbnail(path: String): Bitmap? = try {
+        if (!File(path).isFile) return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val target = ink.dp(IMAGE_DP).toInt().coerceAtLeast(1)
         var sample = 1
-        while (bounds.outHeight / (sample * 2) >= ink.dp(IMAGE_DP)) sample *= 2
-        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+        while (maxOf(bounds.outWidth / (sample * 2), bounds.outHeight / (sample * 2)) >= target) {
+            sample *= 2
+        }
+        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.RGB_565
+            inDither = true
+        })
+    } catch (_: OutOfMemoryError) {
+        null
+    } catch (_: Exception) {
+        null
     }
 
     private fun actionRowTop() = headerHeight + ink.dp(SUMMARY_DP)
@@ -1070,6 +1105,9 @@ class ClipboardPanel(
 
     companion object {
         private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
+        private val IMAGE_DECODER = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "qingjian-clipboard-image").apply { isDaemon = true }
+        }
         private const val CLIPS = 0
         private const val PHRASES = 1
         private const val AUTO_MEMORY_GROUP = "自动记忆"
