@@ -471,6 +471,8 @@ class KeyPainter(
     }
 
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
+        // 每次绘制主字都强制以键位中心为锚点，避免上一次绘制状态污染标点键对齐。
+        ink.textAlign = Paint.Align.CENTER
         ink.textSize = sp * density * scaleOf(sp)
         ink.color = color
         ink.shader = null
@@ -526,6 +528,7 @@ class KeyPainter(
 
     /** 同 [text]，放不下 [maxWidth] 就缩小字号（双拼韵母一个键可能有两三个）。 */
     private fun fitted(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float, maxWidth: Float) {
+        ink.textAlign = Paint.Align.CENTER
         ink.textSize = sp * density * scaleOf(sp)
         val width = ink.measureText(value)
         text(canvas, value, if (width > maxWidth) sp * maxWidth / width else sp, color, cx, cy)
