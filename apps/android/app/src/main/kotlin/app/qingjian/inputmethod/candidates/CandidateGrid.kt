@@ -5,7 +5,9 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.core.frame.Candidate
+import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.core.frame.Sense
 import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.keyboard.paint.KeyIcons
@@ -43,13 +45,22 @@ class CandidateGrid(
     private val side = RectF()
     private val scroll = scrollable(horizontal = false) { x, y -> body.contains(x, y) }
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var dynamicBackground = shouldUseDynamicBackground()
+
+    private fun shouldUseDynamicBackground(): Boolean {
+        val effectEnabled = Settings.preferences(context)
+            .getBoolean(Settings.KEY_BACKGROUND_EFFECT, false)
+        val videoEnabled = context.getSharedPreferences(DynamicBackgroundActivity.PREFS, Context.MODE_PRIVATE)
+            .getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)
+        return effectEnabled || videoEnabled
+    }
     private val wordSp = WORD_SP * textScale
     private val glossSp = GLOSS_SP * textScale
     private val cloudDp = CLOUD_DP * textScale
 
     init {
-        // 只让顶栏透出底层背景；候选内容区仍保留面板底色。
-        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        // 顶栏与候选文字区共用同一背景策略：动态光效/视频开启时整块透出，关闭时恢复主题底色。
+        setBackgroundColor(if (dynamicBackground) android.graphics.Color.TRANSPARENT else palette.board)
     }
 
     fun show(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
@@ -109,9 +120,12 @@ class CandidateGrid(
         listOfNotNull(sense.pos, sense.text).joinToString(" ")
 
     override fun onDraw(canvas: Canvas) {
+        val nextDynamicBackground = shouldUseDynamicBackground()
+        if (nextDynamicBackground != dynamicBackground) {
+            dynamicBackground = nextDynamicBackground
+            setBackgroundColor(if (dynamicBackground) android.graphics.Color.TRANSPARENT else palette.board)
+        }
         layout()
-        ink.fill.color = palette.board
-        canvas.drawRect(0f, headerHeight, width.toFloat(), height.toFloat(), ink.fill)
         drawHeader(canvas)
         drawCells(canvas)
         drawSide(canvas)
