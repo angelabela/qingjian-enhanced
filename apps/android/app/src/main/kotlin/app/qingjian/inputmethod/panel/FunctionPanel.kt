@@ -130,9 +130,12 @@ class FunctionPanel(
                     invalidate()
                 },
                 Feature(Icon.PALETTE, "文字效果", on = textEffectsActive()) {
+                    val textPrefs = Settings.preferences(context)
                     selectedTextTarget = 0
                     selectedTextPreset = Settings.TextEffectPreset.of(
-                        Settings.preferences(context).getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
+                        textPrefs.getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
+                    selectedCandidateFontSize = textPrefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+                    selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
                     voiceEffectPage = false
                     backgroundEffectPage = false
