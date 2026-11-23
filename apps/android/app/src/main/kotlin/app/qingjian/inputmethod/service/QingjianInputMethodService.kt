@@ -469,7 +469,7 @@ class QingjianInputMethodService :
             return
         }
 
-remove duplicate late clipboard write        if (enter) {
+        if (enter) {
             val newlineCommitted = runCatching { connection.commitText("\n", 1) }.getOrDefault(false)
             if (!newlineCommitted) runCatching {
                 connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
