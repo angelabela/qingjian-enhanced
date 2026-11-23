@@ -352,9 +352,10 @@ class InputPanel(
     val candidateTextStyleConfig = app.qingjian.inputmethod.candidates.CandidateTextStyleEngine.Config.forPreset(
         palette.text, settings.fontWeight, settings.candidateTextPreset,
     )
+    // 候选栏与拼音位图始终透出统一面板背景，避免单独绘制第二层底色。
     val bar = CandidateBarView(context, palette, settings.candidateFontSize / 20f, stripSource, settings.toolbar, barListener,
-        settings.fontWeight, transparentBackground, candidateTextStyleConfig).apply {
-        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else palette.board)
+        settings.fontWeight, true, candidateTextStyleConfig).apply {
+        setBackgroundColor(Color.TRANSPARENT)
     }
     private val cloudSuggestions = CloudSuggestionsView(context, palette, onCloudSelect)
     /** Tips 行只占位、不绘制背景；玻璃效果由 Tips 自身的独立窗口提供。 */
@@ -393,6 +394,14 @@ class InputPanel(
     val editorBackgroundTransparent: Boolean get() = transparentBackground
 
     private val bottomInset = navigationBarHeight(context)
+    private val hasBottomActions = !floating && settings.fullscreenAdapt &&
+        (settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE)
+    private val bottomActions = if (hasBottomActions) {
+        BottomActionsView(
+            context, palette, bottomInset, settings.bottomLeft, settings.bottomRight, onBottomAction,
+            transparentBackground = transparentBackground,
+        )
+    } else null
 
     // 云联想使用独立悬浮 Tips，不加入垂直布局、不挤占候选栏和键盘高度。
     private val main = LinearLayout(context).apply {
@@ -402,10 +411,7 @@ class InputPanel(
         setBackgroundColor(Color.TRANSPARENT)
         addView(bar)
         addView(keyboard)
-        val corners = settings.bottomLeft != BottomAction.NONE || settings.bottomRight != BottomAction.NONE
-        if (!floating && settings.fullscreenAdapt && corners) {
-            addView(BottomActionsView(context, palette, bottomInset, settings.bottomLeft, settings.bottomRight, onBottomAction, transparentBackground = transparentBackground))
-        }
+        bottomActions?.let(::addView)
     }
 
     private val videoBottomExtension = if (!floating && (!settings.fullscreenAdapt ||
@@ -486,8 +492,10 @@ class InputPanel(
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
         transparentBackground = effectEnabled || uri != null
-        bar.setTransparentBackground(transparentBackground, palette.board)
+        // 候选栏始终透明；静态主题底色由 root 绘制，开启视频时则透出同一纹理层。
+        bar.setTransparentBackground(true, palette.board)
         keyboard.setTransparentBackground(transparentBackground, palette.board)
+        bottomActions?.setTransparentBackground(transparentBackground)
         when (val active = panelView) {
             is app.qingjian.inputmethod.panel.base.PanelView -> active.useAnimatedBackground(transparentBackground)
             is AiChatPanel -> active.setTransparentBackground(transparentBackground)

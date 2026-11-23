@@ -22,15 +22,24 @@ class BottomActionsView(
     private val left: BottomAction,
     private val right: BottomAction,
     private val onAction: (BottomAction) -> Unit,
-    private val transparentBackground: Boolean = false,
+    private var transparentBackground: Boolean = false,
 ) : View(context) {
+    private val boardColor = palette.board
     private val density = resources.displayMetrics.density
     private val stripHeight = 40f * density
     private val slotWidth = 72f * density
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.gloss }
 
     init {
-        setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
+        setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else boardColor)
+    }
+
+    /** 动态背景开关运行中切换时同步更新底部操作栏，不重建输入法窗口。 */
+    fun setTransparentBackground(enabled: Boolean) {
+        if (transparentBackground == enabled) return
+        transparentBackground = enabled
+        setBackgroundColor(if (enabled) android.graphics.Color.TRANSPARENT else boardColor)
+        invalidate()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

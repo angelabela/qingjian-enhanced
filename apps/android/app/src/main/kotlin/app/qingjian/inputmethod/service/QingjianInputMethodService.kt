@@ -198,7 +198,6 @@ class QingjianInputMethodService :
 
     private var lastClipboardPhoneNumber = ""
     private var lastClipboardPhonePromptAt = 0L
-    private var scanActionNoticeUntil = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
         // 系统剪贴板监听与输入法面板生命周期解耦：面板关闭时也先收录最新内容。
@@ -246,11 +245,6 @@ class QingjianInputMethodService :
         }
         if (shownPreedit.isNotEmpty()) {
             AppLog.debug("[CLIPBOARD_NOTICE] skip: preedit not empty length=${shownPreedit.length}")
-            return
-        }
-        val scanSuppressionRemaining = scanActionNoticeUntil - android.os.SystemClock.elapsedRealtime()
-        if (scanSuppressionRemaining > 0) {
-            AppLog.debug("[CLIPBOARD_NOTICE] skip: scan notice suppression remainingMs=$scanSuppressionRemaining")
             return
         }
         // 某些输入框切换/面板初始化期间 CandidateBarView 已创建但还未挂载到可见窗口；
@@ -318,9 +312,10 @@ class QingjianInputMethodService :
         // 相同文本在不同时间再次复制（验证码尤其常见）属于新的剪贴板事件；
         // 只有内容哈希与系统剪贴板时间戳都相同，才判定为重复回调。
         if (preferredCode == null && lastHash == contentHash &&
-            (clipTimestamp <= 0L || clipTimestamp == lastTimestamp)
+            (clipTimestamp <= 0L || clipTimestamp == lastTimestamp) &&
+            bar.hasPersistentNotice(text)
         ) {
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: same content event source=$source length=${text.length} timestamp=$clipTimestamp")
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: identical notice is already visible source=${source} length=${text.length}")
             return
         }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
@@ -348,14 +343,12 @@ class QingjianInputMethodService :
     }
 
     /** 扫码 Activity 将识别结果发回当前输入法服务，由当前 InputConnection 直接上屏。 */
-    /** Wi-Fi / 网址扫码结果复用验证码提示栏，5 秒未点击自动收起。 */
+    /** Wi-Fi / 网址扫码结果复用验证码提示栏，持续显示直到用户点击或被新内容替换。 */
     private fun showScanActionNotice(value: String) {
         val bar = panel?.bar ?: return
         val wifi = ScanContent.parseWifi(value)
         if (wifi != null) {
-            scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
-            bar.showPersistentNotice("发现 Wi-Fi「${wifi.ssid}」，点击加入", autoDismissMs = 5_000L) {
-                scanActionNoticeUntil = 0L
+            bar.showPersistentNotice("发现 Wi-Fi「${wifi.ssid}」，点击加入") {
                 startActivity(Intent(this, WifiJoinActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra(WifiJoinActivity.EXTRA_SSID, wifi.ssid)
@@ -367,9 +360,7 @@ class QingjianInputMethodService :
             return
         }
         val url = ScanContent.webUrl(value) ?: return
-        scanActionNoticeUntil = android.os.SystemClock.elapsedRealtime() + 5_000L
-        bar.showPersistentNotice("发现网址，点击访问", autoDismissMs = 5_000L) {
-            scanActionNoticeUntil = 0L
+        bar.showPersistentNotice("发现网址，点击访问") {
             runCatching {
                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }.onFailure {
@@ -1087,6 +1078,7 @@ class QingjianInputMethodService :
             AppLog.debug("candidate render skipped: identical snapshot size=${candidates.size}")
             return
         }
+        val wasComposing = shownPreedit.isNotEmpty()
         candidateRerankSequence++
         candidateRerankRunnable?.let(candidateRerankHandler::removeCallbacks)
         candidateRerankRunnable = null
@@ -1094,6 +1086,12 @@ class QingjianInputMethodService :
         shownCandidates = candidates
         candidateIndexMap = candidates.indices.toList()
         renderShownComposition(preedit, candidates, animateCandidates)
+        // 组合输入结束后重读系统剪贴板，避免提示曾被输入动作清除后无法恢复。
+        if (wasComposing && preedit.isEmpty()) {
+            Handler(mainLooper).post {
+                if (isInputViewShown && shownPreedit.isEmpty()) showLatestClipboardNotice()
+            }
+        }
         scheduleCandidateRerank(preedit, candidates)
     }
 
