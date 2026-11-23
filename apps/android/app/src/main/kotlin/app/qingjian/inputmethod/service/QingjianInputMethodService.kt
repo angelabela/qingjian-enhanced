@@ -1587,6 +1587,7 @@ class QingjianInputMethodService :
 
     /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
     override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        if (ClipboardPanel.isSearchEditorActive(this)) return
         // 复制只允许读取选区并写入系统剪贴板；不调用编辑器上下文菜单，避免某些输入框把复制误处理成删除/剪切。
         if (action == KeyboardView.EditShortcut.COPY) {
             val info = currentInputEditorInfo
