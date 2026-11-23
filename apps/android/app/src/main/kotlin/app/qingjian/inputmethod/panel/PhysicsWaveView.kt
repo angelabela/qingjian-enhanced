@@ -262,6 +262,44 @@ class PhysicsWaveView @JvmOverloads constructor(
 
     }
 
+    /** 样式切换时由同一帧时间轴交叉淡化旧、新渲染器，避免突然闪断。 */
+    private fun drawStyle(canvas: Canvas, renderStyle: Style) {
+        val compactPhysics = isPhysicsStyle(renderStyle) &&
+            renderStyle != Style.FLOWING_RIBBONS &&
+            renderStyle != Style.SPHERICAL_PARTICLE_MESH
+        canvas.save()
+        if (renderStyle == Style.RING_SPECTRUM) {
+            // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
+            drawRingSpectrum(canvas)
+        } else {
+            canvas.translate(width * 0.05f, 0f)
+            canvas.scale(0.90f, 1f)
+            if (compactPhysics) {
+                canvas.translate(0f, height * 0.31f)
+                canvas.scale(1f, 0.38f)
+            }
+            when (renderStyle) {
+                Style.SPECTRUM_BARS -> drawSpectrumBars(canvas)
+                Style.RING_SPECTRUM -> Unit
+                Style.SPRING_BARS -> drawBars(canvas, true, false)
+                Style.PEAK_HOLD -> drawPeakHoldSpectrum(canvas)
+                Style.GRAVITY_BALLS -> drawBalls(canvas)
+                Style.ELASTIC_STRING -> drawString(canvas)
+                Style.GLOW_ORBS -> drawOrbs(canvas)
+                Style.SPHERICAL_PARTICLE_MESH -> drawSphericalParticleMesh(canvas)
+                Style.FLOWING_RIBBONS -> drawFlowingRibbons(canvas)
+                Style.REALTIME_WAVEFORM -> drawWaveform(canvas, false)
+                Style.WAVEFORM_SPECTRUM -> drawHybridVisualization(canvas)
+                Style.MIRRORED_BARS -> drawMirroredBars(canvas)
+                Style.DUAL_LAYER_BARS -> drawDualLayerBars(canvas)
+                Style.PARTICLE_MATRIX -> drawParticleMatrix(canvas)
+                Style.STEPPED_BARS -> drawSteppedBars(canvas)
+                Style.PERSPECTIVE_TUNNEL -> drawPerspectiveTunnel(canvas)
+            }
+        }
+        canvas.restore()
+    }
+
     /** 波形与频谱融合：上方真实时域波形，下方保留 48 段实时频谱。 */
     private fun drawHybridVisualization(canvas: Canvas) {
         canvas.save()
