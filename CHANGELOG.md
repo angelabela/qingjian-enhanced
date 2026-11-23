@@ -4,7 +4,11 @@
 - 视频背景改用解码器居中裁切填充，并将视频层宽度绑定到输入面板实际宽度，修复右侧/底部未覆盖问题
 - 视频亮度、背景光效与静态主题切换时同步更新候选文字颜色；关闭动态背景后恢复候选文字样式默认颜色
 - APP 版本：0.3.22-dev；versionCode=322
-- 固定签名构建与实机验收待完成
+- 固定签名交付：GitHub Actions `android-signed-apk` #560，run ID `45107799200`；提交 `16cf789c8e9a80e5003dd19c67b5d65cd57bb99a`；[运行页面](https://github.com/angelabela/qingjian-enhanced/actions/runs/45107799200)。
+- 源码版本：`versionName=0.3.22-dev`，Gradle 公式计算 `versionCode=322`；保留 `-dev`，不改写为用户稳定版本序列中的 0.3.5。
+- 构建与签名：`assembleRelease` 成功；APK Signature Scheme v2 验证通过；证书 SHA-256 `10be9cc45f931581203433b7c1095ca9689bb643463821ef9b108314aa958b72`。
+- Artifact：`qingjian-android-signed`（ID `14788432762`，154,451,350 bytes；ZIP SHA-256 `2e077769e7b94e93a4bd429778a1349a9064a2814ec26cae763fb30feb0aba08`；有效期至 2026-12-23 03:51:29 UTC）；[Artifact 下载入口](https://api.github.com/repos/angelabela/qingjian-enhanced/actions/artifacts/14788432762/zip)。
+- CI 构建、签名和产物可用性已确认；剪贴板去重、视频完整覆盖、候选文字颜色三项仍待用户设备验收，不代表实机已修复。
 
 ---
 
