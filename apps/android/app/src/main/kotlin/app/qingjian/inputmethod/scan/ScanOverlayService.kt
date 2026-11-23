@@ -16,6 +16,7 @@ import android.graphics.Paint
 import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import de.markusfisch.android.zxingcpp.ZxingCpp
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -67,15 +68,6 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.google.zxing.BarcodeFormat as ZxingBarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
-import com.google.zxing.InvertedLuminanceSource
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.PlanarYUVLuminanceSource
-import com.google.zxing.ResultPoint
-import com.google.zxing.common.GlobalHistogramBinarizer
-import com.google.zxing.common.HybridBinarizer
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
@@ -1188,60 +1180,32 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    /** ZXing 兜底：按 Y 平面行跨度复制紧凑灰度帧，先自适应阈值，再全局直方图，并额外尝试反色。 */
+    /** Binary Eye 同款 ZXing-C++ 兜底：直接读取 CameraX Y 平面，启用困难识别、旋转、反色与降采样。 */
     private fun decodeWithZxing(proxy: androidx.camera.core.ImageProxy): Pair<String, RectF>? {
         val plane = proxy.planes.firstOrNull() ?: return null
-        val width = proxy.width
-        val height = proxy.height
-        if (width < 2 || height < 2) return null
-        val luminance = ByteArray(width * height)
-        val buffer = plane.buffer.duplicate()
-        for (y in 0 until height) {
-            val rowStart = y * plane.rowStride
-            for (x in 0 until width) {
-                val offset = rowStart + x * plane.pixelStride
-                if (offset < buffer.limit()) luminance[y * width + x] = buffer.get(offset)
-            }
-        }
-        val source = PlanarYUVLuminanceSource(luminance, width, height, 0, 0, width, height, false)
-        val formats = listOf(
-            ZxingBarcodeFormat.QR_CODE, ZxingBarcodeFormat.CODE_128, ZxingBarcodeFormat.CODE_39,
-            ZxingBarcodeFormat.CODE_93, ZxingBarcodeFormat.CODABAR, ZxingBarcodeFormat.EAN_13,
-            ZxingBarcodeFormat.EAN_8, ZxingBarcodeFormat.ITF, ZxingBarcodeFormat.UPC_A,
-            ZxingBarcodeFormat.UPC_E, ZxingBarcodeFormat.PDF_417, ZxingBarcodeFormat.AZTEC,
-            ZxingBarcodeFormat.DATA_MATRIX,
+        if (proxy.width < 2 || proxy.height < 2) return null
+        val result = ZxingCpp.readYBuffer(
+            plane.buffer.duplicate(),
+            plane.rowStride,
+            android.graphics.Rect(0, 0, proxy.width, proxy.height),
+            proxy.imageInfo.rotationDegrees,
+            ZxingCpp.ReaderOptions(
+                tryHarder = true,
+                tryRotate = true,
+                tryInvert = true,
+                tryDownscale = true,
+                maxNumberOfSymbols = 1,
+            ),
+        )?.firstOrNull() ?: return null
+        val value = result.text.trim()
+        if (value.isEmpty()) return null
+        val position = result.position
+        val points = listOf(position.topLeft, position.topRight, position.bottomLeft, position.bottomRight)
+        val bounds = RectF(
+            points.minOf { it.x }, points.minOf { it.y },
+            points.maxOf { it.x }, points.maxOf { it.y },
         )
-        val hints = mapOf<DecodeHintType, Any>(
-            DecodeHintType.POSSIBLE_FORMATS to formats,
-            DecodeHintType.TRY_HARDER to true,
-            DecodeHintType.ALSO_INVERTED to true,
-        )
-        val reader = MultiFormatReader()
-        reader.setHints(hints)
-        val variants = listOf(source, InvertedLuminanceSource(source))
-        for (variant in variants) {
-            for (binarizer in listOf<(com.google.zxing.LuminanceSource) -> com.google.zxing.Binarizer>(
-                ::HybridBinarizer, ::GlobalHistogramBinarizer,
-            )) {
-                try {
-                    val result = reader.decodeWithState(BinaryBitmap(binarizer(variant)))
-                    val points = result.resultPoints
-                    if (points.size >= 2) {
-                        val left = points.minOf { it.x }
-                        val top = points.minOf { it.y }
-                        val right = points.maxOf { it.x }
-                        val bottom = points.maxOf { it.y }
-                        if (right > left && bottom > top) return result.text.trim() to RectF(left, top, right, bottom)
-                    }
-                    if (result.text.isNotBlank()) return result.text.trim() to RectF(0f, 0f, width.toFloat(), height.toFloat())
-                } catch (_: Exception) {
-                    // 当前二值化/反色策略未命中，继续尝试下一种。
-                } finally {
-                    reader.reset()
-                }
-            }
-        }
-        return null
+        return value to bounds
     }
 
     /** ZXing 返回的是图像坐标；沿用与 ML Kit 相同的预览变换、扫描框过滤和双帧稳定策略。 */
