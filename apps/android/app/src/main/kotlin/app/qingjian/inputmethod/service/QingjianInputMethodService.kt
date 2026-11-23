@@ -162,7 +162,13 @@ class QingjianInputMethodService :
             clipboardPanelEditorPackage == info.packageName &&
             (restarting || clipboardPanelOwnerFieldId == info.fieldId)
 
-    private val clipboardWatcher by lazy { ClipboardWatcher(this) }
+    private var pendingClipboardPreview: String? = null
+    private val clipboardWatcher by lazy {
+        ClipboardWatcher(this) { text ->
+            pendingClipboardPreview = text
+            showPendingClipboardPreview()
+        }
+    }
     private var lastClipboardPhoneNumber = ""
     private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -582,6 +588,7 @@ class QingjianInputMethodService :
         contacts.retryIfEmpty()
         // 键盘弹出时按设置补录剪贴板历史，不显示临时提示。
         clipboardWatcher.capture()
+        showPendingClipboardPreview()
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
         runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
@@ -740,6 +747,19 @@ class QingjianInputMethodService :
             if (latest != before) return@resolve
             if (result.isBlank() || listOf("暂时无法", "无法获取", "无法查询", "暂时不可用", "没有返回数据", "无法解析").any(result::contains)) return@resolve
             showMascotDialogue(result)
+        }
+    }
+
+    /** 新剪贴板内容只提示一次；候选刷新不能清掉提示，用户开始输入或点击后才收起。 */
+    private fun showPendingClipboardPreview() {
+        val text = pendingClipboardPreview?.takeIf { it.isNotBlank() } ?: return
+        val bar = panel?.bar ?: return
+        pendingClipboardPreview = null
+        val compact = text.replace(Regex("\\s+"), " ").trim().let {
+            if (it.length > 42) it.take(42) + "…" else it
+        }
+        bar.showPersistentNotice("剪贴板 · $compact") {
+            commitClipboardText(text)
         }
     }
 
