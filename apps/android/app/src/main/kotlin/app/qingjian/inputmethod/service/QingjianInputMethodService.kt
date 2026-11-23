@@ -1639,7 +1639,7 @@ class QingjianInputMethodService :
     override fun onCursorMove(steps: Int) = composer.moveCursor(steps)
 
     override fun onCandidateSwipeStart(): Boolean {
-        if (shownPreedit.isNotEmpty() || shownCandidates.isEmpty() || editor != null) return false
+        if (shownPreedit.isNotEmpty() || shownCandidates.isEmpty()) return false
         if (panel?.openPanel != null) return false
         spaceCandidateSwipeIndex = 0
         panel?.bar?.setGestureSelection(spaceCandidateSwipeIndex)
