@@ -1,0 +1,12 @@
+Third-party scanner attribution
+
+Binary Eye
+Repository: https://github.com/markusfisch/BinaryEye
+License: MIT
+The scanner recognition strategy was referenced from Binary Eye. No Binary Eye application source files are copied into Qingjian.
+
+ZXing-C++
+Repository: https://github.com/zxing-cpp/zxing-cpp
+Android binding: io.github.zxing-cpp:android:3.1.1
+License: Apache License 2.0
+The ZXing-C++ reader is used for local barcode decoding. Recognition options follow the robust scanning approach used by Binary Eye (try harder, rotate, invert, downscale, and local/global binarization).
