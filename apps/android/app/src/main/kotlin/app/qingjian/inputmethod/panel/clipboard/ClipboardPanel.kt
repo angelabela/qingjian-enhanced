@@ -208,7 +208,10 @@ class ClipboardPanel(
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val popupWidth = (width - ink.dp(16f)).toInt().coerceAtLeast(ink.dp(250f).toInt())
+        val screenWidth = resources.displayMetrics.widthPixels
+        // 留出足够横向行程，让浮窗长按后能在屏幕左右两侧之间移动。
+        val popupWidth = minOf((width - ink.dp(16f)).toInt(), (screenWidth * 0.76f).toInt())
+            .coerceAtLeast(ink.dp(250f).toInt())
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
         val popupHeight = (keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
@@ -333,7 +336,7 @@ class ClipboardPanel(
         val location = IntArray(2)
         getLocationOnScreen(location)
         val screen = resources.displayMetrics
-        val initialX = (location[0] + searchRect.left).toInt().coerceIn(0, (screen.widthPixels - popupWidth).coerceAtLeast(0))
+        val initialX = ((screen.widthPixels - popupWidth) / 2).coerceIn(0, (screen.widthPixels - popupWidth).coerceAtLeast(0))
         val initialY = (location[1] + searchRect.bottom + ink.dp(6f)).toInt()
             .coerceIn(0, (screen.heightPixels - popupHeight).coerceAtLeast(0))
         popupCurrentX = initialX
