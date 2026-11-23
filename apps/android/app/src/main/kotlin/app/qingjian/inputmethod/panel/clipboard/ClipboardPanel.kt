@@ -821,7 +821,7 @@ class ClipboardPanel(
             }
             inActions -> onAction(i, ((x - ink.dp(CARD_MARGIN_DP + CARD_PADDING_DP)) / actionWidth()).toInt())
             showingPhrases -> actions.commitText(shownPhrases()[i].text)
-            else -> clips[i].let { clip -> clip.image?.let(actions::commitImage) ?: actions.commitClipboardText(clip.text) }
+            else -> clipAt(i)?.let { clip -> clip.image?.let(actions::commitImage) ?: actions.commitClipboardText(clip.text) }
         }
     }
 
