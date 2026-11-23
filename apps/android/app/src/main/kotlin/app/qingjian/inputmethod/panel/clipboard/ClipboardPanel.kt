@@ -242,6 +242,7 @@ class ClipboardPanel(
             val queryLabel = searchQuery.ifEmpty { "搜索剪贴板内容" }
             ink.textStart(canvas, queryLabel, 13.5f, if (searchQuery.isEmpty()) palette.gloss else palette.text,
                 searchRect.left + ink.dp(42f), searchRect.centerY() + ink.dp(1f), searchRect.right - ink.dp(112f))
+            if (searchQuery.isNotEmpty()) ink.text(canvas, "×", 18f, palette.gloss, searchRect.right - ink.dp(82f), searchRect.centerY() + ink.dp(1f))
             ink.text(canvas, "${visibleClipIndices.size}/${clips.size}", 12f, palette.brand, searchRect.right - ink.dp(42f), searchRect.centerY() + ink.dp(1f), bold = true)
         } else searchRect.setEmpty()
         val listTop = if (showingPhrases) searchTop else searchTop + ink.dp(SEARCH_BAR_DP)
