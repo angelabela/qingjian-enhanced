@@ -953,6 +953,17 @@ class ClipboardPanel(
 
         fun handleSearchKey(key: Key): Boolean = activeInstance?.get()?.applySearchKey(key) == true
 
+        fun clearSearchQuery(): Boolean {
+            val panel = activeInstance?.get() ?: return false
+            if (!panel.searchEditing) return false
+            panel.searchQuery = ""
+            panel.expanded = -1
+            panel.layouts.clear()
+            panel.listScroll.reset()
+            panel.invalidate()
+            return true
+        }
+
         /** 常用语停在哪一组：关了面板再开还在这组；加完常用语跳到它所在的组。 */
         var lastGroup = PhraseRules.defaultGroup
 
