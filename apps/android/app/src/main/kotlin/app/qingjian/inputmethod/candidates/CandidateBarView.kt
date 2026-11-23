@@ -421,7 +421,7 @@ class CandidateBarView(
             activePulseStartedAt = now
         }
         val elapsed = now - activePulseStartedAt
-        val candidateTextMaxWidth = (stripWidth - strip.leftInsetPx(stripWidth)).coerceAtLeast(1) / 3f
+        val candidateTextMaxWidth = (stripWidth - strip.leftInsetPx(stripWidth)).coerceAtLeast(1f) / 3f
         val rect = strip.candidateEffectRect(index, candidateTextMaxWidth) ?: return
         // View Canvas 已由 scrollX 平移；候选与高亮框统一使用内容坐标，再补左内边距。
         rect.offset(strip.leftInsetPx(stripWidth) + strip.candidateRevealOffsetPx(index), 0f)
