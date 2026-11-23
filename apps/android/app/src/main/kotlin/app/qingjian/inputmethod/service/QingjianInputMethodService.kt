@@ -1266,6 +1266,7 @@ class QingjianInputMethodService :
 
     override fun onKey(key: Key) {
         KeySounds.play(this, key)
+        if (ClipboardPanel.handleSearchKey(key)) return
         composer.onKey(key)
     }
 
@@ -1599,19 +1600,9 @@ class QingjianInputMethodService :
                 return
             }
             val connection = currentInputConnection
-            val selected = runCatching { connection?.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
-            val textToCopy = selected.ifEmpty {
-                runCatching {
-                    connection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)?.text?.toString().orEmpty()
-                }.getOrDefault("").ifEmpty {
-                    runCatching {
-                        connection?.getTextBeforeCursor(10000, 0)?.toString().orEmpty() +
-                            connection?.getTextAfterCursor(10000, 0)?.toString().orEmpty()
-                    }.getOrDefault("")
-                }
-            }
+            val textToCopy = runCatching { connection?.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
             if (textToCopy.isEmpty()) {
-                toast("当前输入框没有可复制的文字")
+                toast("请先选中要复制的文字")
                 return
             }
             copyToClipboard(textToCopy)
