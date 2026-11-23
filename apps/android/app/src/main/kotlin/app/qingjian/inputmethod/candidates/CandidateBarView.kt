@@ -132,6 +132,14 @@ class CandidateBarView(
 
     private val expandable: Boolean get() = strip.candidates.any { !it.cloud }
 
+    /** 动态背景切换时统一设置候选文字颜色；传 null 会恢复主题/候选样式自身的颜色。 */
+    fun setAdaptiveTextColor(color: Int?) {
+        if (adaptiveVideoTextColor == color) return
+        adaptiveVideoTextColor = color
+        strip.setAdaptiveTextColor(color)
+        invalidate()
+    }
+
     /** 视频背景帧亮度变化时，自动切换候选文字的高对比颜色。 */
     fun setVideoBackgroundLuminance(luminance: Float) {
         val current = adaptiveVideoTextColor
@@ -140,11 +148,7 @@ class CandidateBarView(
             android.graphics.Color.WHITE -> if (luminance > 0.58f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             else -> if (luminance >= 0.52f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
         }
-        if (next != current) {
-            adaptiveVideoTextColor = next
-            strip.setAdaptiveTextColor(next)
-            invalidate()
-        }
+        setAdaptiveTextColor(next)
     }
 
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
