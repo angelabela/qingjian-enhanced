@@ -52,6 +52,8 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ViewPort
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
@@ -208,7 +210,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 Barcode.FORMAT_QR_CODE, Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39, Barcode.FORMAT_CODE_93,
                 Barcode.FORMAT_CODABAR, Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_ITF,
                 Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E, Barcode.FORMAT_PDF417, Barcode.FORMAT_AZTEC, Barcode.FORMAT_DATA_MATRIX,
-            ).build())
+            ).enableAllPotentialBarcodes().build())
             startupStage = "overlay view creation"
             buildOverlay()
             startupStage = "camera provider request"
@@ -1013,22 +1015,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
             try {
             val provider = future.get()
             cameraProvider = provider
+            val maxResolution = ResolutionSelector.Builder()
+                .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                .build()
             val previewBuilder = Preview.Builder()
-                .setTargetResolution(Size(1440, 1080))
+                .setResolutionSelector(maxResolution)
             applyScanCaptureQuality(previewBuilder)
             val cameraPreview = previewBuilder.build().also {
                 it.setSurfaceProvider(preview.surfaceProvider)
             }
             val analysisBuilder = ImageAnalysis.Builder()
-                // 分析帧提升到 720p，改善小型二维码和细条形码的有效像素；仍只处理最新帧。
-                .setTargetResolution(Size(1920, 1080))
+                // 使用设备支持的最高分析分辨率；只保留最新帧，避免队列堆积。
+                .setResolutionSelector(maxResolution)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             applyScanCaptureQuality(analysisBuilder)
             val analysis = analysisBuilder.build()
             analysisUseCase = analysis
             val capture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setTargetResolution(Size(1440, 1080))
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .setResolutionSelector(maxResolution)
                 .build()
             imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
@@ -1054,7 +1059,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 }
                                 // ML Kit 没有命中时，交给 ZXing Java 再尝试一次；其反色与两种二值化策略
                                 // 可补足低对比、反白、细条码等场景。异步解码期间保留 ImageProxy。
-                                if (codes.isEmpty() && android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
+                                val hasReadableMlKitCode = codes.any {
+                                    (it.rawValue ?: it.displayValue)?.trim()?.isNotEmpty() == true
+                                }
+                                if (!hasReadableMlKitCode && android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
                                     deferredFrameRelease.set(true)
                                     try {
                                         zxingFallbackExecutor.execute {
@@ -1153,7 +1161,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 .addUseCase(capture)
                 .build()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraUseCases)
-            scanDiag("camera bound lens=back viewport=fullscreen:${displayMetrics.widthPixels}x${displayMetrics.heightPixels} preview=1440x1080 analysis=1920x1080 capture=1440x1080")
+            scanDiag("camera bound lens=back viewport=fullscreen:${displayMetrics.widthPixels}x${displayMetrics.heightPixels} preview=highest analysis=highest capture=highest")
             cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
             // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
             preview.post {
@@ -1370,7 +1378,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (!intersection.intersect(roi)) return false
         val barcodeArea = (bounds.width() * bounds.height()).coerceAtLeast(1f)
         val visibleArea = intersection.width() * intersection.height()
-        return visibleArea / barcodeArea >= 0.72f
+        // 条码可部分越过识别框边缘；中心在框内或至少 25% 面积可见即接受。
+        return roi.contains(bounds.centerX(), bounds.centerY()) || visibleArea / barcodeArea >= 0.25f
     }
 
     /**
