@@ -168,6 +168,8 @@ class QingjianInputMethodService :
 
     private val clipboardWatcher by lazy { ClipboardWatcher(this) }
     private var clipboardNoticeRetryPending = false
+    /** 自上次提示显示后是否真的收到过新的系统剪贴板事件；不依赖提示 View 当前是否可见。 */
+    private var clipboardNoticeEventPending = false
     /** 输入组合期间收到新剪贴板/验证码事件时，等组合结束再显示。 */
     private var clipboardNoticePending = false
     private var pendingClipboardNoticeCode: String? = null
@@ -203,6 +205,8 @@ class QingjianInputMethodService :
     private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
         maybeShowClipboardPhonePrompt()
+        // 只在系统真正发出剪贴板变化事件时放行相同文本；重新打开键盘的重复读取不会重新提示。
+        clipboardNoticeEventPending = true
         // 系统剪贴板监听与输入法面板生命周期解耦：面板关闭时也先收录最新内容。
         // 展示提示仍要求键盘可见，避免后台弹出 UI。
         clipboardWatcher.capture()
@@ -277,6 +281,7 @@ class QingjianInputMethodService :
 
         // 敏感剪贴板不能回退显示历史中的旧内容；可信的短信验证码广播则允许直接显示。
         if (preferredCode == null && clip != null && (sensitive || clip.itemCount <= 0)) {
+            clipboardNoticeEventPending = false
             AppLog.info("[CLIPBOARD_NOTICE] clear: sensitive=$sensitive itemCount=${clip.itemCount}")
             bar.clearNotice()
             return
@@ -308,6 +313,7 @@ class QingjianInputMethodService :
         }
         AppLog.info("[CLIPBOARD_NOTICE] selected source=$source length=${text?.length ?: 0} historyLength=${historyText?.length ?: 0}")
         if (text.isNullOrEmpty()) {
+            clipboardNoticeEventPending = false
             AppLog.info("[CLIPBOARD_NOTICE] clear: no usable text")
             bar.clearNotice()
             return
@@ -320,17 +326,18 @@ class QingjianInputMethodService :
             .joinToString("") { "%02x".format(it) }
         val lastHash = prefs.getString("clipboard_notice_last_hash", null)
         val lastTimestamp = prefs.getLong("clipboard_notice_last_timestamp", 0L)
-        // 相同文本在不同时间再次复制（验证码尤其常见）属于新的剪贴板事件；
-        // 只有内容哈希与系统剪贴板时间戳都相同，才判定为重复回调。
-        if (preferredCode == null && lastHash == contentHash &&
-            (clipTimestamp <= 0L || clipTimestamp == lastTimestamp) &&
-            bar.hasPersistentNotice(text)
-        ) {
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: identical notice is already visible source=${source} length=${text.length}")
+        // 提示是否已显示由持久化指纹判断，不再依赖提示 View 是否仍在屏幕上。
+        // 新的系统剪贴板事件可放行相同文本（例如再次复制同一个验证码）；普通重开/延迟重试则跳过。
+        val sameClipboardContent = lastHash == contentHash &&
+            (clipTimestamp <= 0L || clipTimestamp == lastTimestamp)
+        if (preferredCode == null && sameClipboardContent && !clipboardNoticeEventPending) {
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: already displayed for this clipboard event source=$source length=${text.length}")
+            bar.clearNotice()
             return
         }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
         bar.showPersistentNotice(text) { commitText(text) }
+        if (preferredCode == null) clipboardNoticeEventPending = false
         AppLog.info("[CLIPBOARD_NOTICE] displayed source=$source length=${text.length} attached=${bar.isAttachedToWindow} shown=${bar.isShown}")
         prefs.edit()
             .putLong("clipboard_notice_last_timestamp", clipTimestamp)
@@ -832,6 +839,8 @@ class QingjianInputMethodService :
     override fun onWindowHidden() {
         super.onWindowHidden()
         AppLog.info("window hidden")
+        // 提示只展示一个输入法会话；隐藏窗口时清掉 UI，已显示指纹仍保留在设置中。
+        panel?.bar?.clearNotice()
         android.util.Log.w("QingjianScanDiag", "IME window hidden editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
         // 隐藏键盘后停止周期性落盘，取消未执行的候选重排，并释放常驻本地 AI 引擎。
         candidateRerankHandler.removeCallbacks(learningFlushRunnable)
