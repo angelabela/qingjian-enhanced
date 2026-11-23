@@ -527,39 +527,64 @@ class InputPanel(
         root.invalidate()
     }
 
-    /** 云联想以浮动 Tips 显示；没有候选时连输入法顶部的占位行也一并隐藏。 */
+    /** 云联想只进入小精灵原有圆角气泡；清除旧版独立悬浮 Tips 窗口。 */
     fun showCloudSuggestions(candidates: List<Pair<Int, String>>) {
-        val mascotPrefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
-        val mascotEnabled = mascotPrefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
+        smartSuggestionItems = emptyList()
+        smartSuggestionSelection = null
+        CloudSuggestionsView.hideAllFloatingTips()
+        cloudSuggestions.show(emptyList())
+        val prefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
             android.provider.Settings.canDrawOverlays(context)
-        if (mascotEnabled) {
-            // 旧 Tips 只负责智能建议等其他场景；云候选交给全局小精灵气泡呈现。
-            cloudSuggestions.show(emptyList())
-            val intent = Intent(context, FloatingMascotService::class.java).apply {
-                action = if (candidates.isEmpty()) FloatingMascotService.ACTION_HIDE_TIPS else FloatingMascotService.ACTION_SHOW_TIPS
-                putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, ArrayList(candidates.map { it.second }))
-                putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, ArrayList(candidates.map { it.first }))
-                putExtra(FloatingMascotService.ACTION_COLOR_SURFACE, palette.surface)
-                putExtra(FloatingMascotService.ACTION_COLOR_TEXT, palette.text)
-                putExtra(FloatingMascotService.ACTION_COLOR_CLOUD, palette.cloud)
-                putExtra(FloatingMascotService.ACTION_COLOR_ACCENT, palette.accent)
-                putExtra(FloatingMascotService.ACTION_COLOR_BORDER, palette.faint)
-            }
-            runCatching { ContextCompat.startForegroundService(context, intent) }
-                .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
-        } else {
-            // 小精灵关闭时不再弹出独立云联想浮窗；云候选仍保留在普通候选栏中。
-            cloudSuggestions.show(emptyList())
+        if (!enabled) return
+        val intent = Intent(context, FloatingMascotService::class.java).apply {
+            action = if (candidates.isEmpty()) FloatingMascotService.ACTION_HIDE_TIPS else FloatingMascotService.ACTION_SHOW_TIPS
+            putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, ArrayList(candidates.map { it.second }))
+            putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, ArrayList(candidates.map { it.first }))
+            putExtra(FloatingMascotService.ACTION_COLOR_SURFACE, palette.surface)
+            putExtra(FloatingMascotService.ACTION_COLOR_TEXT, palette.text)
+            putExtra(FloatingMascotService.ACTION_COLOR_CLOUD, palette.cloud)
+            putExtra(FloatingMascotService.ACTION_COLOR_ACCENT, palette.accent)
+            putExtra(FloatingMascotService.ACTION_COLOR_BORDER, palette.faint)
         }
+        runCatching { ContextCompat.startForegroundService(context, intent) }
+            .onFailure { android.util.Log.w("QingjianMascot", "Unable to update cloud tips bubble", it) }
     }
 
-    /** 将云 Tips 锚定到当前编辑器光标上方。 */
-    fun updateCloudTipsAnchor(screenX: Float, screenY: Float) =
-        cloudSuggestions.updateEditorAnchor(screenX, screenY)
+    private var smartSuggestionItems: List<String> = emptyList()
+    private var smartSuggestionSelection: ((String) -> Unit)? = null
 
-    /** 实时设备信息 / 定位天气候选，点击后由服务决定上屏或申请权限。 */
+    /** 设备信息建议也只放进小精灵气泡，不再创建独立 Tips 悬浮窗。 */
     fun showSmartSuggestions(candidates: List<String>, onSelect: (String) -> Unit) {
-        cloudSuggestions.showSmart(candidates, onSelect)
+        CloudSuggestionsView.hideAllFloatingTips()
+        cloudSuggestions.show(emptyList())
+        val prefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
+            android.provider.Settings.canDrawOverlays(context)
+        smartSuggestionItems = if (enabled) candidates.take(3) else emptyList()
+        smartSuggestionSelection = if (smartSuggestionItems.isNotEmpty()) onSelect else null
+        if (!enabled) return
+        val intent = Intent(context, FloatingMascotService::class.java).apply {
+            action = if (smartSuggestionItems.isEmpty()) FloatingMascotService.ACTION_HIDE_TIPS else FloatingMascotService.ACTION_SHOW_TIPS
+            putStringArrayListExtra(FloatingMascotService.EXTRA_TIP_LABELS, ArrayList(smartSuggestionItems))
+            putIntegerArrayListExtra(FloatingMascotService.EXTRA_TIP_INDEXES, ArrayList(smartSuggestionItems.indices.toList()))
+            putExtra(FloatingMascotService.ACTION_COLOR_SURFACE, palette.surface)
+            putExtra(FloatingMascotService.ACTION_COLOR_TEXT, palette.text)
+            putExtra(FloatingMascotService.ACTION_COLOR_CLOUD, palette.cloud)
+            putExtra(FloatingMascotService.ACTION_COLOR_ACCENT, palette.accent)
+            putExtra(FloatingMascotService.ACTION_COLOR_BORDER, palette.faint)
+        }
+        runCatching { ContextCompat.startForegroundService(context, intent) }
+            .onFailure { android.util.Log.w("QingjianMascot", "Unable to update smart suggestion bubble", it) }
+    }
+
+    fun selectSmartSuggestion(index: Int): Boolean {
+        val value = smartSuggestionItems.getOrNull(index) ?: return false
+        val select = smartSuggestionSelection ?: return false
+        smartSuggestionItems = emptyList()
+        smartSuggestionSelection = null
+        select(value)
+        return true
     }
 
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
