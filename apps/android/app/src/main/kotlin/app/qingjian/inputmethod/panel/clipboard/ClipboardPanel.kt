@@ -16,13 +16,11 @@ import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.graphics.drawable.ColorDrawable
 import android.widget.PopupWindow
 import android.icu.text.Transliterator
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
-import android.widget.PopupWindow
 import android.text.TextWatcher
 import android.text.Editable
 import android.text.Layout
