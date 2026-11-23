@@ -19,17 +19,28 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * 语音频谱动效。前两种是 53 号工作流原有的频谱柱、环形频谱；
- * 后五种沿用 PhysicsWaveView 的物理模型。所有样式共用同一组真实 FFT 频带，
- * 不在识别线程中做绘制或额外音频分析。
+ * 语音频谱动效。基础样式与新增的五种排列共用 48 段真实 FFT 频带；
+ * 物理样式另用 18 个聚合频带驱动弹簧、粒子和流体运动。
+ * 所有绘制都在 View 帧回调中完成，不在识别线程里创建画布对象或额外分析音频。
  */
 class PhysicsWaveView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
-    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, SPHERICAL_PARTICLE_MESH, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM }
+    enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, SPHERICAL_PARTICLE_MESH, FLOWING_RIBBONS, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM, MIRRORED_BARS, DUAL_LAYER_BARS, PARTICLE_MATRIX, STEPPED_BARS, PERSPECTIVE_TUNNEL }
+
+    private var previousStyle: Style? = null
+    private var styleTransitionStart = 0L
+    private val transitionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     var style = Style.SPRING_BARS
-        set(value) { field = value; resetState(); invalidate() }
+        set(value) {
+            if (field == value) return
+            previousStyle = field
+            styleTransitionStart = System.nanoTime()
+            field = value
+            resetState()
+            invalidate()
+        }
     var listening = false
         set(value) {
             field = value
@@ -59,6 +70,7 @@ class PhysicsWaveView @JvmOverloads constructor(
     // 48 段真实频谱的峰值保持状态，与18段物理弹簧状态分离。
     private val spectrumPeaks = FloatArray(48)
     private val spectrumPeakHold = FloatArray(48)
+    private val spectrumTrail = FloatArray(48)
     private val particlePhases = FloatArray(36) { i -> i * 2.3999632f }
     private val waveform = FloatArray(128)
     private val smoothWaveform = FloatArray(128)
@@ -108,13 +120,13 @@ class PhysicsWaveView @JvmOverloads constructor(
     private fun resetState() {
         pos.fill(0f); velocity.fill(0f); peaks.fill(0f); peakVelocity.fill(0f); peakHold.fill(0f)
         smoothFft.fill(0f)
-        spectrumPeaks.fill(0f); spectrumPeakHold.fill(0f)
+        spectrumPeaks.fill(0f); spectrumPeakHold.fill(0f); spectrumTrail.fill(0f)
         waveform.fill(0f); smoothWaveform.fill(0f)
         waveRms = 0f; wavePeak = 0f
         lastFrame = 0L
     }
 
-    private fun isPhysicsStyle(): Boolean = when (style) {
+    private fun isPhysicsStyle(value: Style = style): Boolean = when (value) {
         Style.SPRING_BARS, Style.GRAVITY_BALLS, Style.PEAK_HOLD,
         Style.ELASTIC_STRING, Style.GLOW_ORBS -> true
         else -> false
@@ -200,6 +212,11 @@ class PhysicsWaveView @JvmOverloads constructor(
             val blend = if (abs(waveform[i]) > abs(smoothWaveform[i])) attack else release
             smoothWaveform[i] += (waveform[i] - smoothWaveform[i]) * blend
         }
+        // 双层频谱的后景采用独立慢衰减轨迹，前景仍紧跟实时 FFT。
+        for (i in spectrumTrail.indices) {
+            spectrumTrail[i] = if (smoothFft[i] >= spectrumTrail[i]) smoothFft[i]
+                else max(smoothFft[i], spectrumTrail[i] - dt * 0.48f)
+        }
         if (style == Style.PEAK_HOLD) {
             for (i in smoothFft.indices) {
                 val level = smoothFft[i]
@@ -224,39 +241,25 @@ class PhysicsWaveView @JvmOverloads constructor(
         }
         // 所有样式统一限制在面板中央 80% 宽度，左右各留 10% 安全边距。
         // 物理类样式只额外压缩垂直绘制区域，避免波形与底部操作按钮重叠。
-        val compactPhysics = isPhysicsStyle() && style != Style.SPHERICAL_PARTICLE_MESH
-        canvas.save()
-        if (style == Style.RING_SPECTRUM) {
-            // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
-            drawRingSpectrum(canvas)
+        val previous = previousStyle
+        val transition = if (previous == null) 1f else
+            ((now - styleTransitionStart) / 350_000_000f).coerceIn(0f, 1f)
+        if (previous != null && transition < 1f) {
+            transitionPaint.alpha = ((1f - transition) * 255f).toInt().coerceIn(0, 255)
+            val oldLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), transitionPaint)
+            drawStyle(canvas, previous)
+            canvas.restoreToCount(oldLayer)
+            transitionPaint.alpha = (transition * 255f).toInt().coerceIn(0, 255)
+            val newLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), transitionPaint)
+            drawStyle(canvas, style)
+            canvas.restoreToCount(newLayer)
         } else {
-            canvas.translate(width * 0.05f, 0f)
-            canvas.scale(0.90f, 1f)
-            if (compactPhysics) {
-                canvas.translate(0f, height * 0.31f)
-                canvas.scale(1f, 0.38f)
-            }
-            when (style) {
-                Style.SPECTRUM_BARS -> drawSpectrumBars(canvas)
-                Style.RING_SPECTRUM -> Unit
-                Style.SPRING_BARS -> drawBars(canvas, true, false)
-                Style.PEAK_HOLD -> drawPeakHoldSpectrum(canvas)
-                Style.GRAVITY_BALLS -> drawBalls(canvas)
-                Style.ELASTIC_STRING -> drawString(canvas)
-                Style.GLOW_ORBS -> drawOrbs(canvas)
-                Style.SPHERICAL_PARTICLE_MESH -> drawSphericalParticleMesh(canvas)
-                Style.REALTIME_WAVEFORM -> drawWaveform(canvas, false)
-                Style.WAVEFORM_SPECTRUM -> drawHybridVisualization(canvas)
-            }
+            previousStyle = null
+            transitionPaint.alpha = 255
+            drawStyle(canvas, style)
         }
-        canvas.restore()
-        val moving = listening || smoothFft.any { it > 0.008f } ||
-            smoothWaveform.any { abs(it) > 0.003f } ||
-            (isPhysicsStyle() && pos.indices.any {
-                if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
-                else abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f
-            })
-        if (moving) postInvalidateOnAnimation() else lastFrame = 0L
+        transitionPaint.alpha = 255
+
     }
 
     /** 波形与频谱融合：上方真实时域波形，下方保留 48 段实时频谱。 */
@@ -314,32 +317,176 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
     }
 
-    /** 53 号工作流的 48 频带渐变频谱柱：保留清晰核心线、柔和外发光和流动色相。 */
+    /** 48 段经典垂直频谱：底部起跳，柱体带柔和外发光与流动渐变。 */
     private fun drawSpectrumBars(canvas: Canvas) {
-        val cx = width * 0.5f
-        val cy = height * 0.475f
-        val halfWidth = width * 0.43f
-        val gap = 3.2f * density
-        val barWidth = ((halfWidth * 2f) - gap * (smoothFft.size - 1)) / smoothFft.size
-        val hueShift = (time * 32f) % 360f
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val gap = 2.2f * density
+        val barWidth = ((w * 0.90f - gap * (smoothFft.size - 1)) / smoothFft.size).coerceAtLeast(1f * density)
+        val left = (w - (barWidth * smoothFft.size + gap * (smoothFft.size - 1))) * 0.5f
+        val baseline = h * 0.88f
+        val maxHeight = h * 0.70f
+        val hueShift = (time * 24f) % 360f
         for (i in smoothFft.indices) {
-            val x = cx - halfWidth + i * (barWidth + gap) + barWidth / 2f
+            val x = left + i * (barWidth + gap)
             val energy = smoothFft[i].coerceIn(0f, 1f)
-            val barHeight = (2.2f * density + energy * 54f * density).coerceAtLeast(2f * density)
-            val c = spectrumColor(i, hueShift)
-            paint.shader = null
-            paint.color = c
-            paint.style = Paint.Style.STROKE
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = barWidth.coerceAtLeast(1.2f * density)
-            paint.alpha = 75
-            paint.maskFilter = BlurMaskFilter(5f * density, BlurMaskFilter.Blur.NORMAL)
-            canvas.drawLine(x, cy - barHeight, x, cy + barHeight, paint)
+            val barHeight = (2.2f * density + energy * maxHeight).coerceAtMost(maxHeight)
+            paint.color = spectrumColor(i, hueShift)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 58
+            paint.maskFilter = BlurMaskFilter(4.5f * density, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawRoundRect(x - density, baseline - barHeight - density, x + barWidth + density, baseline + density,
+                barWidth, barWidth, paint)
             paint.maskFilter = null
             paint.alpha = 245
-            paint.strokeWidth = (barWidth * 0.72f).coerceAtLeast(1.1f * density)
-            canvas.drawLine(x, cy - barHeight, x, cy + barHeight, paint)
+            canvas.drawRoundRect(x, baseline - barHeight, x + barWidth, baseline,
+                barWidth * 0.5f, barWidth * 0.5f, paint)
         }
+        paint.alpha = 255
+    }
+
+    /** 中心镜像：48 段频谱从中轴同时向上、向下展开。 */
+    private fun drawMirroredBars(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val gap = 2.1f * density
+        val barWidth = ((w * 0.90f - gap * (smoothFft.size - 1)) / smoothFft.size).coerceAtLeast(1f * density)
+        val left = (w - (barWidth * smoothFft.size + gap * (smoothFft.size - 1))) * 0.5f
+        val centerY = h * 0.5f
+        val maxHeight = h * 0.34f
+        for (i in smoothFft.indices) {
+            val energy = smoothFft[i].coerceIn(0f, 1f)
+            val bh = (2f * density + energy * maxHeight).coerceAtMost(maxHeight)
+            val x = left + i * (barWidth + gap)
+            paint.color = spectrumColor(i, time * 26f)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 58
+            paint.maskFilter = BlurMaskFilter(4.5f * density, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawRoundRect(x - density, centerY - bh - density, x + barWidth + density, centerY + bh + density,
+                barWidth, barWidth, paint)
+            paint.maskFilter = null
+            paint.alpha = 242
+            canvas.drawRoundRect(x, centerY - bh, x + barWidth, centerY, barWidth * 0.5f, barWidth * 0.5f, paint)
+            canvas.drawRoundRect(x, centerY, x + barWidth, centerY + bh, barWidth * 0.5f, barWidth * 0.5f, paint)
+        }
+        paint.alpha = 255
+    }
+
+    /** 双层交错：慢衰减后景与实时前景叠加，形成能量残影。 */
+    private fun drawDualLayerBars(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val gap = 2.2f * density
+        val barWidth = ((w * 0.90f - gap * (smoothFft.size - 1)) / smoothFft.size).coerceAtLeast(1f * density)
+        val left = (w - (barWidth * smoothFft.size + gap * (smoothFft.size - 1))) * 0.5f
+        val baseline = h * 0.82f
+        val maxHeight = h * 0.68f
+        for (i in smoothFft.indices) {
+            val x = left + i * (barWidth + gap)
+            val trailHeight = (2f * density + spectrumTrail[i] * maxHeight).coerceAtMost(maxHeight)
+            val currentHeight = (2f * density + smoothFft[i] * maxHeight).coerceAtMost(maxHeight)
+            paint.color = spectrumColor(i, time * 22f)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 58
+            canvas.drawRoundRect(x - barWidth * 0.22f, baseline - trailHeight, x + barWidth * 1.22f, baseline,
+                barWidth, barWidth, paint)
+            paint.alpha = 245
+            canvas.drawRoundRect(x, baseline - currentHeight, x + barWidth, baseline,
+                barWidth * 0.45f, barWidth * 0.45f, paint)
+            paint.color = Color.WHITE
+            paint.alpha = (55f + smoothFft[i] * 125f).toInt().coerceIn(55, 180)
+            canvas.drawRoundRect(x + barWidth * 0.25f, baseline - currentHeight, x + barWidth * 0.75f,
+                baseline - currentHeight + 1.4f * density, density, density, paint)
+        }
+        paint.alpha = 255
+    }
+
+    /** 粒子矩阵：每个频带映射成一列粒子，能量越高点亮越多。 */
+    private fun drawParticleMatrix(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val columns = smoothFft.size
+        val rows = 9
+        val cellW = w * 0.90f / columns
+        val left = w * 0.05f
+        val top = h * 0.12f
+        val cellH = h * 0.76f / rows
+        val radius = min(cellW * 0.22f, cellH * 0.22f).coerceAtLeast(1.1f * density)
+        for (column in 0 until columns) {
+            val energy = smoothFft[column].coerceIn(0f, 1f)
+            val litRows = (energy * rows).toInt()
+            for (row in 0 until rows) {
+                val x = left + cellW * (column + 0.5f)
+                val y = top + cellH * (rows - row - 0.5f)
+                paint.color = spectrumColor(column, time * 14f)
+                paint.alpha = if (row < litRows) 235 else 24
+                val pulse = if (row < litRows) 1f + 0.12f * sin(time * 3f + column * 0.31f + row) else 1f
+                canvas.drawCircle(x, y, radius * pulse, paint)
+            }
+        }
+        paint.alpha = 255
+        drawParticleField(canvas, h * 0.5f, h * 0.36f, 0.28f)
+    }
+
+    /** 阶梯频谱：每列按能量点亮离散台阶，轮廓清楚且节奏感更强。 */
+    private fun drawSteppedBars(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val columns = smoothFft.size
+        val steps = 8
+        val gap = 1.7f * density
+        val cellW = w * 0.90f / columns
+        val barW = (cellW - gap).coerceAtLeast(1f * density)
+        val left = w * 0.05f
+        val bottom = h * 0.88f
+        val stepH = h * 0.72f / steps
+        for (i in 0 until columns) {
+            val lit = (smoothFft[i].coerceIn(0f, 1f) * steps).toInt()
+            val x = left + i * cellW + (cellW - barW) / 2f
+            for (step in 0 until steps) {
+                paint.color = spectrumColor(i, time * 18f + step * 4f)
+                paint.alpha = if (step < lit) (150 + step * 12).coerceAtMost(250) else 20
+                val y = bottom - (step + 1) * stepH
+                canvas.drawRoundRect(x, y + gap * 0.35f, x + barW, y + stepH - gap * 0.35f,
+                    barW * 0.25f, barW * 0.25f, paint)
+            }
+        }
+        paint.alpha = 255
+    }
+
+    /** 空间隧道：多层透视频谱向消失点收束，近景大、远景小。 */
+    private fun drawPerspectiveTunnel(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val centerX = w * 0.5f
+        val horizonY = h * 0.25f
+        val layers = 7
+        val cell = w * 0.90f / smoothFft.size
+        for (depth in layers - 1 downTo 0) {
+            val perspective = 1f - depth * 0.105f
+            val rowY = horizonY + (depth + 1) * h * 0.085f
+            val barW = (cell * 0.58f * perspective).coerceAtLeast(0.8f * density)
+            val maxHeight = h * 0.22f * perspective
+            val alpha = (70 + (layers - depth) * 24).coerceIn(70, 238)
+            for (i in smoothFft.indices) {
+                val energy = smoothFft[i].coerceIn(0f, 1f)
+                val x = centerX + (i - (smoothFft.size - 1) / 2f) * cell * perspective - barW / 2f
+                val bh = (1.2f * density + energy * maxHeight).coerceAtMost(maxHeight)
+                paint.color = spectrumColor(i, time * 17f + depth * 5f)
+                paint.alpha = alpha
+                canvas.drawRoundRect(x, rowY - bh, x + barW, rowY, barW * 0.4f, barW * 0.4f, paint)
+            }
+        }
+        // 消失点发出的细线强化空间深度，不覆盖频谱柱主体。
+        paint.color = 0x557ADFFF
+        paint.alpha = 105
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 0.8f * density
+        for (i in 0..12) {
+            val x = w * i / 12f
+            canvas.drawLine(centerX, horizonY, x, h * 0.94f, paint)
+        }
+        paint.style = Paint.Style.FILL
         paint.alpha = 255
     }
 
