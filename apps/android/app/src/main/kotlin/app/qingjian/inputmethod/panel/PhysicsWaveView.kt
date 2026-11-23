@@ -28,8 +28,18 @@ class PhysicsWaveView @JvmOverloads constructor(
 ) : View(context, attrs) {
     enum class Style { SPECTRUM_BARS, RING_SPECTRUM, SPRING_BARS, GRAVITY_BALLS, PEAK_HOLD, ELASTIC_STRING, GLOW_ORBS, FLOWING_RIBBONS, REALTIME_WAVEFORM, WAVEFORM_SPECTRUM, MIRRORED_BARS, DUAL_LAYER_BARS, PARTICLE_MATRIX, STEPPED_BARS, PERSPECTIVE_TUNNEL }
 
+    private var previousStyle: Style? = null
+    private var styleTransitionStart = 0L
+    private val transitionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     var style = Style.SPRING_BARS
-        set(value) { field = value; resetState(); invalidate() }
+        set(value) {
+            if (field == value) return
+            previousStyle = field
+            styleTransitionStart = System.nanoTime()
+            field = value
+            invalidate()
+        }
     var listening = false
         set(value) {
             field = value
@@ -115,7 +125,7 @@ class PhysicsWaveView @JvmOverloads constructor(
         lastFrame = 0L
     }
 
-    private fun isPhysicsStyle(): Boolean = when (style) {
+    private fun isPhysicsStyle(value: Style = style): Boolean = when (value) {
         Style.SPRING_BARS, Style.GRAVITY_BALLS, Style.PEAK_HOLD,
         Style.ELASTIC_STRING, Style.GLOW_ORBS, Style.FLOWING_RIBBONS -> true
         else -> false
@@ -228,11 +238,38 @@ class PhysicsWaveView @JvmOverloads constructor(
                 remaining -= h
             }
         }
-        // 所有样式统一限制在面板中央 80% 宽度，左右各留 10% 安全边距。
-        // 物理类样式只额外压缩垂直绘制区域，避免波形与底部操作按钮重叠。
-        val compactPhysics = isPhysicsStyle() && style != Style.FLOWING_RIBBONS
+        val previous = previousStyle
+        val transition = if (previous == null) 1f else
+            ((now - styleTransitionStart) / 350_000_000f).coerceIn(0f, 1f)
+        if (previous != null && transition < 1f) {
+            transitionPaint.alpha = ((1f - transition) * 255f).toInt().coerceIn(0, 255)
+            val oldLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), transitionPaint)
+            drawStyle(canvas, previous)
+            canvas.restoreToCount(oldLayer)
+            transitionPaint.alpha = (transition * 255f).toInt().coerceIn(0, 255)
+            val newLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), transitionPaint)
+            drawStyle(canvas, style)
+            canvas.restoreToCount(newLayer)
+        } else {
+            previousStyle = null
+            transitionPaint.alpha = 255
+            drawStyle(canvas, style)
+        }
+        transitionPaint.alpha = 255
+        val moving = listening || previousStyle != null || smoothFft.any { it > 0.008f } ||
+            smoothWaveform.any { abs(it) > 0.003f } ||
+            (isPhysicsStyle() && pos.indices.any {
+                if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
+                else abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f
+            })
+        if (moving) postInvalidateOnAnimation() else lastFrame = 0L
+    }
+
+    /** 样式切换时由同一帧时间轴交叉淡化旧、新渲染器，避免突然闪断。 */
+    private fun drawStyle(canvas: Canvas, renderStyle: Style) {
+        val compactPhysics = isPhysicsStyle(renderStyle) && renderStyle != Style.FLOWING_RIBBONS
         canvas.save()
-        if (style == Style.RING_SPECTRUM) {
+        if (renderStyle == Style.RING_SPECTRUM) {
             // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
             drawRingSpectrum(canvas)
         } else {
@@ -242,7 +279,7 @@ class PhysicsWaveView @JvmOverloads constructor(
                 canvas.translate(0f, height * 0.31f)
                 canvas.scale(1f, 0.38f)
             }
-            when (style) {
+            when (renderStyle) {
                 Style.SPECTRUM_BARS -> drawSpectrumBars(canvas)
                 Style.RING_SPECTRUM -> Unit
                 Style.SPRING_BARS -> drawBars(canvas, true, false)
@@ -261,13 +298,6 @@ class PhysicsWaveView @JvmOverloads constructor(
             }
         }
         canvas.restore()
-        val moving = listening || smoothFft.any { it > 0.008f } ||
-            smoothWaveform.any { abs(it) > 0.003f } ||
-            (isPhysicsStyle() && pos.indices.any {
-                if (style == Style.GRAVITY_BALLS) pos[it] > 0.01f || abs(velocity[it]) > 0.05f
-                else abs(velocity[it]) > 0.02f || abs(pos[it] - target(it)) > 0.005f
-            })
-        if (moving) postInvalidateOnAnimation() else lastFrame = 0L
     }
 
     /** 波形与频谱融合：上方真实时域波形，下方保留 48 段实时频谱。 */
@@ -325,31 +355,30 @@ class PhysicsWaveView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
     }
 
-    /** 53 号工作流的 48 频带渐变频谱柱：保留清晰核心线、柔和外发光和流动色相。 */
+    /** 48 段经典垂直频谱：底部起跳，柱体带柔和外发光与流动渐变。 */
     private fun drawSpectrumBars(canvas: Canvas) {
-        val cx = width * 0.5f
-        val cy = height * 0.475f
-        val halfWidth = width * 0.43f
-        val gap = 3.2f * density
-        val barWidth = ((halfWidth * 2f) - gap * (smoothFft.size - 1)) / smoothFft.size
-        val hueShift = (time * 32f) % 360f
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val gap = 2.2f * density
+        val barWidth = ((w * 0.90f - gap * (smoothFft.size - 1)) / smoothFft.size).coerceAtLeast(1f * density)
+        val left = (w - (barWidth * smoothFft.size + gap * (smoothFft.size - 1))) * 0.5f
+        val baseline = h * 0.88f
+        val maxHeight = h * 0.70f
+        val hueShift = (time * 24f) % 360f
         for (i in smoothFft.indices) {
-            val x = cx - halfWidth + i * (barWidth + gap) + barWidth / 2f
+            val x = left + i * (barWidth + gap)
             val energy = smoothFft[i].coerceIn(0f, 1f)
-            val barHeight = (2.2f * density + energy * 54f * density).coerceAtLeast(2f * density)
-            val c = spectrumColor(i, hueShift)
-            paint.shader = null
-            paint.color = c
-            paint.style = Paint.Style.STROKE
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = barWidth.coerceAtLeast(1.2f * density)
-            paint.alpha = 75
-            paint.maskFilter = BlurMaskFilter(5f * density, BlurMaskFilter.Blur.NORMAL)
-            canvas.drawLine(x, cy - barHeight, x, cy + barHeight, paint)
+            val barHeight = (2.2f * density + energy * maxHeight).coerceAtMost(maxHeight)
+            paint.color = spectrumColor(i, hueShift)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 58
+            paint.maskFilter = BlurMaskFilter(4.5f * density, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawRoundRect(x - density, baseline - barHeight - density, x + barWidth + density, baseline + density,
+                barWidth, barWidth, paint)
             paint.maskFilter = null
             paint.alpha = 245
-            paint.strokeWidth = (barWidth * 0.72f).coerceAtLeast(1.1f * density)
-            canvas.drawLine(x, cy - barHeight, x, cy + barHeight, paint)
+            canvas.drawRoundRect(x, baseline - barHeight, x + barWidth, baseline,
+                barWidth * 0.5f, barWidth * 0.5f, paint)
         }
         paint.alpha = 255
     }
