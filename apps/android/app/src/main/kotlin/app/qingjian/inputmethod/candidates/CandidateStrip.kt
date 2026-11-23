@@ -284,7 +284,9 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
             val paint = textStyles.paint(role)
             val display = TextUtils.ellipsize(candidate.text, paint, maxTextWidth, TextUtils.TruncateAt.END).toString()
-            val displayWidth = (paint.measureText(display) + 12f * density).coerceAtMost(wordBounds.width())
+            val displayWidth = (paint.measureText(display) + 12f * density)
+                .coerceAtMost(maxTextWidth + 12f * density)
+                .coerceAtMost(wordBounds.width())
             result.left = wordBounds.centerX() - displayWidth / 2f
             result.right = wordBounds.centerX() + displayWidth / 2f
         }
@@ -374,7 +376,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 role,
                 eraseUnderlay = false,
                 alphaMultiplier = candidateRevealAlpha(index),
-                maxTextWidth = contentViewWidth / 3f,
+                maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
             )
             canvas.restoreToCount(revealSave)
         }
