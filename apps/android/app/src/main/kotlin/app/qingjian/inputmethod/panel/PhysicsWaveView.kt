@@ -260,6 +260,8 @@ class PhysicsWaveView @JvmOverloads constructor(
         }
         transitionPaint.alpha = 255
 
+        // 音频回调只更新目标频谱；录音期间由显示刷新节奏持续推进平滑滤波和粒子动画，避免帧率跟随音频分块而抖动。
+        if (listening && isAttachedToWindow) postInvalidateOnAnimation()
     }
 
     /** 样式切换时由同一帧时间轴交叉淡化旧、新渲染器，避免突然闪断。 */
