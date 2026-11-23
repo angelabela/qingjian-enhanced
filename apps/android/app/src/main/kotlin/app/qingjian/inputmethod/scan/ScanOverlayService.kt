@@ -183,7 +183,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 return
             }
             startupStage = "overlay window context"
-            overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else this
+            overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // A Service Context may not be associated with a display on Android 11+.
+                // Bind explicitly to the default display before creating the overlay WindowContext.
+                val displayManager = getSystemService(android.hardware.display.DisplayManager::class.java)
+                val display = displayManager?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                    ?: throw IllegalStateException("Default display is unavailable for scan overlay")
+                createDisplayContext(display)
+                    .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+            } else this
             windowManager = overlayContext.getSystemService(WindowManager::class.java)
             scanDiag("overlay window context created sdk=${Build.VERSION.SDK_INT} displayAssociated=${runCatching { overlayContext.display != null }.getOrDefault(false)}")
             startupStage = "barcode recognizers"

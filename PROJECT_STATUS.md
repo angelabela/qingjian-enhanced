@@ -1,3 +1,18 @@
+## 紧急修复轮次（2026-11-23，准备发布 0.3.19-dev）
+
+- 当前分支基线：0.3.18-dev / versionCode 318，紧急回退自 #546；只操作 `feature/workflow-444-model-coordination`，不修改 main 或其他仓库。
+- 0.3.17 输入法服务崩溃根因：`QingjianInputMethodService` 在 Kotlin 成员初始化阶段读取 Service 的 `mainLooper`，Context 尚未附加，触发 NullPointerException。0.3.18 回退已移除该过早初始化；本轮保持安全生命周期实现。
+- 扫码服务崩溃根因：Service Context 没有关联 Display 就调用 `createWindowContext`。本轮改为先从 DisplayManager 获取默认 Display，创建 Display Context 后再创建悬浮窗口 Context。
+- 视频背景：URI 不变时不再销毁 TextureView/Surface；透明度与模糊原位更新；只有视频源改变才替换视图。
+- 剪贴板：保留 0.3.18 已回退的安全实现；本轮不宣称短信验证码或所有剪贴板边界已验收。
+- 设置 Activity 闪退：现有日志没有足够的 Activity 崩溃堆栈，仍需独立采集 AndroidRuntime 日志，不将其与 IME Service NPE 混为一谈。
+- 新版本目标：0.3.19-dev；versionCode 应按项目 Gradle 公式递增到 319。构建、签名与设备测试均待完成。
+- 验收顺序：设置界面启动、IME 弹出、扫码悬浮窗、视频背景连续性/铺满、剪贴板与短信验证码。
+- 版本号规则：仅生成可交付新版时递增 patch；本次修复提交对应 0.3.19-dev。
+- 项目边界：仅修改青简输入法仓库 `angelabela/qingjian-enhanced` 的开发分支，不触碰 main 或其他项目。
+
+---
+
 ## 最新修复轮次（2026-11-23，0.3.17-dev / versionCode 317）
 
 - 基线：#546 / commit 248912e40e009fb7f98a57126d40b2acbf6ab290；设备日志 ime.2026-11-23.log（main，blob c10246d1da0cdcc60bc231be345c3150ba7f6636）。

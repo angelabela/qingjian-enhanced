@@ -1,3 +1,29 @@
+# 2026-11-23：0.3.19-dev 日志驱动修复
+
+## BJ-053：输入法服务初始化阶段 Context 空指针
+- 日志证据：AndroidRuntime 多次记录 `Unable to create service QingjianInputMethodService`，根因为 `Context.getMainLooper()` 对空 Context 调用。
+- 根因：0.3.17 新增的 Handler 在 Kotlin 成员初始化时访问 Service 的 mainLooper；此时 Service Context 尚未附加。
+- 处理：紧急回退 0.3.18 已移除该过早成员初始化；本轮保留此安全基线，禁止在 Service 字段初始化阶段访问 Context。
+- 验证：0.3.19 构建后需在设备确认设置与键盘可用；设置 Activity 闪退仍需独立堆栈。
+
+## BJ-054：Android 16 扫码悬浮窗创建时崩溃
+- 日志证据：`UnsupportedOperationException: Tried to obtain display from a Context not associated with one`，发生在 ScanOverlayService 创建 overlay WindowContext 阶段。
+- 根因：Service Context 未关联 Display，直接调用 createWindowContext。
+- 修复：通过 DisplayManager 获取默认 Display，先 createDisplayContext，再 createWindowContext。
+- 验证：待 Android 16 实机测试扫码启动、相机预览和停止流程。
+
+## BJ-055：视频背景刷新时 Surface 被反复销毁
+- 源码风险：每次刷新动态背景都无条件移除并重新创建 TextureView，可能销毁 Surface、重启播放器并造成背景闪断。
+- 修复：URI 不变时保留 TextureView/Surface，透明度和模糊效果原位更新；仅 URI 变化时替换视图。
+- 验证：待设备测试设置刷新、键盘重开及视频铺满整个面板。
+
+## BJ-056：设置 Activity 闪退原因待独立确认
+- 当前证据：已上传 ime 日志明确包含 IME Service 初始化 NPE，但未取得足以定位设置 Activity 的完整 FATAL EXCEPTION/Activity 堆栈。
+- 处理：不把 Service NPE 直接当成设置 Activity 闪退根因；下一轮需补充应用启动异常和 AndroidRuntime 堆栈。
+- 验证：待 0.3.19 实机确认设置主页及各设置子页。
+
+---
+
 # 2026-11-23：0.3.17-dev 日志驱动修复
 
 ## BJ-049：Android 16 扫码悬浮窗创建时崩溃

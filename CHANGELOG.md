@@ -1,3 +1,14 @@
+## 0.3.19-dev · 2026-11-23 · 修复验证版
+
+- 修复 Android 16 扫码服务创建悬浮窗时因 Service Context 未关联 Display 而崩溃的问题：先创建 Display Context，再创建 WindowContext
+- 视频背景设置刷新时保留未变化 URI 的 TextureView/Surface，透明度与模糊效果原位更新，避免不必要的播放器重启
+- 保留 0.3.18 对输入法 Service 初始化空指针的紧急回退，禁止在 Service 成员初始化阶段访问 Context
+- 设置 Activity 闪退原因尚待独立堆栈确认；本版构建成功不代表设备验收完成
+- APP 版本：0.3.19-dev；versionCode 预计 319
+- 本版待 GitHub Actions 构建、固定签名验证和用户设备验收
+
+---
+
 ## 0.3.17-dev · 2026-11-23 · beta
 
 - 修复 Android 16 扫码悬浮服务使用未关联 Display 的 Service Context 创建 WindowContext 导致启动崩溃的问题

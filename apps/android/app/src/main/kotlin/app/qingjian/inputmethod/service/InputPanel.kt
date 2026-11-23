@@ -726,16 +726,45 @@ class InputPanel(
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
         private var lastVideoMeasureSignature: String? = null
-        private var videoBackground: DynamicVideoBackgroundView? = videoUri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply { onAverageLuminance = onVideoLuminance } }
-        private var videoTint: View? = makeVideoTint(context, videoUri, videoBrightness)
+        private var currentVideoUri: String? = videoUri?.takeIf { it.isNotBlank() }
+        private var videoBackground: DynamicVideoBackgroundView? = currentVideoUri?.let {
+            DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply {
+                onAverageLuminance = onVideoLuminance
+            }
+        }
+        private var videoTint: View? = makeVideoTint(context, currentVideoUri, videoBrightness)
 
         fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
-            videoBackground?.let { removeView(it) }
+            val normalizedUri = uri?.takeIf { it.isNotBlank() }
+            if (normalizedUri != currentVideoUri) {
+                videoBackground?.let { removeView(it) }
+                currentVideoUri = normalizedUri
+                videoBackground = normalizedUri?.let {
+                    DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply {
+                        onAverageLuminance = onVideoLuminance
+                    }
+                }
+                videoBackground?.let {
+                    addView(it, 0, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.TOP,
+                    ))
+                }
+                AppLog.info("[VIDEO_BG_DIAG] video source changed enabled=${normalizedUri != null} viewCreated=${videoBackground != null}")
+            } else {
+                videoBackground?.updateAppearance(alpha, blur)
+            }
             videoTint?.let(::removeView)
-            videoBackground = uri?.let { DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply { onAverageLuminance = onVideoLuminance } }
-            videoTint = makeVideoTint(context, uri, brightness)
-            videoBackground?.let { addView(it, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
-            videoTint?.let { addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP)) }
+            videoTint = makeVideoTint(context, normalizedUri, brightness)
+            videoTint?.let {
+                addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.TOP,
+                ))
+            }
+            requestLayout()
             invalidate()
         }
 
