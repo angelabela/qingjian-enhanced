@@ -1643,7 +1643,7 @@ remove duplicate late clipboard write        if (enter) {
     override fun onCursorMove(steps: Int) = composer.moveCursor(steps)
 
     override fun onCandidateSwipeStart(): Boolean {
-        if (shownPreedit.isNotEmpty() || shownCandidates.isEmpty() || editor != null) return false
+        if (shownCandidates.isEmpty() || editor != null) return false
         if (panel?.openPanel != null) return false
         spaceCandidateSwipeIndex = 0
         panel?.bar?.setGestureSelection(spaceCandidateSwipeIndex)
