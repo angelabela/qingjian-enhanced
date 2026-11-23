@@ -392,9 +392,26 @@ class QingjianInputMethodService :
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val value = intent.getStringExtra(ScanPreferences.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
                 ?: run { AppLog.warn("[SCAN_DIAG] result broadcast empty"); return }
+            ensureScanResultInClipboard(value)
             commitScanResult(value, intent.getBooleanExtra(ScanPreferences.EXTRA_ENTER, false), 0)
             showScanActionNotice(value)
         }
+    }
+
+    /** 扫码结果独立补入系统剪贴板：即使编辑框暂不可用，也不丢失剪贴板记录。 */
+    private fun ensureScanResultInClipboard(value: String) {
+        runCatching {
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            val current = clipboard?.primaryClip
+            val currentText = current?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+            if (currentText != value.trim()) {
+                clipboard?.setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+                AppLog.info("[SCAN_DIAG] clipboard filled from scan result length=${value.length}")
+            } else {
+                AppLog.info("[SCAN_DIAG] clipboard already contains scan result; no duplicate")
+            }
+        }.onFailure { android.util.Log.w("QingjianScan", "Unable to fill system clipboard", it) }
     }
 
     /**
@@ -452,18 +469,7 @@ class QingjianInputMethodService :
             return
         }
 
-        // 只在系统剪贴板为空时补入扫码内容；已有内容不被扫码结果覆盖。
-        runCatching {
-            val clipboard = getSystemService(ClipboardManager::class.java)
-            val current = clipboard?.primaryClip
-            val currentText = current?.takeIf { it.itemCount > 0 }
-                ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
-            if (currentText.isEmpty()) {
-                clipboard?.setPrimaryClip(ClipData.newPlainText("扫码结果", value))
-            }
-        }.onFailure { android.util.Log.w("QingjianScan", "Unable to preserve/fill system clipboard", it) }
-
-        if (enter) {
+remove duplicate late clipboard write        if (enter) {
             val newlineCommitted = runCatching { connection.commitText("\n", 1) }.getOrDefault(false)
             if (!newlineCommitted) runCatching {
                 connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
@@ -482,7 +488,9 @@ class QingjianInputMethodService :
     private val mascotTipSelectedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val index = intent.getIntExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_INDEX, -1)
-            if (index < 0 || shownCandidates.getOrNull(index)?.cloud != true) return
+            if (index < 0) return
+            if (panel?.selectSmartSuggestion(index) == true) return
+            if (shownCandidates.getOrNull(index)?.cloud != true) return
             composer.select(originalCandidateIndex(index))
         }
     }
