@@ -3,6 +3,7 @@ package app.qingjian.inputmethod.candidates
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.text.TextUtils
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.text.TextPaint
@@ -151,18 +152,24 @@ class CandidateTextStyleEngine(
         val availableWidth = (rect.width() - 2f * density).coerceAtLeast(1f)
         val availableHeight = (rect.height() - 2f * density + if (role == Role.PREEDIT) 6f * density else 0f).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
+        val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED
+        // 常用语/整句补全过长时保留正常字号并在候选格内省略，避免整段文字被压缩成极小字号。
+        val displayText = if (isCandidateRole && measuredWidth > availableWidth) {
+            TextUtils.ellipsize(text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
+        } else text
+        val displayWidth = paint.measureText(displayText)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
         val fitScale = if (role == Role.PREEDIT) {
             // 拼音逐字定位时，字符边界可能很窄；必须同时按宽、高 fit。
             // 旧逻辑只按高度放大，并把裁剪框扩到相邻字母区域，容易造成字母重叠。
             minOf(
                 1.12f,
-                availableWidth / measuredWidth.coerceAtLeast(1f),
+                availableWidth / displayWidth.coerceAtLeast(1f),
                 availableHeight / measuredHeight,
             )
         } else minOf(
             1f,
-            availableWidth / measuredWidth.coerceAtLeast(1f),
+            availableWidth / displayWidth.coerceAtLeast(1f),
             availableHeight / measuredHeight,
         )
         // 不设置缩放下限：极长词组也必须完整落入候选格，不能再被硬裁切。
@@ -208,7 +215,7 @@ class CandidateTextStyleEngine(
                     strokeWidth = style.strokeWidthDp.coerceAtLeast(0f) * density
                     clearShadowLayer()
                 }
-                canvas.drawText(text, x, baseline, stroke)
+                canvas.drawText(displayText, x, baseline, stroke)
             }
         }
         if (config.preset == Settings.TextEffectPreset.COLOR_GRADIENT && adaptiveTextColor == null) {
@@ -218,7 +225,7 @@ class CandidateTextStyleEngine(
                 null, android.graphics.Shader.TileMode.CLAMP,
             )
         }
-        canvas.drawText(text, x, baseline, paint)
+        canvas.drawText(displayText, x, baseline, paint)
         paint.shader = null
         paint.textSize = originalSize
         paint.alpha = originalAlpha
