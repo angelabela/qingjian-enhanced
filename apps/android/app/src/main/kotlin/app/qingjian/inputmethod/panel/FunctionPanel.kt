@@ -390,6 +390,72 @@ class FunctionPanel(
         val accent = if (selected) palette.brand else palette.gloss
         val secondary = if (selected) palette.accent else palette.faint
         ink.fill.style = android.graphics.Paint.Style.FILL
+        if (index == 10) {
+            // 中心对称频谱
+            val heights = floatArrayOf(3f, 6f, 10f, 7f, 4f)
+            heights.forEachIndexed { i, height ->
+                val x = cx + (i - 2) * ink.dp(4.2f)
+                val half = ink.dp(height)
+                ink.fill.color = if (i % 2 == 0) secondary else accent
+                canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
+                    ink.dp(1f), ink.dp(1f), ink.fill)
+            }
+            return
+        }
+        if (index == 11) {
+            // 双层交错频谱
+            val heights = floatArrayOf(5f, 9f, 13f, 8f, 5f)
+            heights.forEachIndexed { i, height ->
+                val x = cx + (i - 2) * ink.dp(4.2f)
+                ink.fill.color = secondary
+                ink.fill.alpha = 70
+                canvas.drawRoundRect(x - ink.dp(1.6f), cy - ink.dp(height + 3f), x + ink.dp(1.6f), cy + ink.dp(height + 3f),
+                    ink.dp(1.5f), ink.dp(1.5f), ink.fill)
+                ink.fill.color = accent
+                ink.fill.alpha = 255
+                canvas.drawRoundRect(x - ink.dp(1f), cy - ink.dp(height), x + ink.dp(1f), cy + ink.dp(height),
+                    ink.dp(1f), ink.dp(1f), ink.fill)
+            }
+            return
+        }
+        if (index == 12) {
+            // 粒子矩阵
+            for (column in 0..6) for (row in 0..4) {
+                ink.fill.color = if ((column + row) % 3 == 0) accent else secondary
+                ink.fill.alpha = if (row <= (column % 4) + 1) 230 else 38
+                canvas.drawCircle(cx - ink.dp(10f) + column * ink.dp(3.2f),
+                    cy + ink.dp(8f) - row * ink.dp(4f), ink.dp(0.9f), ink.fill)
+            }
+            ink.fill.alpha = 255
+            return
+        }
+        if (index == 13) {
+            // 阶梯频谱
+            val heights = intArrayOf(2, 4, 6, 5, 3)
+            for (i in heights.indices) for (step in 0 until heights[i]) {
+                ink.fill.color = if (step % 2 == 0) accent else secondary
+                val x = cx + (i - 2) * ink.dp(4.2f)
+                val y = cy + ink.dp(10f) - step * ink.dp(3f)
+                canvas.drawRoundRect(x - ink.dp(1f), y - ink.dp(2f), x + ink.dp(1f), y,
+                    ink.dp(0.8f), ink.dp(0.8f), ink.fill)
+            }
+            return
+        }
+        if (index == 14) {
+            // 透视空间隧道
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            for (i in 0..3) {
+                val inset = ink.dp(i * 3f)
+                ink.fill.color = if (i % 2 == 0) accent else secondary
+                ink.fill.alpha = 210 - i * 35
+                canvas.drawRoundRect(RectF(cx - ink.dp(12f) + inset, cy - ink.dp(11f) + inset,
+                    cx + ink.dp(12f) - inset, cy + ink.dp(11f) - inset),
+                    ink.dp(2f), ink.dp(2f), ink.fill)
+            }
+            ink.fill.alpha = 255
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            return
+        }
         if (index == 1) {
             ink.fill.color = accent
             ink.fill.style = android.graphics.Paint.Style.STROKE
