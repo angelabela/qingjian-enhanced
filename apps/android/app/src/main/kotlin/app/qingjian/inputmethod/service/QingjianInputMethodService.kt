@@ -331,11 +331,9 @@ class QingjianInputMethodService :
         val sameClipboardContent = lastHash == contentHash &&
             (clipTimestamp <= 0L || clipTimestamp == lastTimestamp)
         if (preferredCode == null && sameClipboardContent && !clipboardNoticeEventPending) {
-            // 重读同一条剪贴板时不能清掉刚显示的提示；若输入法窗口刚重建，则补回当前最新内容。
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate retained: already displayed for this clipboard event source=$source length=${text.length}")
-            if (!bar.hasPersistentNotice(text)) {
-                bar.showPersistentNotice(text) { commitText(text) }
-            }
+            // 同一条剪贴板内容只提示一次。输入法窗口重建后不补显旧内容；
+            // 只有系统再次发出新的剪贴板变更事件，才允许相同文本重新提示。
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate suppressed: already shown; reopen must stay silent source=$source length=${text.length}")
             return
         }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。

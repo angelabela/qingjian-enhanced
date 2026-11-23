@@ -105,8 +105,34 @@ class PhysicsWaveView @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
+    /**
+     * 重新映射语音频谱：舍弃最底部与最顶部各 5 个极端频带，只取中间 38 段；
+     * 将中频主体插值铺满 48 个显示柱，并对较弱的中高频做温和补偿。
+     * 平方根压缩提升轻声/齿音细节，噪声门抑制静音底噪，避免高频柱长期趴底。
+     */
     fun updateSpectrum(values: FloatArray) {
-        for (i in fft.indices) fft[i] = values.getOrElse(i) { 0f }.coerceIn(0f, 1f)
+        if (values.isEmpty()) {
+            fft.fill(0f)
+            postInvalidateOnAnimation()
+            return
+        }
+        val firstBand = min(5, values.lastIndex)
+        val lastBand = max(firstBand, values.lastIndex - 5)
+        val usableSpan = (lastBand - firstBand).coerceAtLeast(0).toFloat()
+        for (i in fft.indices) {
+            val position = i.toFloat() / (fft.size - 1).coerceAtLeast(1)
+            val sourcePosition = firstBand + usableSpan * position
+            val lower = sourcePosition.toInt().coerceIn(firstBand, lastBand)
+            val upper = (lower + 1).coerceAtMost(lastBand)
+            val fraction = sourcePosition - lower
+            val lowerValue = values[lower].coerceIn(0f, 1f)
+            val upperValue = values[upper].coerceIn(0f, 1f)
+            val raw = lowerValue + (upperValue - lowerValue) * fraction
+            val gated = ((raw - 0.014f) / 0.986f).coerceIn(0f, 1f)
+            val compressed = sqrt(gated)
+            val upperMidLift = 0.94f + position * 0.42f
+            fft[i] = (compressed * upperMidLift).coerceIn(0f, 1f)
+        }
         postInvalidateOnAnimation()
     }
 
@@ -202,8 +228,9 @@ class PhysicsWaveView @JvmOverloads constructor(
         val dt = if (lastFrame == 0L) 0f else ((now - lastFrame) / 1e9f).coerceAtMost(1f / 30f)
         lastFrame = now
         time += dt
-        val attack = (1.0 - kotlin.math.exp((-dt / 0.045f).toDouble())).toFloat()
-        val release = (1.0 - kotlin.math.exp((-dt / 0.19f).toDouble())).toFloat()
+        // 轻声起音更快跟手，尾音保留较柔和的回落，避免频谱抖动或迟钝。
+        val attack = (1.0 - kotlin.math.exp((-dt / 0.032f).toDouble())).toFloat()
+        val release = (1.0 - kotlin.math.exp((-dt / 0.15f).toDouble())).toFloat()
         for (i in smoothFft.indices) {
             val blend = if (fft[i] > smoothFft[i]) attack else release
             smoothFft[i] += (fft[i] - smoothFft[i]) * blend

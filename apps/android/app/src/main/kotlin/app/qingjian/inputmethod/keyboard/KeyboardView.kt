@@ -491,9 +491,13 @@ class KeyboardView(
     private fun trackEditShortcut(event: MotionEvent) {
         if (editPointer < 0 || editTriggered || editAction == null) return
         val sourceKey = pressed[editPointer]?.key ?: return
-        // 用户为 Z/X/C/V 配了下滑动作时，自定义手势优先于旧的编辑快捷手势。
-        // NONE 也必须接管方向，表示明确关闭，而不是退回旧动作。
-        if (matchesCustomGestureKey(sourceKey) && settings.customGestureDown != Settings.GestureAction.DEFAULT) return
+        // C 键下滑是固定复制快捷键，必须始终走 edit shortcut 分支；
+        // 不允许自定义手势接管后绕过 COPY，落入其他动作（尤其 CUT）。
+        val isFixedCopyKey = (sourceKey as? Key.Letter)?.char?.lowercaseChar() == 'c'
+        // 其他 Z/X/V 键仍遵循用户配置的自定义下滑动作。
+        if (!isFixedCopyKey && matchesCustomGestureKey(sourceKey) &&
+            settings.customGestureDown != Settings.GestureAction.DEFAULT
+        ) return
         val at = event.findPointerIndex(editPointer)
         if (at < 0) return
         val dx = event.getX(at) - editStartX
