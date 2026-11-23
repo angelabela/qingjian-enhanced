@@ -77,13 +77,16 @@ class ClipboardPanel(
 
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var searchQuery = ""
+    private val pinyinInitialsCache = HashMap<String, String>()
     private val visibleClipIndices: List<Int> get() = clips.indices.filter { index ->
         searchQuery.isBlank() ||
             clips[index].text.contains(searchQuery, ignoreCase = true) ||
             pinyinInitials(clips[index].text).contains(searchQuery, ignoreCase = true)
     }
-    private fun pinyinInitials(text: String): String = HAN_TO_LATIN.transliterate(text)
-        .lowercase().split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
+    private fun pinyinInitials(text: String): String = pinyinInitialsCache.getOrPut(text) {
+        HAN_TO_LATIN.transliterate(text).lowercase()
+            .split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
+    }
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchEditing = false
@@ -199,11 +202,28 @@ class ClipboardPanel(
 
     private fun openSearchEditor() {
         searchPopup?.dismiss()
+        searchEditing = true
+        context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         val popupWidth = (width - ink.dp(16f)).toInt().coerceAtLeast(ink.dp(250f).toInt())
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
         val popupHeight = (keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
+        var popupWindow: PopupWindow? = null
+        var dragging = false
+        var longPressTriggered = false
+        var downRawX = 0f
+        var downRawY = 0f
+        var popupStartX = 0
+        var popupStartY = 0
+        val beginDrag = Runnable {
+            if (isAttachedToWindow) {
+                dragging = true
+                longPressTriggered = true
+                Haptics.tap(context)
+            }
+        }
         val keyboard = object : View(context) {
             private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val keys = ArrayList<Pair<Char, RectF>>()
@@ -241,13 +261,50 @@ class ClipboardPanel(
                 }
             }
             override fun onTouchEvent(event: MotionEvent): Boolean {
-                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    keys.firstOrNull { it.second.contains(event.x, event.y) }?.first?.let { ch ->
-                        searchQuery += ch
-                        expanded = -1
-                        layouts.clear()
-                        listScroll.reset()
-                        invalidate()
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        dragging = false
+                        longPressTriggered = false
+                        downRawX = event.rawX
+                        downRawY = event.rawY
+                        popupStartX = popupWindow?.let { locationOnScreen(it)[0] } ?: 0
+                        popupStartY = popupWindow?.let { locationOnScreen(it)[1] } ?: 0
+                        postDelayed(beginDrag, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (dragging) {
+                            val screen = resources.displayMetrics
+                            val maxX = (screen.widthPixels - popupWidth).coerceAtLeast(0)
+                            val maxY = (screen.heightPixels - popupHeight).coerceAtLeast(0)
+                            val nextX = (popupStartX + event.rawX - downRawX).toInt().coerceIn(0, maxX)
+                            val nextY = (popupStartY + event.rawY - downRawY).toInt().coerceIn(0, maxY)
+                            popupWindow?.update(nextX, nextY, -1, -1)
+                        } else if (kotlin.math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) > ink.dp(10f)) {
+                            removeCallbacks(beginDrag)
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        removeCallbacks(beginDrag)
+                        if (!dragging && !longPressTriggered) {
+                            keys.firstOrNull { it.second.contains(event.x, event.y) }?.first?.let { ch ->
+                                searchQuery += ch
+                                expanded = -1
+                                layouts.clear()
+                                listScroll.reset()
+                                invalidate()
+                            }
+                        }
+                        dragging = false
+                        longPressTriggered = false
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        removeCallbacks(beginDrag)
+                        dragging = false
+                        longPressTriggered = false
+                        return true
                     }
                 }
                 return true
@@ -256,19 +313,33 @@ class ClipboardPanel(
         val popup = PopupWindow(keyboard, popupWidth, popupHeight, false).apply {
             isFocusable = false
             isTouchable = true
-            isOutsideTouchable = true
+            isOutsideTouchable = false
             setBackgroundDrawable(ColorDrawable(palette.board))
             elevation = ink.dp(12f)
             setClippingEnabled(true)
-            setOnDismissListener { if (searchPopup === this) searchPopup = null }
+            setOnDismissListener {
+                if (searchPopup === this) searchPopup = null
+                searchEditing = false
+                context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                    .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+            }
         }
         val location = IntArray(2)
         getLocationOnScreen(location)
-        popup.showAtLocation(this, Gravity.TOP or Gravity.START,
-            (location[0] + searchRect.left).toInt().coerceAtLeast(0),
-            (location[1] + searchRect.bottom + ink.dp(6f)).toInt())
+        val screen = resources.displayMetrics
+        val initialX = (location[0] + searchRect.left).toInt().coerceIn(0, (screen.widthPixels - popupWidth).coerceAtLeast(0))
+        val initialY = (location[1] + searchRect.bottom + ink.dp(6f)).toInt()
+            .coerceIn(0, (screen.heightPixels - popupHeight).coerceAtLeast(0))
+        popup.showAtLocation(this, Gravity.TOP or Gravity.START, initialX, initialY)
+        popupWindow = popup
         searchPopup = popup
         Haptics.tap(context)
+    }
+
+    private fun locationOnScreen(popup: PopupWindow): IntArray {
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        return location
     }
 
     private fun applySearchKey(key: Key): Boolean {
@@ -849,6 +920,8 @@ class ClipboardPanel(
 
     override fun onTap(x: Float, y: Float) {
         if (searchEditing && !searchRect.contains(x, y)) {
+            searchPopup?.dismiss()
+            searchPopup = null
             searchEditing = false
             context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
