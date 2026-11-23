@@ -14,10 +14,9 @@ import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.settings.widget.ThemePreview
 import app.qingjian.inputmethod.theme.Appearance
 import app.qingjian.inputmethod.theme.Palette
-import app.qingjian.inputmethod.theme.TextSize
 
 /**
- * 外观二级页（对应 PC 设置程序的「外观」页）：当前主题的预览、深浅色、主题卡片、候选字号。
+ * 外观二级页（对应 PC 设置程序的「外观」页）：当前主题的预览、深浅色与主题卡片。
  * 主题与键盘配色都来自 PC 的主题库，键盘、候选条、面板与浮动编辑条一起换。改了马上写设置，开着的键盘跟着重建。
  */
 class AppearanceActivity : PageActivity() {
@@ -56,7 +55,7 @@ class AppearanceActivity : PageActivity() {
         )
     }
 
-    /** 当前主题、外观与字号下的候选条和键盘，候选条按实际大小画。 */
+    /** 当前主题、外观与已保存文字设置下的候选条和键盘预览。 */
     private fun preview(settings: Settings, dark: Boolean): View {
         val density = resources.displayMetrics.density
         val strip = Themes.preview(settings.theme, dark, density, settings.candidateFontSize / 20f, settings.fontWeight.weight)
