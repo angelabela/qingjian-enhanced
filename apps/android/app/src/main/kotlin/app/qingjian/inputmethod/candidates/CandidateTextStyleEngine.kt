@@ -169,7 +169,7 @@ class CandidateTextStyleEngine(
             )
         } else minOf(
             1f,
-            availableWidth / measuredWidth.coerceAtLeast(1f),
+            availableWidth / displayWidth.coerceAtLeast(1f),
             availableHeight / measuredHeight,
         )
         // 不设置缩放下限：极长词组也必须完整落入候选格，不能再被硬裁切。
