@@ -137,7 +137,7 @@ class KeyPainter(
 
             key is Key.Letter && key.hint.isNotEmpty() -> {
                 text(canvas, key.hint, 11f, secondaryColor, bounds.centerX(), bounds.top + bounds.height() * 0.24f)
-                text(canvas, label, 21f, labelColor, bounds.centerX(), bounds.top + bounds.height() * belowHint)
+                text(canvas, label, 21f, labelColor, bounds.centerX(), bounds.top + bounds.height() * 0.54f)
             }
 
             // 逗号键同时承载上滑句号：逗号与字母主字对齐，句号提示由 drawGestureHints 放在上方。
