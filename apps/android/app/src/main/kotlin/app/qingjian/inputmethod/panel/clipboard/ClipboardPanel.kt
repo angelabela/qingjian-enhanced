@@ -14,12 +14,10 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
-import android.view.WindowManager
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
+import android.view.MotionEvent
+import android.view.View
 import android.widget.PopupWindow
-import android.text.TextWatcher
-import android.text.Editable
+import android.icu.text.Transliterator
 import android.text.Layout
 import android.text.SpannableString
 import android.text.Spanned
@@ -72,7 +70,13 @@ class ClipboardPanel(
 
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var searchQuery = ""
-    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index -> searchQuery.isBlank() || clips[index].text.contains(searchQuery, ignoreCase = true) }
+    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index ->
+        searchQuery.isBlank() ||
+            clips[index].text.contains(searchQuery, ignoreCase = true) ||
+            pinyinInitials(clips[index].text).contains(searchQuery, ignoreCase = true)
+    }
+    private fun pinyinInitials(text: String): String = HAN_TO_LATIN.transliterate(text)
+        .lowercase().split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchPopup: PopupWindow? = null
@@ -181,60 +185,79 @@ class ClipboardPanel(
 
     private fun groupTop() = height - ink.dp(GROUP_BAR_DP)
 
-    /** 搜索框使用真实 EditText 弹层；弹层附着后再重启输入连接并请求键盘。 */
+    /** 点击搜索框后弹出独立的 26 键 QWERTY 小键盘，不再依赖系统输入法焦点。 */
     private fun openSearchEditor() {
         searchPopup?.dismiss()
-        val editor = EditText(context).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-            setSingleLine(true)
-            textSize = 13f
-            setTextColor(palette.text)
-            setHintTextColor(palette.gloss)
-            hint = "搜索"
-            setPadding(ink.dp(8f).toInt(), 0, ink.dp(8f).toInt(), 0)
-            setBackgroundColor(Color.TRANSPARENT)
-            setText(searchQuery)
-            setSelection(text?.length ?: 0)
+        val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+        val popupWidth = (width - ink.dp(16f)).toInt().coerceAtLeast(ink.dp(250f).toInt())
+        val keyHeight = ink.dp(42f)
+        val rowGap = ink.dp(6f)
+        val popupHeight = (keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
+        val keyboard = object : View(context) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val keys = ArrayList<Pair<Char, RectF>>()
+            private val gap = ink.dp(4f)
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                super.onSizeChanged(w, h, oldw, oldh)
+                keys.clear()
+                rows.forEachIndexed { row, letters ->
+                    val usable = w - ink.dp(20f)
+                    val kw = (usable - gap * (letters.length - 1)) / letters.length
+                    val rw = kw * letters.length + gap * (letters.length - 1)
+                    val left = (w - rw) / 2f
+                    val top = ink.dp(8f) + row * (keyHeight + rowGap)
+                    letters.forEachIndexed { col, ch ->
+                        val x = left + col * (kw + gap)
+                        keys += ch to RectF(x, top, x + kw, top + keyHeight)
+                    }
+                }
+            }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                keys.forEach { (ch, r) ->
+                    paint.style = Paint.Style.FILL
+                    paint.color = palette.surface
+                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = ink.dp(1f)
+                    paint.color = palette.brand
+                    canvas.drawRoundRect(r, ink.dp(8f), ink.dp(8f), paint)
+                    paint.style = Paint.Style.FILL
+                    paint.color = palette.text
+                    paint.textAlign = Paint.Align.CENTER
+                    paint.textSize = ink.dp(18f)
+                    canvas.drawText(ch.toString(), r.centerX(), r.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
+                }
+            }
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    keys.firstOrNull { it.second.contains(event.x, event.y) }?.first?.let { ch ->
+                        searchQuery += ch
+                        expanded = -1
+                        layouts.clear()
+                        listScroll.reset()
+                        invalidate()
+                    }
+                }
+                return true
+            }
         }
-        val popup = PopupWindow(editor, searchRect.width().toInt().coerceAtLeast(1), ink.dp(40f).toInt(), true).apply {
-            isFocusable = true
+        val popup = PopupWindow(keyboard, popupWidth, popupHeight, false).apply {
+            isFocusable = false
             isTouchable = true
             isOutsideTouchable = true
-            setBackgroundDrawable(ColorDrawable(palette.surface))
+            setBackgroundDrawable(ColorDrawable(palette.board))
             elevation = ink.dp(12f)
-            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            setClippingEnabled(true)
             setOnDismissListener { if (searchPopup === this) searchPopup = null }
         }
-        editor.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchQuery = s?.toString().orEmpty()
-                expanded = -1
-                layouts.clear()
-                listScroll.reset()
-                invalidate()
-            }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
         val location = IntArray(2)
         getLocationOnScreen(location)
         popup.showAtLocation(this, Gravity.TOP or Gravity.START,
-            location[0] + searchRect.left.toInt(), location[1] + searchRect.top.toInt())
+            (location[0] + searchRect.left).toInt().coerceAtLeast(0),
+            (location[1] + searchRect.bottom + ink.dp(6f)).toInt())
         searchPopup = popup
-        editor.postDelayed({
-            if (searchPopup !== popup || !popup.isShowing) return@postDelayed
-            editor.requestFocusFromTouch()
-            editor.requestFocus()
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.restartInput(editor)
-            val shown = imm?.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) == true
-            if (!shown) imm?.showSoftInput(editor, InputMethodManager.SHOW_FORCED)
-        }, 90L)
+        Haptics.tap(context)
     }
 
     override fun onDetachedFromWindow() {
@@ -255,7 +278,7 @@ class ClipboardPanel(
         if (!showingPhrases) {
             // 搜索框固定占面板宽度 30%，三个功能按钮均分剩余空间。
             searchRect.set(ink.dp(8f), searchTop + ink.dp(2f),
-                ink.dp(8f) + width * 0.30f, searchTop + ink.dp(38f))
+                ink.dp(8f) + width * 0.27f, searchTop + ink.dp(38f))
             deleteBackwardRect.set(deleteBackwardBounds())
             pasteToggleRect.set(pasteToggleBounds())
             pasteNextCellRect.set(pasteNextCellBounds())
@@ -927,6 +950,7 @@ class ClipboardPanel(
     }
 
     companion object {
+        private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
         private const val CLIPS = 0
         private const val PHRASES = 1
         private const val AUTO_MEMORY_GROUP = "自动记忆"
