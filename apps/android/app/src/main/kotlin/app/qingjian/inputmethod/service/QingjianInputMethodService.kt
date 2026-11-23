@@ -1575,14 +1575,23 @@ class QingjianInputMethodService :
                 toast("当前输入框不允许复制")
                 return
             }
-            val selected = runCatching {
-                currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
-            }.getOrDefault("")
-            if (selected.isEmpty()) {
-                toast("请先选中要复制的文字")
+            val connection = currentInputConnection
+            val selected = runCatching { connection?.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
+            val textToCopy = selected.ifEmpty {
+                runCatching {
+                    connection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)?.text?.toString().orEmpty()
+                }.getOrDefault("").ifEmpty {
+                    runCatching {
+                        connection?.getTextBeforeCursor(10000, 0)?.toString().orEmpty() +
+                            connection?.getTextAfterCursor(10000, 0)?.toString().orEmpty()
+                    }.getOrDefault("")
+                }
+            }
+            if (textToCopy.isEmpty()) {
+                toast("当前输入框没有可复制的文字")
                 return
             }
-            copyToClipboard(selected)
+            copyToClipboard(textToCopy)
             return
         }
 
