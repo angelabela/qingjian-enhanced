@@ -350,6 +350,8 @@ class ClipboardPanel(
             Key.Backspace -> {
                 if (searchQuery.isEmpty()) {
                     searchEditing = false
+                    searchPopup?.dismiss()
+                    searchPopup = null
                     context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
                         .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
                     invalidate()
@@ -363,6 +365,8 @@ class ClipboardPanel(
             is Key.Space -> searchQuery + " "
             is Key.Enter -> {
                 searchEditing = false
+                searchPopup?.dismiss()
+                searchPopup = null
                 context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
                     .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
                 invalidate()
