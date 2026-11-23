@@ -360,7 +360,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             textStyles.drawReplacing(
                 canvas, candidate.text,
                 RectF(word.left, word.top + shift, word.right, word.bottom + shift),
-                role, eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(index),
+                role,
+                eraseUnderlay = false,
+                alphaMultiplier = candidateRevealAlpha(index),
+                maxTextWidth = contentViewWidth / 3f,
             )
             canvas.restoreToCount(revealSave)
         }

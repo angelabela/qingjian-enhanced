@@ -139,7 +139,15 @@ class CandidateTextStyleEngine(
     }
 
     /** 清除旧位图字形并按指定角色重绘；调用方需在已绘制 Rust 位图的 saveLayer 内使用。 */
-    fun drawReplacing(canvas: Canvas, text: String, rect: RectF, role: Role, eraseUnderlay: Boolean = true, alphaMultiplier: Int = 255) {
+    fun drawReplacing(
+        canvas: Canvas,
+        text: String,
+        rect: RectF,
+        role: Role,
+        eraseUnderlay: Boolean = true,
+        alphaMultiplier: Int = 255,
+        maxTextWidth: Float? = null,
+    ) {
         if (text.isEmpty() || rect.isEmpty) return
         val paint = paint(role)
         val x = rect.centerX()
@@ -149,7 +157,10 @@ class CandidateTextStyleEngine(
         // 词组可能比单字宽很多：在当前候选格内等比缩小文字，避免裁掉半个字。
         // 文字必须完整落在候选格内：同时按宽度和高度缩放，不再设置 62% 的硬下限，
         // 否则较长词组即使缩小后仍会被 clipRect 从左右两侧裁掉。
-        val availableWidth = (rect.width() - 2f * density).coerceAtLeast(1f)
+        val availableWidth = minOf(
+            (rect.width() - 2f * density).coerceAtLeast(1f),
+            maxTextWidth?.takeIf { it > 0f } ?: Float.MAX_VALUE,
+        )
         val availableHeight = (rect.height() - 2f * density + if (role == Role.PREEDIT) 6f * density else 0f).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
         val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED

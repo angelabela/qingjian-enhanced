@@ -491,13 +491,7 @@ class KeyboardView(
     private fun trackEditShortcut(event: MotionEvent) {
         if (editPointer < 0 || editTriggered || editAction == null) return
         val sourceKey = pressed[editPointer]?.key ?: return
-        // C 键下滑是固定复制快捷键，必须始终走 edit shortcut 分支；
-        // 不允许自定义手势接管后绕过 COPY，落入其他动作（尤其 CUT）。
-        val isFixedCopyKey = (sourceKey as? Key.Letter)?.char?.lowercaseChar() == 'c'
-        // 其他 Z/X/V 键仍遵循用户配置的自定义下滑动作。
-        if (!isFixedCopyKey && matchesCustomGestureKey(sourceKey) &&
-            settings.customGestureDown != Settings.GestureAction.DEFAULT
-        ) return
+        // Z/X/C/V 是固定编辑快捷键，不能被自定义下滑动作覆盖。
         val at = event.findPointerIndex(editPointer)
         if (at < 0) return
         val dx = event.getX(at) - editStartX
@@ -562,9 +556,15 @@ class KeyboardView(
     }
 
     private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction {
-        // C 键下滑是固定的复制快捷手势；不允许自定义下滑动作把 COPY 覆盖成 CUT。
-        if (!upward && (key as? Key.Letter)?.char?.lowercaseChar() == 'c') {
-            return Settings.GestureAction.COPY
+        // 四个编辑快捷键的下滑动作固定；自定义手势只作用于其他按键。
+        if (!upward) {
+            when (editShortcutOf(key)) {
+                EditShortcut.SELECT_ALL -> return Settings.GestureAction.SELECT_ALL
+                EditShortcut.CUT -> return Settings.GestureAction.CUT
+                EditShortcut.COPY -> return Settings.GestureAction.COPY
+                EditShortcut.PASTE -> return Settings.GestureAction.PASTE
+                null -> Unit
+            }
         }
         if (matchesCustomGestureKey(key)) {
             val custom = if (upward) settings.customGestureUp else settings.customGestureDown

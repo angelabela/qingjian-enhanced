@@ -25,6 +25,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.ViewOutlineProvider
 import android.view.ViewGroup
 import android.view.ScaleGestureDetector
@@ -104,6 +105,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var root: FrameLayout
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
+    private lateinit var previewResizeDetector: ScaleGestureDetector
     private lateinit var scanner: BarcodeScanner
     private lateinit var textRecognizer: TextRecognizer
     private var imageCapture: ImageCapture? = null
@@ -239,7 +241,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = viewContext.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
         preview = PreviewView(viewContext).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
+            scaleType = PreviewView.ScaleType.FIT_CENTER
             // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
@@ -255,7 +257,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     dp(18).toFloat(), dp(18).toFloat(),
                     dp(18).toFloat(), dp(18).toFloat(),
                 )
-                setStroke(dp(1), 0x66FFFFFF)
+                // 标题栏下沿由预览画面覆盖 1dp，避免两块背景边线形成视觉缝隙。
             }
             clipToOutline = true
             clipChildren = true
@@ -521,12 +523,14 @@ class ScanOverlayService : Service(), LifecycleOwner {
         setScanShape(squareScanShape, persist = false)
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
-        val maxHeight = (resources.displayMetrics.heightPixels - dp(100)).coerceAtLeast(dp(220))
-        val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), maxWidth)
-        val height = dp(windowPrefs.getInt(KEY_HEIGHT_DP, 360)).coerceIn(dp(220), maxHeight)
+        val maxPreviewHeight = (resources.displayMetrics.heightPixels - dp(220)).coerceAtLeast(dp(220))
+        val maxWidthByHeight = (maxPreviewHeight * 3f / 4f).toInt().coerceAtLeast(dp(220))
+        val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), minOf(maxWidth, maxWidthByHeight))
+        val previewHeight = (width * 4f / 3f).toInt()
         val headerHeightEstimate = dp(if (width < dp(300)) 82 else 42)
+        val seamOverlap = dp(1)
         windowParams = WindowManager.LayoutParams(
-            width, height + headerHeightEstimate,
+            width, previewHeight + headerHeightEstimate - seamOverlap,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -538,7 +542,21 @@ class ScanOverlayService : Service(), LifecycleOwner {
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
-        overlayRoot = FrameLayout(viewContext).apply {
+        previewResizeDetector = ScaleGestureDetector(
+            viewContext,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    resizePreviewByScale(detector.scaleFactor)
+                    return true
+                }
+            },
+        )
+        overlayRoot = object : FrameLayout(viewContext) {
+            override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+                previewResizeDetector.onTouchEvent(event)
+                return previewResizeDetector.isInProgress || super.onInterceptTouchEvent(event)
+            }
+        }.apply {
             isFocusableInTouchMode = true
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             clipChildren = false
@@ -547,7 +565,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         }
         overlayRoot.addView(headerView, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         overlayRoot.addView(root, FrameLayout.LayoutParams(-1, -1, Gravity.TOP).apply {
-            topMargin = headerHeightEstimate
+            topMargin = (headerHeightEstimate - seamOverlap).coerceAtLeast(0)
         })
         overlayRoot.alpha = 0f
         overlayRoot.scaleX = 0.94f
@@ -564,13 +582,15 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val actualHeaderHeight = (bottom - top).coerceAtLeast(0)
             if (actualHeaderHeight > 0 && actualHeaderHeight != appliedHeaderHeight) {
                 // 标题栏换行或尺寸变化时，预览区顶边始终精确贴合标题栏底边。
-                val previewHeight = (windowParams.height - appliedHeaderHeight).coerceAtLeast(dp(220))
+                val oldPreviewTop = (appliedHeaderHeight - seamOverlap).coerceAtLeast(0)
+                val newPreviewTop = (actualHeaderHeight - seamOverlap).coerceAtLeast(0)
+                val previewHeight = (windowParams.height - oldPreviewTop).coerceAtLeast(dp(220))
                 val previewParams = root.layoutParams as? FrameLayout.LayoutParams
-                if (previewParams != null && previewParams.topMargin != actualHeaderHeight) {
-                    previewParams.topMargin = actualHeaderHeight
+                if (previewParams != null && previewParams.topMargin != newPreviewTop) {
+                    previewParams.topMargin = newPreviewTop
                     root.layoutParams = previewParams
                 }
-                windowParams.height = previewHeight + actualHeaderHeight
+                windowParams.height = previewHeight + newPreviewTop
                 appliedHeaderHeight = actualHeaderHeight
                 scanDiag("header-preview bounds synchronized headerHeight=$actualHeaderHeight previewTopMargin=${previewParams?.topMargin}")
                 runCatching { windowManager.updateViewLayout(overlayRoot, windowParams) }
@@ -925,7 +945,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var resizeRawX = 0f
     private var resizeRawY = 0f
     private var resizeStartW = 0
-    private var resizeStartH = 0
 
     private fun resizeWindow(event: MotionEvent): Boolean {
         val density = resources.displayMetrics.density
@@ -934,17 +953,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 resizeRawX = event.rawX
                 resizeRawY = event.rawY
                 resizeStartW = windowParams.width
-                resizeStartH = windowParams.height
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val maxW = resources.displayMetrics.widthPixels - windowParams.x
-                val maxH = resources.displayMetrics.heightPixels - windowParams.y
+                val headerHeight = if (::headerView.isInitialized) headerView.height else (42 * density).toInt()
+                val availableHeight = (resources.displayMetrics.heightPixels - windowParams.y - headerHeight - (100 * density).toInt())
+                    .coerceAtLeast((220 * density).toInt())
+                val maxW = minOf(
+                    resources.displayMetrics.widthPixels - windowParams.x,
+                    (availableHeight * 3f / 4f).toInt(),
+                ).coerceAtLeast((220 * density).toInt())
                 val minSize = (220 * density).toInt()
-                windowParams.width = (resizeStartW + event.rawX - resizeRawX).toInt()
-                    .coerceIn(minSize, maxOf(minSize, maxW))
-                windowParams.height = (resizeStartH + event.rawY - resizeRawY).toInt()
-                    .coerceIn(minSize, maxOf(minSize, maxH))
+                val delta = maxOf(event.rawX - resizeRawX, (event.rawY - resizeRawY) * 0.75f)
+                windowParams.width = (resizeStartW + delta).toInt().coerceIn(minSize, maxOf(minSize, maxW))
+                windowParams.height = (windowParams.width * 4f / 3f).toInt() + headerHeight - (1 * density).toInt()
                 updateOverlayPositions()
                 return true
             }
@@ -954,6 +976,25 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         return true
+    }
+
+    /** 在预览区域双指捏合缩放；始终保持竖屏 3:4 相机画幅，不把画面拉伸成浮框任意比例。 */
+    private fun resizePreviewByScale(scaleFactor: Float) {
+        if (!::windowParams.isInitialized || !::headerView.isInitialized) return
+        val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
+        val seamOverlap = density.toInt().coerceAtLeast(1)
+        val headerHeight = headerView.height.coerceAtLeast((42 * density).toInt())
+        val availableHeight = (resources.displayMetrics.heightPixels - windowParams.y - headerHeight - (100 * density).toInt())
+            .coerceAtLeast((220 * density).toInt())
+        val minWidth = (220 * density).toInt()
+        val maxWidth = minOf(
+            resources.displayMetrics.widthPixels - windowParams.x,
+            (availableHeight * 3f / 4f).toInt(),
+        ).coerceAtLeast(minWidth)
+        val newWidth = (windowParams.width * scaleFactor).toInt().coerceIn(minWidth, maxWidth)
+        windowParams.width = newWidth
+        windowParams.height = (newWidth * 4f / 3f).toInt() + headerHeight - seamOverlap
+        updateOverlayPositions()
     }
 
     private fun saveWindowSize() {
@@ -998,7 +1039,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val provider = future.get()
             cameraProvider = provider
             val previewBuilder = Preview.Builder()
-                .setTargetResolution(Size(1280, 720))
+                .setTargetResolution(Size(1440, 1080))
             applyScanCaptureQuality(previewBuilder)
             val cameraPreview = previewBuilder.build().also {
                 it.setSurfaceProvider(preview.surfaceProvider)
@@ -1012,7 +1053,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             analysisUseCase = analysis
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setTargetResolution(Size(1280, 720))
+                .setTargetResolution(Size(1440, 1080))
                 .build()
             imageCapture = capture
             analysis.setAnalyzer(executor) { proxy ->
@@ -1116,7 +1157,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
             provider.unbindAll()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis, capture)
-            scanDiag("camera bound lens=back preview=1280x720 analysis=1920x1080 capture=1280x720")
+            scanDiag("camera bound lens=back preview=1440x1080 analysis=1920x1080 capture=1440x1080")
             cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
             // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
             preview.post {
