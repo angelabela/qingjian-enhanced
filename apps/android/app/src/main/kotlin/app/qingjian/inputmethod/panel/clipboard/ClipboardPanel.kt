@@ -66,8 +66,6 @@ class ClipboardPanel(
     headerHeight: Float,
     phrasesFirst: Boolean,
 ) : PanelView(context, palette, actions, headerHeight) {
-    init { activeInstance = WeakReference(this) }
-
     private val tabs = Tabs(ink, scrollable(true) { _, _ -> false }, Tabs.Style.UNDERLINE).apply {
         labels = listOf("剪贴板", "常用语")
         selected = if (phrasesFirst) PHRASES else CLIPS
@@ -80,6 +78,8 @@ class ClipboardPanel(
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchEditing = false
+
+    init { activeInstance = WeakReference(this) }
     private val searchRect = RectF()
     private var page: PhrasePage = ClipboardStore.phrases(context)
 
@@ -247,7 +247,7 @@ class ClipboardPanel(
             pasteNextCellRect.set(pasteNextCellBounds())
             ink.round(canvas, searchRect, 10f, palette.surface)
             ink.icon(canvas, Icon.SEARCH, searchRect.left + ink.dp(14f), searchRect.centerY(), 15f, palette.gloss)
-            val queryLabel = searchQuery.ifEmpty { if (clearArmed) "确认清空" else "搜索" }
+            val queryLabel = searchQuery.ifEmpty { if (searchEditing) "输入关键词…" else if (clearArmed) "确认清空" else "搜索" }
             ink.textStart(canvas, queryLabel, 11.5f,
                 if (searchQuery.isEmpty()) palette.gloss else palette.text,
                 searchRect.left + ink.dp(26f), searchRect.centerY() + ink.dp(1f),
@@ -775,6 +775,11 @@ class ClipboardPanel(
     }
 
     override fun onTap(x: Float, y: Float) {
+        if (searchEditing && !searchRect.contains(x, y)) {
+            searchEditing = false
+            context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
+                .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
+        }
         if (qrPreview != null) {
             closeQrPreview()
             return
