@@ -3,6 +3,7 @@
 # 552: candidate edge fade, scan duplicate suppression, focus-safe floating scanner, candidate swipe reveal.
 # 551: one-shot clipboard notices, strict candidate clipping, bundled CC0 key sounds.
 # 550: mascot bubble spacing, cloud-tip shutdown, character bounce and spacebar edge glow.
+# 585: legacy floating tips removal, clipboard search focus/layout, scroll feedback and scan clipboard dedupe.
 name: android-signed-apk
 # Workflow 252: persistent-signature validation for keycap transparency and video-panel fixes.
 
