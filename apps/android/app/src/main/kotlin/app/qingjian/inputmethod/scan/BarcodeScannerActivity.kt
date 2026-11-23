@@ -273,8 +273,8 @@ class BarcodeScannerActivity : ComponentActivity() {
                         val position = nativeResult!!.position
                         val points = listOf(position.topLeft, position.topRight, position.bottomLeft, position.bottomRight)
                         val mapped = RectF(
-                            points.minOf { it.x }, points.minOf { it.y },
-                            points.maxOf { it.x }, points.maxOf { it.y },
+                            points.minOf { it.x }.toFloat(), points.minOf { it.y }.toFloat(),
+                            points.maxOf { it.x }.toFloat(), points.maxOf { it.y }.toFloat(),
                         )
                         val transform = preview.outputTransform?.let { output ->
                             runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
