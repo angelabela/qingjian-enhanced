@@ -1588,7 +1588,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    // 上下滑变焦仅允许从扫描框外开始；扫描框内部的上下拖动只用于移动/调整扫描框。
+                    // 预览区上下滑统一控制镜头远近；扫描框通过横向拖动移动，右下角控制点调整大小。
                     if (!resizing && !verticalZoomGesture &&
                         kotlin.math.abs(dy) > touchSlop &&
                         kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.15f

@@ -270,23 +270,23 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     fun candidateEffectRect(index: Int, maxTextWidth: Float? = null): RectF? {
         val frame = image ?: return wordRect(index)
         val result = wordRect(index) ?: return null
-        // 长常用语被省略显示时，高亮框同步按省略后的实际字宽收缩。
-        val candidate = candidates.getOrNull(index)
-        if (candidate != null && maxTextWidth != null && maxTextWidth > 0f) {
-            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
-            val paint = textStyles.paint(role)
-            val display = TextUtils.ellipsize(candidate.text, paint, maxTextWidth, TextUtils.TruncateAt.END).toString()
-            val displayWidth = (paint.measureText(display) + 12f * density).coerceAtMost(result.width())
-            val center = result.centerX()
-            result.left = center - displayWidth / 2f
-            result.right = center + displayWidth / 2f
-        }
+        val wordBounds = RectF(result)
         // wordRect() 已处理无拼音候选行的垂直居中；释义命中框也必须应用同一偏移。
         val shift = if (frame.candidatesTop == 0) {
             ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
         } else 0f
         frame.hits.filter { it.candidate == index && it.sense != null }.forEach { hit ->
             result.union(RectF(hit.rect).apply { offset(0f, shift) })
+        }
+        // 释义只影响高亮框高度，不应把省略后的长词选中框重新撑回完整原文宽度。
+        val candidate = candidates.getOrNull(index)
+        if (candidate != null && maxTextWidth != null && maxTextWidth > 0f) {
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
+            val paint = textStyles.paint(role)
+            val display = TextUtils.ellipsize(candidate.text, paint, maxTextWidth, TextUtils.TruncateAt.END).toString()
+            val displayWidth = (paint.measureText(display) + 12f * density).coerceAtMost(wordBounds.width())
+            result.left = wordBounds.centerX() - displayWidth / 2f
+            result.right = wordBounds.centerX() + displayWidth / 2f
         }
         return result
     }
