@@ -38,7 +38,7 @@ class ClipboardWatcher(private val context: Context, private val onNewText: (Str
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
-        val firstRecord = firstSeen(clip.description.timestamp)
+        val firstRecord = firstSeen(clip.description.timestamp, item.text?.toString() ?: uri?.toString().orEmpty())
         if (!firstRecord) return
         if (uri != null && mime?.startsWith("image/") == true) {
             if (!settings.recordClipboard) return
@@ -66,10 +66,14 @@ class ClipboardWatcher(private val context: Context, private val onNewText: (Str
     }
 
     /** 时间戳记在磁盘上：输入法进程会被杀，重起后系统剪贴板里还是那一份。 */
-    private fun firstSeen(timestamp: Long): Boolean {
+    private fun firstSeen(timestamp: Long, fingerprint: String): Boolean {
         val prefs = context.getSharedPreferences("clipboard", Context.MODE_PRIVATE)
-        if (prefs.getLong(LAST_SEEN, 0L) == timestamp) return false
-        prefs.edit().putLong(LAST_SEEN, timestamp).apply()
+        if (prefs.getLong(LAST_SEEN, Long.MIN_VALUE) == timestamp &&
+            prefs.getString(LAST_SEEN_FINGERPRINT, null) == fingerprint) return false
+        prefs.edit()
+            .putLong(LAST_SEEN, timestamp)
+            .putString(LAST_SEEN_FINGERPRINT, fingerprint)
+            .apply()
         return true
     }
 
@@ -91,5 +95,6 @@ class ClipboardWatcher(private val context: Context, private val onNewText: (Str
     private companion object {
         const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
         const val LAST_SEEN = "last_seen_timestamp"
+        const val LAST_SEEN_FINGERPRINT = "last_seen_fingerprint"
     }
 }
