@@ -4127,7 +4127,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qingjian-android"
-version = "0.3.4-dev"
+version = "0.3.23-dev"
 dependencies = [
  "bamboo-slip-i18n",
  "jiff",
