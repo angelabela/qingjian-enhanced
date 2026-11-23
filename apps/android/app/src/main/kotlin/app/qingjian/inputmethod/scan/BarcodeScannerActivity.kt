@@ -301,9 +301,7 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     private fun copyResult(value: String) {
         runOnUiThread {
-            // 剪贴板作为兼容性备份；正常路径由输入法服务直接提交到当前编辑框。
-            getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("扫码结果", value))
+            // 剪贴板补录统一由输入法服务去重处理；扫描端不直接覆盖用户剪贴板。
             sendBroadcast(
                 android.content.Intent(ScanPreferences.ACTION_RESULT)
                     .setPackage(packageName)
