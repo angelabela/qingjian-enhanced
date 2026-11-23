@@ -16,7 +16,6 @@ import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ColorDrawable
-import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
@@ -24,7 +23,6 @@ import android.os.Vibrator
 import android.util.Size
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewOutlineProvider
@@ -185,17 +183,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 return
             }
             startupStage = "overlay window context"
-            overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Service Context 未必关联 Display；先创建 Display Context，再创建悬浮窗专用 WindowContext。
-                val displayManager = getSystemService(DisplayManager::class.java)
-                    ?: error("DisplayManager unavailable")
-                val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
-                    ?: error("Default display unavailable")
-                createDisplayContext(display)
-                    .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-            } else this
+            overlayContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else this
             windowManager = overlayContext.getSystemService(WindowManager::class.java)
-                ?: error("WindowManager unavailable")
             scanDiag("overlay window context created sdk=${Build.VERSION.SDK_INT} displayAssociated=${runCatching { overlayContext.display != null }.getOrDefault(false)}")
             startupStage = "barcode recognizers"
             ocrMode = false
@@ -351,20 +340,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
             runCatching {
                 windowParams.flags = windowParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                windowParams.softInputMode =
-                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                windowParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 windowManager.updateViewLayout(overlayRoot, windowParams)
-                // 窗口切换为可聚焦后，再把触摸焦点交给前缀编辑框。
-                overlayRoot.requestFocusFromTouch()
-                prefixInput.requestFocusFromTouch()
+                // 先把焦点交给悬浮窗根节点和前缀框，再等待 WindowManager 完成窗口焦点切换。
+                overlayRoot.requestFocus()
                 prefixInput.requestFocus()
                 scanDiag("prefix focus requested root=${overlayRoot.hasFocus()} editor=${prefixInput.hasFocus()} window=${overlayRoot.hasWindowFocus()}")
                 fun requestPrefixImeWhenWindowReady(attempt: Int) {
                     prefixInput.postDelayed({
                         if (!prefixEditingRequested || prefixEditor !== prefixInput) return@postDelayed
                         if (!overlayRoot.hasWindowFocus()) {
-                            if (attempt < 30) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
                             else scanDiag("prefix window focus timeout attempts=${attempt + 1}", warning = true)
                             return@postDelayed
                         }
@@ -375,10 +361,10 @@ class ScanOverlayService : Service(), LifecycleOwner {
                             val accepted = imm?.showSoftInput(prefixInput, InputMethodManager.SHOW_IMPLICIT) == true
                             prefixImeRequested = accepted
                             scanDiag("prefix IME request accepted=$accepted active=${imm?.isActive(prefixInput)} editorFocused=${prefixInput.hasFocus()} windowFocused=${overlayRoot.hasWindowFocus()} attempt=${attempt + 1}")
-                            if (!accepted && attempt < 30) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (!accepted && attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
                         }.onFailure {
                             prefixImeRequested = false
-                            if (attempt < 30) requestPrefixImeWhenWindowReady(attempt + 1)
+                            if (attempt < 10) requestPrefixImeWhenWindowReady(attempt + 1)
                             else scanDiag("prefix editor focus/IME request failed: ${it.javaClass.simpleName}", warning = true)
                         }
                     }, if (attempt == 0) 80L else 60L)

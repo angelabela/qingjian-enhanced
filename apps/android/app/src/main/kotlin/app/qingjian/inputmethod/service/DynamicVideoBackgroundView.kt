@@ -23,34 +23,14 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     private var videoHeight = 0
     var onAverageLuminance: ((Float) -> Unit)? = null
     private var lastLuminanceSampleAt = 0L
-    private var currentBlurRadiusDp = blurRadiusDp
-
     init {
         isOpaque = false
         this.alpha = alpha.coerceIn(0f, 1f)
-        applyBlur(currentBlurRadiusDp)
+        if (Build.VERSION.SDK_INT >= 31 && blurRadiusDp > 0) {
+            val radius = blurRadiusDp * resources.displayMetrics.density
+            setRenderEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
+        }
         surfaceTextureListener = this
-    }
-
-    /** 动态背景设置刷新时原位更新外观，不重建 TextureView/Surface。 */
-    fun updateAppearance(alpha: Float, blurRadiusDp: Int) {
-        this.alpha = alpha.coerceIn(0f, 1f)
-        val nextBlur = blurRadiusDp.coerceIn(0, 30)
-        if (currentBlurRadiusDp != nextBlur) {
-            currentBlurRadiusDp = nextBlur
-            applyBlur(nextBlur)
-        }
-        invalidate()
-    }
-
-    private fun applyBlur(blurRadiusDp: Int) {
-        if (Build.VERSION.SDK_INT >= 31) {
-            val effect = if (blurRadiusDp > 0) {
-                val radius = blurRadiusDp * resources.displayMetrics.density
-                RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
-            } else null
-            setRenderEffect(effect)
-        }
     }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
         AppLog.info("[VIDEO_BG_DIAG] surface available view=${this.width}x${this.height} texture=${width}x${height} uriScheme=${videoUri.scheme}")
