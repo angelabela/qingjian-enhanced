@@ -144,6 +144,6 @@ dependencies {
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     // 剪贴板文字二维码生成（本机处理，不上传内容）。
     implementation("com.google.zxing:core:3.5.3")
-    // Binary Eye 官方使用的 ZXing-C++ Android 解码绑定（MIT）。
-    implementation("com.github.markusfisch:zxing-cpp:v3.1.1.3")
+    // Binary Eye 同源的 ZXing-C++ Android 官方绑定（Apache-2.0）。
+    implementation("io.github.zxing-cpp:android:3.1.1")
 }
