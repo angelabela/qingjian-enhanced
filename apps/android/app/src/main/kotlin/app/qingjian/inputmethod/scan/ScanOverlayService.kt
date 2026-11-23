@@ -1358,7 +1358,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** 识别框必须主要落在用户指定的扫描区域内，避免扫描框外的码误触发。 */
     private fun isBarcodeInsideScanArea(roi: RectF, bounds: RectF): Boolean {
-        if (bounds.isEmpty || !bounds.intersects(roi)) return false
+        if (bounds.isEmpty || !RectF.intersects(bounds, roi)) return false
         val intersection = RectF(bounds)
         if (!intersection.intersect(roi)) return false
         val barcodeArea = (bounds.width() * bounds.height()).coerceAtLeast(1f)
