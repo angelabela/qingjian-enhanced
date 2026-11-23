@@ -254,7 +254,7 @@ class ClipboardPanel(
             pasteNextCellRect.set(pasteNextCellBounds())
             searchRect.set(ink.dp(12f), searchTop + ink.dp(2f), pasteNextCellRect.left - ink.dp(7f), searchTop + ink.dp(38f))
             ink.round(canvas, searchRect, 10f, palette.surface)
-            ink.icon(canvas, Icon.CLEAR, searchRect.left + ink.dp(17f), searchRect.centerY(), 17f, palette.gloss)
+            ink.icon(canvas, Icon.SEARCH, searchRect.left + ink.dp(17f), searchRect.centerY(), 17f, palette.gloss)
             val queryLabel = searchQuery.ifEmpty { "搜索剪贴板内容" }
             ink.textStart(canvas, queryLabel, 13f, if (searchQuery.isEmpty()) palette.gloss else palette.text,
                 searchRect.left + ink.dp(32f), searchRect.centerY() + ink.dp(1f), searchRect.right - ink.dp(42f))
