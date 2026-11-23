@@ -217,6 +217,8 @@ class ClipboardPanel(
         var downRawY = 0f
         var popupStartX = 0
         var popupStartY = 0
+        var popupCurrentX = 0
+        var popupCurrentY = 0
         val beginDrag = Runnable {
             if (isAttachedToWindow) {
                 dragging = true
@@ -267,8 +269,8 @@ class ClipboardPanel(
                         longPressTriggered = false
                         downRawX = event.rawX
                         downRawY = event.rawY
-                        popupStartX = popupWindow?.let { locationOnScreen(it)[0] } ?: 0
-                        popupStartY = popupWindow?.let { locationOnScreen(it)[1] } ?: 0
+                        popupStartX = popupCurrentX
+                        popupStartY = popupCurrentY
                         postDelayed(beginDrag, android.view.ViewConfiguration.getLongPressTimeout().toLong())
                         return true
                     }
@@ -279,6 +281,8 @@ class ClipboardPanel(
                             val maxY = (screen.heightPixels - popupHeight).coerceAtLeast(0)
                             val nextX = (popupStartX + event.rawX - downRawX).toInt().coerceIn(0, maxX)
                             val nextY = (popupStartY + event.rawY - downRawY).toInt().coerceIn(0, maxY)
+                            popupCurrentX = nextX
+                            popupCurrentY = nextY
                             popupWindow?.update(nextX, nextY, -1, -1)
                         } else if (kotlin.math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) > ink.dp(10f)) {
                             removeCallbacks(beginDrag)
@@ -330,16 +334,12 @@ class ClipboardPanel(
         val initialX = (location[0] + searchRect.left).toInt().coerceIn(0, (screen.widthPixels - popupWidth).coerceAtLeast(0))
         val initialY = (location[1] + searchRect.bottom + ink.dp(6f)).toInt()
             .coerceIn(0, (screen.heightPixels - popupHeight).coerceAtLeast(0))
+        popupCurrentX = initialX
+        popupCurrentY = initialY
         popup.showAtLocation(this, Gravity.TOP or Gravity.START, initialX, initialY)
         popupWindow = popup
         searchPopup = popup
         Haptics.tap(context)
-    }
-
-    private fun locationOnScreen(popup: PopupWindow): IntArray {
-        val location = IntArray(2)
-        getLocationOnScreen(location)
-        return location
     }
 
     private fun applySearchKey(key: Key): Boolean {
