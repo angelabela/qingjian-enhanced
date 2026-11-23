@@ -38,7 +38,10 @@ class ClipboardWatcher(private val context: Context, private val onNewText: (Str
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
-        val firstRecord = firstSeen(clip.description.timestamp, item.text?.toString() ?: uri?.toString().orEmpty())
+        val fingerprintSource = item.text?.toString() ?: uri?.toString().orEmpty()
+        // 只保存长度与哈希，不把剪贴板正文写进偏好设置。
+        val fingerprint = "${fingerprintSource.length}:${fingerprintSource.hashCode()}"
+        val firstRecord = firstSeen(clip.description.timestamp, fingerprint)
         if (!firstRecord) return
         if (uri != null && mime?.startsWith("image/") == true) {
             if (!settings.recordClipboard) return
