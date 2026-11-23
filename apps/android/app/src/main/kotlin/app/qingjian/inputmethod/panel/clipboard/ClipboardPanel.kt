@@ -2,6 +2,8 @@ package app.qingjian.inputmethod.panel.clipboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.ClipData
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -18,6 +20,7 @@ import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import app.qingjian.inputmethod.core.store.ClipItem
+import app.qingjian.inputmethod.clipboard.ClipboardImageProvider
 import app.qingjian.inputmethod.core.store.ClipboardStore
 import app.qingjian.inputmethod.core.store.CodeView
 import app.qingjian.inputmethod.core.store.PhraseItem
@@ -33,6 +36,8 @@ import app.qingjian.inputmethod.theme.Palette
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * 剪贴板与常用语：表头两个页签，下面一张张圆角卡片，点卡片上屏，点右边 ⌄ 展开。
@@ -97,6 +102,7 @@ class ClipboardPanel(
 
     /** 当前展示二维码的剪贴板文字；再次点击面板即可关闭。 */
     private var qrPreview: String? = null
+    private var qrBitmapCache: Pair<String, Bitmap?>? = null
 
     /** 剪贴板粘贴后回车换行：全局开关，不按记录分别保存。 */
     private var pasteEnter = Settings.preferences(context).getBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, false)
@@ -246,28 +252,72 @@ class ClipboardPanel(
     }
 
     /** 在面板内显示当前剪贴板文字的二维码，不离开输入法。 */
+    private fun qrBounds(): RectF {
+        val side = minOf(width - ink.dp(48f), height - ink.dp(112f)).coerceAtLeast(ink.dp(120f))
+        val left = (width - side) / 2f
+        val top = (height - side - ink.dp(28f)) / 2f
+        return RectF(left, top, left + side, top + side)
+    }
+
+    /** 二维码只生成一次；绘制与分享共用同一张位图，避免每帧重复编码和分配。 */
+    private fun qrBitmap(value: String): Bitmap? {
+        qrBitmapCache?.takeIf { it.first == value }?.let { return it.second }
+        qrBitmapCache?.second?.takeIf { !it.isRecycled }?.recycle()
+        val bitmap = runCatching {
+            val matrix = QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, 512, 512,
+                mapOf(EncodeHintType.MARGIN to 1))
+            Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).also { result ->
+                for (y in 0 until matrix.height) for (x in 0 until matrix.width) {
+                    result.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+                }
+            }
+        }.getOrNull()
+        qrBitmapCache = value to bitmap
+        return bitmap
+    }
+
     private fun drawQrPreview(canvas: Canvas, value: String) {
         canvas.drawColor(palette.board)
-        val side = minOf(width - ink.dp(48f), height - ink.dp(112f)).coerceAtLeast(ink.dp(120f))
-        val matrix = runCatching {
-            QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, 512, 512,
-                mapOf(EncodeHintType.MARGIN to 1))
-        }.getOrNull()
-        if (matrix == null) {
+        val bitmap = qrBitmap(value)
+        if (bitmap == null) {
             ink.text(canvas, "内容过长，无法生成二维码", 14f, palette.text, width / 2f, height / 2f)
         } else {
-            val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888)
-            for (y in 0 until matrix.height) for (x in 0 until matrix.width) {
-                bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
-            }
-            val left = (width - side) / 2f
-            val top = (height - side - ink.dp(28f)) / 2f
-            card.set(left, top, left + side, top + side)
+            val bounds = qrBounds()
+            card.set(bounds)
             ink.round(canvas, card, 8f, Color.WHITE)
             canvas.drawBitmap(bitmap, null, card, imagePaint)
-            bitmap.recycle()
-            ink.text(canvas, "二维码 · 点击任意位置关闭", 13f, palette.text, width / 2f, top + side + ink.dp(24f))
+            ink.text(canvas, "长按二维码分享 · 点击关闭", 13f, palette.text, width / 2f, bounds.bottom + ink.dp(24f))
         }
+    }
+
+    private fun shareQrPreview(value: String) {
+        val bitmap = qrBitmap(value) ?: return
+        runCatching {
+            val dir = ClipboardImageProvider.imageDir(context).apply { mkdirs() }
+            val expiry = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+            dir.listFiles()?.filter { it.name.startsWith("qingjian-qr-") && it.lastModified() < expiry }?.forEach(File::delete)
+            val file = File.createTempFile("qingjian-qr-", ".png", dir)
+            FileOutputStream(file).use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "二维码保存失败" }
+            }
+            val uri = ClipboardImageProvider.uriOf(file.absolutePath)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newUri(context.contentResolver, "青简二维码", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(send, "分享二维码").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure {
+            android.widget.Toast.makeText(context, "二维码分享失败", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun closeQrPreview() {
+        qrPreview = null
+        qrBitmapCache?.second?.takeIf { !it.isRecycled }?.recycle()
+        qrBitmapCache = null
+        invalidate()
     }
 
     /** 大图按面板大小降采样解码，只留当前这一张。 */
@@ -283,6 +333,14 @@ class ClipboardPanel(
     }
 
     override fun onHold(x: Float, y: Float, rawX: Float) {
+        // 二维码长按分享 PNG 图片；普通点击仍由 onTap 关闭预览。
+        qrPreview?.let { value ->
+            if (qrBounds().contains(x, y)) {
+                Haptics.tap(context)
+                shareQrPreview(value)
+            }
+            return
+        }
         // 剪贴板卡片的长按由本面板负责：文字条目进入拖动删除，图片静止长按仍可预览。
         if (swipeLongPressed || showingPhrases || preview != null || !list.contains(x, y)) return
         val contentY = y - list.top + listScroll.offset
@@ -293,10 +351,10 @@ class ClipboardPanel(
     }
 
     override fun onBack() {
-        if (preview != null) {
-            closePreview()
-        } else {
-            super.onBack()
+        when {
+            qrPreview != null -> closeQrPreview()
+            preview != null -> closePreview()
+            else -> super.onBack()
         }
     }
 
@@ -610,8 +668,7 @@ class ClipboardPanel(
 
     override fun onTap(x: Float, y: Float) {
         if (qrPreview != null) {
-            qrPreview = null
-            invalidate()
+            closeQrPreview()
             return
         }
         preview?.let { path ->
