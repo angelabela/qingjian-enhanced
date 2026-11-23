@@ -241,7 +241,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         image?.let { paint(it) }
     }
 
-    fun indexAt(contentX: Float) {
+    fun indexAt(contentX: Float): Int {
         val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()

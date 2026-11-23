@@ -1,3 +1,28 @@
+# 2026-11-23：0.3.20-dev 最新日志驱动修复
+
+## BJ-057：扫码前缀输入框首次点击不能立即输入
+- 日志证据：首次点击时 EditText 已有 View 焦点，但悬浮窗口仍为 windowFocusable=false / windowFocus=false；之后第二次点击才进入可输入状态。
+- 处理：把窗口切换为可聚焦的动作前移到 ACTION_DOWN，立即更新 WindowManager flags 并调用 requestFocusFromTouch；等待真实 Window Focus 后再请求 IME，重试上限延长。
+- 验证：待 Android 16 实机确认第一次单击即可唤起键盘并输入，且关闭编辑态后宿主输入法恢复正常。
+
+## BJ-058：相同验证码再次复制被错误去重
+- 日志证据：primaryClip 可读，ClipDescription timestamp 更新，但相同 18 字符文本仍被单纯 SHA-256 判重。
+- 根因：去重只比较内容哈希，未区分重复回调与用户再次复制相同文本。
+- 处理：改为 SHA-256 + ClipDescription timestamp 联合去重；相同内容但 timestamp 更新时视为新复制事件。剪贴板/验证码提示不再 5 秒自动收起；点击上屏或开始输入时收起。扫码 Wi-Fi/网址快捷提示仍保持 5 秒自动收起。
+- 验证：待设备测试不同验证码、同验证码再次复制、重开键盘与点击上屏。
+
+## BJ-059：关闭动态背景后候选栏主题底色丢失
+- 根因：CandidateStrip 的透明模式只在构造时确定，动态切换只更新外层 CandidateBar；回退绘制还硬编码浅灰。
+- 处理：透明状态可动态切换并重新处理当前帧；回退底色改为 palette.board；CandidateBar 和 KeyboardView 同步恢复主题实底。
+- 验证：待设备测试光效与视频均关闭、仅光效、运行中切换开关等场景。
+
+## BJ-060：仅开启视频背景时前景仍遮挡视频
+- 根因：视频开关运行中变化后，CandidateStrip 的 Rust 位图和 KeyboardView 仍沿用旧的不透明状态；即使 TextureView 正常 prepared，视频仍被前景覆盖。
+- 处理：动态刷新时同步更新候选位图透明处理、候选栏背景和键盘背景；URI 不变时继续保留 TextureView/Surface。
+- 验证：待设备确认视频铺满候选栏、键盘和整个输入法面板，无旧底色遮挡。
+
+---
+
 # 2026-11-23：0.3.19-dev 日志驱动修复
 
 ## BJ-053：输入法服务初始化阶段 Context 空指针
