@@ -609,6 +609,7 @@ class QingjianInputMethodService :
     override fun onWindowShown() {
         super.onWindowShown()
         AppLog.info("window shown")
+        showPendingClipboardPreview()
         // 定时学习数据落盘只在键盘可见期间运行；隐藏后由 onFinishInputView 负责最终落盘。
         candidateRerankHandler.removeCallbacks(learningFlushRunnable)
         candidateRerankHandler.postDelayed(learningFlushRunnable, 30_000L)
@@ -752,6 +753,7 @@ class QingjianInputMethodService :
 
     /** 新剪贴板内容只提示一次；候选刷新不能清掉提示，用户开始输入或点击后才收起。 */
     private fun showPendingClipboardPreview() {
+        if (!isInputViewShown()) return
         val text = pendingClipboardPreview?.takeIf { it.isNotBlank() } ?: return
         val bar = panel?.bar ?: return
         pendingClipboardPreview = null
