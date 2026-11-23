@@ -374,7 +374,6 @@ class CandidateBarView(
             // 选中候选与首选共用同一套呼吸光效；有选中项时首选光效自动让位。
             drawCandidatePulse(canvas, activeHighlightIndex)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
-            drawSmartActions(canvas)
             if (expandable) drawExpand(canvas)
             // 视频背景模式下候选栏与键盘共用同一动态画面，不绘制底部分界线。
             if (!transparentBackground) {
@@ -569,9 +568,7 @@ class CandidateBarView(
         if (!strip.isEmpty) {
             strip.indexAt(x + scrollX - strip.leftInsetPx(stripWidth)).takeIf { it >= 0 }?.let { index ->
                 val text = strip.candidates.getOrNull(index)?.text.orEmpty()
-                smartActionAt(index, text, x + scrollX, y)?.let { action ->
-                    listener.onSmartAction(text, action)
-                } ?: listener.onSelect(index)
+                listener.onSelect(index)
             }
             return
         }
