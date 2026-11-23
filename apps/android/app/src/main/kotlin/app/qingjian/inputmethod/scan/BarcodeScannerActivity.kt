@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import de.markusfisch.android.zxingcpp.ZxingCpp
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -254,6 +255,48 @@ class BarcodeScannerActivity : ComponentActivity() {
                 if (media == null || !processing.compareAndSet(false, true)) {
                     proxy.close()
                 } else {
+                    // Binary Eye 同款 ZXing-C++ 优先解码：困难模式、旋转、反色与降采样尝试。
+                    // ML Kit 保留为第二识别通道，避免某一解码器的单帧漏检。
+                    val nativeResult = runCatching {
+                        val plane = proxy.planes.firstOrNull()
+                        if (plane == null) null else ZxingCpp.readYBuffer(
+                            plane.buffer.duplicate(),
+                            plane.rowStride,
+                            android.graphics.Rect(0, 0, proxy.width, proxy.height),
+                            proxy.imageInfo.rotationDegrees,
+                            ZxingCpp.ReaderOptions(
+                                tryHarder = true,
+                                tryRotate = true,
+                                tryInvert = true,
+                                tryDownscale = true,
+                                maxNumberOfSymbols = 1,
+                            ),
+                        )?.firstOrNull()
+                    }.onFailure { android.util.Log.w("QingjianScanner", "ZXing-C++ decode failed", it) }.getOrNull()
+                    val nativeText = nativeResult?.text?.trim().orEmpty()
+                    if (nativeText.isNotEmpty() && ScanPreferences.accepts(this@BarcodeScannerActivity, nativeText)) {
+                        val position = nativeResult!!.position
+                        val points = listOf(position.topLeft, position.topRight, position.bottomLeft, position.bottomRight)
+                        val mapped = RectF(
+                            points.minOf { it.x }, points.minOf { it.y },
+                            points.maxOf { it.x }, points.maxOf { it.y },
+                        )
+                        val transform = preview.outputTransform?.let { output ->
+                            runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
+                        }
+                        if (transform != null) transform.mapRect(mapped)
+                        val roi = scanArea.boundsInView()
+                        if (transform == null || roi.contains(mapped.centerX(), mapped.centerY())) {
+                            val now = System.currentTimeMillis()
+                            val previous = lastSeen[nativeText] ?: 0L
+                            lastSeen[nativeText] = now
+                            if (previous == 0L || now - previous >= DEDUPE_MS) copyResult(nativeText)
+                            if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
+                            processing.set(false)
+                            proxy.close()
+                            return@setAnalyzer
+                        }
+                    }
                     val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
                     scanner.process(image)
                         .addOnSuccessListener { codes ->
