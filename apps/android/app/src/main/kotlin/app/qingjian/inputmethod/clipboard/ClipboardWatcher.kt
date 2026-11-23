@@ -14,11 +14,14 @@ import kotlin.concurrent.thread
 
 /**
  * 盯着系统剪贴板，复制了文字或图片就记进剪贴板历史。默认输入法读剪贴板不要权限（安卓 10 起只有它和前台应用能读）。
- * 标了敏感的（密码管理器复制的密码，安卓 13 的 `EXTRA_IS_SENSITIVE`）不记；设置里关了「记录剪贴板」也不记。
+ * 标了敏感的（密码管理器复制的密码，安卓 13 的 `EXTRA_IS_SENSITIVE`）不记；设置里关了「记录剪贴板」也不记历史。
  * 图片读字节放后台线程，太大的（超过 [MAX_IMAGE_BYTES]）不记。
- * 历史记录按时间戳去重；临时预览独立于历史记录开关，键盘弹出时也提示系统当前内容。
+ * 历史记录按内容指纹去重；新文字预览独立于历史记录开关。
  */
-class ClipboardWatcher(private val context: Context) {
+class ClipboardWatcher(
+    private val context: Context,
+    private val onNewText: (String) -> Unit = {},
+) {
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var started = false
@@ -40,13 +43,12 @@ class ClipboardWatcher(private val context: Context) {
         AppLog.info("[CLIPBOARD_DIAG] watcher stopped")
     }
 
-    /** 读取系统当前剪贴板：预览独立于历史记录开关，键盘弹出时也能显示最新文字。 */
+    /** 读取系统当前剪贴板；新文字预览独立于历史记录开关。 */
     fun capture() {
         AppLog.debug("[CLIPBOARD_DIAG] capture invoked thread=${Thread.currentThread().name} listenerRegistered=$started")
         val settings = Settings.load(context)
         if (!settings.recordClipboard) {
-            AppLog.debug("[CLIPBOARD_DIAG] capture skipped: history recording disabled")
-            return
+            AppLog.debug("[CLIPBOARD_DIAG] history recording disabled; checking preview only")
         }
         val clip = runCatching { manager?.primaryClip }
             .onFailure { AppLog.warn("[CLIPBOARD_DIAG] primaryClip read failed: ${it.javaClass.simpleName}") }
@@ -68,7 +70,11 @@ class ClipboardWatcher(private val context: Context) {
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
         AppLog.debug("[CLIPBOARD_DIAG] first item uriPresent=${uri != null} mime=${mime ?: "none"} textPresent=${item.text != null}")
         if (uri != null && mime?.startsWith("image/") == true) {
-            val identity = "image:${mime}:${uri}:${clip.description.timestamp}"
+            if (!settings.recordClipboard) {
+                AppLog.debug("[CLIPBOARD_DIAG] image clip ignored: history recording disabled")
+                return
+            }
+            val identity = "image:$mime:$uri:${clip.description.timestamp}"
             if (!firstSeen(identity)) return
             thread(name = "qingjian-clipboard-image") {
                 val bytes = runCatching {
@@ -82,10 +88,10 @@ class ClipboardWatcher(private val context: Context) {
             }
             return
         }
-        // 某些应用复制的是 URI/Intent：text 为空但系统仍可转换成可粘贴文本。
+        // 某些应用复制的是 URI/Intent：text 为空时仍允许系统转换成可粘贴文本。
         val text = runCatching { item.coerceToText(context)?.toString() }
             .onFailure { AppLog.warn("[CLIPBOARD_DIAG] clip text conversion failed: ${it.javaClass.simpleName}") }
-            .getOrNull() ?: run {
+            .getOrNull()?.takeIf { it.isNotBlank() } ?: run {
                 AppLog.debug("[CLIPBOARD_DIAG] capture skipped: item has no convertible text")
                 return
             }
@@ -97,14 +103,21 @@ class ClipboardWatcher(private val context: Context) {
             AppLog.debug("[CLIPBOARD_DIAG] clip ignored: identical to last synchronized item length=${text.length}")
             return
         }
-        ClipboardStore.add(context, text, settings.clipboardLimit)
-        AppLog.info("[CLIPBOARD_DIAG] text clip stored length=${text.length} timestamp=${clip.description.timestamp}")
-        ClipboardSync.changed()
+        // 新内容预览不依赖「记录剪贴板」开关；只在主线程触碰输入法 UI。
+        if (Looper.myLooper() == Looper.getMainLooper()) onNewText(text)
+        else main.post { onNewText(text) }
+        if (settings.recordClipboard) {
+            ClipboardStore.add(context, text, settings.clipboardLimit)
+            AppLog.info("[CLIPBOARD_DIAG] text clip stored length=${text.length} timestamp=${clip.description.timestamp}")
+            ClipboardSync.changed()
+        } else {
+            AppLog.info("[CLIPBOARD_DIAG] text clip previewed only length=${text.length}")
+        }
     }
 
     /**
      * 用内容指纹去重，而不是依赖部分国产 ROM 经常为 0 或不变化的 ClipDescription.timestamp。
-     * 指纹持久化，输入法进程重启后仍能识别同一条剪贴板内容。
+     * 指纹持久化，输入法进程重启后仍能识别同一条剪贴板内容；不保存剪贴板正文。
      */
     private fun firstSeen(identity: String): Boolean {
         val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
