@@ -52,29 +52,7 @@ class AppearanceActivity : PageActivity() {
                 },
                 footer = R.string.arrangement_note,
             ),
-            ui.group(
-                null,
-                ui.slider(
-                    R.string.section_text_size, null,
-                    1, 50, settings.candidateFontSize, step = 1,
-                    format = { it.toString() + "sp" },
-                ) {
-                    prefs.edit().putInt(Settings.KEY_CANDIDATE_FONT_SIZE, it).apply()
-                },
-                footer = R.string.text_size_note,
-            ),
-            ui.group(
-                null,
-                ui.segmentedRow(
-                    R.string.section_font_weight,
-                    Settings.FontWeight.entries.map { it.label },
-                    settings.fontWeight.ordinal,
-                ) { index ->
-                    prefs.edit().putString(Settings.KEY_FONT_WEIGHT, Settings.FontWeight.entries[index].name).apply()
-                    rebuild()
-                },
-                footer = R.string.font_weight_note,
-            ),
+
         )
     }
 
