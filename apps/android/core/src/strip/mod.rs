@@ -18,6 +18,11 @@ const MAX_GLOSS_WIDTH: f32 = 136.0;
 /// 候选条译文的字号（点），与主题 `strip_cell` 里的一致，截断时量宽度用。
 const GLOSS_SIZE: f32 = 13.0;
 
+/// 单条用户常用语在候选栏的最大宽度（点）；约为常见手机候选区宽度的三分之一。
+const MAX_CUSTOM_PHRASE_WIDTH: f32 = 120.0;
+/// 候选词字号（点），与主题 `strip_cell` 里的一致。
+const CANDIDATE_SIZE: f32 = 19.0;
+
 /// 每个候选只带第一条译文（词性 + 释义），长的截断；更多的译文在长按气泡里。`text_scale` 是设置里的字号档，宽度与字号一起放大。
 fn visible_indices(candidates: &[FrameCandidate]) -> Vec<usize> {
     candidates
@@ -45,6 +50,15 @@ fn rows(
                 emoji_placeholder(&candidate.text)
             } else {
                 candidate.text.clone()
+            };
+            // 常用语的原文可能很长；先在 Rust 排版前按 1/3 候选区宽度截断，
+            // 否则即使 Android 覆盖绘制时省略文字，底层布局仍会为整段原文预留宽度。
+            let text = if candidate.custom_phrase {
+                fit(&text, MAX_CUSTOM_PHRASE_WIDTH * text_scale, |value| {
+                    measure(value, CANDIDATE_SIZE * text_scale)
+                })
+            } else {
+                text
             };
             let mut row = Row::plain(display_index, text);
             row.index.clear();

@@ -20,6 +20,9 @@ pub struct FrameCandidate {
 
     /// 是通讯录里的名字：候选条在词的右上角画一个人头。
     pub contact: bool,
+
+    /// 来自用户常用语；候选条需限制单条长文本宽度，避免挤占后续候选位置。
+    pub custom_phrase: bool,
 }
 
 impl FrameCandidate {
@@ -31,6 +34,7 @@ impl FrameCandidate {
             forgettable: false,
             cloud: false,
             contact: false,
+            custom_phrase: false,
         }
     }
 
@@ -53,6 +57,7 @@ impl From<&Candidate> for FrameCandidate {
             forgettable: candidate.kind.forgettable(),
             cloud: candidate.kind == CandidateKind::Cloud,
             contact: false,
+            custom_phrase: matches!(candidate.kind, CandidateKind::Custom(_)),
         }
     }
 }
