@@ -47,6 +47,11 @@ class CandidateGrid(
     private val glossSp = GLOSS_SP * textScale
     private val cloudDp = CLOUD_DP * textScale
 
+    init {
+        // 只让顶栏透出底层背景；候选内容区仍保留面板底色。
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    }
+
     fun show(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
         this.preedit = preedit
         this.candidates = candidates
@@ -105,6 +110,8 @@ class CandidateGrid(
 
     override fun onDraw(canvas: Canvas) {
         layout()
+        ink.fill.color = palette.board
+        canvas.drawRect(0f, headerHeight, width.toFloat(), height.toFloat(), ink.fill)
         drawHeader(canvas)
         drawCells(canvas)
         drawSide(canvas)
