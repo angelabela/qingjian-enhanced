@@ -104,7 +104,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var root: FrameLayout
     private lateinit var preview: PreviewView
     private lateinit var scanArea: ScanAreaView
-    private lateinit var previewResizeDetector: ScaleGestureDetector
     private lateinit var scanner: BarcodeScanner
     private lateinit var textRecognizer: TextRecognizer
     private var imageCapture: ImageCapture? = null
@@ -240,8 +239,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         val density = viewContext.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
         preview = PreviewView(viewContext).apply {
-            scaleType = PreviewView.ScaleType.FIT_CENTER
-            // 不再使用半透明预览；悬浮窗内部显示完整、清晰的相机画面。
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            // 预览铺满浮窗；相机输出保持自身画幅，通过裁切填充，不留黑边、不拉伸。
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             alpha = 1f
             setBackgroundColor(Color.TRANSPARENT)
@@ -523,9 +522,11 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
         val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
         val maxPreviewHeight = (resources.displayMetrics.heightPixels - dp(220)).coerceAtLeast(dp(220))
-        val maxWidthByHeight = (maxPreviewHeight * 3f / 4f).toInt().coerceAtLeast(dp(220))
-        val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), minOf(maxWidth, maxWidthByHeight))
-        val previewHeight = (width * 4f / 3f).toInt()
+        val width = dp(windowPrefs.getInt(KEY_WIDTH_DP, 340)).coerceIn(dp(220), maxWidth)
+        // 首次打开按全屏预览高度基准初始化；之后用户调整的宽高分别保存，不强制 3:4。
+        val defaultPreviewHeightDp = ((width / density) * 4f / 3f).toInt()
+        val previewHeight = dp(windowPrefs.getInt(KEY_HEIGHT_DP, defaultPreviewHeightDp))
+            .coerceIn(dp(220), maxPreviewHeight)
         val headerHeightEstimate = dp(if (width < dp(300)) 82 else 42)
         val seamOverlap = dp(1)
         windowParams = WindowManager.LayoutParams(
@@ -541,26 +542,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
             y = dp(windowPrefs.getInt(KEY_WINDOW_TOP_DP, 120))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
-        previewResizeDetector = ScaleGestureDetector(
-            viewContext,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    resizePreviewByScale(detector.scaleFactor)
-                    return true
-                }
-            },
-        )
-        overlayRoot = object : FrameLayout(viewContext) {
-            override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-                // 缩放手势只在相机预览区生效；标题栏按钮、前缀输入框仍保留原有点击与拖动。
-                val pointersInsidePreview = ::headerView.isInitialized &&
-                    (0 until event.pointerCount).all { event.getY(it) >= headerView.bottom }
-                if (pointersInsidePreview || previewResizeDetector.isInProgress) {
-                    previewResizeDetector.onTouchEvent(event)
-                }
-                return previewResizeDetector.isInProgress || super.onInterceptTouchEvent(event)
-            }
-        }.apply {
+        // 多指缩放由扫描预览层处理为镜头变焦；窗口尺寸只由右下角手柄调整。
+        overlayRoot = FrameLayout(viewContext).apply {
             isFocusableInTouchMode = true
             isClickable = true // 父容器拦截预览区双指缩放后，继续接收完整触摸序列。
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
@@ -950,6 +933,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var resizeRawX = 0f
     private var resizeRawY = 0f
     private var resizeStartW = 0
+    private var resizeStartH = 0
 
     private fun resizeWindow(event: MotionEvent): Boolean {
         val density = resources.displayMetrics.density
@@ -958,22 +942,20 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 resizeRawX = event.rawX
                 resizeRawY = event.rawY
                 resizeStartW = windowParams.width
+                resizeStartH = windowParams.height
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val headerHeight = if (::headerView.isInitialized) headerView.height else (42 * density).toInt()
-                val availableHeight = (resources.displayMetrics.heightPixels - windowParams.y - headerHeight - (100 * density).toInt())
-                    .coerceAtLeast((220 * density).toInt())
-                val maxW = minOf(
-                    resources.displayMetrics.widthPixels - windowParams.x,
-                    (availableHeight * 3f / 4f).toInt(),
-                ).coerceAtLeast((220 * density).toInt())
-                val minSize = (220 * density).toInt()
+                val availableHeight = (resources.displayMetrics.heightPixels - windowParams.y - (100 * density).toInt())
+                    .coerceAtLeast((headerHeight + 220 * density).toInt())
+                val maxW = (resources.displayMetrics.widthPixels - windowParams.x).coerceAtLeast((220 * density).toInt())
+                val minWidth = (220 * density).toInt()
+                val minHeight = (headerHeight + 220 * density).toInt()
                 val deltaX = event.rawX - resizeRawX
-                val deltaY = (event.rawY - resizeRawY) * 0.75f
-                val delta = if (kotlin.math.abs(deltaX) >= kotlin.math.abs(deltaY)) deltaX else deltaY
-                windowParams.width = (resizeStartW + delta).toInt().coerceIn(minSize, maxOf(minSize, maxW))
-                windowParams.height = (windowParams.width * 4f / 3f).toInt() + headerHeight - (1 * density).toInt()
+                val deltaY = event.rawY - resizeRawY
+                windowParams.width = (resizeStartW + deltaX).toInt().coerceIn(minWidth, maxOf(minWidth, maxW))
+                windowParams.height = (resizeStartH + deltaY).toInt().coerceIn(minHeight, availableHeight)
                 updateOverlayPositions()
                 return true
             }
@@ -983,25 +965,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
             }
         }
         return true
-    }
-
-    /** 在预览区域双指捏合缩放；始终保持竖屏 3:4 相机画幅，不把画面拉伸成浮框任意比例。 */
-    private fun resizePreviewByScale(scaleFactor: Float) {
-        if (!::windowParams.isInitialized || !::headerView.isInitialized) return
-        val density = resources.displayMetrics.density.coerceAtLeast(0.1f)
-        val seamOverlap = density.toInt().coerceAtLeast(1)
-        val headerHeight = headerView.height.coerceAtLeast((42 * density).toInt())
-        val availableHeight = (resources.displayMetrics.heightPixels - windowParams.y - headerHeight - (100 * density).toInt())
-            .coerceAtLeast((220 * density).toInt())
-        val minWidth = (220 * density).toInt()
-        val maxWidth = minOf(
-            resources.displayMetrics.widthPixels - windowParams.x,
-            (availableHeight * 3f / 4f).toInt(),
-        ).coerceAtLeast(minWidth)
-        val newWidth = (windowParams.width * scaleFactor).toInt().coerceIn(minWidth, maxWidth)
-        windowParams.width = newWidth
-        windowParams.height = (newWidth * 4f / 3f).toInt() + headerHeight - seamOverlap
-        updateOverlayPositions()
     }
 
     private fun saveWindowSize() {
@@ -1626,7 +1589,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     val dx = event.x - downX
                     val dy = event.y - downY
                     // 上下滑变焦仅允许从扫描框外开始；扫描框内部的上下拖动只用于移动/调整扫描框。
-                    if (!touchInScanArea && !verticalZoomGesture &&
+                    if (!resizing && !verticalZoomGesture &&
                         kotlin.math.abs(dy) > touchSlop &&
                         kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.15f
                     ) {
@@ -1635,6 +1598,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     if (verticalZoomGesture) {
                         val activeCamera = camera ?: return true
                         val zoom = activeCamera.cameraInfo.zoomState.value ?: return true
+                        // 预览区任意位置上下滑均用于镜头变焦；横向拖动仍可移动扫描框。
                         // 单指纵向变焦采用相对倍率曲线：手指上移即放大，下移即缩小。
                         // 以按下时倍率为锚点，避免每帧累加误差；手指回到起点也会回到原倍率。
                         val travel = (height * 0.55f).coerceAtLeast(1f)

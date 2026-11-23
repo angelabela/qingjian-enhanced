@@ -267,9 +267,20 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     }
 
     /** 首选词的整体视觉区域：同时包含词条和其下方的词性/英文释义 hit 区。 */
-    fun candidateEffectRect(index: Int): RectF? {
+    fun candidateEffectRect(index: Int, maxTextWidth: Float? = null): RectF? {
         val frame = image ?: return wordRect(index)
         val result = wordRect(index) ?: return null
+        // 长常用语被省略显示时，高亮框同步按省略后的实际字宽收缩。
+        val candidate = candidates.getOrNull(index)
+        if (candidate != null && maxTextWidth != null && maxTextWidth > 0f) {
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
+            val paint = textStyles.paint(role)
+            val display = TextUtils.ellipsize(candidate.text, paint, maxTextWidth, TextUtils.TruncateAt.END).toString()
+            val displayWidth = (paint.measureText(display) + 12f * density).coerceAtMost(result.width())
+            val center = result.centerX()
+            result.left = center - displayWidth / 2f
+            result.right = center + displayWidth / 2f
+        }
         // wordRect() 已处理无拼音候选行的垂直居中；释义命中框也必须应用同一偏移。
         val shift = if (frame.candidatesTop == 0) {
             ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)

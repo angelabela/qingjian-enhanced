@@ -127,6 +127,10 @@ class ClipboardPanel(
     private var swipeClipIndex = -1
     private var deleteRepeatStarted = false
 
+    // 剪贴板与常用语列表共用轻微错层回弹动效。
+    private var lastDrawnScrollOffset = 0f
+    private var scrollMotion = 0f
+
     private val activateSwipeRunnable = Runnable {
         if (swipeTracking && swipeClipIndex >= 0 && !showingPhrases) {
             swipeLongPressed = true
@@ -199,6 +203,15 @@ class ClipboardPanel(
         } else {
             restoreClipScrollPending = false
         }
+        val scrollDelta = listScroll.offset - lastDrawnScrollOffset
+        if (kotlin.math.abs(scrollDelta) > 0.25f) {
+            scrollMotion = (scrollMotion + scrollDelta * 0.10f).coerceIn(-ink.dp(14f), ink.dp(14f))
+        }
+        lastDrawnScrollOffset = listScroll.offset
+        if (kotlin.math.abs(scrollMotion) > 0.18f) {
+            scrollMotion *= 0.78f
+            postInvalidateOnAnimation()
+        } else scrollMotion = 0f
         canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
@@ -211,14 +224,18 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
+            val phase = ((i % 3) + 1) / 3f
+            val parallax = scrollMotion * phase * 0.12f
+            val motionAlpha = (255 - kotlin.math.abs(scrollMotion) * 1.25f).toInt().coerceIn(220, 255)
+            val cardLayer = canvas.saveLayerAlpha(0f, top, width.toFloat(), bottom, motionAlpha)
+            canvas.save()
+            canvas.translate(0f, parallax)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
-                canvas.save()
                 canvas.translate(swipeOffsetX, 0f)
-                drawCard(canvas, i, top, bottom)
-                canvas.restore()
-            } else {
-                drawCard(canvas, i, top, bottom)
             }
+            drawCard(canvas, i, top, bottom)
+            canvas.restore()
+            canvas.restoreToCount(cardLayer)
         }
         canvas.restore()
         if (showingPhrases) {
@@ -708,6 +725,8 @@ class ClipboardPanel(
         if (resetScroll) {
             listScroll.reset()
             lastClipScrollOffset = 0f
+            lastDrawnScrollOffset = 0f
+            scrollMotion = 0f
             restoreClipScrollPending = false
         } else if (!showingPhrases) {
             lastClipScrollOffset = listScroll.offset

@@ -1030,7 +1030,7 @@ class QingjianInputMethodService :
     private fun scheduleLocalAiSuggestions(before: String, currentPanel: InputPanel) {
         val request = ++localAiSuggestionSequence
         if (before.length < 3 || composer.privateInput || composer.directInput ||
-            currentInputEditorInfo?.wantsPrivacy() == true || !LocalAiModelManager.isInstalled(this)
+            currentInputEditorInfo?.wantsPrivacy() == true
         ) {
             currentPanel.showSmartSuggestions(emptyList()) {}
             return
@@ -1044,25 +1044,37 @@ class QingjianInputMethodService :
                 liveConnection.getTextBeforeCursor(160, 0)?.toString().orEmpty()
             }.getOrDefault("")
             if (liveBefore != before) return@postDelayed
-            LocalAiModelManager.generateSuggestions(this, before) { result ->
-                if (request != localAiSuggestionSequence || panel !== currentPanel ||
-                    currentInputConnection !== liveConnection || editor != null ||
-                    currentPanel.openPanel != null || shownPreedit.isNotEmpty()
-                ) return@generateSuggestions
-                val latest = runCatching {
-                    currentInputConnection?.getTextBeforeCursor(160, 0)?.toString().orEmpty()
-                }.getOrDefault("")
-                if (latest != before) return@generateSuggestions
-                val suggestions = result.getOrDefault(emptyList())
-                currentPanel.showSmartSuggestions(suggestions) { selected ->
-                    if (selected.isBlank() || request != localAiSuggestionSequence) return@showSmartSuggestions
-                    val connection = currentInputConnection ?: return@showSmartSuggestions
-                    val currentText = runCatching {
-                        connection.getTextBeforeCursor(160, 0)?.toString().orEmpty()
+            val deliver: (List<String>) -> Unit = { suggestions ->
+                if (request == localAiSuggestionSequence && panel === currentPanel &&
+                    currentInputConnection === liveConnection && editor == null &&
+                    currentPanel.openPanel == null && shownPreedit.isEmpty()
+                ) {
+                    val latest = runCatching {
+                        currentInputConnection?.getTextBeforeCursor(160, 0)?.toString().orEmpty()
                     }.getOrDefault("")
-                    if (currentText != before) return@showSmartSuggestions
-                    connection.commitText(selected, 1)
-                    currentPanel.showSmartSuggestions(emptyList()) {}
+                    if (latest == before) {
+                        currentPanel.showSmartSuggestions(suggestions) { selected ->
+                            if (selected.isBlank() || request != localAiSuggestionSequence) return@showSmartSuggestions
+                            val connection = currentInputConnection ?: return@showSmartSuggestions
+                            val currentText = runCatching {
+                                connection.getTextBeforeCursor(160, 0)?.toString().orEmpty()
+                            }.getOrDefault("")
+                            if (currentText != before) return@showSmartSuggestions
+                            connection.commitText(selected, 1)
+                            currentPanel.showSmartSuggestions(emptyList()) {}
+                        }
+                    }
+                }
+            }
+            // 本地模型优先；未安装、关闭或推理失败时回退到用户已配置的云端模型。
+            LocalAiModelManager.generateSuggestions(this, before) { localResult ->
+                val local = localResult.getOrDefault(emptyList())
+                if (localResult.isSuccess && local.isNotEmpty()) {
+                    deliver(local)
+                } else {
+                    aiChat.suggestInputContinuations(before) { cloudResult ->
+                        deliver(cloudResult.getOrDefault(emptyList()))
+                    }
                 }
             }
         }, 750L)
