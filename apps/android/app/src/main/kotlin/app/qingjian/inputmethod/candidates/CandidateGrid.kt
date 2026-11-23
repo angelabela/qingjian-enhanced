@@ -111,7 +111,7 @@ class CandidateGrid(
     }
 
     private fun drawHeader(canvas: Canvas) {
-        ink.fill.color = palette.surface
+        ink.fill.color = android.graphics.Color.TRANSPARENT
         canvas.drawRect(0f, 0f, width.toFloat(), headerHeight, ink.fill)
         val collapse = ink.dp(COLLAPSE_DP)
         val cy = headerHeight / 2
@@ -128,7 +128,7 @@ class CandidateGrid(
             }
         }
         ink.icon(canvas, Icon.COLLAPSE, width - collapse / 2, cy, 26f, palette.text)
-        ink.line(canvas, 0f, headerHeight, width.toFloat(), headerHeight, palette.faint)
+        // 透明顶栏不绘制不透明分隔底线
     }
 
     private fun drawCells(canvas: Canvas) {
