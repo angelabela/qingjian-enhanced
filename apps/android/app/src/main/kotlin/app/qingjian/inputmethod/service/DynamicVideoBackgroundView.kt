@@ -11,7 +11,6 @@ import android.os.Build
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.Matrix
-import android.graphics.RectF
 import app.qingjian.inputmethod.core.AppLog
 
 /** Muted looping MP4 background, released whenever the IME surface detaches. */
@@ -79,6 +78,9 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                 AppLog.info("[VIDEO_BG_DIAG] player prepared view=${this@DynamicVideoBackgroundView.width}x${this@DynamicVideoBackgroundView.height} source=${videoWidth}x${videoHeight}")
                 runCatching {
                     ready.setVolume(0f, 0f)
+                    // TextureView 默认按源视频比例缩放，窄屏/横屏视频会在面板右侧或底部留下空白。
+                    // 让解码器按目标 Surface 做居中裁切填充，保证整个输入法窗口都有视频。
+                    ready.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
                     ready.start()
                     invalidate()
                 }.onFailure {
@@ -114,19 +116,16 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         applyVideoTransform()
     }
 
-    /** 完整显示视频源画面并铺满整个输入法面板；按面板宽高分别缩放，不裁切、不留黑边。 */
+    /** 重置 TextureView 的额外变换，由 MediaPlayer 的裁切填充模式覆盖整个 Surface。 */
     private fun applyVideoTransform() {
         if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) return
-        val source = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
-        val destination = RectF(0f, 0f, width.toFloat(), height.toFloat())
-        val matrix = Matrix().apply {
-            // FILL 使用独立的横纵缩放比例，保证视频每一帧完整映射到面板区域。
-            setRectToRect(source, destination, Matrix.ScaleToFit.FILL)
-        }
-        setTransform(matrix)
-        val scaleX = width.toFloat() / videoWidth
-        val scaleY = height.toFloat() / videoHeight
-        AppLog.info("[VIDEO_BG_DIAG] full-frame fill view=${width}x${height} source=${videoWidth}x${videoHeight} scaleX=$scaleX scaleY=$scaleY crop=false")
+        // TextureView 的 Matrix 作用于纹理而非 View 布局；旧的按坐标 FILL 矩阵在部分比例下
+        // 会被 SurfaceTexture 再次缩放，导致右侧/底部出现未覆盖区域。使用解码器 crop-fill。
+        setTransform(Matrix())
+        val scale = maxOf(width.toFloat() / videoWidth, height.toFloat() / videoHeight)
+        val renderedWidth = videoWidth * scale
+        val renderedHeight = videoHeight * scale
+        AppLog.info("[VIDEO_BG_DIAG] crop-fill view=${width}x${height} source=${videoWidth}x${videoHeight} scale=$scale rendered=${renderedWidth}x${renderedHeight}")
     }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
