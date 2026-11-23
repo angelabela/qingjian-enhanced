@@ -271,15 +271,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val frame = image ?: return wordRect(index)
         val result = wordRect(index) ?: return null
         val wordBounds = RectF(result)
-        // wordRect() 已处理无拼音候选行的垂直居中；释义命中框也必须应用同一偏移。
         val shift = if (frame.candidatesTop == 0) {
             ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
         } else 0f
-        frame.hits.filter { it.candidate == index && it.sense != null }.forEach { hit ->
-            result.union(RectF(hit.rect).apply { offset(0f, shift) })
-        }
-        // 释义只影响高亮框高度，不应把省略后的长词选中框重新撑回完整原文宽度。
         val candidate = candidates.getOrNull(index)
+        // 常用语文字超过候选区 1/3 时，按实际显示（省略后）的宽度计算中文部分。
         if (candidate != null && maxTextWidth != null && maxTextWidth > 0f) {
             val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
             val paint = textStyles.paint(role)
@@ -287,9 +283,30 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val displayWidth = (paint.measureText(display) + 12f * density)
                 .coerceAtMost(maxTextWidth + 12f * density)
                 .coerceAtMost(wordBounds.width())
-            result.left = wordBounds.centerX() - displayWidth / 2f
-            result.right = wordBounds.centerX() + displayWidth / 2f
+            result.set(wordBounds.centerX() - displayWidth / 2f, wordBounds.top,
+                wordBounds.centerX() + displayWidth / 2f, wordBounds.bottom)
         }
+        // Rust 的释义 hit 框通常覆盖整格；用实际英文/词性宽度收紧后再并入高亮框。
+        val glossPaint = textStyles.paint(CandidateTextStyleEngine.Role.GLOSS)
+        frame.hits.filter { it.candidate == index && it.sense != null }
+            .groupBy { it.sense!! }
+            .forEach senseLoop@{ (senseIndex, hits) ->
+                val sense = candidate?.senses?.getOrNull(senseIndex) ?: return@senseLoop
+                val pos = sense.pos?.trim().orEmpty()
+                val gloss = sense.text.trim()
+                val segments = if (hits.size == 1) {
+                    listOf(listOf(pos, gloss).filter { it.isNotEmpty() }.joinToString("  "))
+                } else {
+                    listOfNotNull(pos.takeIf { it.isNotEmpty() }?.plus(" "), gloss.takeIf { it.isNotEmpty() })
+                }
+                hits.forEachIndexed { segmentIndex, hit ->
+                    val text = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
+                    val measured = glossPaint.measureText(text).coerceAtMost(hit.rect.width())
+                    if (measured <= 0f) return@forEachIndexed
+                    result.union(RectF(hit.rect.centerX() - measured / 2f, hit.rect.top + shift,
+                        hit.rect.centerX() + measured / 2f, hit.rect.bottom + shift))
+                }
+            }
         return result
     }
 

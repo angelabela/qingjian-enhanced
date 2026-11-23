@@ -1096,18 +1096,22 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                     !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
                                 runCatching {
                                     if (android.os.SystemClock.elapsedRealtime() < cameraWarmupUntil) return@runCatching
-                                    val output = preview.outputTransform ?: return@runCatching
-                                    val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
+                                    val transform = preview.outputTransform?.let { output ->
+                                        runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
+                                    }
                                     val roi = scanArea.boundsInView()
                                     codes.forEach { code ->
-                                        val value = code.rawValue?.trim().orEmpty()
-                                        val bounds = code.boundingBox ?: return@forEach
+                                        val value = (code.rawValue ?: code.displayValue)?.trim().orEmpty()
                                         if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
-                                        val mapped = RectF(bounds)
-                                        transform.mapRect(mapped)
-                                        if (!isBarcodeInsideScanArea(roi, mapped)) return@forEach
-                                        if (!hasStableBarcode(value, mapped.centerX(), mapped.centerY())) return@forEach
-                                        scanDiag("stable barcode accepted center=" + mapped.centerX().toInt() + "," + mapped.centerY().toInt())
+                                        val mapped = code.boundingBox?.let { RectF(it) }
+                                        if (mapped != null && transform != null) {
+                                            transform.mapRect(mapped)
+                                            if (!isBarcodeInsideScanArea(roi, mapped)) return@forEach
+                                        }
+                                        val centerX = mapped?.centerX() ?: roi.centerX()
+                                        val centerY = mapped?.centerY() ?: roi.centerY()
+                                        if (!hasStableBarcode(value, centerX, centerY)) return@forEach
+                                        scanDiag("stable barcode accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
                                         if (shouldDeliverCode(value)) deliverResult(value)
                                     }
                                 }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
@@ -1239,14 +1243,17 @@ class ScanOverlayService : Service(), LifecycleOwner {
             !ScanPreferences.accepts(this, value)
         ) return
         runCatching {
-            val output = preview.outputTransform ?: return
-            val transform = CoordinateTransform(transformFactory.getOutputTransform(proxy), output)
+            val transform = preview.outputTransform?.let { output ->
+                runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
+            }
             val mapped = RectF(bounds)
-            transform.mapRect(mapped)
+            if (transform != null) transform.mapRect(mapped)
             val roi = scanArea.boundsInView()
-            if (!isBarcodeInsideScanArea(roi, mapped)) return
-            if (!hasStableBarcode(value, mapped.centerX(), mapped.centerY())) return
-            scanDiag("ZXing fallback accepted center=${mapped.centerX().toInt()},${mapped.centerY().toInt()}")
+            if (transform != null && !isBarcodeInsideScanArea(roi, mapped)) return
+            val centerX = if (transform != null) mapped.centerX() else roi.centerX()
+            val centerY = if (transform != null) mapped.centerY() else roi.centerY()
+            if (!hasStableBarcode(value, centerX, centerY)) return
+            scanDiag("ZXing fallback accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
             if (shouldDeliverCode(value)) deliverResult(value)
         }.onFailure { android.util.Log.w(TAG, "ZXing fallback mapping failed", it) }
     }

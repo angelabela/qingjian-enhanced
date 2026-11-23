@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, SCAN_SQUARE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, SCAN_SQUARE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE, BACKSPACE, ENTER, NEXT_CELL }
 
     private val path = Path()
     private val oval = RectF()
@@ -62,6 +62,21 @@ object PanelIcons {
             Icon.DRAG -> drag()
             Icon.WAVEFORM -> waveform()
             Icon.CLOSE -> { polyline(6f, 6f, 18f, 18f); polyline(18f, 6f, 6f, 18f) }
+            Icon.BACKSPACE -> {
+                polyline(9f, 5f, 20f, 5f, 20f, 19f, 9f, 19f, 3.5f, 12f, 9f, 5f)
+                polyline(12f, 9f, 17f, 15f)
+                polyline(17f, 9f, 12f, 15f)
+            }
+            Icon.ENTER -> {
+                polyline(5f, 5f, 5f, 14f, 19f, 14f, 15f, 10f)
+                polyline(19f, 14f, 15f, 18f)
+            }
+            Icon.NEXT_CELL -> {
+                oval.set(3.5f, 4f, 20.5f, 20f)
+                path.addRoundRect(oval, 2f, 2f, Path.Direction.CW)
+                polyline(12f, 7f, 12f, 16f, 8.5f, 12.5f)
+                polyline(12f, 16f, 15.5f, 12.5f)
+            }
         }
         val scale = size / 24f
         canvas.save()

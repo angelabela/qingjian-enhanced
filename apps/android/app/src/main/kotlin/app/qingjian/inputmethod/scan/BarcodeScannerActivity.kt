@@ -250,30 +250,26 @@ class BarcodeScannerActivity : ComponentActivity() {
                     val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
                     scanner.process(image)
                         .addOnSuccessListener { codes ->
-                            val previewTransform = preview.outputTransform
-                            if (previewTransform != null) {
-                                val imageTransform = transformFactory.getOutputTransform(proxy)
-                                val coordinateTransform = CoordinateTransform(imageTransform, previewTransform)
-                                val roi = scanArea.boundsInView()
-                                codes.forEach { barcode ->
-                                    val raw = barcode.rawValue?.trim().orEmpty()
-                                    val box = barcode.boundingBox ?: return@forEach
-                                    if (raw.isBlank() || !ScanPreferences.accepts(this@BarcodeScannerActivity, raw)) return@forEach
-                                    // 把相机图像中的条码框转换为屏幕预览坐标，再判断是否落入可视扫描框。
+                            // 预览坐标变换在相机启动/窗口重建时可能短暂不可用；不能因此丢弃识别结果。
+                            val transform = preview.outputTransform?.let { output ->
+                                runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
+                            }
+                            val roi = scanArea.boundsInView()
+                            codes.forEach { barcode ->
+                                val raw = (barcode.rawValue ?: barcode.displayValue)?.trim().orEmpty()
+                                if (raw.isBlank() || !ScanPreferences.accepts(this@BarcodeScannerActivity, raw)) return@forEach
+                                val box = barcode.boundingBox
+                                if (transform != null && box != null) {
                                     val mapped = RectF(box)
-                                    coordinateTransform.mapRect(mapped)
+                                    transform.mapRect(mapped)
                                     if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
-
-                                    val now = System.currentTimeMillis()
-                                    val previous = lastSeen[raw] ?: 0L
-                                    // 静止码只提示一次；离开识别区超过间隔后再次放入，可再次触发。
-                                    lastSeen[raw] = now
-                                    if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
-                                    if (lastSeen.size > 100) {
-                                        lastSeen.entries.removeAll { now - it.value > 30_000L }
-                                    }
-                                    copyResult(raw)
                                 }
+                                val now = System.currentTimeMillis()
+                                val previous = lastSeen[raw] ?: 0L
+                                lastSeen[raw] = now
+                                if (previous != 0L && now - previous < DEDUPE_MS) return@forEach
+                                if (lastSeen.size > 100) lastSeen.entries.removeAll { now - it.value > 30_000L }
+                                copyResult(raw)
                             }
                         }
                         .addOnCompleteListener {

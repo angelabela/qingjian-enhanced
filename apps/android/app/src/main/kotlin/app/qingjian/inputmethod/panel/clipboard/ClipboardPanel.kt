@@ -112,6 +112,10 @@ class ClipboardPanel(
     private val layouts = HashMap<String, StaticLayout>()
     private val thumbnails = HashMap<String, Bitmap?>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val scrollGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ink.dp(1.4f)
+    }
 
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
@@ -181,14 +185,18 @@ class ClipboardPanel(
     private fun openSearchEditor() {
         searchPopup?.dismiss()
         val editor = EditText(context).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
             setSingleLine(true); textSize = 14f; setTextColor(palette.text); setHintTextColor(palette.gloss)
             hint = "输入一个或多个字符即时搜索"
             setPadding(ink.dp(14f).toInt(), 0, ink.dp(14f).toInt(), 0)
             setBackgroundColor(Color.TRANSPARENT); setText(searchQuery); setSelection(text?.length ?: 0)
         }
         val popup = PopupWindow(editor, searchRect.width().toInt().coerceAtLeast(ink.dp(180f).toInt()), ink.dp(48f).toInt(), true).apply {
+            isFocusable = true
             isOutsideTouchable = true; setBackgroundDrawable(ColorDrawable(palette.surface)); elevation = ink.dp(12f)
-            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED; softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             setOnDismissListener { if (searchPopup === this) searchPopup = null }
         }
         editor.addTextChangedListener(object : TextWatcher {
@@ -200,8 +208,13 @@ class ClipboardPanel(
         })
         val location = IntArray(2); getLocationOnScreen(location)
         popup.showAtLocation(this, Gravity.TOP or Gravity.START, location[0] + searchRect.left.toInt(), location[1] + searchRect.top.toInt())
-        searchPopup = popup; editor.requestFocus()
-        editor.post { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) }
+        searchPopup = popup
+        editor.requestFocus()
+        editor.post {
+            editor.requestFocusFromTouch()
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -236,15 +249,28 @@ class ClipboardPanel(
         }
         val searchTop = headerHeight + ink.dp(SUMMARY_DP)
         if (!showingPhrases) {
-            searchRect.set(ink.dp(12f), searchTop + ink.dp(3f), width - ink.dp(12f), searchTop + ink.dp(39f))
-            ink.round(canvas, searchRect, 11f, palette.surface)
-            ink.textStart(canvas, "⌕", 22f, palette.gloss, searchRect.left + ink.dp(12f), searchRect.centerY() + ink.dp(1f), searchRect.right - ink.dp(92f))
+            deleteBackwardRect.set(deleteBackwardBounds())
+            pasteToggleRect.set(pasteToggleBounds())
+            pasteNextCellRect.set(pasteNextCellBounds())
+            searchRect.set(ink.dp(12f), searchTop + ink.dp(2f), pasteNextCellRect.left - ink.dp(7f), searchTop + ink.dp(38f))
+            ink.round(canvas, searchRect, 10f, palette.surface)
+            ink.icon(canvas, Icon.CLEAR, searchRect.left + ink.dp(17f), searchRect.centerY(), 17f, palette.gloss)
             val queryLabel = searchQuery.ifEmpty { "搜索剪贴板内容" }
-            ink.textStart(canvas, queryLabel, 13.5f, if (searchQuery.isEmpty()) palette.gloss else palette.text,
-                searchRect.left + ink.dp(42f), searchRect.centerY() + ink.dp(1f), searchRect.right - ink.dp(112f))
-            if (searchQuery.isNotEmpty()) ink.text(canvas, "×", 18f, palette.gloss, searchRect.right - ink.dp(82f), searchRect.centerY() + ink.dp(1f))
-            ink.text(canvas, "${visibleClipIndices.size}/${clips.size}", 12f, palette.brand, searchRect.right - ink.dp(42f), searchRect.centerY() + ink.dp(1f), bold = true)
-        } else searchRect.setEmpty()
+            ink.textStart(canvas, queryLabel, 13f, if (searchQuery.isEmpty()) palette.gloss else palette.text,
+                searchRect.left + ink.dp(32f), searchRect.centerY() + ink.dp(1f), searchRect.right - ink.dp(42f))
+            if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(13f), searchRect.centerY(), 15f, palette.gloss)
+            ink.round(canvas, deleteBackwardRect, 10f, palette.surface)
+            ink.icon(canvas, Icon.BACKSPACE, deleteBackwardRect.centerX(), deleteBackwardRect.centerY(), 19f, palette.text)
+            ink.round(canvas, pasteToggleRect, 10f, if (pasteEnter) palette.brand else palette.surface)
+            ink.icon(canvas, Icon.ENTER, pasteToggleRect.centerX(), pasteToggleRect.centerY(), 19f, if (pasteEnter) palette.onBrand else palette.text)
+            ink.round(canvas, pasteNextCellRect, 10f, if (pasteNextCell) palette.brand else palette.surface)
+            ink.icon(canvas, Icon.NEXT_CELL, pasteNextCellRect.centerX(), pasteNextCellRect.centerY(), 19f, if (pasteNextCell) palette.onBrand else palette.text)
+        } else {
+            searchRect.setEmpty()
+            deleteBackwardRect.setEmpty()
+            pasteToggleRect.setEmpty()
+            pasteNextCellRect.setEmpty()
+        }
         val listTop = if (showingPhrases) searchTop else searchTop + ink.dp(SEARCH_BAR_DP)
         val listBottom = if (showingPhrases) groupTop() else height - ink.dp(6f)
         list.set(0f, listTop, width.toFloat(), listBottom)
@@ -260,7 +286,7 @@ class ClipboardPanel(
         }
         val scrollDelta = listScroll.offset - lastDrawnScrollOffset
         if (kotlin.math.abs(scrollDelta) > 0.25f) {
-            scrollMotion = (scrollMotion + scrollDelta * 0.24f).coerceIn(-ink.dp(28f), ink.dp(28f))
+            scrollMotion = (scrollMotion + scrollDelta * 0.42f).coerceIn(-ink.dp(32f), ink.dp(32f))
         }
         lastDrawnScrollOffset = listScroll.offset
         if (kotlin.math.abs(scrollMotion) > 0.18f) {
@@ -280,8 +306,9 @@ class ClipboardPanel(
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
             val phase = ((i % 3) + 1) / 3f
-            val parallax = scrollMotion * phase * 0.30f
-            val motionAlpha = (255 - kotlin.math.abs(scrollMotion) * 2.2f).toInt().coerceIn(185, 255)
+            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(32f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val parallax = scrollMotion * phase * 0.72f
+            val motionAlpha = (255 - strength * 92f).toInt().coerceIn(150, 255)
             val cardLayer = canvas.saveLayerAlpha(0f, top, width.toFloat(), bottom, motionAlpha)
             canvas.save()
             canvas.translate(0f, parallax)
@@ -289,6 +316,11 @@ class ClipboardPanel(
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
+            if (strength > 0.04f) {
+                scrollGlowPaint.color = (palette.brand and 0x00FFFFFF) or ((strength * 150f).toInt().coerceIn(0, 150) shl 24)
+                val glowRect = RectF(ink.dp(CARD_MARGIN_DP), top + ink.dp(1f), width - ink.dp(CARD_MARGIN_DP), bottom - ink.dp(1f))
+                canvas.drawRoundRect(glowRect, ink.dp(12f), ink.dp(12f), scrollGlowPaint)
+            }
             canvas.restore()
             canvas.restoreToCount(cardLayer)
         }
@@ -568,35 +600,24 @@ class ClipboardPanel(
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
-    private fun deleteBackwardBounds(): RectF = RectF(
-        width - ink.dp(260f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
-        width - ink.dp(208f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
+    private fun actionRowTop() = headerHeight + ink.dp(SUMMARY_DP)
+    private fun actionButtonBounds(right: Float): RectF = RectF(
+        right - ink.dp(34f), actionRowTop() + ink.dp(2f),
+        right, actionRowTop() + ink.dp(38f),
     )
+    private fun deleteBackwardBounds(): RectF = actionButtonBounds(width - ink.dp(12f))
+    private fun pasteToggleBounds(): RectF = actionButtonBounds(deleteBackwardBounds().left - ink.dp(5f))
+    private fun pasteNextCellBounds(): RectF = actionButtonBounds(pasteToggleBounds().left - ink.dp(5f))
 
-    private fun pasteToggleBounds(): RectF = RectF(
-        width - ink.dp(202f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
-        width - ink.dp(106f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
-    )
-
-    private fun pasteNextCellBounds(): RectF = RectF(
-        width - ink.dp(100f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f - ink.dp(12f),
-        width - ink.dp(8f),
-        headerHeight + ink.dp(SUMMARY_DP) / 2f + ink.dp(12f),
-    )
-
-    private fun isPasteSummaryTouch(y: Float): Boolean =
-        !showingPhrases && y >= headerHeight && y < headerHeight + ink.dp(SUMMARY_DP)
+    private fun isPasteSummaryTouch(x: Float, y: Float): Boolean =
+        !showingPhrases && y >= actionRowTop() && y < actionRowTop() + ink.dp(SEARCH_BAR_DP) &&
+            (deleteBackwardBounds().contains(x, y) || pasteToggleBounds().contains(x, y) || pasteNextCellBounds().contains(x, y))
 
     @SuppressLint("ClickableViewAccessibility")
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         // 摘要栏热区由本面板独占处理，避免父容器抢走按钮触摸序列。
         if (pasteSummaryTracking || (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
-                isPasteSummaryTouch(event.y))) {
+                isPasteSummaryTouch(event.x, event.y))) {
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     parent?.requestDisallowInterceptTouchEvent(true)
@@ -895,7 +916,7 @@ class ClipboardPanel(
         private const val PHRASES = 1
         private const val AUTO_MEMORY_GROUP = "自动记忆"
         private const val SUMMARY_DP = 28f
-        private const val SEARCH_BAR_DP = 46f
+        private const val SEARCH_BAR_DP = 42f
         private const val GROUP_BAR_DP = 48f
         private const val CARD_MARGIN_DP = 10f
         private const val CARD_PADDING_DP = 14f
