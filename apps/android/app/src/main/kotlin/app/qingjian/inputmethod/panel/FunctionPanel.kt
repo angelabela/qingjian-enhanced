@@ -51,6 +51,11 @@ class FunctionPanel(
     private var selectedTextPreset = Settings.TextEffectPreset.of(
         Settings.preferences(context).getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null).let { it }
     )
+    private var selectedCandidateFontSize = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+    private var selectedFontWeight = Settings.FontWeight.of(
+        Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null))
+    private var adjustingCandidateFontSize = false
     private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
     private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
@@ -59,6 +64,25 @@ class FunctionPanel(
     private var selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
         .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
     private var adjustingVoiceGlass = false
+
+    private fun textEffectsActive(): Boolean {
+        val prefs = Settings.preferences(context)
+        return Settings.TextEffectPreset.of(prefs.getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null)) != Settings.TextEffectPreset.STANDARD ||
+            Settings.TextEffectPreset.of(prefs.getString(Settings.KEY_KEYBOARD_TEXT_PRESET, null)) != Settings.TextEffectPreset.STANDARD ||
+            prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20) != 20 ||
+            Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null)) != Settings.FontWeight.NORMAL
+    }
+
+    private fun keyEffectsActive(): Boolean {
+        val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
+        return prefs.getInt("keyboard_key_alpha", 100) < 100 ||
+            prefs.getBoolean("keyboard_key_frosted", false) ||
+            prefs.getBoolean("keyboard_key_marquee", false) ||
+            prefs.getBoolean("keyboard_key_edge_glow", false) ||
+            prefs.getBoolean("keyboard_key_3d", false) ||
+            prefs.getInt("keyboard_key_border_index", 0) != 0 ||
+            prefs.getInt("keyboard_key_background_index", 0) != 0
+    }
 
     private fun smsMonitoringEnabled(): Boolean =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -105,7 +129,7 @@ class FunctionPanel(
                     textEffectPage = false
                     invalidate()
                 },
-                Feature(Icon.PALETTE, "文字效果") {
+                Feature(Icon.PALETTE, "文字效果", on = textEffectsActive()) {
                     selectedTextTarget = 0
                     selectedTextPreset = Settings.TextEffectPreset.of(
                         Settings.preferences(context).getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
@@ -124,7 +148,7 @@ class FunctionPanel(
                     invalidate()
                 },
                 Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
-                Feature(Icon.TUNE, "按键效果") { openPanel(PanelKind.KEY_EFFECTS) },
+                Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
@@ -158,6 +182,8 @@ class FunctionPanel(
             .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
         selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
+        selectedCandidateFontSize = prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+        selectedFontWeight = Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null))
         if (!backgroundEffectEnabled) selectedBackgroundStyle = -1
         invalidate()
     }
@@ -555,8 +581,39 @@ class FunctionPanel(
             ink.round(canvas, bounds, 10f, if (selected) palette.brand else palette.functionalKey)
             ink.text(canvas, label, 12f, if (selected) palette.onBrand else palette.text, bounds.centerX(), bounds.centerY())
         }
+        val controlsTop = targetTop + ink.dp(44f)
+        if (selectedTextTarget == 0) {
+            ink.textStart(canvas, "候选字号", 11.5f, palette.text,
+                card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(64f))
+            ink.text(canvas, "${selectedCandidateFontSize}sp", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(12f))
+            val left = card.left + ink.dp(18f)
+            val right = card.right - ink.dp(18f)
+            val y = controlsTop + ink.dp(31f)
+            ink.fill.color = palette.functionalKey
+            ink.fill.strokeWidth = ink.dp(4f)
+            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+            canvas.drawLine(left, y, right, y, ink.fill)
+            val progress = left + (right - left) * ((selectedCandidateFontSize - 1) / 49f)
+            ink.fill.color = palette.brand
+            canvas.drawLine(left, y, progress, y, ink.fill)
+            canvas.drawCircle(progress, y, ink.dp(5f), ink.fill)
+        } else {
+            ink.textStart(canvas, "输入法界面字体粗细", 11.5f, palette.text,
+                card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(12f))
+            val labels = Settings.FontWeight.entries
+            val gap = ink.dp(5f)
+            val itemWidth = (card.width() - ink.dp(28f) - gap * 3f) / 4f
+            labels.forEachIndexed { index, weight ->
+                val left = card.left + ink.dp(14f) + index * (itemWidth + gap)
+                val bounds = RectF(left, controlsTop + ink.dp(20f), left + itemWidth, controlsTop + ink.dp(46f))
+                val selected = selectedFontWeight == weight
+                ink.round(canvas, bounds, 7f, if (selected) palette.brand else palette.functionalKey)
+                ink.text(canvas, weight.label, 10.5f, if (selected) palette.onBrand else palette.text,
+                    bounds.centerX(), bounds.centerY())
+            }
+        }
         val labels = Settings.TextEffectPreset.entries
-        val rowTop = targetTop + ink.dp(48f)
+        val rowTop = targetTop + ink.dp(98f)
         val rowStep = ink.dp(64f)
         val viewportBottom = card.bottom - ink.dp(8f)
         effectScroll.max = (labels.size * rowStep - (viewportBottom - rowTop)).coerceAtLeast(0f)
@@ -737,6 +794,27 @@ class FunctionPanel(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (textEffectPage && tabs.selected == 0 && selectedTextTarget == 0) {
+            val sliderTop = card.top + ink.dp(8f + 28f + 44f)
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
+                event.y in (sliderTop + ink.dp(16f))..(sliderTop + ink.dp(40f))) {
+                adjustingCandidateFontSize = true
+                parent?.requestDisallowInterceptTouchEvent(true)
+                updateCandidateFontSize(event.x)
+                return true
+            }
+            if (adjustingCandidateFontSize) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> updateCandidateFontSize(event.x)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        updateCandidateFontSize(event.x)
+                        adjustingCandidateFontSize = false
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+                return true
+            }
+        }
         if (voiceEffectPage && tabs.selected == 0) {
             val sliderTop = card.bottom - ink.dp(68f)
             if (event.actionMasked == MotionEvent.ACTION_DOWN &&
@@ -758,6 +836,17 @@ class FunctionPanel(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun updateCandidateFontSize(x: Float) {
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+        val value = (1 + fraction * 49f).roundToInt().coerceIn(1, 50)
+        if (value == selectedCandidateFontSize) return
+        selectedCandidateFontSize = value
+        actions.setIntChoice(Settings.KEY_CANDIDATE_FONT_SIZE, value)
+        invalidate()
     }
 
     private fun updateVoiceGlassStrength(x: Float) {
@@ -811,7 +900,23 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
-                val rowTop = targetTop + ink.dp(48f)
+                val controlsTop = targetTop + ink.dp(44f)
+                if (selectedTextTarget == 0 && y in controlsTop..(controlsTop + ink.dp(40f))) {
+                    updateCandidateFontSize(x)
+                    return
+                }
+                if (selectedTextTarget == 1 && y in controlsTop..(controlsTop + ink.dp(48f))) {
+                    val gap = ink.dp(5f)
+                    val itemWidth = (card.width() - ink.dp(28f) - gap * 3f) / 4f
+                    val index = ((x - card.left - ink.dp(14f)) / (itemWidth + gap)).toInt()
+                    Settings.FontWeight.entries.getOrNull(index)?.let { weight ->
+                        selectedFontWeight = weight
+                        actions.setChoice(Settings.KEY_FONT_WEIGHT, weight.name)
+                        invalidate()
+                    }
+                    return
+                }
+                val rowTop = targetTop + ink.dp(98f)
                 val rowStep = ink.dp(64f)
                 val index = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                 val preset = Settings.TextEffectPreset.entries.getOrNull(index)
