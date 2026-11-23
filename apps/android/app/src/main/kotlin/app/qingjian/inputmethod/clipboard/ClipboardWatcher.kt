@@ -17,7 +17,7 @@ import kotlin.concurrent.thread
  * 图片读字节放后台线程，太大的（超过 [MAX_IMAGE_BYTES]）不记。
  * 历史记录按时间戳去重；临时预览独立于历史记录开关，键盘弹出时也提示系统当前内容。
  */
-class ClipboardWatcher(private val context: Context) {
+class ClipboardWatcher(private val context: Context, private val onNewText: (String) -> Unit = {}) {
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val listener = ClipboardManager.OnPrimaryClipChangedListener { capture() }
@@ -33,15 +33,15 @@ class ClipboardWatcher(private val context: Context) {
     /** 读取系统当前剪贴板：预览独立于历史记录开关，键盘弹出时也能显示最新文字。 */
     fun capture() {
         val settings = Settings.load(context)
-        if (!settings.recordClipboard) return
         val clip = runCatching { manager?.primaryClip }.getOrNull() ?: return
         if (clip.itemCount == 0 || sensitive(clip.description)) return
         val item = clip.getItemAt(0)
         val uri = item.uri
         val mime = uri?.let { runCatching { context.contentResolver.getType(it) }.getOrNull() }
         val firstRecord = firstSeen(clip.description.timestamp)
+        if (!firstRecord) return
         if (uri != null && mime?.startsWith("image/") == true) {
-            if (!firstRecord) return
+            if (!settings.recordClipboard) return
             thread(name = "qingjian-clipboard-image") {
                 val bytes = runCatching {
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -54,8 +54,12 @@ class ClipboardWatcher(private val context: Context) {
             }
             return
         }
-        val text = item.text?.toString() ?: return
-        if (firstRecord && text != ClipboardSync.lastReceived) {
+        val text = item.text?.toString()?.takeIf { it.isNotBlank() } ?: return
+        // 新剪贴板预览不依赖「记录剪贴板」开关；同一系统剪贴板时间戳只通知一次。
+        if (text == ClipboardSync.lastReceived) return
+        if (Looper.myLooper() == Looper.getMainLooper()) onNewText(text)
+        else main.post { onNewText(text) }
+        if (settings.recordClipboard) {
             ClipboardStore.add(context, text, settings.clipboardLimit)
             ClipboardSync.changed()
         }
