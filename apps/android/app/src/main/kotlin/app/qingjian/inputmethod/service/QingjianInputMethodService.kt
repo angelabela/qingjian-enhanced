@@ -331,8 +331,11 @@ class QingjianInputMethodService :
         val sameClipboardContent = lastHash == contentHash &&
             (clipTimestamp <= 0L || clipTimestamp == lastTimestamp)
         if (preferredCode == null && sameClipboardContent && !clipboardNoticeEventPending) {
-            AppLog.info("[CLIPBOARD_NOTICE] duplicate skipped: already displayed for this clipboard event source=$source length=${text.length}")
-            bar.clearNotice()
+            // 重读同一条剪贴板时不能清掉刚显示的提示；若输入法窗口刚重建，则补回当前最新内容。
+            AppLog.info("[CLIPBOARD_NOTICE] duplicate retained: already displayed for this clipboard event source=$source length=${text.length}")
+            if (!bar.hasPersistentNotice(text)) {
+                bar.showPersistentNotice(text) { commitText(text) }
+            }
             return
         }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
@@ -1560,6 +1563,29 @@ class QingjianInputMethodService :
 
     /** Z/X/C/V 下滑编辑操作：交由当前输入框执行系统标准上下文菜单动作。 */
     override fun onEditShortcut(action: KeyboardView.EditShortcut) {
+        // 复制只允许读取选区并写入系统剪贴板；不调用编辑器上下文菜单，避免某些输入框把复制误处理成删除/剪切。
+        if (action == KeyboardView.EditShortcut.COPY) {
+            val info = currentInputEditorInfo
+            val variation = info?.inputType?.and(android.text.InputType.TYPE_MASK_VARIATION) ?: 0
+            val passwordField = variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            if (passwordField || composer.privateInput || composer.directInput) {
+                toast("当前输入框不允许复制")
+                return
+            }
+            val selected = runCatching {
+                currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
+            }.getOrDefault("")
+            if (selected.isEmpty()) {
+                toast("请先选中要复制的文字")
+                return
+            }
+            copyToClipboard(selected)
+            return
+        }
+
         val actionId = when (action) {
             KeyboardView.EditShortcut.SELECT_ALL -> android.R.id.selectAll
             KeyboardView.EditShortcut.CUT -> android.R.id.cut
@@ -1572,7 +1598,6 @@ class QingjianInputMethodService :
             composer.invalidateEditHistory()
         }
     }
-
     override fun onKeyChoice(text: String) = composer.onKeyChoice(text)
 
     override fun onLanguageChoice(index: Int) = composer.chooseLanguage(Language.entries[index])
