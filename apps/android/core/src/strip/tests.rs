@@ -23,6 +23,7 @@ fn candidate(text: &str, senses: &[(Option<&'static str>, &str, bool)]) -> Frame
         forgettable: true,
         cloud: false,
         contact: false,
+        custom_phrase: false,
     }
 }
 
@@ -50,6 +51,15 @@ fn only_the_first_sense_goes_under_the_word() {
     );
     assert_eq!(rows[1].annotation[1], ("you seem".to_owned(), Tone::Fresh));
     assert!(rows[2].annotation.is_empty());
+}
+
+#[test]
+fn long_custom_phrases_are_limited_before_layout() {
+    let mut phrase = candidate(&"常用语".repeat(60), &[]);
+    phrase.custom_phrase = true;
+    let rendered = rows(&[phrase], 1.0, chars);
+    assert_eq!(rendered[0].text.chars().count(), MAX_CUSTOM_PHRASE_WIDTH as usize);
+    assert!(rendered[0].text.ends_with('…'));
 }
 
 #[test]
