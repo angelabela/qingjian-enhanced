@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.text.TextUtils
 import kotlin.math.roundToInt
 import android.text.TextPaint
 import app.qingjian.inputmethod.settings.Settings
@@ -525,7 +526,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
             fallbackText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
-            canvas.drawText(candidate.text, rect.centerX() - scrollX, baseline, fallbackText)
+            val displayText = TextUtils.ellipsize(
+                candidate.text, fallbackText, (rect.width() - 4f * density).coerceAtLeast(1f), TextUtils.TruncateAt.END,
+            ).toString()
+            canvas.drawText(displayText, rect.centerX() - scrollX, baseline, fallbackText)
             fallbackText.alpha = originalAlpha
             canvas.restoreToCount(revealSave)
         }
