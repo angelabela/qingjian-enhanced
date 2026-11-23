@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.Manifest
@@ -1103,7 +1105,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                         if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
                                         val mapped = RectF(bounds)
                                         transform.mapRect(mapped)
-                                        if (!roi.contains(mapped.centerX(), mapped.centerY())) return@forEach
+                                        if (!isBarcodeInsideScanArea(roi, mapped)) return@forEach
                                         if (!hasStableBarcode(value, mapped.centerX(), mapped.centerY())) return@forEach
                                         scanDiag("stable barcode accepted center=" + mapped.centerX().toInt() + "," + mapped.centerY().toInt())
                                         if (shouldDeliverCode(value)) deliverResult(value)
@@ -1242,7 +1244,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val mapped = RectF(bounds)
             transform.mapRect(mapped)
             val roi = scanArea.boundsInView()
-            if (!roi.contains(mapped.centerX(), mapped.centerY())) return
+            if (!isBarcodeInsideScanArea(roi, mapped)) return
             if (!hasStableBarcode(value, mapped.centerX(), mapped.centerY())) return
             scanDiag("ZXing fallback accepted center=${mapped.centerX().toInt()},${mapped.centerY().toInt()}")
             if (shouldDeliverCode(value)) deliverResult(value)
@@ -1354,14 +1356,24 @@ class ScanOverlayService : Service(), LifecycleOwner {
         torchButton.isSelected = torchEnabled
     }
 
+    /** 识别框必须主要落在用户指定的扫描区域内，避免扫描框外的码误触发。 */
+    private fun isBarcodeInsideScanArea(roi: RectF, bounds: RectF): Boolean {
+        if (bounds.isEmpty || !bounds.intersects(roi)) return false
+        val intersection = RectF(bounds)
+        if (!intersection.intersect(roi)) return false
+        val barcodeArea = (bounds.width() * bounds.height()).coerceAtLeast(1f)
+        val visibleArea = intersection.width() * intersection.height()
+        return visibleArea / barcodeArea >= 0.72f
+    }
+
     /**
-     * 对同一内容做跨帧确认，要求短时间内连续两帧命中且中心位置稳定。
-     * 单帧 ML Kit 偶发的错误字符不会直接写入输入框。
+     * 对同一内容做跨帧确认；放宽轻微抖动和跨帧时间窗口，避免小码/手持抖动时难以命中。
+     * 仍要求连续两帧识别到同一内容，避免单帧误读。
      */
     private fun hasStableBarcode(value: String, centerX: Float, centerY: Float): Boolean {
         val now = android.os.SystemClock.elapsedRealtime()
         val previous = stableBarcodeHits[value]
-        val tolerance = (minOf(preview.width, preview.height) * 0.10f).coerceAtLeast(24f)
+        val tolerance = (minOf(preview.width, preview.height) * 0.18f).coerceAtLeast(36f)
         val stable = previous != null &&
             now - previous.lastAt <= STABLE_HIT_WINDOW_MS &&
             kotlin.math.hypot((centerX - previous.centerX).toDouble(), (centerY - previous.centerY).toDouble()) <= tolerance
@@ -1398,6 +1410,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
         if (shuttingDown) return
         android.os.Handler(mainLooper).post {
             if (shuttingDown) return@post
+            // 网址扫码结果同时写入系统剪贴板，方便稍后从剪贴板面板打开或分享。
+            ScanContent.webUrl(value)?.let { url ->
+                runCatching {
+                    getSystemService(ClipboardManager::class.java)
+                        ?.setPrimaryClip(ClipData.newPlainText("扫码网址", url))
+                }.onFailure { scanDiag("copy scanned URL to clipboard failed: ${it.javaClass.simpleName}", warning = true) }
+            }
             scanDiag("broadcast scan result length=${value.length} editorPrefixActive=${ScanPreferences.isPrefixEditorActive()}")
             sendBroadcast(
                 Intent(ScanPreferences.ACTION_RESULT)
@@ -1609,7 +1628,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                     val dx = event.x - downX
                     val dy = event.y - downY
                     // 预览区上下滑统一控制镜头远近；扫描框通过横向拖动移动，右下角控制点调整大小。
-                    if (!resizing && !verticalZoomGesture &&
+                    // 单指上下滑变焦只在扫描框外的预览区生效；扫描框内部保留移动/调整尺寸手势。
+                    if (!touchInScanArea && !resizing && !verticalZoomGesture &&
                         kotlin.math.abs(dy) > touchSlop &&
                         kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.15f
                     ) {
@@ -1684,7 +1704,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
         private const val DUPLICATE_CACHE_TTL_MS = 15_000L
         private const val MAX_TRACKED_CODES = 128
         private const val CAMERA_WARMUP_MS = 300L
-        private const val STABLE_HIT_WINDOW_MS = 900L
+        private const val STABLE_HIT_WINDOW_MS = 1_500L
         private const val STABLE_HIT_COUNT = 2
     }
 }
