@@ -1196,13 +1196,13 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
         }.onFailure { android.util.Log.w(TAG, "Binary Eye ZXing-C++ decode failed", it) }.getOrNull()
             ?: return null
-        val value = result.text.trim()
+        val value = result.text?.trim().orEmpty()
         if (value.isEmpty()) return null
         val position = result.position
         val points = listOf(position.topLeft, position.topRight, position.bottomLeft, position.bottomRight)
         val bounds = RectF(
-            points.minOf { it.x }, points.minOf { it.y },
-            points.maxOf { it.x }, points.maxOf { it.y },
+            points.minOf { it.x }.toFloat(), points.minOf { it.y }.toFloat(),
+            points.maxOf { it.x }.toFloat(), points.maxOf { it.y }.toFloat(),
         )
         return value to bounds
     }
