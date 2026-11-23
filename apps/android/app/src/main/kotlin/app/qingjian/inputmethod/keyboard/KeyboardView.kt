@@ -558,6 +558,10 @@ class KeyboardView(
     }
 
     private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction {
+        // C 键下滑是固定的复制快捷手势；不允许自定义下滑动作把 COPY 覆盖成 CUT。
+        if (!upward && (key as? Key.Letter)?.char?.lowercaseChar() == 'c') {
+            return Settings.GestureAction.COPY
+        }
         if (matchesCustomGestureKey(key)) {
             val custom = if (upward) settings.customGestureUp else settings.customGestureDown
             if (custom != Settings.GestureAction.DEFAULT) return custom
