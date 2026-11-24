@@ -56,6 +56,7 @@ class FunctionPanel(
     private var selectedFontWeight = Settings.FontWeight.of(
         Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null))
     private var adjustingCandidateFontSize = false
+    private var adjustingTextSlider = -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
     private var voiceGlassStrength = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
         .getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
@@ -543,8 +544,9 @@ class FunctionPanel(
         ink.fill.color = palette.text
         canvas.drawRoundRect(colorRect, ink.dp(6f), ink.dp(6f), ink.fill)
         ink.fill.style = android.graphics.Paint.Style.FILL
-        val hue = android.graphics.Color.colorToHSV(textColor, FloatArray(3)).let { 0f }
-        val colorMarker = left + (right - left) * (hue / 360f)
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(textColor, hsv)
+        val colorMarker = left + (right - left) * (hsv[0] / 360f)
         ink.fill.color = android.graphics.Color.WHITE
         canvas.drawCircle(colorMarker, colorY, ink.dp(7f), ink.fill)
         ink.fill.color = textColor
@@ -756,21 +758,26 @@ class FunctionPanel(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (textEffectPage && tabs.selected == 0 && selectedTextTarget == 0) {
-            val sliderTop = card.top + ink.dp(8f + 28f + 44f)
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
-                event.y in (sliderTop + ink.dp(16f))..(sliderTop + ink.dp(40f))) {
-                adjustingCandidateFontSize = true
+        if (textEffectPage && tabs.selected == 0) {
+            val controlsTop = card.top + ink.dp(8f + 28f + 44f)
+            val slider = when {
+                event.y in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
+                event.y in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
+                event.y in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
+                else -> -1
+            }
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) && slider >= 0) {
+                adjustingTextSlider = slider
                 parent?.requestDisallowInterceptTouchEvent(true)
-                updateCandidateFontSize(event.x)
+                updateTextSlider(event.x, slider)
                 return true
             }
-            if (adjustingCandidateFontSize) {
+            if (adjustingTextSlider >= 0) {
                 when (event.actionMasked) {
-                    MotionEvent.ACTION_MOVE -> updateCandidateFontSize(event.x)
+                    MotionEvent.ACTION_MOVE -> updateTextSlider(event.x, adjustingTextSlider)
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        updateCandidateFontSize(event.x)
-                        adjustingCandidateFontSize = false
+                        updateTextSlider(event.x, adjustingTextSlider)
+                        adjustingTextSlider = -1
                         parent?.requestDisallowInterceptTouchEvent(false)
                     }
                 }
@@ -798,6 +805,24 @@ class FunctionPanel(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun updateTextSlider(x: Float, slider: Int) {
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+        when (slider) {
+            0 -> {
+                val color = android.graphics.Color.HSVToColor(floatArrayOf(fraction * 360f, 0.86f, 1f))
+                actions.setIntChoice(textColorKey(), color)
+            }
+            1 -> actions.setIntChoice(textSizeKey(), (1 + fraction * 49f).roundToInt().coerceIn(1, 50))
+            2 -> {
+                val index = (fraction * (Settings.FontWeight.entries.size - 1)).roundToInt()
+                actions.setChoice(textWeightKey(), Settings.FontWeight.entries[index].name)
+            }
+        }
+        invalidate()
     }
 
     private fun updateCandidateFontSize(x: Float) {
@@ -852,33 +877,27 @@ class FunctionPanel(
             }
             tabs.selected == 0 && textEffectPage -> {
                 val targetTop = card.top + ink.dp(8f + 28f)
-                val gap = ink.dp(8f)
-                val targetWidth = (card.width() - ink.dp(28f) - gap) / 2f
                 if (y in targetTop..(targetTop + ink.dp(36f))) {
                     selectedTextTarget = if (x < card.centerX()) 0 else 1
                     selectedTextPreset = Settings.TextEffectPreset.of(Settings.preferences(context).getString(
                         if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, null))
+                    selectedCandidateFontSize = Settings.preferences(context).getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
                     effectScroll.reset()
                     invalidate()
                     return
                 }
                 val controlsTop = targetTop + ink.dp(44f)
-                if (selectedTextTarget == 0 && y in controlsTop..(controlsTop + ink.dp(40f))) {
-                    updateCandidateFontSize(x)
+                val slider = when {
+                    y in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
+                    y in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
+                    y in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
+                    else -> -1
+                }
+                if (slider >= 0) {
+                    updateTextSlider(x, slider)
                     return
                 }
-                if (selectedTextTarget == 1 && y in controlsTop..(controlsTop + ink.dp(48f))) {
-                    val gap = ink.dp(5f)
-                    val itemWidth = (card.width() - ink.dp(28f) - gap * 3f) / 4f
-                    val index = ((x - card.left - ink.dp(14f)) / (itemWidth + gap)).toInt()
-                    Settings.FontWeight.entries.getOrNull(index)?.let { weight ->
-                        selectedFontWeight = weight
-                        actions.setChoice(Settings.KEY_FONT_WEIGHT, weight.name)
-                        invalidate()
-                    }
-                    return
-                }
-                val rowTop = targetTop + ink.dp(98f)
+                val rowTop = targetTop + ink.dp(190f)
                 val rowStep = ink.dp(64f)
                 val index = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                 val preset = Settings.TextEffectPreset.entries.getOrNull(index)
