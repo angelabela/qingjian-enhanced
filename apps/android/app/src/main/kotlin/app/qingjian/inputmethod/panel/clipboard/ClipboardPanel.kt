@@ -229,6 +229,16 @@ class ClipboardPanel(
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         // 顶排 QWERTY 对应 1–0：轻点输入字母，长按输入数字。
         val topRowDigits = "1234567890"
+        // 次排、末排符号作为长按副字符，轻点仍输入原字母。
+        val secondRowSymbols = "@#$%&-+()"
+        val thirdRowSymbols = "! ?/:;'\"".replace(" ", "")
+        fun alternateForKey(ch: Char): Char? {
+            val row2 = rows[1].indexOf(ch)
+            if (row2 >= 0) return secondRowSymbols.getOrNull(row2)
+            val row3 = rows[2].indexOf(ch)
+            if (row3 >= 0) return thirdRowSymbols.getOrNull(row3)
+            return null
+        }
         val screenWidth = resources.displayMetrics.widthPixels
         // 浮窗保留约 14% 的横向余量，允许从屏幕左侧完整拖到右侧。
         val popupWidth = minOf(
@@ -255,9 +265,10 @@ class ClipboardPanel(
             if (isAttachedToWindow) {
                 val topIndex = downKeyForLongPress?.let(rows.first()::indexOf) ?: -1
                 val digit = topRowDigits.getOrNull(topIndex)
-                if (digit != null) {
+                val alternate = digit ?: downKeyForLongPress?.let(::alternateForKey)
+                if (alternate != null) {
                     longPressTriggered = true
-                    longPressDigitValue = digit
+                    longPressDigitValue = alternate
                     clearPressedKey?.invoke()
                 } else {
                     dragging = true
@@ -301,7 +312,7 @@ class ClipboardPanel(
                 paint.color = if (headerPressed) palette.onBrand else palette.gloss
                 paint.textSize = ink.dp(12f).toFloat()
                 paint.textAlign = Paint.Align.CENTER
-                canvas.drawText("长按顶部区域拖动键盘", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
+                canvas.drawText("移动键盘：按住任意位置拖动 · 长按数字/符号输入", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
                 paint.color = palette.brand
                 canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
                 paint.color = palette.onBrand
@@ -318,20 +329,25 @@ class ClipboardPanel(
                     paint.color = if (pressed) palette.onBrand else palette.brand
                     canvas.drawRoundRect(keyBounds, ink.dp(8f), ink.dp(8f), paint)
                     paint.style = Paint.Style.FILL
-                    val digit = if (r.top < headerHeight + ink.dp(8f) + keyHeight) {
-                        topRowDigits.getOrNull(rows.first().indexOf(ch))
-                    } else null
-                    if (digit != null) {
+                    val rowIndex = rows.indexOfFirst { it.contains(ch) }
+                    val alternate = when (rowIndex) {
+                        0 -> topRowDigits.getOrNull(rows[0].indexOf(ch))
+                        1 -> secondRowSymbols.getOrNull(rows[1].indexOf(ch))
+                        2 -> thirdRowSymbols.getOrNull(rows[2].indexOf(ch))
+                        else -> null
+                    }
+                    if (alternate != null) {
                         paint.color = if (pressed) palette.onBrand else palette.gloss
                         paint.textAlign = Paint.Align.CENTER
-                        paint.textSize = ink.dp(9f).toFloat()
-                        canvas.drawText(digit.toString(), r.centerX(),
+                        paint.textSize = ink.dp(if (rowIndex == 0) 9f else 10f).toFloat()
+                        // 数字和符号都在键帽上方横向居中，字母留在下方。
+                        canvas.drawText(alternate.toString(), r.centerX(),
                             r.top + ink.dp(11f) - (paint.ascent() + paint.descent()) / 2f, paint)
                     }
                     paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
                     paint.textSize = ink.dp(18f).toFloat()
-                    val letterCenterY = r.centerY() + if (digit != null) ink.dp(4f) else 0f
+                    val letterCenterY = r.centerY() + if (alternate != null) ink.dp(4f) else 0f
                     canvas.drawText(ch.toString(), r.centerX(), letterCenterY - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
             }
@@ -439,9 +455,13 @@ class ClipboardPanel(
             isTouchable = true
             isOutsideTouchable = false
             if (android.os.Build.VERSION.SDK_INT >= 29) setTouchModal(false)
+            // 键盘窗口脱离输入法面板边界；已授权悬浮窗权限时使用全局 overlay 类型。
+            if (android.os.Build.VERSION.SDK_INT >= 26 && android.provider.Settings.canDrawOverlays(context)) {
+                setWindowLayoutType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            }
             setBackgroundDrawable(ColorDrawable(palette.board))
             elevation = ink.dp(12f)
-            setClippingEnabled(true)
+            setClippingEnabled(false)
             setOnDismissListener {
                 if (searchPopup === this) searchPopup = null
                 searchEditing = false
