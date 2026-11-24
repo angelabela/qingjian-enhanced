@@ -320,8 +320,8 @@ class Toolbar(
                 float topGlow = 1.0 - smoothstep(0.0, 0.72, uv.y);
                 float alpha = (0.13 + rim * 0.18 + sweep * 0.10 + topGlow * 0.035) * edgeMask;
                 float mixAmount = clamp(rim * 0.42 + sweep * 0.52 + topGlow * 0.10, 0.0, 1.0);
-                half3 baseColor = mix(tint.rgb, half3(1.0), mixAmount);
-                return half4(baseColor * alpha, alpha);
+                float3 baseColor = mix(tint.rgb, float3(1.0), mixAmount);
+                return half4(half3(baseColor * alpha), half(alpha));
             }
         """
     }
