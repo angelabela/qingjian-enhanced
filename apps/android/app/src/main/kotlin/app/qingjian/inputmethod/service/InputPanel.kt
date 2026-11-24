@@ -344,7 +344,7 @@ private class FlowingKeyboardBackgroundDrawable(
     }
 
     /** Android 13+ 使用稳定的平滑值噪声云层；旧系统继续走 Canvas 渐变云层回退。 */
-    private fun drawCloudShader(canvas: Canvas, w: Float, h: Float, time: Double): Boolean {
+    private fun drawCloudShader(canvas: Canvas, w: Float, h: Float, time: Double, style: Int): Boolean {
         if (Build.VERSION.SDK_INT < 33) return false
         val shader = cloudShader ?: runCatching { RuntimeShader(CLOUD_AGSL) }.getOrNull()?.also { cloudShader = it } ?: return false
         shader.setFloatUniform("iTime", time.toFloat())
@@ -360,26 +360,20 @@ private class FlowingKeyboardBackgroundDrawable(
     private val CLOUD_AGSL = """
         uniform float iTime;
         uniform float2 iResolution;
+        uniform float iScene;
 
-        // 不依赖 sin 的哈希，跨 GPU 更稳定
         float hash(float2 p) {
             float3 p3 = fract(float3(p.x, p.y, p.x) * 0.1031);
             p3 += dot(p3, p3.yzx + 33.33);
             return fract((p3.x + p3.y) * p3.z);
         }
-
-        // 值噪声：对格点做双线性插值，得到连续平滑的云团
         float vnoise(float2 p) {
             float2 i = floor(p);
             float2 f = fract(p);
             f = f * f * (3.0 - 2.0 * f);
-            return mix(
-                mix(hash(i), hash(i + float2(1.0, 0.0)), f.x),
-                mix(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x),
-                f.y
-            );
+            return mix(mix(hash(i), hash(i + float2(1.0, 0.0)), f.x),
+                       mix(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x), f.y);
         }
-
         float fbm(float2 p) {
             float v = 0.0;
             float a = 0.5;
@@ -390,24 +384,61 @@ private class FlowingKeyboardBackgroundDrawable(
             }
             return v;
         }
-
         half4 main(float2 fragCoord) {
             float2 uv = fragCoord / max(iResolution.y, 1.0);
-            float3 skyCol = mix(
-                float3(0.40, 0.65, 0.95),
-                float3(0.60, 0.80, 1.00),
-                fragCoord.y / max(iResolution.y, 1.0)
-            );
+            float scene = floor(iScene + 0.5);
+            float dusk = scene == 15.0 ? 1.0 : 0.0;
+            float night = scene == 16.0 ? 1.0 : 0.0;
+            float glowScene = scene == 14.0 ? 1.0 : 0.0;
+            float twilight = scene == 18.0 ? 1.0 : 0.0;
 
-            float2 p = uv * 2.2 + float2(iTime * 0.02, 0.0);
-            float d = fbm(p);
-            float mask = smoothstep(0.45, 0.80, d);
-            float3 cloudCol = mix(
-                float3(0.82, 0.88, 0.96),
-                float3(1.0, 1.0, 1.0),
-                smoothstep(0.55, 0.90, d)
-            );
-            return half4(mix(skyCol, cloudCol, mask), 1.0);
+            float3 skyTop = float3(0.20, 0.43, 0.78);
+            float3 skyBottom = float3(0.73, 0.88, 1.00);
+            skyTop = mix(skyTop, float3(0.16, 0.045, 0.30), dusk);
+            skyBottom = mix(skyBottom, float3(1.00, 0.43, 0.29), dusk);
+            skyTop = mix(skyTop, float3(0.008, 0.018, 0.065), night);
+            skyBottom = mix(skyBottom, float3(0.055, 0.12, 0.28), night);
+            skyTop = mix(skyTop, float3(0.12, 0.08, 0.30), twilight);
+            skyBottom = mix(skyBottom, float3(0.80, 0.34, 0.40), twilight);
+            float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, fragCoord.y / max(iResolution.y, 1.0)));
+
+            float cloudScale = mix(2.15, 1.55, night);
+            cloudScale = mix(cloudScale, 1.85, dusk + twilight);
+            float drift = iTime * (night > 0.5 ? 0.012 : 0.022);
+            float2 p = uv * cloudScale + float2(drift, 0.0);
+            float density = fbm(p) * 0.62 + fbm(p * 1.75 + float2(8.0, 3.0)) * 0.28
+                          + fbm(p * 3.2 + float2(2.0, 11.0)) * 0.10;
+            float horizon = 1.0 - fragCoord.y / max(iResolution.y, 1.0);
+            float threshold = mix(0.48, 0.43, night);
+            float mask = smoothstep(threshold, threshold + 0.23, density);
+            mask *= smoothstep(0.0, 0.28, horizon);
+
+            float3 cloudLight = float3(1.0, 1.0, 0.98);
+            float3 cloudShade = float3(0.40, 0.57, 0.76);
+            cloudLight = mix(cloudLight, float3(1.0, 0.72, 0.60), dusk);
+            cloudShade = mix(cloudShade, float3(0.35, 0.12, 0.25), dusk);
+            cloudLight = mix(cloudLight, float3(0.66, 0.76, 1.0), night);
+            cloudShade = mix(cloudShade, float3(0.045, 0.075, 0.17), night);
+            cloudLight = mix(cloudLight, float3(1.0, 0.82, 0.88), twilight);
+            cloudShade = mix(cloudShade, float3(0.30, 0.15, 0.34), twilight);
+            float light = smoothstep(0.22, 0.82, density + (1.0 - horizon) * 0.12);
+            float3 cloud = mix(cloudShade, cloudLight, light);
+
+            float sunX = glowScene > 0.5 ? 0.78 : (dusk > 0.5 ? 0.50 : 0.72);
+            float sunY = dusk > 0.5 ? 0.84 : 0.18;
+            float2 sunDelta = float2(uv.x * iResolution.x / max(iResolution.y,1.0) - sunX, uv.y - sunY);
+            float sunGlow = exp(-dot(sunDelta, sunDelta) * 7.0);
+            cloud += float3(1.0, 0.78, 0.43) * sunGlow * (0.20 + glowScene * 0.32 + dusk * 0.18);
+
+            if (night > 0.5) {
+                float stars = step(0.997, hash(floor(fragCoord / 3.0)));
+                sky += float3(0.72, 0.82, 1.0) * stars * (0.55 + 0.45 * sin(iTime * 1.4 + fragCoord.x));
+                float moon = 1.0 - smoothstep(0.045, 0.052, length(uv - float2(0.72, 0.20)));
+                sky = mix(sky, float3(0.88, 0.92, 1.0), moon);
+            }
+            float rim = smoothstep(0.58, 0.82, density) * (1.0 - smoothstep(0.82, 0.98, density));
+            cloud += cloudLight * rim * (0.10 + glowScene * 0.20 + dusk * 0.12);
+            return half4(mix(sky, cloud, clamp(mask, 0.0, 1.0)), 1.0);
         }
     """.trimIndent()
 
@@ -563,7 +594,7 @@ private class FlowingKeyboardBackgroundDrawable(
             12 -> fluid(0xFF021A2B.toInt(), intArrayOf(0xFF0A6FB5.toInt(),0xFF14C2C9.toInt(),0xFF052F5F.toInt(),0xFF7BE0FF.toInt()), 34.0, false, .08f)
             13 -> fluid(0xFF0A0010.toInt(), intArrayOf(0xFFFF00C8.toInt(),0xFF00F0FF.toInt(),0xFF6A00FF.toInt(),0xFFFFEE00.toInt()), 12.0, true, .16f)
             14 -> {
-                if (drawCloudShader(canvas, w, h, t)) return
+                if (drawCloudShader(canvas, w, h, t, style)) return
                 background(0xFF3A7BD5.toInt(), 0xFFBFE6FF.toInt())
                 glow(w * .80f, h * .14f, maxOf(w,h) * .45f, 0xFFFFF8D2.toInt(), 215)
                 cloudLayers(0xFFFFFFFF.toInt(), 0xFF6E91BE.toInt())
