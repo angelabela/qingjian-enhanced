@@ -121,7 +121,7 @@ class ClipboardPanel(
     }
 
     private val list = RectF()
-    private val listScroll = scrollable(false) { x, y -> list.contains(x, y) }
+    private val listScroll = scrollable(false, friction = 0.009f) { x, y -> list.contains(x, y) }
     private var restoreClipScrollPending = !phrasesFirst && tabs.selected == CLIPS
 
     /** 展开着的那一张（列表里的下标），-1 是都收着。 */
@@ -229,11 +229,12 @@ class ClipboardPanel(
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         val screenWidth = resources.displayMetrics.widthPixels
         // 留出足够横向行程，让浮窗长按后能在屏幕左右两侧之间移动。
-        val popupWidth = minOf((width - ink.dp(16f)).toInt(), (screenWidth * 0.76f).toInt())
-            .coerceAtLeast(ink.dp(250f).toInt())
+        // 键盘横向铺满可用屏幕；顶部操作条既提供删除键，也提供全屏拖动抓手。
+        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f).toInt())
+        val headerHeight = ink.dp(42f)
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
-        val popupHeight = (keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
+        val popupHeight = (headerHeight + keyHeight * 3 + rowGap * 2 + ink.dp(16f)).toInt()
         var popupWindow: PopupWindow? = null
         var dragging = false
         var longPressTriggered = false
@@ -256,18 +257,22 @@ class ClipboardPanel(
             private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val keys = ArrayList<Pair<Char, RectF>>()
             private val gap = ink.dp(4f)
+            private val deleteRect = RectF()
             private var pressedKey: Char? = null
             private var downKey: Char? = null
-            init { clearPressedKey = { pressedKey = null; invalidate() } }
+            private var downDelete = false
+            private var headerPressed = false
+            init { clearPressedKey = { pressedKey = null; headerPressed = false; invalidate() } }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
+                deleteRect.set(w - ink.dp(78f), ink.dp(5f), w - ink.dp(7f), headerHeight - ink.dp(5f))
                 rows.forEachIndexed { row, letters ->
                     val usable = w - ink.dp(20f)
                     val kw = (usable - gap * (letters.length - 1)) / letters.length
                     val rw = kw * letters.length + gap * (letters.length - 1)
                     val left = (w - rw) / 2f
-                    val top = ink.dp(8f) + row * (keyHeight + rowGap)
+                    val top = headerHeight + ink.dp(8f) + row * (keyHeight + rowGap)
                     letters.forEachIndexed { col, ch ->
                         val x = left + col * (kw + gap)
                         keys += ch to RectF(x, top, x + kw, top + keyHeight)
@@ -276,6 +281,18 @@ class ClipboardPanel(
             }
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
+                paint.style = Paint.Style.FILL
+                paint.color = if (headerPressed) palette.brand else palette.surface
+                canvas.drawRoundRect(ink.dp(7f), ink.dp(5f), width - ink.dp(7f), headerHeight - ink.dp(5f), ink.dp(9f), ink.dp(9f), paint)
+                paint.color = if (headerPressed) palette.onBrand else palette.gloss
+                paint.textSize = ink.dp(12f)
+                paint.textAlign = Paint.Align.CENTER
+                canvas.drawText("长按顶部区域拖动键盘", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
+                paint.color = palette.brand
+                canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
+                paint.color = palette.onBrand
+                paint.textSize = ink.dp(21f)
+                canvas.drawText("⌫", deleteRect.centerX(), deleteRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 keys.forEach { (ch, r) ->
                     val pressed = ch == pressedKey
                     val keyBounds = RectF(r).apply { if (pressed) offset(0f, ink.dp(1.2f)) }
@@ -300,7 +317,9 @@ class ClipboardPanel(
                         longPressTriggered = false
                         downRawX = event.rawX
                         downRawY = event.rawY
-                        downKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                        downDelete = deleteRect.contains(event.x, event.y)
+                        headerPressed = event.y < headerHeight && !downDelete
+                        downKey = if (downDelete || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                         pressedKey = downKey
                         invalidate()
                         popupStartX = popupCurrentX
@@ -328,16 +347,23 @@ class ClipboardPanel(
                     MotionEvent.ACTION_UP -> {
                         removeCallbacks(beginDrag)
                         if (!dragging && !longPressTriggered) {
-                            val releasedKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
-                            if (downKey != null && releasedKey == downKey) {
-                                downKey?.let { ch ->
-                                    updateSearchQuery(searchQuery + ch)
-                                    Haptics.tap(context)
+                            if (downDelete && deleteRect.contains(event.x, event.y)) {
+                                if (searchQuery.isNotEmpty()) updateSearchQuery(searchQuery.dropLast(1))
+                                Haptics.tap(context)
+                            } else {
+                                val releasedKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                                if (downKey != null && releasedKey == downKey) {
+                                    downKey?.let { ch ->
+                                        updateSearchQuery(searchQuery + ch)
+                                        Haptics.tap(context)
+                                    }
                                 }
                             }
                         }
                         pressedKey = null
                         downKey = null
+                        downDelete = false
+                        headerPressed = false
                         invalidate()
                         dragging = false
                         longPressTriggered = false
@@ -347,6 +373,8 @@ class ClipboardPanel(
                         removeCallbacks(beginDrag)
                         pressedKey = null
                         downKey = null
+                        downDelete = false
+                        headerPressed = false
                         invalidate()
                         dragging = false
                         longPressTriggered = false
@@ -470,7 +498,9 @@ class ClipboardPanel(
                     cursorX, searchRect.centerY() + ink.dp(8f), searchCursorPaint)
             }
             if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(11f), searchRect.centerY(), 13f, palette.gloss)
-            val resultLabel = "${visibleClipIndices.size}/${clips.size}"
+            val resultCount = visibleClipIndices.size.coerceAtLeast(0)
+            .coerceAtMost(clips.size)
+        val resultLabel = "$resultCount/${clips.size}"
             ink.textStart(canvas, resultLabel, 10.5f, palette.gloss,
                 searchRect.right + ink.dp(5f), searchRect.centerY() + ink.dp(1f),
                 deleteBackwardBounds().left - ink.dp(4f))
@@ -501,11 +531,12 @@ class ClipboardPanel(
         }
         val scrollDelta = listScroll.offset - lastDrawnScrollOffset
         if (kotlin.math.abs(scrollDelta) > 0.25f) {
-            scrollMotion = (scrollMotion + scrollDelta * 0.42f).coerceIn(-ink.dp(32f), ink.dp(32f))
+            scrollMotion = (scrollMotion + scrollDelta * 0.62f).coerceIn(-ink.dp(60f), ink.dp(60f))
         }
         lastDrawnScrollOffset = listScroll.offset
         if (kotlin.math.abs(scrollMotion) > 0.18f) {
-            scrollMotion *= 0.84f
+            // 以更长的缓出尾迹收束快速滑动，让减速过程清楚可见。
+            scrollMotion *= 0.92f
             postInvalidateOnAnimation()
         } else scrollMotion = 0f
         canvas.save()
@@ -521,18 +552,26 @@ class ClipboardPanel(
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
             val phase = ((i % 4) + 1) / 4f
-            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(36f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(60f).coerceAtLeast(1f)).coerceIn(0f, 1f)
             val direction = if (scrollMotion < 0f) -1f else 1f
-            // 改为错列横向滑入与轻淡入，不再使用上一版的纵向升降、缩放和描边光效。
-            val drift = direction * strength * ink.dp(9f) * phase
-            val motionAlpha = (255 - strength * 52f).toInt().coerceIn(190, 255)
-            val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(4f), width.toFloat(), bottom + ink.dp(4f), motionAlpha)
+            // 新的「纵向弹性波」：卡片错层上下浮动、轻微缩放，并带品牌色边缘扫光。
+            val driftY = direction * strength * ink.dp(18f) * phase
+            val driftX = direction * strength * ink.dp(5f) * phase
+            val scale = 1f - strength * 0.035f * phase
+            val motionAlpha = (255 - strength * 88f).toInt().coerceIn(150, 255)
+            val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(22f), width.toFloat(), bottom + ink.dp(22f), motionAlpha)
             canvas.save()
-            canvas.translate(drift, 0f)
+            canvas.translate(driftX, driftY)
+            canvas.scale(scale, scale, width / 2f, (top + bottom) / 2f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
+            if (strength > 0.08f) {
+                scrollGlowPaint.color = (palette.brand and 0x00FFFFFF) or (((0xA0 * strength).toInt().coerceIn(0, 0xA0)) shl 24)
+                val glowBounds = RectF(ink.dp(2f), top + ink.dp(2f), width - ink.dp(2f), bottom - ink.dp(2f))
+                canvas.drawRoundRect(glowBounds, ink.dp(13f), ink.dp(13f), scrollGlowPaint)
+            }
             canvas.restore()
             canvas.restoreToCount(cardLayer)
         }
