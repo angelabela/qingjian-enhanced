@@ -44,7 +44,7 @@ impl Session {
                 })
                 .map(|table| {
                     let mut scheme = CodeScheme::new(WUBI_LOG_KEY, table);
-                    // 纯五笔满四码自动提交首个精确码候选；混输保留候选选择，避免截断拼音。
+                    // 五笔满四码自动提交首个精确码候选；混输时也只在精确码表命中后提交。
                     scheme.auto_commit = true;
                     scheme
                 })
