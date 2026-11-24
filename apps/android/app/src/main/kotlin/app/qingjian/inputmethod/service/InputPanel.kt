@@ -1117,7 +1117,7 @@ class InputPanel(
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
         private val contrastVeil = View(context).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
-        private var effectBackgroundView: View? = initialEffectBackground?.let { makeEffectBackgroundView(it, videoBlur) }
+        private var effectBackgroundView: View? = initialEffectBackground?.let { makeEffectBackgroundView(context, it, videoBlur) }
         private var lastVideoMeasureSignature: String? = null
 
         /** 视频/光效与内容之间的自适应衬层，统一保护文字、按键字母和图标的对比度。 */
@@ -1138,8 +1138,8 @@ class InputPanel(
             contrastVeil.alpha = amount
             contrastVeil.invalidate()
         }
-        private fun makeEffectBackgroundView(drawable: FlowingKeyboardBackgroundDrawable, blurDp: Int): View =
-            View(context).apply {
+        private fun makeEffectBackgroundView(ctx: Context, drawable: FlowingKeyboardBackgroundDrawable, blurDp: Int): View =
+            View(ctx).apply {
                 background = drawable
                 if (android.os.Build.VERSION.SDK_INT >= 31) {
                     val radius = blurDp.coerceIn(0, 30) * resources.displayMetrics.density
@@ -1151,7 +1151,7 @@ class InputPanel(
 
         fun updateEffectBackground(drawable: FlowingKeyboardBackgroundDrawable?, blurDp: Int) {
             effectBackgroundView?.let(::removeView)
-            effectBackgroundView = drawable?.let { makeEffectBackgroundView(it, blurDp) }
+            effectBackgroundView = drawable?.let { makeEffectBackgroundView(this.context, it, blurDp) }
             effectBackgroundView?.let {
                 addView(it, 0, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
