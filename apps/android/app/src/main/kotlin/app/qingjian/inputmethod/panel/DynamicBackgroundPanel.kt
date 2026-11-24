@@ -19,11 +19,22 @@ class DynamicBackgroundPanel(
     headerHeight: Float,
 ) : PanelView(context, palette, actions, headerHeight) {
     private val prefs = context.getSharedPreferences(DynamicBackgroundActivity.PREFS, Context.MODE_PRIVATE)
+    private val settingsPrefs = Settings.preferences(context)
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
     private val rowHeight get() = ink.dp(66f)
-    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
+    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "背景光效样式", "视频透明度", "背景亮度", "模糊程度")
+    private val effectStyles = listOf(
+        0 to "极光流彩", 1 to "深海蓝潮", 2 to "日落熔金", 4 to "冰晶星雾",
+        7 to "霓虹光幕", 8 to "星环脉冲",
+        9 to "流体·极光", 10 to "流体·日落", 11 to "流体·糖果", 12 to "流体·深海", 13 to "流体·霓虹",
+        14 to "晴空云海", 15 to "暮色云层", 16 to "月夜流云", 17 to "梦幻光斑", 18 to "光斑穿云",
+    )
+    private fun selectedEffectStyle(): Int = Settings.normalizeKeyboardBackgroundStyle(
+        settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, "0")?.toIntOrNull() ?: 0
+    )
+    private fun selectedEffectName(): String = effectStyles.firstOrNull { it.first == selectedEffectStyle() }?.second ?: "极光流彩"
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
 
     private fun notifyChanged() {
@@ -55,22 +66,22 @@ class DynamicBackgroundPanel(
                 1 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) "已开启" else "已关闭"
                 2 -> modeLabels[prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2).coerceIn(0, 2)]
                 3 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"
-                4 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
-                5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
-                6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
+                4 -> selectedEffectName()
+                5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
+                6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
+                7 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
                 else -> ""
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
             ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
-            if (index in 4..6) {
+            if (index in 5..7) {
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
                 val cy = y + ink.dp(49f)
-                val max = if (index == 5) 200f else if (index == 6) 30f else 100f
+                val max = when (index) { 6 -> 200f; 7 -> 30f; else -> 100f }
                 val current = when (index) {
-                    4 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
-                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
-                    6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
+                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
+                    6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
                     else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
                 }.coerceIn(0, max.toInt())
                 ink.fill.color = palette.functionalKey
@@ -105,7 +116,15 @@ class DynamicBackgroundPanel(
                 notifyChanged()
             }
             3 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
-            in 4..6 -> {
+            4 -> {
+                val current = selectedEffectStyle()
+                val currentIndex = effectStyles.indexOfFirst { it.first == current }.coerceAtLeast(0)
+                val next = effectStyles[(currentIndex + 1) % effectStyles.size].first
+                settingsPrefs.edit().putString(Settings.KEY_BACKGROUND_STYLE, next.toString()).apply()
+                context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
+                invalidate()
+            }
+            in 5..7 -> {
                 // 滑块只允许从实际轨道/滑块附近启动；整行点击不再意外改变数值。
                 val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
                 val left = card.left + ink.dp(18f)
@@ -124,9 +143,9 @@ class DynamicBackgroundPanel(
         val value = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
         prefs.edit().apply {
             when (index) {
-                4 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
-                5 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
-                6 -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
+                5 -> putInt(DynamicBackgroundActivity.KEY_ALPHA, (value * 100).toInt())
+                6 -> putInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, (value * 200).toInt())
+                7 -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
                 else -> putInt(DynamicBackgroundActivity.KEY_BLUR, (value * 30).toInt())
             }
         }.apply()
@@ -136,15 +155,14 @@ class DynamicBackgroundPanel(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y)) {
             val index = ((event.y - card.top - ink.dp(8f) + scroll.offset) / rowHeight).toInt()
-            if (index in 4..6) {
+            if (index in 5..7) {
                 val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
-                val max = when (index) { 5 -> 200f; 6 -> 30f; else -> 100f }
+                val max = when (index) { 6 -> 200f; 7 -> 30f; else -> 100f }
                 val current = when (index) {
-                    4 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
-                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
-                    6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
+                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
+                    6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
                     else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
                 }.coerceIn(0, max.toInt())
                 val knobX = left + (right - left) * (current / max)
