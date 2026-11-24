@@ -131,13 +131,14 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         val now = SystemClock.elapsedRealtime()
         // 亮度采样只用于主题适配；降低采样频率，且隐藏/脱离窗口时不再读取纹理。
-        if (!isAttachedToWindow || !isShown || now - lastLuminanceSampleAt < 1_500L) return
+        if (!isAttachedToWindow || !isShown || now - lastLuminanceSampleAt < 900L) return
         lastLuminanceSampleAt = now
         val sample = runCatching { getBitmap(8, 8) }.getOrNull() ?: return
         try {
             var total = 0f
             var count = 0
-            for (y in 0 until minOf(sample.height, 3)) for (x in 0 until sample.width) {
+            // 使用整个 8×8 纹理采样网格，避免只取顶部局部颜色导致全键盘误判。
+            for (y in 0 until sample.height) for (x in 0 until sample.width) {
                 val pixel = sample.getPixel(x, y)
                 val r = android.graphics.Color.red(pixel) / 255f
                 val g = android.graphics.Color.green(pixel) / 255f
