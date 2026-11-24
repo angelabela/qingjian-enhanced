@@ -150,8 +150,11 @@ fn shuangpin_keys_decode_with_the_chosen_scheme() {
 fn wubi_codes_look_up_the_code_table() {
     let mut session = session();
     session.set_wubi(true, false);
-    type_keys(&mut session, "wqvb");
-    assert_eq!(session.select(0).commit, "你好");
+    let mut frame = session.push('w');
+    for c in "qvb".chars() {
+        frame = session.push(c);
+    }
+    assert_eq!(frame.commit, "你好");
     session.set_wubi(true, true);
     type_keys(&mut session, "nihao");
     assert_eq!(session.select(0).commit, "你好");
