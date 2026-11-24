@@ -42,7 +42,6 @@ class FunctionPanel(
     private class Toggle(val key: String, val label: String, val note: String, val on: Boolean)
 
     private var voiceEffectPage = false
-    private var backgroundEffectPage = false
     private var textEffectPage = false
     private var aiLoadingEffectPage = false
     private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
@@ -56,8 +55,6 @@ class FunctionPanel(
     private var selectedFontWeight = Settings.FontWeight.of(
         Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null))
     private var adjustingCandidateFontSize = false
-    private var backgroundEffectEnabled = settings.keyboardBackgroundEffect
-    private var selectedBackgroundStyle = if (settings.keyboardBackgroundEffect) settings.keyboardBackgroundStyle else -1
     private var selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE).getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
     private var voiceGlassStrength = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
         .getInt(VoicePanel.PREF_GLASS_STRENGTH, VoicePanel.DEFAULT_GLASS_STRENGTH).coerceIn(1, 50)
@@ -122,13 +119,6 @@ class FunctionPanel(
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
-                Feature(if (backgroundEffectEnabled) Icon.WAVEFORM else Icon.PALETTE, "背景光效", on = backgroundEffectEnabled) {
-                    selectedBackgroundStyle = if (backgroundEffectEnabled) settings.keyboardBackgroundStyle else -1
-                    backgroundEffectPage = true
-                    voiceEffectPage = false
-                    textEffectPage = false
-                    invalidate()
-                },
                 Feature(Icon.PALETTE, "文字效果", on = textEffectsActive()) {
                     val textPrefs = Settings.preferences(context)
                     selectedTextTarget = 0
@@ -138,19 +128,17 @@ class FunctionPanel(
                     selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
                     voiceEffectPage = false
-                    backgroundEffectPage = false
                     invalidate()
                 },
                 Feature(Icon.WAVEFORM, "AI等待特效", on = selectedAiLoadingStyle in 0..15) {
                     selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
                     aiLoadingEffectPage = true
                     voiceEffectPage = false
-                    backgroundEffectPage = false
                     textEffectPage = false
                     effectScroll.reset()
                     invalidate()
                 },
-                Feature(Icon.WAVEFORM, "视频背景", on = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
+                Feature(Icon.PALETTE, "面板背景特效", on = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(Settings.KEY_BACKGROUND_EFFECT, false) || context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
@@ -179,7 +167,6 @@ class FunctionPanel(
 
     fun refreshState() {
         val prefs = Settings.preferences(context)
-        backgroundEffectEnabled = prefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect)
         selectedAiLoadingStyle = prefs.getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
         selectedVoiceStyle = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_STYLE, VoicePanel.ANIMATION_DISABLED)
@@ -187,7 +174,6 @@ class FunctionPanel(
             .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
         selectedCandidateFontSize = prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
         selectedFontWeight = Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null))
-        if (!backgroundEffectEnabled) selectedBackgroundStyle = -1
         invalidate()
     }
 
@@ -209,7 +195,7 @@ class FunctionPanel(
     private val knob = RectF()
     // 两个动效选择页共用竖向惯性滚动，内容始终裁切在面板卡片内部。
     private val effectScroll = scrollable(false) { x, y ->
-        (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) &&
+        (voiceEffectPage || textEffectPage || aiLoadingEffectPage) &&
             x >= card.left && x <= card.right &&
             y >= card.top + ink.dp(38f) && y <= card.bottom - ink.dp(6f)
     }
@@ -217,11 +203,9 @@ class FunctionPanel(
     private val columns = 5
 
     override fun onDraw(canvas: Canvas) {
-        drawHeader(canvas, if (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) null else tabs, Icon.SETTINGS)
+        drawHeader(canvas, if (voiceEffectPage || textEffectPage || aiLoadingEffectPage) null else tabs, Icon.SETTINGS)
         if (voiceEffectPage) {
             ink.text(canvas, "语音面板动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
-        } else if (backgroundEffectPage) {
-            ink.text(canvas, "键盘背景动效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         } else if (textEffectPage) {
             ink.text(canvas, "文字效果", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         } else if (aiLoadingEffectPage) {
@@ -231,7 +215,6 @@ class FunctionPanel(
         ink.round(canvas, card, 16f, palette.surface)
         if (tabs.selected == 0) {
             if (voiceEffectPage) drawVoiceEffectSettings(canvas)
-            else if (backgroundEffectPage) drawBackgroundEffectSettings(canvas)
             else if (textEffectPage) drawTextEffectSettings(canvas)
             else if (aiLoadingEffectPage) drawAiLoadingEffectSettings(canvas)
             else drawFeatures(canvas)
@@ -334,66 +317,6 @@ class FunctionPanel(
         ink.round(canvas, progress, 2f, palette.brand)
         ink.fill.color = palette.brand
         canvas.drawCircle(progressX, y, ink.dp(6f), ink.fill)
-    }
-
-    /** 背景动效样式选择；内容超过可视区时在卡片内部滚动，不再挤出面板。 */
-    private fun drawBackgroundEffectSettings(canvas: Canvas) {
-        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾", "魔幻粒子", "星云裂隙", "霓虹光幕", "星环脉冲")
-        val colors = listOf(
-            intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt()),
-            intArrayOf(0xFF11B8A6.toInt(), 0xFF1D8FE8.toInt(), 0xFF35C6D8.toInt()),
-            intArrayOf(0xFFFF8A4C.toInt(), 0xFFF04F8B.toInt(), 0xFFB45BE8.toInt()),
-            intArrayOf(0xFF2DE2C5.toInt(), 0xFF43B66D.toInt(), 0xFF9B62FF.toInt()),
-            intArrayOf(0xFFD8F3FF.toInt(), 0xFF87B8E8.toInt(), 0xFFB7A6F6.toInt()),
-            intArrayOf(0xFF9CFFF0.toInt(), 0xFF8BB8FF.toInt(), 0xFFF49BFF.toInt()),
-            intArrayOf(0xFF7F8CFF.toInt(), 0xFF7DE7D9.toInt(), 0xFFD17BFF.toInt()),
-            intArrayOf(0xFF28E6FF.toInt(), 0xFF477CFF.toInt(), 0xFFB65CFF.toInt()),
-            intArrayOf(0xFFFF6FB5.toInt(), 0xFF8A68FF.toInt(), 0xFF51D9FF.toInt()),
-        )
-        val top = card.top + ink.dp(10f)
-        ink.textStart(canvas, "选择一种持续流动的背景色彩", 11f, palette.gloss,
-            card.left + ink.dp(16f), top + ink.dp(14f), card.right - ink.dp(12f))
-        val gapX = ink.dp(8f)
-        val rowStep = ink.dp(74f)
-        val itemHeight = ink.dp(64f)
-        val rows = (labels.size + 1) / 2
-        val rowTop = top + ink.dp(26f)
-        val viewportBottom = card.bottom - ink.dp(8f)
-        val viewportHeight = (viewportBottom - rowTop).coerceAtLeast(0f)
-        effectScroll.max = (rows * rowStep - viewportHeight).coerceAtLeast(0f)
-        val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-
-        canvas.save()
-        canvas.clipRect(card.left, rowTop, card.right, viewportBottom)
-        canvas.translate(0f, -effectScroll.offset)
-        labels.forEachIndexed { index, label ->
-            val column = index % 2
-            val row = index / 2
-            val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
-            val topY = rowTop + row * rowStep
-            val bounds = RectF(left, topY + (rowStep - itemHeight) / 2f,
-                left + cardWidth, topY + (rowStep + itemHeight) / 2f)
-            val selected = selectedBackgroundStyle == index
-            ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeWidth = ink.dp(if (selected) 1.4f else 0.7f)
-            ink.fill.color = if (selected) palette.brand else palette.faint
-            canvas.drawRoundRect(bounds, ink.dp(11f), ink.dp(11f), ink.fill)
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            val swatch = RectF(bounds.left + ink.dp(10f), bounds.centerY() - ink.dp(10f),
-                bounds.left + ink.dp(42f), bounds.centerY() + ink.dp(10f))
-            ink.fill.shader = android.graphics.LinearGradient(swatch.left, swatch.top, swatch.right, swatch.bottom,
-                colors[index], null, android.graphics.Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(swatch, ink.dp(7f), ink.dp(7f), ink.fill)
-            ink.fill.shader = null
-            ink.textStart(canvas, label, 12.5f, if (selected) palette.brand else palette.text,
-                bounds.left + ink.dp(50f), bounds.centerY() + ink.dp(4f), bounds.right - ink.dp(7f))
-            if (selected) {
-                ink.fill.color = palette.brand
-                canvas.drawCircle(bounds.right - ink.dp(10f), bounds.top + ink.dp(10f), ink.dp(2.8f), ink.fill)
-            }
-        }
-        canvas.restore()
     }
 
     /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
@@ -869,7 +792,7 @@ class FunctionPanel(
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
-            y < headerHeight -> if (!voiceEffectPage && !backgroundEffectPage && !textEffectPage && !aiLoadingEffectPage) tabs.indexAt(x)?.let {
+            y < headerHeight -> if (!voiceEffectPage && !textEffectPage && !aiLoadingEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
                 voiceEffectPage = false
@@ -931,31 +854,6 @@ class FunctionPanel(
                     invalidate()
                 }
             }
-            tabs.selected == 0 && backgroundEffectPage -> {
-                val rowTop = card.top + ink.dp(10f + 26f)
-                val rowStep = ink.dp(74f)
-                val viewportBottom = card.bottom - ink.dp(8f)
-                val gapX = ink.dp(8f)
-                val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-                if (y in rowTop..viewportBottom) {
-                    val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
-                    val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
-                    val index = row * 2 + column
-                    if (row in 0 until 5 && index in 0..8) {
-                        if (selectedBackgroundStyle == index && backgroundEffectEnabled) {
-                            selectedBackgroundStyle = -1
-                            backgroundEffectEnabled = false
-                            actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, false)
-                        } else {
-                            selectedBackgroundStyle = index
-                            backgroundEffectEnabled = true
-                            actions.setChoice(Settings.KEY_BACKGROUND_STYLE, index.toString())
-                            actions.setToggle(Settings.KEY_BACKGROUND_EFFECT, true)
-                        }
-                        invalidate()
-                    }
-                }
-            }
             tabs.selected == 0 && voiceEffectPage -> {
                 val swatchTop = card.bottom - ink.dp(119f)
                 val swatchBottom = card.bottom - ink.dp(84f)
@@ -1007,9 +905,8 @@ class FunctionPanel(
     }
 
     override fun onBack() {
-        if (voiceEffectPage || backgroundEffectPage || textEffectPage || aiLoadingEffectPage) {
+        if (voiceEffectPage || textEffectPage || aiLoadingEffectPage) {
             voiceEffectPage = false
-            backgroundEffectPage = false
             textEffectPage = false
             aiLoadingEffectPage = false
             invalidate()
