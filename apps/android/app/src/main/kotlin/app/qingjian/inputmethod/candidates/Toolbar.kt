@@ -9,7 +9,6 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
 import android.os.SystemClock
@@ -54,6 +53,7 @@ class Toolbar(
     private var backdropShader: BitmapShader? = null
     private var backdropProvider: (() -> Bitmap?)? = null
     private val iconMaskCache = HashMap<Pair<Icon, Int>, Bitmap>()
+    private val iconMaskShaderCache = HashMap<Pair<Icon, Int>, BitmapShader>()
 
     fun setBackdropProvider(provider: (() -> Bitmap?)?) {
         backdropProvider = provider
@@ -186,6 +186,13 @@ class Toolbar(
         return colors
     }
 
+    private fun iconMaskShader(icon: Icon, renderSize: Int, iconSize: Float): BitmapShader {
+        val key = icon to renderSize
+        return iconMaskShaderCache.getOrPut(key) {
+            BitmapShader(iconMask(icon, renderSize, iconSize), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+    }
+
     /**
      * 玻璃材质直接作用于图标笔画，不绘制圆角方框。
      * Refraction / dispersion 核心思路移植自 Kyant0/AndroidLiquidGlass (Backdrop)：
@@ -233,6 +240,7 @@ class Toolbar(
         backdropMatrix.setScale(sourceScale, sourceScale)
         backdropMatrix.postTranslate((cx - renderSize / 2f) * sourceScale, (cy - renderSize / 2f) * sourceScale)
         sourceShader.setLocalMatrix(backdropMatrix)
+        shader.setInputShader("content", iconMaskShader(icon, renderSize, size))
         shader.setInputShader("backdrop", sourceShader)
         shader.setFloatUniform("size", renderSize.toFloat(), renderSize.toFloat())
         shader.setFloatUniform("refractionHeight", 5.5f * density)
@@ -246,11 +254,15 @@ class Toolbar(
             Color.blue(brand) / 255f,
             1f,
         )
-        glassEffectPaint.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "content"))
+        glassEffectPaint.color = Color.WHITE
+        glassEffectPaint.shader = shader
         val left = cx - renderSize / 2f
         val top = cy - renderSize / 2f
-        canvas.drawBitmap(mask, null, RectF(left, top, left + renderSize, top + renderSize), glassEffectPaint)
-        glassEffectPaint.setRenderEffect(null)
+        canvas.save()
+        canvas.translate(left, top)
+        canvas.drawRect(0f, 0f, renderSize.toFloat(), renderSize.toFloat(), glassEffectPaint)
+        canvas.restore()
+        glassEffectPaint.shader = null
     }
 
     fun onLogo(x: Float) = x < logoSlot
