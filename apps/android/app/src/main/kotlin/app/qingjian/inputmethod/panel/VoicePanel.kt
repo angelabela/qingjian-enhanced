@@ -316,17 +316,22 @@ class VoicePanel(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        // 点按启动的语音面板也支持手指滑过「撤销 / 完成」时的选中反馈。
-        // 长按空格的轨迹仍由 VoiceInput.drag 驱动，避免两套手势重复处理。
-        val handled = super.dispatchTouchEvent(event)
+        // 点按启动的语音面板：任何位置抬手都立即结束识别并提交最终结果。
+        // 统一在父面板截获完整触摸序列，避免撤销/完成子按钮与全屏点按产生双重动作。
         if (!holding) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_MOVE -> track(event.rawX, event.rawY)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                    if (target != Target.NONE) track(Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY)
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                Haptics.tap(context)
+                actions.onClose()
             }
+            return true
         }
-        // 无论触点落在何处都消费，阻断语音面板下方键盘收到穿透事件。
+        // 长按空格模式仍保留原有拖动到「撤销 / 完成」目标的手势。
+        val handled = super.dispatchTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> track(event.rawX, event.rawY)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                if (target != Target.NONE) track(Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY)
+        }
         return handled || true
     }
 
