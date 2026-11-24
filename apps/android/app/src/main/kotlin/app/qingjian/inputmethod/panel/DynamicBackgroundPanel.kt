@@ -23,13 +23,16 @@ class DynamicBackgroundPanel(
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
-    private val rowHeight get() = ink.dp(66f)
-    private val effectCellHeight get() = ink.dp(64f)
-    private val effectGridGap get() = ink.dp(7f)
-    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
+    private val rowHeight get() = ink.dp(58f)
+    private val effectCellHeight get() = ink.dp(62f)
+    private val effectGridGap get() = ink.dp(8f)
+    private val labels = listOf("导入或更换视频", "视频背景开关", "背景显示模式", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
     private val effectRows get() = (effectStyles.size + 2) / 3
-    private fun effectGridTop(top: Float) = top + rowHeight * 4 + ink.dp(34f)
-    private fun slidersTop(top: Float) = effectGridTop(top) + effectRows * effectCellHeight + (effectRows - 1) * effectGridGap + ink.dp(16f)
+    private fun settingsRowsTop(top: Float) = top + ink.dp(30f)
+    private fun effectTitleY(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(20f)
+    private fun effectGridTop(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(32f)
+    private fun effectGridBottom(top: Float) = effectGridTop(top) + effectRows * effectCellHeight + (effectRows - 1) * effectGridGap
+    private fun slidersTop(top: Float) = effectGridBottom(top) + ink.dp(38f)
     private fun sliderRowTop(top: Float, index: Int) = slidersTop(top) + (index - 5) * rowHeight
     private val effectStyles = listOf(
         0 to "极光流彩", 1 to "深海蓝潮", 2 to "日落熔金", 4 to "冰晶星雾",
@@ -55,21 +58,22 @@ class DynamicBackgroundPanel(
 
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, null)
-        ink.text(canvas, "视频背景", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        ink.text(canvas, "面板背景特效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
         val top = card.top + ink.dp(8f)
         val viewportTop = top
         val viewportBottom = card.bottom - ink.dp(8f)
-        val totalHeight = slidersTop(top) + rowHeight * 3 - top
+        val totalHeight = sliderRowTop(top, 7) + rowHeight - top
         scroll.max = (totalHeight - (viewportBottom - viewportTop)).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
         canvas.translate(0f, -scroll.offset)
 
-        // 顶部四项常规设置
+        // 视频背景设置区
+        ink.textStart(canvas, "视频背景设置", 11f, palette.gloss, card.left + ink.dp(16f), top + ink.dp(18f), card.right - ink.dp(16f))
         labels.take(4).forEachIndexed { index, label ->
-            val y = top + index * rowHeight
+            val y = settingsRowsTop(top) + index * rowHeight
             val value = when (index) {
                 0 -> if (prefs.getString(DynamicBackgroundActivity.KEY_URI, null) == null) "尚未导入 · 点击选择" else "已导入视频 · 点击更换"
                 1 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) "已开启" else "已关闭"
@@ -83,7 +87,7 @@ class DynamicBackgroundPanel(
 
         // 背景光效样式：固定三列，所有样式均在网格中展示；超出可视区域由整个内容区上下滚动。
         val gridTop = effectGridTop(top)
-        ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), top + rowHeight * 4 + ink.dp(20f), card.right - ink.dp(16f))
+        ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), effectTitleY(top), card.right - ink.dp(16f))
         val gridLeft = card.left + ink.dp(12f)
         val gridRight = card.right - ink.dp(12f)
         val cellGap = ink.dp(7f)
@@ -106,7 +110,8 @@ class DynamicBackgroundPanel(
             ink.text(canvas, "效果 ${style.first}", 9f, palette.secondaryText, rect.centerX(), rect.centerY() + ink.dp(15f))
         }
 
-        // 三个滑块紧接特效网格，保证内容总高度参与滚动范围计算。
+        // 画面调节区：与光效网格分组，滑块可拖动调整。
+        ink.textStart(canvas, "画面调节", 13f, palette.text, card.left + ink.dp(16f), effectGridBottom(top) + ink.dp(22f), card.right - ink.dp(16f))
         for (index in 5..7) {
             val label = labels[index - 1]
             val y = sliderRowTop(top, index)
@@ -143,9 +148,9 @@ class DynamicBackgroundPanel(
         if (!card.contains(x, y)) return
         val top = card.top + ink.dp(8f)
         val contentY = y + scroll.offset
-        val relativeY = contentY - top
+        val relativeY = contentY - settingsRowsTop(top)
         when {
-            relativeY < rowHeight * 4 -> {
+            contentY >= settingsRowsTop(top) && relativeY < rowHeight * 4 -> {
                 val index = (relativeY / rowHeight).toInt()
                 when (index) {
                     0 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -159,8 +164,7 @@ class DynamicBackgroundPanel(
                     3 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
                 }
             }
-            relativeY >= effectGridTop(top) - top &&
-                relativeY < effectGridTop(top) - top + effectRows * (effectCellHeight + effectGridGap) -> {
+            contentY >= effectGridTop(top) && contentY < effectGridBottom(top) + effectGridGap -> {
                 val gridY = contentY - effectGridTop(top)
                 val gridLeft = card.left + ink.dp(12f)
                 val gridRight = card.right - ink.dp(12f)
