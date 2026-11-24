@@ -783,6 +783,7 @@ class FunctionPanel(
                         updateTextSlider(event.x, adjustingTextSlider)
                         adjustingTextSlider = -1
                         parent?.requestDisallowInterceptTouchEvent(false)
+                        actions.refreshKeyboardSettings()
                     }
                 }
                 return true
@@ -899,6 +900,7 @@ class FunctionPanel(
                 }
                 if (slider >= 0) {
                     updateTextSlider(x, slider)
+                    actions.refreshKeyboardSettings()
                     return
                 }
                 val rowTop = targetTop + ink.dp(190f)
