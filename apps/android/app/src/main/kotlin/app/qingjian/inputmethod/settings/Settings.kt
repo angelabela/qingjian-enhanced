@@ -140,10 +140,15 @@ data class Settings(
 
     /** 键盘界面文字粗细。用系统 sans-serif 字族，兼容 Android 9 及以上。 */
     enum class FontWeight(val label: String, val family: String, val style: Int, val weight: Int) {
+        THIN("极细", "sans-serif-thin", android.graphics.Typeface.NORMAL, 100),
+        EXTRA_LIGHT("特细", "sans-serif-extralight", android.graphics.Typeface.NORMAL, 200),
         LIGHT("细", "sans-serif-light", android.graphics.Typeface.NORMAL, 300),
         NORMAL("标准", "sans-serif", android.graphics.Typeface.NORMAL, 400),
-        MEDIUM("中等", "sans-serif", android.graphics.Typeface.BOLD, 600),
-        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD, 800);
+        MEDIUM_LIGHT("中细", "sans-serif-medium", android.graphics.Typeface.NORMAL, 500),
+        MEDIUM("中等", "sans-serif-medium", android.graphics.Typeface.NORMAL, 600),
+        SEMI_BOLD("半粗", "sans-serif", android.graphics.Typeface.BOLD, 700),
+        BOLD("粗", "sans-serif", android.graphics.Typeface.BOLD, 800),
+        BLACK("特粗", "sans-serif-black", android.graphics.Typeface.NORMAL, 900);
 
         /** API 28+ 使用明确字重；旧系统用粗体字族回退，避免 MEDIUM 与 NORMAL 几乎看不出区别。 */
         val typeface: android.graphics.Typeface

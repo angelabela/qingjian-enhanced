@@ -606,7 +606,7 @@ class FunctionPanel(
 
         ink.textStart(canvas, "字体粗细", 11.5f, palette.text,
             card.left + ink.dp(14f), controlsTop + ink.dp(111f), card.right - ink.dp(64f))
-        ink.text(canvas, weight.label, 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(111f))
+        ink.text(canvas, "${weight.label} · ${weight.weight}", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(111f))
         val weightY = controlsTop + ink.dp(129f)
         canvas.drawLine(left, weightY, right, weightY, ink.fill.apply { color = palette.functionalKey; strokeWidth = ink.dp(4f); strokeCap = android.graphics.Paint.Cap.ROUND })
         val weightIndex = Settings.FontWeight.entries.indexOf(weight).coerceAtLeast(0)
@@ -888,6 +888,19 @@ class FunctionPanel(
         invalidate()
     }
 
+    override fun onBack() {
+        if (textEffectPage) {
+            // 文字效果偏好在编辑期间只写入设置；离开子页时重建输入视图，
+            // 让候选区和键盘区用最新字号、字重与预设绘制，再正常收起功能面板。
+            textEffectPage = false
+            effectScroll.reset()
+            actions.refreshKeyboardSettings()
+            actions.closePanel()
+            return
+        }
+        super.onBack()
+    }
+
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
@@ -950,7 +963,7 @@ class FunctionPanel(
                             when (key) {
                                 Settings.KEY_CANDIDATE_TEXT_COLOR, Settings.KEY_KEYBOARD_TEXT_COLOR,
                                 Settings.KEY_CANDIDATE_FONT_SIZE, Settings.KEY_KEY_FONT_SIZE ->
-                                    actions.setIntChoice(paired, Settings.preferences(context).getInt(key, if (key.contains("SIZE")) 20 else 0))
+                                    actions.setIntChoice(paired, Settings.preferences(context).getInt(key, 20))
                                 else -> actions.setChoice(paired, Settings.preferences(context).getString(key, null)
                                     ?: if (key.contains("PRESET")) Settings.TextEffectPreset.STANDARD.name else Settings.FontWeight.NORMAL.name)
                             }

@@ -562,7 +562,8 @@ class QingjianInputMethodService :
             key == Settings.KEY_CANDIDATE_FONT_WEIGHT ||
             key == Settings.KEY_KEYBOARD_FONT_WEIGHT ||
             key == Settings.KEY_CANDIDATE_TEXT_PRESET ||
-            key == Settings.KEY_KEYBOARD_TEXT_PRESET
+            key == Settings.KEY_KEYBOARD_TEXT_PRESET ||
+            key == "text_effect_sync_targets"
         ) return@OnSharedPreferenceChangeListener
         contacts.sync()
         if (!writingSettings) setInputView(onCreateInputView())
