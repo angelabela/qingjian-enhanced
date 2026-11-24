@@ -156,6 +156,11 @@ fn wubi_codes_look_up_the_code_table() {
     }
     assert_eq!(frame.commit, "你好");
     session.set_wubi(true, true);
+    let mut mixed_frame = session.push('w');
+    for c in "qvb".chars() {
+        mixed_frame = session.push(c);
+    }
+    assert_eq!(mixed_frame.commit, "你好");
     type_keys(&mut session, "nihao");
     assert_eq!(session.select(0).commit, "你好");
     session.set_wubi(false, false);
