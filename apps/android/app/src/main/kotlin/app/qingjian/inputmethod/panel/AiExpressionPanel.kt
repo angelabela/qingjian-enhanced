@@ -19,6 +19,7 @@ class AiExpressionPanel(
     headerHeight: Float,
     private val source: String,
     private val onGenerate: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
+    private val onCancelGeneration: () -> Unit,
     private val onReplace: (String) -> Boolean,
     private val onUndo: () -> Boolean,
     private val onClose: () -> Unit,
@@ -36,6 +37,18 @@ class AiExpressionPanel(
         setPadding(0, dp(18), 0, dp(18))
     }
     private var requestNumber = 0
+    private var generating = false
+
+    /** 删除键取消当前生成，返回 true 表示本次按键已用于取消。 */
+    fun cancelGeneration(): Boolean {
+        if (!generating) return false
+        requestNumber++
+        generating = false
+        onCancelGeneration()
+        status.visibility = View.VISIBLE
+        status.text = "已取消生成"
+        return true
+    }
     private var undoAction: TextView? = null
 
     init {
@@ -98,12 +111,14 @@ class AiExpressionPanel(
             return
         }
         val request = ++requestNumber
+        generating = true
         status.visibility = View.VISIBLE
         status.text = "正在生成…"
         clearGeneratedViews()
         undoAction = null
         onGenerate(source) { result ->
             if (request != requestNumber) return@onGenerate
+            generating = false
             clearGeneratedViews()
             result.onSuccess { groups ->
                 status.visibility = View.GONE
