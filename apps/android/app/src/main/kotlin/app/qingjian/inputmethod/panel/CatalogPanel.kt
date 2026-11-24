@@ -181,7 +181,8 @@ class CatalogPanel(
     }
 
     private fun drawSide(canvas: Canvas) {
-        ink.fill.color = palette.functionalKey
+        // 动态背景开启时右侧操作栏只保留轻薄遮罩，视频/光效可完整透出。
+        ink.fill.color = if (animatedBackgroundEnabled) 0x66000000 else palette.functionalKey
         canvas.drawRect(side, ink.fill)
         val cx = side.centerX()
         val slots = sideSlots()
@@ -202,7 +203,8 @@ class CatalogPanel(
     private fun sideSlots() = if (leftColumn) 2 else 3
 
     private fun drawLeftColumn(canvas: Canvas) {
-        ink.fill.color = palette.functionalKey
+        // 左手布局的分类列与返回区同样跟随动态背景开关。
+        ink.fill.color = if (animatedBackgroundEnabled) 0x66000000 else palette.functionalKey
         canvas.drawRect(categoryColumn, ink.fill)
         canvas.drawRect(back, ink.fill)
         categories.draw(canvas)
@@ -212,7 +214,8 @@ class CatalogPanel(
 
     private fun drawBottom(canvas: Canvas) {
         if (leftColumn) return drawLeftColumn(canvas)
-        ink.fill.color = palette.functionalKey
+        // 底部分类栏不再遮住视频/流光背景。
+        ink.fill.color = if (animatedBackgroundEnabled) 0x66000000 else palette.functionalKey
         canvas.drawRect(bottom, ink.fill)
         val keyLeft = bottom.right - ink.dp(BOTTOM_KEY_DP)
         categories.setBounds(bottom.left, bottom.top, keyLeft, bottom.bottom)
