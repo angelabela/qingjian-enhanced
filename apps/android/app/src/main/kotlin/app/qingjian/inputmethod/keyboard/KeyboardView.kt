@@ -451,6 +451,7 @@ class KeyboardView(
                 val spoke = pointer == spacePointer && voiceMode
                 val openClipboard = pointer == spacePointer && clipboardMode
                 val selectedBySwipe = pointer == spacePointer && candidateSwipeMode
+                val cancelledCandidateSwipe = pointer == spacePointer && candidateSwipeCancelled
                 val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode && !candidateSwipeMode && !candidateSwipeCancelled
                 if (selectedBySwipe) listener.onCandidateSwipeEnd(commit = true)
                 if (pointer == spacePointer) {
@@ -479,6 +480,7 @@ class KeyboardView(
                     openClipboard -> listener.onOpenClipboard()
                     spoke -> listener.onVoiceRelease(cancel = false)
                     selectedBySwipe -> Unit
+                    cancelledCandidateSwipe -> Unit
                     movedCursor -> Unit
                     spaceTap && slot?.key is Key.Space -> {
                         tapFeedback()
