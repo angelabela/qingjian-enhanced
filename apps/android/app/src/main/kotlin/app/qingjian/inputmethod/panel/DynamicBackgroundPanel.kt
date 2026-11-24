@@ -125,6 +125,11 @@ class DynamicBackgroundPanel(
                     .putString(Settings.KEY_BACKGROUND_STYLE, next.toString())
                     .putBoolean(Settings.KEY_BACKGROUND_EFFECT, true)
                     .apply()
+                // 若当前选的是“仅视频”，用户主动选择光效时切换到叠加模式，确保新样式能立即预览。
+                if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false) &&
+                    prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) == 0) {
+                    prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, 2).apply()
+                }
                 context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
                 invalidate()
             }
