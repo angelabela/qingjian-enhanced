@@ -6,12 +6,15 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.os.Build
 import android.os.SystemClock
+import android.graphics.RuntimeShader
 import android.text.TextPaint
 import android.text.TextUtils
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.panel.base.PanelIcons
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
+import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.settings.ToolbarTool
 import app.qingjian.inputmethod.theme.Palette
 import kotlin.math.cos
@@ -38,6 +41,8 @@ class Toolbar(
     private var adaptiveStartColors: IntArray? = null
     private var adaptiveTransitionStartedAt = 0L
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var liquidGlassShader: RuntimeShader? = null
 
     /** 中间那排滑过去的距离（像素）。 */
     var offset = 0f
@@ -150,24 +155,73 @@ class Toolbar(
         return colors
     }
 
-    /** 彩色渐变描边叠加两层低透明度外扩线，形成克制的环境光晕。 */
-    private fun drawAdaptiveIcon(canvas: Canvas, icon: Icon, cx: Float, cy: Float, size: Float, color: Int) {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(color, hsv)
-        val highlight = Color.HSVToColor(
-            floatArrayOf((hsv[0] - 14f + 360f) % 360f,
-                (hsv[1] * 0.52f).coerceIn(0.18f, 0.62f), (hsv[2] + 0.16f).coerceAtMost(1f)),
+    /**
+     * iOS Liquid Glass 风格的图标底片：半透明材质保留后方动态背景，
+     * RuntimeShader 负责柔和的边缘折射感、高光带与主题色融合；API 26–32 使用 Canvas 降级绘制。
+     * 这里不套整棵 View 树的 RenderEffect，避免候选文字与键盘按键被一起扭曲。
+     */
+    private fun drawLiquidGlassIcon(canvas: Canvas, icon: Icon, cx: Float, cy: Float, size: Float) {
+        val tileSize = size * 1.52f
+        val left = cx - tileSize / 2f
+        val top = cy - tileSize / 2f
+        val radius = tileSize * 0.30f
+        val brand = palette.brand
+        val shader = if (Build.VERSION.SDK_INT >= 33) {
+            liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_AGSL).also { liquidGlassShader = it }
+        } else null
+
+        canvas.save()
+        canvas.translate(left, top)
+        if (shader != null) {
+            shader.setFloatUniform("resolution", tileSize, tileSize)
+            shader.setFloatUniform("time", (SystemClock.uptimeMillis() % 12_000L) / 12_000f)
+            shader.setFloatUniform(
+                "tint",
+                Color.red(brand) / 255f,
+                Color.green(brand) / 255f,
+                Color.blue(brand) / 255f,
+                1f,
+            )
+            glassPaint.style = Paint.Style.FILL
+            glassPaint.shader = shader
+            canvas.drawRoundRect(0f, 0f, tileSize, tileSize, radius, radius, glassPaint)
+            glassPaint.shader = null
+        } else {
+            glassPaint.style = Paint.Style.FILL
+            glassPaint.shader = LinearGradient(
+                0f, 0f, tileSize, tileSize,
+                intArrayOf(withAlpha(Color.WHITE, 68), withAlpha(brand, 30), withAlpha(Color.WHITE, 18)),
+                floatArrayOf(0f, 0.58f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawRoundRect(0f, 0f, tileSize, tileSize, radius, radius, glassPaint)
+            glassPaint.shader = null
+        }
+        glassPaint.style = Paint.Style.STROKE
+        glassPaint.strokeWidth = 0.85f * density
+        glassPaint.color = withAlpha(Color.WHITE, if (palette.dark) 126 else 166)
+        canvas.drawRoundRect(0.5f * density, 0.5f * density, tileSize - 0.5f * density,
+            tileSize - 0.5f * density, radius, radius, glassPaint)
+        glassPaint.style = Paint.Style.FILL
+        glassPaint.shader = LinearGradient(
+            0f, 1f * density, tileSize * 0.88f, tileSize * 0.42f,
+            withAlpha(Color.WHITE, if (palette.dark) 92 else 118),
+            withAlpha(brand, 0),
+            Shader.TileMode.CLAMP,
         )
-        glowPaint.shader = null
-        glowPaint.color = withAlpha(color, 28)
-        PanelIcons.draw(canvas, icon, cx, cy, size * 1.52f, glowPaint)
-        glowPaint.color = withAlpha(highlight, 48)
-        PanelIcons.draw(canvas, icon, cx, cy, size * 1.24f, glowPaint)
+        canvas.drawRoundRect(1.5f * density, 1.5f * density, tileSize - 1.5f * density,
+            tileSize * 0.30f, radius * 0.72f, radius * 0.72f, glassPaint)
+        glassPaint.shader = null
+        canvas.restore()
+
+        val hsv = FloatArray(3)
+        Color.colorToHSV(brand, hsv)
+        val highlight = Color.HSVToColor(floatArrayOf(hsv[0], (hsv[1] * 0.48f).coerceIn(0.12f, 0.55f), 1f))
         stroke.shader = LinearGradient(
             cx - size * 0.52f, cy - size * 0.52f, cx + size * 0.52f, cy + size * 0.52f,
-            highlight, color, Shader.TileMode.CLAMP,
+            highlight, brand, Shader.TileMode.CLAMP,
         )
-        stroke.color = color
+        stroke.color = brand
         PanelIcons.draw(canvas, icon, cx, cy, size, stroke)
         stroke.shader = null
     }
@@ -217,15 +271,14 @@ class Toolbar(
         logo?.draw(canvas)
         canvas.restore()
 
-        val colors = animatedColors(SystemClock.uptimeMillis())
+        val liquidGlassEnabled = Settings.preferences(context).getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
         val slot = middleSlot(viewWidth)
         val divider = viewWidth - hideSlot
         canvas.save()
         canvas.clipRect(logoSlot, 0f, divider, barHeight)
         tools.forEachIndexed { i, tool ->
             val cx = logoSlot + slot * (i + 0.5f) - offset
-            val color = colors?.getOrNull(i)
-            if (color != null) drawAdaptiveIcon(canvas, tool.icon, cx, cy, 26 * density, color)
+            if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, tool.icon, cx, cy, 26 * density)
             else {
                 stroke.shader = null
                 stroke.color = palette.gloss
@@ -234,11 +287,10 @@ class Toolbar(
         }
         canvas.restore()
         line.strokeWidth = density
-        line.color = colors?.lastOrNull()?.let { withAlpha(it, 92) } ?: palette.faint
+        line.color = palette.faint
         canvas.drawLine(logoSlot, cy - 12 * density, logoSlot, cy + 12 * density, line)
         canvas.drawLine(divider, cy - 12 * density, divider, cy + 12 * density, line)
-        val hideColor = colors?.lastOrNull()
-        if (hideColor != null) drawAdaptiveIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, hideColor)
+        if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density)
         else {
             stroke.shader = null
             stroke.color = palette.gloss
@@ -250,5 +302,27 @@ class Toolbar(
         const val VISIBLE_SLOTS = 5
         const val LOGO_CYCLE_MS = 3_600L
         const val COLOR_TRANSITION_MS = 460f
+
+        private const val LIQUID_GLASS_AGSL = """
+            uniform float2 resolution;
+            uniform float time;
+            uniform float4 tint;
+
+            half4 main(float2 p) {
+                float2 uv = p / resolution;
+                float2 q = uv * 2.0 - 1.0;
+                float edgeDistance = max(abs(q.x), abs(q.y));
+                float edgeMask = 1.0 - smoothstep(0.88, 1.0, edgeDistance);
+                float rim = smoothstep(0.56, 0.80, edgeDistance) *
+                    (1.0 - smoothstep(0.82, 0.98, edgeDistance));
+                float sweepPosition = fract(time * 0.11 + uv.y * 0.22);
+                float sweep = exp(-pow((uv.x - sweepPosition) * 7.0, 2.0));
+                float topGlow = 1.0 - smoothstep(0.0, 0.72, uv.y);
+                float alpha = (0.13 + rim * 0.18 + sweep * 0.10 + topGlow * 0.035) * edgeMask;
+                float mixAmount = clamp(rim * 0.42 + sweep * 0.52 + topGlow * 0.10, 0.0, 1.0);
+                half3 baseColor = mix(tint.rgb, half3(1.0), mixAmount);
+                return half4(baseColor * alpha, alpha);
+            }
+        """
     }
 }
