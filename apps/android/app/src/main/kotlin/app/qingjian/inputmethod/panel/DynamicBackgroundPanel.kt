@@ -113,11 +113,11 @@ class DynamicBackgroundPanel(
             ink.text(canvas, "效果 ${style.first}", 9f, palette.gloss, rect.centerX(), rect.centerY() + ink.dp(15f))
         }
 
-        // 工具栏图标自适应：逐图标采样动态背景，自动切换黑白高对比色。
+        // 工具栏环境光效应：逐图标采样背景 RGB，连续渐变并叠加柔和光晕。
         val adaptiveTop = adaptiveIconRowTop(top)
         val adaptiveEnabled = settingsPrefs.getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
-        ink.textStart(canvas, "智能自适应图标色彩", 13f, palette.text, card.left + ink.dp(16f), adaptiveTop + ink.dp(22f), card.right - ink.dp(104f))
-        ink.text(canvas, if (adaptiveEnabled) "已开启" else "已关闭", 12f,
+        ink.textStart(canvas, "智能环境光效应", 13f, palette.text, card.left + ink.dp(16f), adaptiveTop + ink.dp(22f), card.right - ink.dp(104f))
+        ink.text(canvas, if (adaptiveEnabled) "渐变光效已开启" else "已关闭", 12f,
             if (adaptiveEnabled) palette.brand else palette.gloss, card.right - ink.dp(54f), adaptiveTop + ink.dp(22f))
         ink.line(canvas, card.left + ink.dp(16f), adaptiveTop + rowHeight, card.right - ink.dp(16f), adaptiveTop + rowHeight, palette.faint)
 

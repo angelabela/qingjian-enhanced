@@ -108,12 +108,12 @@ private class FlowingKeyboardBackgroundDrawable(
     }
 
     /**
-     * 将同一份动态背景以 1/8 分辨率绘制到小位图，再读取工具栏各图标附近的局部亮度。
-     * 不调用 PixelCopy、不截图整个窗口；低频复用小位图，避免影响输入响应。
+     * 将同一份动态背景以 1/8 分辨率绘制到小位图，读取每个图标附近的局部 RGB。
+     * 采样位图持续复用，不截图窗口、不触碰输入焦点；局部平均可降低光效颗粒造成的色彩抖动。
      */
-    fun sampleLuminances(xPositions: FloatArray, y: Float): FloatArray {
+    fun sampleColors(xPositions: FloatArray, y: Float): IntArray {
         val bounds = bounds
-        if (bounds.isEmpty || xPositions.isEmpty()) return FloatArray(xPositions.size) { 0.5f }
+        if (bounds.isEmpty || xPositions.isEmpty()) return IntArray(xPositions.size) { palette.brand }
         val sampleWidth = (bounds.width() / 8).coerceAtLeast(1)
         val sampleHeight = (bounds.height() / 8).coerceAtLeast(1)
         val targetBitmap = sampleBitmap?.takeIf { it.width == sampleWidth && it.height == sampleHeight }
@@ -129,28 +129,25 @@ private class FlowingKeyboardBackgroundDrawable(
         sampleCanvas.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
         draw(sampleCanvas)
 
-        fun linear(channel: Int): Double {
-            val value = channel / 255.0
-            return if (value <= 0.04045) value / 12.92 else Math.pow((value + 0.055) / 1.055, 2.4)
-        }
-        return FloatArray(xPositions.size) { index ->
+        return IntArray(xPositions.size) { index ->
             val px = ((xPositions[index] - bounds.left) * sx).toInt().coerceIn(0, sampleWidth - 1)
             val py = ((y - bounds.top) * sy).toInt().coerceIn(0, sampleHeight - 1)
-            var total = 0.0
+            var red = 0
+            var green = 0
+            var blue = 0
             var count = 0
-            for (dy in -2..2) for (dx in -2..2) {
+            for (dy in -3..3) for (dx in -3..3) {
                 val xx = (px + dx).coerceIn(0, sampleWidth - 1)
                 val yy = (py + dy).coerceIn(0, sampleHeight - 1)
                 val pixel = targetBitmap.getPixel(xx, yy)
-                total += 0.2126 * linear(Color.red(pixel)) +
-                    0.7152 * linear(Color.green(pixel)) +
-                    0.0722 * linear(Color.blue(pixel))
+                red += Color.red(pixel)
+                green += Color.green(pixel)
+                blue += Color.blue(pixel)
                 count++
             }
-            (total / count).toFloat().coerceIn(0f, 1f)
+            Color.rgb(red / count, green / count, blue / count)
         }
     }
-
     override fun onBoundsChange(bounds: android.graphics.Rect) {
         super.onBoundsChange(bounds)
         val w = bounds.width()
@@ -679,16 +676,16 @@ class InputPanel(
             drawable.onFrame = { updateAdaptiveToolbarColors() }
         }
 
-    /** 每 160ms 低分辨率采样一次；同一工具栏每个图标独立计算黑白对比色。 */
+    /** 每 160ms 低分辨率采样一次；每个图标独立提取背景色并生成高对比彩色渐变。 */
     private fun updateAdaptiveToolbarColors(force: Boolean = false) {
         val enabled = Settings.preferences(context).getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
         if (!enabled) {
-            bar.setAdaptiveToolbarLuminances(null)
+            bar.setAdaptiveToolbarColors(null)
             return
         }
         if (currentVideoBackgroundActive) return // 视频帧通过现有亮度回调提供保护色
         val drawable = activeFlowBackground ?: run {
-            bar.setAdaptiveToolbarLuminances(null)
+            bar.setAdaptiveToolbarColors(null)
             return
         }
         val now = SystemClock.uptimeMillis()
@@ -696,8 +693,8 @@ class InputPanel(
         if (bar.width <= 0 || bar.height <= 0) return
         lastToolbarColorSampleAt = now
         val xs = bar.adaptiveToolbarSampleXs()
-        val luminances = drawable.sampleLuminances(xs, bar.height / 2f)
-        bar.setAdaptiveToolbarLuminances(luminances)
+        val colors = drawable.sampleColors(xs, bar.height / 2f)
+        bar.setAdaptiveToolbarColors(colors)
     }
 
     /** 只替换视频/亮度层，保留键盘、候选栏和当前打开的子面板实例。 */
@@ -753,7 +750,7 @@ class InputPanel(
                 android.graphics.drawable.ColorDrawable(palette.board)
             }
         }
-        if (uri != null || !effectEnabled) bar.setAdaptiveToolbarLuminances(null)
+        if (uri != null || !effectEnabled) bar.setAdaptiveToolbarColors(null)
         else updateAdaptiveToolbarColors(force = true)
         root.invalidate()
     }

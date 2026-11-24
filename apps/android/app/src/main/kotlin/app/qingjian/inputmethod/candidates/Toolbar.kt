@@ -2,7 +2,10 @@ package app.qingjian.inputmethod.candidates
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.os.SystemClock
 import android.text.TextPaint
 import android.text.TextUtils
@@ -31,8 +34,10 @@ class Toolbar(
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint().apply { color = palette.faint }
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
-    private var adaptiveColors: IntArray? = null
-    private var smoothedLuminances: FloatArray? = null
+    private var adaptiveTargetColors: IntArray? = null
+    private var adaptiveStartColors: IntArray? = null
+    private var adaptiveTransitionStartedAt = 0L
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     /** 中间那排滑过去的距离（像素）。 */
     var offset = 0f
@@ -48,7 +53,7 @@ class Toolbar(
         offset = value.coerceIn(0f, maxOffset(viewWidth))
     }
 
-    /** 为每个工具图标分别设置背景采样亮度；白/黑按 WCAG 对比度较高者自动选择。 */
+    /** 为每个工具图标分别采样背景 RGB；中间图标随横向滚动更新采样位置。 */
     fun sampleXs(viewWidth: Int): FloatArray {
         val slot = middleSlot(viewWidth)
         return FloatArray(tools.size + 1) { index ->
@@ -57,25 +62,114 @@ class Toolbar(
         }
     }
 
-    fun setAdaptiveLuminances(luminances: FloatArray?) {
-        if (luminances == null) {
-            smoothedLuminances = null
-            adaptiveColors = null
+    /** 将背景色转换成有足够对比度的彩色前景，不再黑白二选一。 */
+    private fun adaptiveIconColor(background: Int): Int {
+        val backgroundLuminance = relativeLuminance(background)
+        val hsv = FloatArray(3)
+        Color.colorToHSV(background, hsv)
+        val brandHsv = FloatArray(3)
+        Color.colorToHSV(palette.brand, brandHsv)
+        val baseHue = if (hsv[1] < 0.12f) brandHsv[0] else hsv[0]
+        val saturation = (hsv[1] * 0.82f).coerceIn(0.62f, 0.88f)
+        val values = floatArrayOf(0.98f, 0.84f, 0.46f, 0.30f, 0.22f)
+        val hueOffsets = floatArrayOf(0f, 18f, -18f, 150f, 190f)
+        var best = Color.WHITE
+        var bestScore = -1f
+        for (value in values) for (hueOffset in hueOffsets) {
+            val candidate = Color.HSVToColor(
+                floatArrayOf((baseHue + hueOffset + 360f) % 360f, saturation, value),
+            )
+            val contrast = contrastRatio(backgroundLuminance, relativeLuminance(candidate))
+            if (contrast > bestScore) {
+                bestScore = contrast
+                best = candidate
+            }
+        }
+        return best
+    }
+
+    private fun relativeLuminance(color: Int): Float {
+        fun linear(channel: Int): Double {
+            val value = channel / 255.0
+            return if (value <= 0.04045) value / 12.92 else Math.pow((value + 0.055) / 1.055, 2.4)
+        }
+        return (0.2126 * linear(Color.red(color)) + 0.7152 * linear(Color.green(color)) +
+            0.0722 * linear(Color.blue(color))).toFloat()
+    }
+
+    private fun contrastRatio(first: Float, second: Float): Float {
+        val lighter = maxOf(first, second)
+        val darker = minOf(first, second)
+        return (lighter + 0.05f) / (darker + 0.05f)
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
+
+    /** 新采样色从当前显示色继续缓动，避免背景每次采样都重置动画造成跳色。 */
+    fun setAdaptiveColors(backgroundColors: IntArray?) {
+        if (backgroundColors == null) {
+            adaptiveTargetColors = null
+            adaptiveStartColors = null
             return
         }
-        val previous = smoothedLuminances
-        val smoothed = FloatArray(tools.size + 1) { index ->
-            val target = luminances.getOrElse(index) { 0.5f }.coerceIn(0f, 1f)
-            val old = previous?.getOrNull(index) ?: target
-            old * 0.62f + target * 0.38f
+        val next = IntArray(tools.size + 1) { index ->
+            adaptiveIconColor(backgroundColors.getOrElse(index) { palette.board })
         }
-        smoothedLuminances = smoothed
-        adaptiveColors = IntArray(smoothed.size) { index ->
-            val level = smoothed[index]
-            val whiteContrast = 1.05f / (level + 0.05f)
-            val blackContrast = (level + 0.05f) / 0.05f
-            if (whiteContrast >= blackContrast) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+        if (adaptiveTargetColors?.contentEquals(next) == true) return
+        val now = SystemClock.uptimeMillis()
+        adaptiveStartColors = animatedColors(now) ?: next.copyOf()
+        adaptiveTargetColors = next
+        adaptiveTransitionStartedAt = now
+    }
+
+    /** 视频层暂时只提供整帧亮度，使用主题品牌色相生成彩色前景并沿用同一缓动。 */
+    fun setAdaptiveLuminance(luminance: Float, count: Int) {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(palette.brand, hsv)
+        hsv[1] = hsv[1].coerceAtLeast(0.62f)
+        hsv[2] = if (luminance.coerceIn(0f, 1f) < 0.46f) 0.98f else 0.30f
+        setAdaptiveColors(IntArray(count) { Color.HSVToColor(hsv) })
+    }
+
+    private fun animatedColors(now: Long): IntArray? {
+        val target = adaptiveTargetColors ?: return null
+        val start = adaptiveStartColors ?: return target
+        val progress = ((now - adaptiveTransitionStartedAt).toFloat() / COLOR_TRANSITION_MS).coerceIn(0f, 1f)
+        val eased = progress * progress * (3f - 2f * progress)
+        val colors = IntArray(target.size) { index ->
+            val from = start.getOrElse(index) { target[index] }
+            val to = target[index]
+            Color.rgb(
+                (Color.red(from) + (Color.red(to) - Color.red(from)) * eased).toInt(),
+                (Color.green(from) + (Color.green(to) - Color.green(from)) * eased).toInt(),
+                (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * eased).toInt(),
+            )
         }
+        if (progress >= 1f) adaptiveStartColors = null
+        return colors
+    }
+
+    /** 彩色渐变描边叠加两层低透明度外扩线，形成克制的环境光晕。 */
+    private fun drawAdaptiveIcon(canvas: Canvas, icon: Icon, cx: Float, cy: Float, size: Float, color: Int) {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        val highlight = Color.HSVToColor(
+            floatArrayOf((hsv[0] - 14f + 360f) % 360f,
+                (hsv[1] * 0.52f).coerceIn(0.18f, 0.62f), (hsv[2] + 0.16f).coerceAtMost(1f)),
+        )
+        glowPaint.shader = null
+        glowPaint.color = withAlpha(color, 28)
+        PanelIcons.draw(canvas, icon, cx, cy, size * 1.52f, glowPaint)
+        glowPaint.color = withAlpha(highlight, 48)
+        PanelIcons.draw(canvas, icon, cx, cy, size * 1.24f, glowPaint)
+        stroke.shader = LinearGradient(
+            cx - size * 0.52f, cy - size * 0.52f, cx + size * 0.52f, cy + size * 0.52f,
+            highlight, color, Shader.TileMode.CLAMP,
+        )
+        stroke.color = color
+        PanelIcons.draw(canvas, icon, cx, cy, size, stroke)
+        stroke.shader = null
     }
 
     fun onLogo(x: Float) = x < logoSlot
@@ -123,26 +217,38 @@ class Toolbar(
         logo?.draw(canvas)
         canvas.restore()
 
-        val colors = adaptiveColors
+        val colors = animatedColors(SystemClock.uptimeMillis())
         val slot = middleSlot(viewWidth)
         val divider = viewWidth - hideSlot
         canvas.save()
         canvas.clipRect(logoSlot, 0f, divider, barHeight)
         tools.forEachIndexed { i, tool ->
-            stroke.color = colors?.getOrNull(i) ?: palette.gloss
-            PanelIcons.draw(canvas, tool.icon, logoSlot + slot * (i + 0.5f) - offset, cy, 26 * density, stroke)
+            val cx = logoSlot + slot * (i + 0.5f) - offset
+            val color = colors?.getOrNull(i)
+            if (color != null) drawAdaptiveIcon(canvas, tool.icon, cx, cy, 26 * density, color)
+            else {
+                stroke.shader = null
+                stroke.color = palette.gloss
+                PanelIcons.draw(canvas, tool.icon, cx, cy, 26 * density, stroke)
+            }
         }
         canvas.restore()
         line.strokeWidth = density
-        line.color = colors?.lastOrNull()?.let { (it and 0x00FFFFFF) or (0x66000000) } ?: palette.faint
+        line.color = colors?.lastOrNull()?.let { withAlpha(it, 92) } ?: palette.faint
         canvas.drawLine(logoSlot, cy - 12 * density, logoSlot, cy + 12 * density, line)
         canvas.drawLine(divider, cy - 12 * density, divider, cy + 12 * density, line)
-        stroke.color = colors?.lastOrNull() ?: palette.gloss
-        PanelIcons.draw(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, stroke)
+        val hideColor = colors?.lastOrNull()
+        if (hideColor != null) drawAdaptiveIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, hideColor)
+        else {
+            stroke.shader = null
+            stroke.color = palette.gloss
+            PanelIcons.draw(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, stroke)
+        }
     }
 
     private companion object {
         const val VISIBLE_SLOTS = 5
         const val LOGO_CYCLE_MS = 3_600L
+        const val COLOR_TRANSITION_MS = 460f
     }
 }

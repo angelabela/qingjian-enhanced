@@ -157,16 +157,16 @@ class CandidateBarView(
     /** 工具栏图标在当前栏宽中的背景采样横坐标。 */
     fun adaptiveToolbarSampleXs(): FloatArray = toolbar.sampleXs(width)
 
-    /** 输入法背景采样后回填每个图标的局部亮度；null 恢复主题图标色。 */
-    fun setAdaptiveToolbarLuminances(luminances: FloatArray?) {
-        toolbar.setAdaptiveLuminances(luminances)
+    /** 输入法背景采样后回填每个图标附近的真实 RGB 颜色；null 恢复主题图标色。 */
+    fun setAdaptiveToolbarColors(colors: IntArray?) {
+        toolbar.setAdaptiveColors(colors)
         invalidate()
     }
 
-    /** 视频层目前提供整帧亮度，先统一保护工具栏；视频背景关闭后会清除该颜色。 */
+    /** 视频层目前提供整帧亮度，以主题色相生成彩色前景并使用相同的缓动效果。 */
     fun setAdaptiveToolbarLuminance(luminance: Float) {
-        val count = toolbar.sampleXs(width).size
-        setAdaptiveToolbarLuminances(FloatArray(count) { luminance.coerceIn(0f, 1f) })
+        toolbar.setAdaptiveLuminance(luminance, toolbar.sampleXs(width).size)
+        invalidate()
     }
 
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
