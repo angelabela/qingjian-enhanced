@@ -111,7 +111,11 @@ class KeyPainter(
         }
 
         // 角标先画会把 ink 换成浅色，正文的颜色另存一份
-        val labelColor = if (keySkin == Settings.KeySkin.ORIGINAL) { if (brand) palette.onBrand else customTextColor.takeIf { it != 0 } ?: palette.text } else keySkin.foreground
+        val labelColor = if (brand) {
+            if (keySkin == Settings.KeySkin.ORIGINAL) palette.onBrand else keySkin.foreground
+        } else {
+            customTextColor.takeIf { it != 0 } ?: if (keySkin == Settings.KeySkin.ORIGINAL) palette.text else keySkin.foreground
+        }
         ink.color = labelColor
         val label = label(key)
         when {
@@ -391,9 +395,9 @@ class KeyPainter(
     }
 
     private val secondaryColor: Int
-        get() = if (keySkin == Settings.KeySkin.ORIGINAL) {
-            if (customTextColor != 0) (customTextColor and 0x00FFFFFF) or 0xB0000000.toInt() else palette.gloss
-        } else keySkin.secondary
+        get() = if (customTextColor != 0) {
+            (customTextColor and 0x00FFFFFF) or 0xB0000000.toInt()
+        } else if (keySkin == Settings.KeySkin.ORIGINAL) palette.gloss else keySkin.secondary
 
     private fun labelColorForBrand(): Int =
         if (keySkin == Settings.KeySkin.ORIGINAL) palette.onBrand else keySkin.foreground
