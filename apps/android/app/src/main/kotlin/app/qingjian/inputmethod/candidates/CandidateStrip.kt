@@ -20,6 +20,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  */
 class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
     private val fallbackBackgroundColor: Int = markColor) {
+    private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
     private val textStyles = CandidateTextStyleEngine(density, 20f * density * textScale, candidateTextColor, fontWeight, styleConfig)
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
@@ -111,9 +112,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         }
 
     fun setAdaptiveTextColor(color: Int?) {
-        textStyles.setAdaptiveTextColor(color)
-        extraText.color = color ?: candidateText.color
-        fallbackText.color = color ?: candidateText.color
+        // 用户手动指定的文字颜色优先于视频/光效背景的自动黑白对比色。
+        val effectiveColor = customTextColor ?: color
+        textStyles.setAdaptiveTextColor(effectiveColor)
+        extraText.color = effectiveColor ?: candidateText.color
+        fallbackText.color = effectiveColor ?: candidateText.color
     }
 
     private var textFadeStartedAt = 0L
