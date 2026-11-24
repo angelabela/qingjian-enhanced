@@ -100,14 +100,17 @@ class DynamicBackgroundPanel(
             val cellTop = gridTop + row * (effectCellHeight + cellGap)
             val rect = RectF(left, cellTop, left + cellWidth, cellTop + effectCellHeight)
             val isSelected = style.first == selected
-            ink.round(canvas, rect, 10f, if (isSelected) palette.brand.copy(alpha = 0.22f) else palette.functionalKey)
+            val selectedFill = (palette.brand and 0x00FFFFFF) or (0x38 shl 24)
+            ink.round(canvas, rect, 10f, if (isSelected) selectedFill else palette.functionalKey)
             if (isSelected) {
-                ink.stroke.color = palette.brand
-                ink.stroke.strokeWidth = ink.dp(1.5f)
-                canvas.drawRoundRect(rect, ink.dp(10f), ink.dp(10f), ink.stroke)
+                ink.fill.style = android.graphics.Paint.Style.STROKE
+                ink.fill.color = palette.brand
+                ink.fill.strokeWidth = ink.dp(1.5f)
+                canvas.drawRoundRect(rect, ink.dp(10f), ink.dp(10f), ink.fill)
+                ink.fill.style = android.graphics.Paint.Style.FILL
             }
             ink.text(canvas, style.second, 10f, if (isSelected) palette.brand else palette.text, rect.centerX(), rect.centerY() - ink.dp(3f))
-            ink.text(canvas, "效果 ${style.first}", 9f, palette.secondaryText, rect.centerX(), rect.centerY() + ink.dp(15f))
+            ink.text(canvas, "效果 ${style.first}", 9f, palette.gloss, rect.centerX(), rect.centerY() + ink.dp(15f))
         }
 
         // 画面调节区：与光效网格分组，滑块可拖动调整。
