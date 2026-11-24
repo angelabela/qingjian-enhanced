@@ -266,7 +266,8 @@ data class Settings(
         const val KEY_CUSTOM_GESTURE_DOWN = "custom_gesture_down"
         const val KEY_BACKGROUND_EFFECT = "keyboard_background_effect"
         const val KEY_BACKGROUND_STYLE = "keyboard_background_style"
-        const val KEY_ADAPTIVE_TOOLBAR_ICONS = "adaptive_toolbar_icon_colors"
+        const val KEY_ADAPTIVE_TOOLBAR_ICONS = "adaptive_toolbar_icon_colors" // 697 legacy preference
+        const val KEY_LIQUID_GLASS_ICONS = "liquid_glass_toolbar_icons"
         const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
         const val KEY_KEYBOARD_TEXT_PRESET = "keyboard_text_preset"
         const val KEY_AI_LOADING_EFFECT = "quick_ai_loading_effect"
