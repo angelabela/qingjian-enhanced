@@ -62,15 +62,6 @@ class KeyboardSettingsActivity : PageActivity() {
                     ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
                         prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
                     },
-                    ui.picker(
-                        R.string.key_skin_title,
-                        settings.keySkin.label,
-                        Settings.KeySkin.entries.map { it.label },
-                        Settings.KeySkin.entries.indexOf(settings.keySkin),
-                    ) { index ->
-                        prefs.edit().putString(Settings.KEY_KEY_SKIN, Settings.KeySkin.entries[index].name).apply()
-                        rebuild()
-                    },
                     arrangementPicker(settings),
                 ),
                 footer = getString(R.string.arrangement_note),
