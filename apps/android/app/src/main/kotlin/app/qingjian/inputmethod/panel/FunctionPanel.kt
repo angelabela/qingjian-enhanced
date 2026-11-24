@@ -569,7 +569,11 @@ class FunctionPanel(
 
         // RGB 色带：触摸时按色相连续取色，颜色即时写入当前区域。
         ink.textStart(canvas, "字体颜色 RGB", 11.5f, palette.text,
-            card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(64f))
+            card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(104f))
+        val restoreThemeRect = RectF(card.right - ink.dp(94f), controlsTop + ink.dp(1f),
+            card.right - ink.dp(10f), controlsTop + ink.dp(24f))
+        ink.round(canvas, restoreThemeRect, 8f, palette.functionalKey)
+        ink.text(canvas, "恢复主题色", 9.5f, palette.text, restoreThemeRect.centerX(), restoreThemeRect.centerY())
         val colorY = controlsTop + ink.dp(29f)
         val colorRect = RectF(left, colorY - ink.dp(6f), right, colorY + ink.dp(6f))
         val rainbow = intArrayOf(0xFFFF3030.toInt(), 0xFFFFD430.toInt(), 0xFF55E85A.toInt(),
@@ -939,6 +943,14 @@ class FunctionPanel(
                     return
                 }
                 val controlsTop = targetTop + ink.dp(44f)
+                val restoreThemeRect = RectF(card.right - ink.dp(94f), controlsTop + ink.dp(1f),
+                    card.right - ink.dp(10f), controlsTop + ink.dp(24f))
+                if (restoreThemeRect.contains(x, contentY)) {
+                    // 写入 0 表示不保存自定义色，绘制与输入时自动跟随当前主题色。
+                    setTextInt(textColorKey(), 0)
+                    invalidate()
+                    return
+                }
                 val slider = when {
                     contentY in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
                     contentY in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
