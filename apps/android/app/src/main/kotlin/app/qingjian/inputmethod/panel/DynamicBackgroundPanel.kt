@@ -10,7 +10,7 @@ import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.settings.Settings
 
-/** 动态视频背景设置直接嵌入常用功能子面板；设置写入后通知输入法重建背景层。 */
+/** 面板背景特效统一设置页：整合视频背景、动态光效与画面调节。 */
 @SuppressLint("ViewConstructor")
 class DynamicBackgroundPanel(
     context: Context,
@@ -43,7 +43,6 @@ class DynamicBackgroundPanel(
     private fun selectedEffectStyle(): Int = Settings.normalizeKeyboardBackgroundStyle(
         settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, "0")?.toIntOrNull() ?: 0
     )
-    private fun selectedEffectName(): String = effectStyles.firstOrNull { it.first == selectedEffectStyle() }?.second ?: "极光流彩"
     private val modeLabels = listOf("仅视频", "仅原有光效", "视频 + 光效叠加")
 
     private fun notifyChanged() {
@@ -90,7 +89,7 @@ class DynamicBackgroundPanel(
         ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), effectTitleY(top), card.right - ink.dp(16f))
         val gridLeft = card.left + ink.dp(12f)
         val gridRight = card.right - ink.dp(12f)
-        val cellGap = ink.dp(7f)
+        val cellGap = effectGridGap
         val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
         val selected = selectedEffectStyle()
         effectStyles.forEachIndexed { index, style ->
