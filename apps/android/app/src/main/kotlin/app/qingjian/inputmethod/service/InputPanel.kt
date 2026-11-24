@@ -417,7 +417,7 @@ private class FlowingKeyboardBackgroundDrawable(
             float wisps = fbm(p * 1.75 + float2(-iTime * 0.006, 3.0));
             float density = detail * 0.58 + broad * 0.36 + wisps * 0.12;
             float cloudMask = smoothstep(0.49, 0.78, density);
-            cloudMask *= smoothstep(1.04, 0.28, uv.y) * 0.98 + 0.02;
+            cloudMask *= (1.0 - smoothstep(0.28, 1.04, uv.y)) * 0.98 + 0.02;
             float edge = smoothstep(0.49, 0.59, density) - smoothstep(0.72, 0.82, density);
             float light = 0.35 + 0.65 * smoothstep(0.35, 0.82, wisps);
             float3 cloud = mix(shadowColor, cloudColor, light);
