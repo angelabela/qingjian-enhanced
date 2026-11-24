@@ -24,7 +24,13 @@ class DynamicBackgroundPanel(
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
     private val rowHeight get() = ink.dp(66f)
-    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "背景光效样式", "视频透明度", "背景亮度", "模糊程度")
+    private val effectCellHeight get() = ink.dp(64f)
+    private val effectGridGap get() = ink.dp(7f)
+    private val labels = listOf("导入或更换视频", "启用视频背景", "视频与原有光效", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
+    private val effectRows get() = (effectStyles.size + 2) / 3
+    private fun effectGridTop(top: Float) = top + rowHeight * 4 + ink.dp(34f)
+    private fun slidersTop(top: Float) = effectGridTop(top) + effectRows * effectCellHeight + (effectRows - 1) * effectGridGap + ink.dp(16f)
+    private fun sliderRowTop(top: Float, index: Int) = slidersTop(top) + (index - 5) * rowHeight
     private val effectStyles = listOf(
         0 to "极光流彩", 1 to "深海蓝潮", 2 to "日落熔金", 4 to "冰晶星雾",
         7 to "霓虹光幕", 8 to "星环脉冲",
@@ -55,45 +61,78 @@ class DynamicBackgroundPanel(
         val top = card.top + ink.dp(8f)
         val viewportTop = top
         val viewportBottom = card.bottom - ink.dp(8f)
-        scroll.max = (labels.size * rowHeight - (viewportBottom - viewportTop)).coerceAtLeast(0f)
+        val totalHeight = slidersTop(top) + rowHeight * 3 - top
+        scroll.max = (totalHeight - (viewportBottom - viewportTop)).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
         canvas.translate(0f, -scroll.offset)
-        labels.forEachIndexed { index, label ->
+
+        // 顶部四项常规设置
+        labels.take(4).forEachIndexed { index, label ->
             val y = top + index * rowHeight
             val value = when (index) {
                 0 -> if (prefs.getString(DynamicBackgroundActivity.KEY_URI, null) == null) "尚未导入 · 点击选择" else "已导入视频 · 点击更换"
                 1 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) "已开启" else "已关闭"
                 2 -> modeLabels[prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2).coerceIn(0, 2)]
-                3 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"
-                4 -> "${selectedEffectName()} · ${effectStyles.indexOfFirst { it.first == selectedEffectStyle() } + 1}/${effectStyles.size}"
-                5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
-                6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
-                7 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
-                else -> ""
+                else -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
             ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
-            if (index in 5..7) {
-                val left = card.left + ink.dp(18f)
-                val right = card.right - ink.dp(18f)
-                val cy = y + ink.dp(49f)
-                val max = when (index) { 6 -> 200f; 7 -> 30f; else -> 100f }
-                val current = when (index) {
-                    5 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
-                    6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
-                    else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
-                }.coerceIn(0, max.toInt())
-                ink.fill.color = palette.functionalKey
-                ink.fill.strokeWidth = ink.dp(4f)
-                ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-                canvas.drawLine(left, cy, right, cy, ink.fill)
-                ink.fill.color = palette.brand
-                canvas.drawLine(left, cy, left + (right - left) * (current / max), cy, ink.fill)
-                canvas.drawCircle(left + (right - left) * (current / max), cy, ink.dp(6f), ink.fill)
-            } else {
-                ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
+            ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
+        }
+
+        // 背景光效样式：固定三列，所有样式均在网格中展示；超出可视区域由整个内容区上下滚动。
+        val gridTop = effectGridTop(top)
+        ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), top + rowHeight * 4 + ink.dp(20f), card.right - ink.dp(16f))
+        val gridLeft = card.left + ink.dp(12f)
+        val gridRight = card.right - ink.dp(12f)
+        val cellGap = ink.dp(7f)
+        val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
+        val selected = selectedEffectStyle()
+        effectStyles.forEachIndexed { index, style ->
+            val row = index / 3
+            val col = index % 3
+            val left = gridLeft + col * (cellWidth + cellGap)
+            val cellTop = gridTop + row * (effectCellHeight + cellGap)
+            val rect = RectF(left, cellTop, left + cellWidth, cellTop + effectCellHeight)
+            val isSelected = style.first == selected
+            ink.round(canvas, rect, 10f, if (isSelected) palette.brand.copy(alpha = 0.22f) else palette.functionalKey)
+            if (isSelected) {
+                ink.stroke.color = palette.brand
+                ink.stroke.strokeWidth = ink.dp(1.5f)
+                canvas.drawRoundRect(rect, ink.dp(10f), ink.dp(10f), ink.stroke)
             }
+            ink.text(canvas, style.second, 10f, if (isSelected) palette.brand else palette.text, rect.centerX(), rect.centerY() - ink.dp(3f))
+            ink.text(canvas, "效果 ${style.first}", 9f, palette.secondaryText, rect.centerX(), rect.centerY() + ink.dp(15f))
+        }
+
+        // 三个滑块紧接特效网格，保证内容总高度参与滚动范围计算。
+        for (index in 5..7) {
+            val label = labels[index - 1]
+            val y = sliderRowTop(top, index)
+            val value = when (index) {
+                5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
+                6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
+                else -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
+            }
+            ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
+            ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
+            val left = card.left + ink.dp(18f)
+            val right = card.right - ink.dp(18f)
+            val cy = y + ink.dp(49f)
+            val max = when (index) { 6 -> 200f; 7 -> 30f; else -> 100f }
+            val current = when (index) {
+                5 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
+                6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
+                else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
+            }.coerceIn(0, max.toInt())
+            ink.fill.color = palette.functionalKey
+            ink.fill.strokeWidth = ink.dp(4f)
+            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+            canvas.drawLine(left, cy, right, cy, ink.fill)
+            ink.fill.color = palette.brand
+            canvas.drawLine(left, cy, left + (right - left) * (current / max), cy, ink.fill)
+            canvas.drawCircle(left + (right - left) * (current / max), cy, ink.dp(6f), ink.fill)
         }
         canvas.restore()
     }
@@ -102,44 +141,61 @@ class DynamicBackgroundPanel(
 
     override fun onTap(x: Float, y: Float) {
         if (!card.contains(x, y)) return
-        val contentY = y - card.top - ink.dp(8f) + scroll.offset
-        val index = (contentY / rowHeight).toInt()
-        when (index) {
-            0 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            1 -> update { putBoolean(DynamicBackgroundActivity.KEY_ENABLED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) }
-            2 -> {
-                val nextMode = (prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) + 1) % 3
-                prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, nextMode).apply()
-                Settings.preferences(context).edit()
-                    .putBoolean(Settings.KEY_BACKGROUND_EFFECT, nextMode != 0)
-                    .apply()
-                notifyChanged()
-            }
-            3 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
-            4 -> {
-                val current = selectedEffectStyle()
-                val currentIndex = effectStyles.indexOfFirst { it.first == current }.coerceAtLeast(0)
-                val next = effectStyles[(currentIndex + 1) % effectStyles.size].first
-                // 选中任一效果时自动启用光效，避免只改变编号却因总开关关闭而看不到预览。
-                settingsPrefs.edit()
-                    .putString(Settings.KEY_BACKGROUND_STYLE, next.toString())
-                    .putBoolean(Settings.KEY_BACKGROUND_EFFECT, true)
-                    .apply()
-                // 若当前选的是“仅视频”，用户主动选择光效时切换到叠加模式，确保新样式能立即预览。
-                if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false) &&
-                    prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) == 0) {
-                    prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, 2).apply()
+        val top = card.top + ink.dp(8f)
+        val contentY = y + scroll.offset
+        val relativeY = contentY - top
+        when {
+            relativeY < rowHeight * 4 -> {
+                val index = (relativeY / rowHeight).toInt()
+                when (index) {
+                    0 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    1 -> update { putBoolean(DynamicBackgroundActivity.KEY_ENABLED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) }
+                    2 -> {
+                        val nextMode = (prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) + 1) % 3
+                        prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, nextMode).apply()
+                        settingsPrefs.edit().putBoolean(Settings.KEY_BACKGROUND_EFFECT, nextMode != 0).apply()
+                        notifyChanged()
+                    }
+                    3 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
                 }
-                context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
-                invalidate()
             }
-            in 5..7 -> {
-                // 滑块只允许从实际轨道/滑块附近启动；整行点击不再意外改变数值。
-                val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
+            relativeY >= effectGridTop(top) - top &&
+                relativeY < effectGridTop(top) - top + effectRows * (effectCellHeight + effectGridGap) -> {
+                val gridY = contentY - effectGridTop(top)
+                val gridLeft = card.left + ink.dp(12f)
+                val gridRight = card.right - ink.dp(12f)
+                val cellGap = ink.dp(7f)
+                val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
+                val col = ((x - gridLeft) / (cellWidth + cellGap)).toInt()
+                val row = (gridY / (effectCellHeight + cellGap)).toInt()
+                if (col in 0..2 && row >= 0) {
+                    val cellLeft = gridLeft + col * (cellWidth + cellGap)
+                    val cellTop = row * (effectCellHeight + cellGap)
+                    if (x >= cellLeft && x <= cellLeft + cellWidth &&
+                        gridY >= cellTop && gridY <= cellTop + effectCellHeight) {
+                        val style = effectStyles.getOrNull(row * 3 + col) ?: return
+                        settingsPrefs.edit()
+                            .putString(Settings.KEY_BACKGROUND_STYLE, style.first.toString())
+                            .putBoolean(Settings.KEY_BACKGROUND_EFFECT, true)
+                            .apply()
+                        if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false) &&
+                            prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2) == 0) {
+                            prefs.edit().putInt(DynamicBackgroundActivity.KEY_MODE, 2).apply()
+                        }
+                        notifyChanged()
+                    }
+                }
+            }
+            else -> {
+                val sliderIndex = (5..7).firstOrNull { index ->
+                    val rowTop = sliderRowTop(top, index)
+                    contentY >= rowTop && contentY < rowTop + rowHeight
+                } ?: return
+                val railY = sliderRowTop(top, sliderIndex) + ink.dp(49f)
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
-                if (kotlin.math.abs(y - railY) <= ink.dp(12f) && x in left..right) {
-                    setSliderValue(index, x)
+                if (kotlin.math.abs(contentY - railY) <= ink.dp(12f) && x in left..right) {
+                    setSliderValue(sliderIndex, x)
                     notifyChanged()
                 }
             }
@@ -162,25 +218,29 @@ class DynamicBackgroundPanel(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        val top = card.top + ink.dp(8f)
+        val contentY = event.y + scroll.offset
         if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y)) {
-            val index = ((event.y - card.top - ink.dp(8f) + scroll.offset) / rowHeight).toInt()
-            if (index in 5..7) {
-                val railY = card.top + ink.dp(8f) + index * rowHeight + ink.dp(49f) - scroll.offset
+            val sliderIndex = (5..7).firstOrNull { index ->
+                val rowTop = sliderRowTop(top, index)
+                contentY >= rowTop && contentY < rowTop + rowHeight
+            }
+            if (sliderIndex != null) {
+                val railY = sliderRowTop(top, sliderIndex) + ink.dp(49f)
                 val left = card.left + ink.dp(18f)
                 val right = card.right - ink.dp(18f)
-                val max = when (index) { 6 -> 200f; 7 -> 30f; else -> 100f }
-                val current = when (index) {
+                val max = when (sliderIndex) { 6 -> 200f; 7 -> 30f; else -> 100f }
+                val current = when (sliderIndex) {
                     5 -> prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72)
                     6 -> prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100)
                     else -> prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8)
                 }.coerceIn(0, max.toInt())
                 val knobX = left + (right - left) * (current / max)
-                // 只在当前滑块圆点上按下才接管手势；轨道空白区和整行都留给面板滚动。
-                val onThumb = kotlin.math.abs(event.y - railY) <= ink.dp(15f) &&
+                val onThumb = kotlin.math.abs(contentY - railY) <= ink.dp(15f) &&
                     kotlin.math.abs(event.x - knobX) <= ink.dp(18f)
                 if (onThumb) {
-                    sliderTouchIndex = index
-                    setSliderValue(index, event.x)
+                    sliderTouchIndex = sliderIndex
+                    setSliderValue(sliderTouchIndex, event.x)
                     invalidate()
                     return true
                 }
