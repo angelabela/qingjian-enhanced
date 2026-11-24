@@ -230,7 +230,7 @@ class ClipboardPanel(
         val screenWidth = resources.displayMetrics.widthPixels
         // 留出足够横向行程，让浮窗长按后能在屏幕左右两侧之间移动。
         // 键盘横向铺满可用屏幕；顶部操作条既提供删除键，也提供全屏拖动抓手。
-        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f).toInt())
+        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f))
         val headerHeight = ink.dp(42f)
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
@@ -266,7 +266,7 @@ class ClipboardPanel(
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
-                deleteRect.set(w - ink.dp(78f), ink.dp(5f), w - ink.dp(7f), headerHeight - ink.dp(5f))
+                deleteRect.set((w - ink.dp(78f)).toFloat(), ink.dp(5f).toFloat(), (w - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat())
                 rows.forEachIndexed { row, letters ->
                     val usable = w - ink.dp(20f)
                     val kw = (usable - gap * (letters.length - 1)) / letters.length
@@ -275,7 +275,7 @@ class ClipboardPanel(
                     val top = headerHeight + ink.dp(8f) + row * (keyHeight + rowGap)
                     letters.forEachIndexed { col, ch ->
                         val x = left + col * (kw + gap)
-                        keys += ch to RectF(x, top, x + kw, top + keyHeight)
+                        keys += ch to RectF(x, top.toFloat(), x + kw, (top + keyHeight).toFloat())
                     }
                 }
             }
@@ -283,19 +283,19 @@ class ClipboardPanel(
                 super.onDraw(canvas)
                 paint.style = Paint.Style.FILL
                 paint.color = if (headerPressed) palette.brand else palette.surface
-                canvas.drawRoundRect(ink.dp(7f), ink.dp(5f), width - ink.dp(7f), headerHeight - ink.dp(5f), ink.dp(9f), ink.dp(9f), paint)
+                canvas.drawRoundRect(RectF(ink.dp(7f).toFloat(), ink.dp(5f).toFloat(), (width - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat()), ink.dp(9f).toFloat(), ink.dp(9f).toFloat(), paint)
                 paint.color = if (headerPressed) palette.onBrand else palette.gloss
-                paint.textSize = ink.dp(12f)
+                paint.textSize = ink.dp(12f).toFloat()
                 paint.textAlign = Paint.Align.CENTER
                 canvas.drawText("长按顶部区域拖动键盘", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
                 paint.color = palette.brand
                 canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
                 paint.color = palette.onBrand
-                paint.textSize = ink.dp(21f)
+                paint.textSize = ink.dp(21f).toFloat()
                 canvas.drawText("⌫", deleteRect.centerX(), deleteRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 keys.forEach { (ch, r) ->
                     val pressed = ch == pressedKey
-                    val keyBounds = RectF(r).apply { if (pressed) offset(0f, ink.dp(1.2f)) }
+                    val keyBounds = RectF(r).apply { if (pressed) offset(0f, ink.dp(1.2f).toFloat()) }
                     paint.style = Paint.Style.FILL
                     paint.color = if (pressed) palette.brand else palette.surface
                     canvas.drawRoundRect(keyBounds, ink.dp(8f), ink.dp(8f), paint)
@@ -306,7 +306,7 @@ class ClipboardPanel(
                     paint.style = Paint.Style.FILL
                     paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
-                    paint.textSize = ink.dp(18f)
+                    paint.textSize = ink.dp(18f).toFloat()
                     canvas.drawText(ch.toString(), r.centerX(), r.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
             }
