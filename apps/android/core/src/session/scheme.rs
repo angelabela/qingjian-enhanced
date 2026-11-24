@@ -42,7 +42,12 @@ impl Session {
                 .inspect_err(|error| {
                     tracing::error!(%error, path = %self.code_table.display(), "五笔码表读取失败，仍用拼音");
                 })
-                .map(|table| CodeScheme::new(WUBI_LOG_KEY, table))
+                .map(|table| {
+                    let mut scheme = CodeScheme::new(WUBI_LOG_KEY, table);
+                    // 纯五笔满四码自动提交首个精确码候选；混输保留候选选择，避免截断拼音。
+                    scheme.auto_commit = !mixed;
+                    scheme
+                })
                 .ok()
         } else {
             None
