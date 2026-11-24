@@ -303,7 +303,8 @@ private class FlowingKeyboardBackgroundDrawable(
                 for (i in 0 until count) {
                     val seed = i * 1.73 + layer * 2.4
                     val speed = .006 + layer * .004
-                    val x = ((i.toFloat() / count + (t * speed) % 1.25) % 1.25f - .12f) * w
+                    val drift = ((t * speed) % 1.25).toFloat()
+                    val x = ((i.toFloat() / count + drift) % 1.25f - .12f) * w
                     val y = h * (when (layer) { 0 -> .17f; 1 -> .43f; else -> .77f } +
                         kotlin.math.sin(t * .10 + seed).toFloat() * .025f)
                     val scale = when (layer) { 0 -> .15f; 1 -> .22f; else -> .31f }
@@ -315,8 +316,9 @@ private class FlowingKeyboardBackgroundDrawable(
             for (i in 0 until count) {
                 val seed = i * 2.399
                 val x = (((i * 73) % 101) / 101f * w + kotlin.math.sin(t * .10 + seed).toFloat() * w * .035f +
-                    kotlin.math.sin(t * .018 + seed) .toFloat() * w * .04f)
-                val y = ((1f - (((i * 47) % 103) / 103f + (t * speed + (i % 9) * .13) % 1.0).toFloat()) * h)
+                    kotlin.math.sin(t * .018 + seed).toFloat() * w * .04f)
+                val drift = ((t * speed + (i % 9) * .13) % 1.0).toFloat()
+                val y = (1f - ((((i * 47) % 103) / 103f + drift) % 1f)) * h
                 val r = h * radiusFactor * (0.45f + (i % 7) * .12f)
                 val color = colors[i % colors.size]
                 val pulse = (0.55 + 0.45 * kotlin.math.sin(t * 1.3 + seed)).toFloat()
@@ -397,18 +399,24 @@ private class FlowingKeyboardBackgroundDrawable(
         const val BACKGROUND_CYCLE_MS = 75_000L
 
         private fun colorsForStyle(style: Int): IntArray {
-            val colors = when (style.coerceIn(0, 8)) {
-                1 -> intArrayOf(0xC811B8A6.toInt(), 0xC81D8FE8.toInt(), 0xC835C6D8.toInt(), 0xC8126F9A.toInt(), 0xC811B8A6.toInt())
-                2 -> intArrayOf(0xC8FF8A4C.toInt(), 0xC8F04F8B.toInt(), 0xC8B45BE8.toInt(), 0xC8FFD166.toInt(), 0xC8FF8A4C.toInt())
-                3 -> intArrayOf(0xC82DE2C5.toInt(), 0xC843B66D.toInt(), 0xC8559BEF.toInt(), 0xC89B62FF.toInt(), 0xC82DE2C5.toInt())
-                4 -> intArrayOf(0xC8D8F3FF.toInt(), 0xC887B8E8.toInt(), 0xC8B7A6F6.toInt(), 0xC8F4E9FF.toInt(), 0xC8D8F3FF.toInt())
-                5 -> intArrayOf(0xC820164A.toInt(), 0xC82C2C78.toInt(), 0xC858287E.toInt(), 0xC81B6B9B.toInt(), 0xC820164A.toInt())
-                6 -> intArrayOf(0xC81B235A.toInt(), 0xC839397C.toInt(), 0xC85C3D8C.toInt(), 0xC82C7C91.toInt(), 0xC81B235A.toInt())
-                7 -> intArrayOf(0xC8184268.toInt(), 0xC8276F9B.toInt(), 0xC83B3C91.toInt(), 0xC877318D.toInt(), 0xC8184268.toInt())
-                8 -> intArrayOf(0xC825285B.toInt(), 0xC845367E.toInt(), 0xC8336E91.toInt(), 0xC844387E.toInt(), 0xC825285B.toInt())
-                else -> intArrayOf(0xC82DE2C5.toInt(), 0xC83E8BFF.toInt(), 0xC89B62FF.toInt(), 0xC8FF62B5.toInt(), 0xC8FFB347.toInt(), 0xC82DE2C5.toInt())
+            return when (style) {
+                1 -> intArrayOf(0xC811B8A6.toInt(),0xC81D8FE8.toInt(),0xC835C6D8.toInt(),0xC8126F9A.toInt(),0xC811B8A6.toInt())
+                2 -> intArrayOf(0xC8FF8A4C.toInt(),0xC8F04F8B.toInt(),0xC8B45BE8.toInt(),0xC8FFD166.toInt(),0xC8FF8A4C.toInt())
+                4 -> intArrayOf(0xC8D8F3FF.toInt(),0xC887B8E8.toInt(),0xC8B7A6F6.toInt(),0xC8F4E9FF.toInt(),0xC8D8F3FF.toInt())
+                7 -> intArrayOf(0xC8184268.toInt(),0xC8276F9B.toInt(),0xC83B3C91.toInt(),0xC877318D.toInt(),0xC8184268.toInt())
+                8 -> intArrayOf(0xC825285B.toInt(),0xC845367E.toInt(),0xC8336E91.toInt(),0xC844387E.toInt(),0xC825285B.toInt())
+                9 -> intArrayOf(0xC8050A1F.toInt(),0xC800E5A8.toInt(),0xC82B6BFF.toInt(),0xC88A3FFC.toInt(),0xC8050A1F.toInt())
+                10 -> intArrayOf(0xC82A0A2E.toInt(),0xC8FF7A45.toInt(),0xC8FF3D81.toInt(),0xC8FFC14D.toInt(),0xC82A0A2E.toInt())
+                11 -> intArrayOf(0xC8FDF3FF.toInt(),0xC8FFB3D9.toInt(),0xC8B8C8FF.toInt(),0xC8C8FFE9.toInt(),0xC8FDF3FF.toInt())
+                12 -> intArrayOf(0xC8021A2B.toInt(),0xC80A6FB5.toInt(),0xC814C2C9.toInt(),0xC8052F5F.toInt(),0xC8021A2B.toInt())
+                13 -> intArrayOf(0xC80A0010.toInt(),0xC8FF00C8.toInt(),0xC800F0FF.toInt(),0xC86A00FF.toInt(),0xC80A0010.toInt())
+                14 -> intArrayOf(0xC83A7BD5.toInt(),0xC8BFE6FF.toInt(),0xC8E8F7FF.toInt(),0xC83A7BD5.toInt())
+                15 -> intArrayOf(0xC82B1055.toInt(),0xC8C2477A.toInt(),0xC8FF8A5C.toInt(),0xC8FFD08A.toInt())
+                16 -> intArrayOf(0xC803050F.toInt(),0xC81B2C58.toInt(),0xC803050F.toInt())
+                17 -> intArrayOf(0xC810062B.toInt(),0xC83B1260.toInt(),0xC810062B.toInt())
+                18 -> intArrayOf(0xC82A1A5E.toInt(),0xC8D76D77.toInt(),0xC8FFB88C.toInt(),0xC82A1A5E.toInt())
+                else -> intArrayOf(0xC82DE2C5.toInt(),0xC83E8BFF.toInt(),0xC89B62FF.toInt(),0xC8FF62B5.toInt(),0xC8FFB347.toInt(),0xC82DE2C5.toInt())
             }
-            return colors
         }
     }
 }
