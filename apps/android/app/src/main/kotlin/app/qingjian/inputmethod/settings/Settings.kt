@@ -101,7 +101,7 @@ data class Settings(
     val customGestureDown: GestureAction = GestureAction.DEFAULT,
     /** 键盘底板上的光影流动背景特效。 */
     val keyboardBackgroundEffect: Boolean = false,
-    /** 流动背景样式；0–6 为极光、海洋、日落、翡翠、冰晶、魔幻粒子与星云裂隙，7–8 为霓虹光幕与星环脉冲。 */
+    /** 背景样式：保留原有极光、海洋、日落、冰晶、霓虹光幕、星环脉冲，新增 5 套流体与 5 套云层/光斑场景。 */
     val keyboardBackgroundStyle: Int = 0,
     /** 候选区与键盘区分别保存文字效果预设。 */
     val candidateTextPreset: TextEffectPreset = TextEffectPreset.STANDARD,
@@ -127,6 +127,15 @@ data class Settings(
         COLOR_GRADIENT("渐变彩色");
 
         companion object {
+        /** 将已删除的旧特效编号迁移到新场景，避免升级后落入空白样式。 */
+        fun normalizeKeyboardBackgroundStyle(value: Int): Int = when (value) {
+            3 -> 9   // 翡翠幻境 -> 流体极光
+            5 -> 17  // 魔幻粒子 -> 梦幻光斑
+            6 -> 18  // 星云裂隙 -> 光斑穿云
+            in 0..2, 4, 7, 8, in 9..18 -> value
+            else -> 0
+        }
+
             fun of(value: String?): TextEffectPreset =
                 entries.firstOrNull { it.name == value } ?: STANDARD
         }
@@ -364,7 +373,7 @@ data class Settings(
                 customGestureUp = GestureAction.of(prefs.getString(KEY_CUSTOM_GESTURE_UP, null)),
                 customGestureDown = GestureAction.of(prefs.getString(KEY_CUSTOM_GESTURE_DOWN, null)),
                 keyboardBackgroundEffect = prefs.getBoolean(KEY_BACKGROUND_EFFECT, false),
-                keyboardBackgroundStyle = (prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0).coerceIn(0, 8),
+                keyboardBackgroundStyle = normalizeKeyboardBackgroundStyle(prefs.getString(KEY_BACKGROUND_STYLE, null)?.toIntOrNull() ?: 0),
                 candidateTextPreset = TextEffectPreset.of(prefs.getString(KEY_CANDIDATE_TEXT_PRESET, null)),
                 keyboardTextPreset = TextEffectPreset.of(prefs.getString(KEY_KEYBOARD_TEXT_PRESET, null)),
                 keySound = keySoundEnabled,
