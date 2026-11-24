@@ -25,7 +25,7 @@ import kotlin.math.sin
  * 中间是用户定制的 [tools]，一屏最多放 [VISIBLE_SLOTS] 个，多出来的横着滑出来，不满时平分中间那段。
  */
 class Toolbar(
-    context: Context,
+    private val context: Context,
     private val palette: Palette,
     private val density: Float,
     private val barHeight: Float,
