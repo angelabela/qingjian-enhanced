@@ -116,16 +116,15 @@ private class FlowingKeyboardBackgroundDrawable(
         if (bounds.isEmpty || xPositions.isEmpty()) return FloatArray(xPositions.size) { 0.5f }
         val sampleWidth = (bounds.width() / 8).coerceAtLeast(1)
         val sampleHeight = (bounds.height() / 8).coerceAtLeast(1)
-        var bitmap = sampleBitmap
-        if (bitmap == null || bitmap.width != sampleWidth || bitmap.height != sampleHeight) {
-            bitmap?.recycle()
-            bitmap = Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888)
-            sampleBitmap = bitmap
-        }
-        bitmap.eraseColor(Color.TRANSPARENT)
+        val targetBitmap = sampleBitmap?.takeIf { it.width == sampleWidth && it.height == sampleHeight }
+            ?: Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888).also {
+                sampleBitmap?.recycle()
+                sampleBitmap = it
+            }
+        targetBitmap.eraseColor(Color.TRANSPARENT)
         val sx = sampleWidth.toFloat() / bounds.width()
         val sy = sampleHeight.toFloat() / bounds.height()
-        val sampleCanvas = Canvas(bitmap)
+        val sampleCanvas = Canvas(targetBitmap)
         sampleCanvas.scale(sx, sy)
         sampleCanvas.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
         draw(sampleCanvas)
@@ -142,7 +141,7 @@ private class FlowingKeyboardBackgroundDrawable(
             for (dy in -2..2) for (dx in -2..2) {
                 val xx = (px + dx).coerceIn(0, sampleWidth - 1)
                 val yy = (py + dy).coerceIn(0, sampleHeight - 1)
-                val pixel = bitmap.getPixel(xx, yy)
+                val pixel = targetBitmap.getPixel(xx, yy)
                 total += 0.2126 * linear(Color.red(pixel)) +
                     0.7152 * linear(Color.green(pixel)) +
                     0.0722 * linear(Color.blue(pixel))
