@@ -1138,25 +1138,28 @@ class ScanOverlayService : Service(), LifecycleOwner {
                 }
             }
             provider.unbindAll()
-            // 相机视场固定采用设备全屏宽高比初始化，与浮窗后续缩放解耦。
-            // PreviewView 仍按浮窗大小铺满显示；窗口变形只改变可视裁切，不改变相机全屏基准视场。
+            // 拍照识字与实际浮窗预览使用同一视口比例。ImageCapture 会按该 ViewPort 裁切，
+            // 避免识别到预览窗口之外、用户根本看不到的画面。
             val displayMetrics = resources.displayMetrics
-            val fullScreenAspect = Rational(
-                displayMetrics.widthPixels.coerceAtLeast(1),
-                displayMetrics.heightPixels.coerceAtLeast(1),
-            )
-            val fullScreenViewPort = ViewPort.Builder(
-                fullScreenAspect,
+            val estimatedHeaderHeight = headerView.height.takeIf { it > 0 }
+                ?: (if (windowParams.width < 300f * displayMetrics.density) 82f else 42f)
+                    .let { (it * displayMetrics.density).toInt() }
+            val previewWidth = preview.width.takeIf { it > 0 } ?: windowParams.width.coerceAtLeast(1)
+            val previewHeight = preview.height.takeIf { it > 0 }
+                ?: (windowParams.height - estimatedHeaderHeight).coerceAtLeast(1)
+            val previewAspect = Rational(previewWidth, previewHeight)
+            val windowViewPort = ViewPort.Builder(
+                previewAspect,
                 preview.display?.rotation ?: android.view.Surface.ROTATION_0,
             ).setScaleType(ViewPort.FILL_CENTER).build()
             val cameraUseCases = UseCaseGroup.Builder()
-                .setViewPort(fullScreenViewPort)
+                .setViewPort(windowViewPort)
                 .addUseCase(cameraPreview)
                 .addUseCase(analysis)
                 .addUseCase(capture)
                 .build()
             camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, cameraUseCases)
-            scanDiag("camera bound lens=back viewport=fullscreen:${displayMetrics.widthPixels}x${displayMetrics.heightPixels} preview=highest analysis=highest capture=highest")
+            scanDiag("camera bound lens=back viewport=window:" + previewWidth + "x" + previewHeight + " preview=highest analysis=highest capture=highest")
             cameraWarmupUntil = android.os.SystemClock.elapsedRealtime() + CAMERA_WARMUP_MS
             // 对准用户实际调整的扫描框中心触发一次主动对焦；之后仍保持连续自动对焦。
             preview.post {
