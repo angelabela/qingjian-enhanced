@@ -246,11 +246,11 @@ class Toolbar(
             Color.blue(brand) / 255f,
             1f,
         )
-        glassEffectPaint.renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
+        glassEffectPaint.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "content"))
         val left = cx - renderSize / 2f
         val top = cy - renderSize / 2f
         canvas.drawBitmap(mask, null, RectF(left, top, left + renderSize, top + renderSize), glassEffectPaint)
-        glassEffectPaint.renderEffect = null
+        glassEffectPaint.setRenderEffect(null)
     }
 
     fun onLogo(x: Float) = x < logoSlot

@@ -1130,7 +1130,7 @@ class InputPanel(
                     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
                         alpha = (video.alpha * 255f).toInt().coerceIn(0, 255)
                     }
-                    canvas.drawBitmap(snapshot, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
+                    canvas.drawBitmap(snapshot, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
                     snapshot.recycle()
                 }
             }
