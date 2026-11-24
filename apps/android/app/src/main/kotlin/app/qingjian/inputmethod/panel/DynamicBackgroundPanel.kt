@@ -66,7 +66,7 @@ class DynamicBackgroundPanel(
                 1 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_ENABLED, false)) "已开启" else "已关闭"
                 2 -> modeLabels[prefs.getInt(DynamicBackgroundActivity.KEY_MODE, 2).coerceIn(0, 2)]
                 3 -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"
-                4 -> selectedEffectName()
+                4 -> "${selectedEffectName()} · ${effectStyles.indexOfFirst { it.first == selectedEffectStyle() } + 1}/${effectStyles.size}"
                 5 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_ALPHA, 72).coerceIn(0, 100)}%"
                 6 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BRIGHTNESS, 100).coerceIn(0, 200)}%"
                 7 -> "${prefs.getInt(DynamicBackgroundActivity.KEY_BLUR, 8).coerceIn(0, 30)} dp"
@@ -120,7 +120,11 @@ class DynamicBackgroundPanel(
                 val current = selectedEffectStyle()
                 val currentIndex = effectStyles.indexOfFirst { it.first == current }.coerceAtLeast(0)
                 val next = effectStyles[(currentIndex + 1) % effectStyles.size].first
-                settingsPrefs.edit().putString(Settings.KEY_BACKGROUND_STYLE, next.toString()).apply()
+                // 选中任一效果时自动启用光效，避免只改变编号却因总开关关闭而看不到预览。
+                settingsPrefs.edit()
+                    .putString(Settings.KEY_BACKGROUND_STYLE, next.toString())
+                    .putBoolean(Settings.KEY_BACKGROUND_EFFECT, true)
+                    .apply()
                 context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
                 invalidate()
             }
