@@ -407,7 +407,7 @@ class InputPanel(
         setAdaptiveTextColor(
             when {
                 videoBackgroundUri != null -> if (palette.dark) Color.WHITE else Color.BLACK
-                backgroundEffectActive -> if (settings.keyboardBackgroundStyle in 5..6) Color.WHITE else Color.BLACK
+                backgroundEffectActive -> if (settings.keyboardBackgroundStyle in 5..8) Color.WHITE else Color.BLACK
                 else -> null
             },
         )
