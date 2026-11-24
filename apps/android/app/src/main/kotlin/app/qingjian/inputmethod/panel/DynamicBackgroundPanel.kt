@@ -32,7 +32,8 @@ class DynamicBackgroundPanel(
     private fun effectTitleY(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(20f)
     private fun effectGridTop(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(32f)
     private fun effectGridBottom(top: Float) = effectGridTop(top) + effectRows * effectCellHeight + (effectRows - 1) * effectGridGap
-    private fun slidersTop(top: Float) = effectGridBottom(top) + ink.dp(38f)
+    private fun adaptiveIconRowTop(top: Float) = effectGridBottom(top) + ink.dp(34f)
+    private fun slidersTop(top: Float) = adaptiveIconRowTop(top) + rowHeight + ink.dp(20f)
     private fun sliderRowTop(top: Float, index: Int) = slidersTop(top) + (index - 5) * rowHeight
     private val effectStyles = listOf(
         0 to "极光流彩", 1 to "深海蓝潮", 2 to "日落熔金", 4 to "冰晶星雾",
@@ -112,8 +113,16 @@ class DynamicBackgroundPanel(
             ink.text(canvas, "效果 ${style.first}", 9f, palette.gloss, rect.centerX(), rect.centerY() + ink.dp(15f))
         }
 
+        // 工具栏图标自适应：逐图标采样动态背景，自动切换黑白高对比色。
+        val adaptiveTop = adaptiveIconRowTop(top)
+        val adaptiveEnabled = settingsPrefs.getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
+        ink.textStart(canvas, "智能自适应图标色彩", 13f, palette.text, card.left + ink.dp(16f), adaptiveTop + ink.dp(22f), card.right - ink.dp(104f))
+        ink.text(canvas, if (adaptiveEnabled) "已开启" else "已关闭", 12f,
+            if (adaptiveEnabled) palette.brand else palette.gloss, card.right - ink.dp(54f), adaptiveTop + ink.dp(22f))
+        ink.line(canvas, card.left + ink.dp(16f), adaptiveTop + rowHeight, card.right - ink.dp(16f), adaptiveTop + rowHeight, palette.faint)
+
         // 画面调节区：与光效网格分组，滑块可拖动调整。
-        ink.textStart(canvas, "画面调节", 13f, palette.text, card.left + ink.dp(16f), effectGridBottom(top) + ink.dp(22f), card.right - ink.dp(16f))
+        ink.textStart(canvas, "画面调节", 13f, palette.text, card.left + ink.dp(16f), slidersTop(top) - ink.dp(4f), card.right - ink.dp(16f))
         for (index in 5..7) {
             val label = labels[index - 1]
             val y = sliderRowTop(top, index)
@@ -191,6 +200,11 @@ class DynamicBackgroundPanel(
                         notifyChanged()
                     }
                 }
+            }
+            contentY >= adaptiveIconRowTop(top) && contentY < adaptiveIconRowTop(top) + rowHeight -> {
+                val enabled = settingsPrefs.getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
+                settingsPrefs.edit().putBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, !enabled).apply()
+                notifyChanged()
             }
             else -> {
                 val sliderIndex = (5..7).firstOrNull { index ->
