@@ -139,7 +139,7 @@ class FunctionPanel(
                     effectScroll.reset()
                     invalidate()
                 },
-                Feature(Icon.PALETTE, "背景特效", on = DynamicBackgroundActivity.displayMode(context) != DynamicBackgroundActivity.MODE_NORMAL) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
+                Feature(Icon.PALETTE, "背景特效") { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
@@ -184,6 +184,7 @@ class FunctionPanel(
             Toggle(Settings.KEY_POPUP, "按键气泡", "按下字母时在上面放大显示", settings.keyPopup),
             Toggle(Settings.KEY_FULLSCREEN, "全面屏适配", "手势条那一截不留白，两个角各放一个键", settings.fullscreenAdapt),
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
+            Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
         )
 
     private val tabs = Tabs(ink, scrollable(true) { x, y -> y < headerHeight && x > ink.dp(BACK_WIDTH_DP) }, Tabs.Style.UNDERLINE)
