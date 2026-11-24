@@ -53,6 +53,7 @@ on:
       - fix/workflow-579-voice-clipboard-copy-smart-candidates
       - fix/617-based-clipboard-search-and-candidates
       - fix/718-wubi-background-clouds-copy
+      - fix/723-wubi-text-effects-space-gesture
       - fix/workflow-421-key-feedback-pinyin-candidates
       - feature/android-optional-trigram-model
       - feature/workflow-433-zhiyi-transformer
