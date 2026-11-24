@@ -338,7 +338,7 @@ class FunctionPanel(
 
     /** 背景动效样式选择；内容超过可视区时在卡片内部滚动，不再挤出面板。 */
     private fun drawBackgroundEffectSettings(canvas: Canvas) {
-        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾", "魔幻粒子", "星云裂隙")
+        val labels = listOf("极光流彩", "深海蓝潮", "日落熔金", "翡翠幻境", "冰晶星雾", "魔幻粒子", "星云裂隙", "霓虹光幕", "星环脉冲")
         val colors = listOf(
             intArrayOf(0xFF2DE2C5.toInt(), 0xFF3E8BFF.toInt(), 0xFF9B62FF.toInt()),
             intArrayOf(0xFF11B8A6.toInt(), 0xFF1D8FE8.toInt(), 0xFF35C6D8.toInt()),
@@ -347,6 +347,8 @@ class FunctionPanel(
             intArrayOf(0xFFD8F3FF.toInt(), 0xFF87B8E8.toInt(), 0xFFB7A6F6.toInt()),
             intArrayOf(0xFF9CFFF0.toInt(), 0xFF8BB8FF.toInt(), 0xFFF49BFF.toInt()),
             intArrayOf(0xFF7F8CFF.toInt(), 0xFF7DE7D9.toInt(), 0xFFD17BFF.toInt()),
+            intArrayOf(0xFF28E6FF.toInt(), 0xFF477CFF.toInt(), 0xFFB65CFF.toInt()),
+            intArrayOf(0xFFFF6FB5.toInt(), 0xFF8A68FF.toInt(), 0xFF51D9FF.toInt()),
         )
         val top = card.top + ink.dp(10f)
         ink.textStart(canvas, "选择一种持续流动的背景色彩", 11f, palette.gloss,
@@ -939,7 +941,7 @@ class FunctionPanel(
                     val column = if (x < card.left + ink.dp(10f) + cardWidth) 0 else 1
                     val row = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
                     val index = row * 2 + column
-                    if (row in 0 until 4 && index in 0..6) {
+                    if (row in 0 until 5 && index in 0..8) {
                         if (selectedBackgroundStyle == index && backgroundEffectEnabled) {
                             selectedBackgroundStyle = -1
                             backgroundEffectEnabled = false
