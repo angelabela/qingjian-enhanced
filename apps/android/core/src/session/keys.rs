@@ -60,7 +60,6 @@ impl Session {
         let typed_code = self.engine.composition().text().to_owned();
         let full_wubi_code = self.engine.code_scheme().is_some_and(|scheme| {
             scheme.auto_commit
-                && !self.engine.is_phonetic()
                 && typed_code.chars().count() == scheme.code_length
         });
         let exact_wubi_hit = self.engine.code_table().is_some_and(|table| {
