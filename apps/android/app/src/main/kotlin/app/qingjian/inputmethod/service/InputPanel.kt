@@ -20,7 +20,6 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
-import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
