@@ -192,7 +192,8 @@ class CandidateGrid(
     }
 
     private fun drawSide(canvas: Canvas) {
-        ink.fill.color = palette.functionalKey
+        // 动态光效/视频背景开启时右侧操作列透出同一背景；关闭时使用主题功能键底色。
+        ink.fill.color = if (dynamicBackground) android.graphics.Color.TRANSPARENT else palette.functionalKey
         canvas.drawRect(side, ink.fill)
         val cx = side.centerX()
         val slot = side.height() / 3
