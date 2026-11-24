@@ -15,9 +15,10 @@ data class AiExpressionGroup(val title: String, val items: List<String>)
 class AiExpressionGenerator(private val context: android.content.Context) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var activeConnection: HttpURLConnection? = null
+    @Volatile private var cancellationRequested = false
 
     /** 删除键中断当前情境表达请求。 */
-    fun cancelCurrentRequest() { activeConnection?.disconnect() }
+    fun cancelCurrentRequest() { cancellationRequested = true; activeConnection?.disconnect() }
 
     fun generate(source: String, callback: (Result<List<AiExpressionGroup>>) -> Unit) {
         val config = runCatching { CloudConfig.load(context) }.getOrElse {
@@ -33,6 +34,7 @@ class AiExpressionGenerator(private val context: android.content.Context) {
             callback(Result.failure(IllegalArgumentException("请先在输入框输入一段文字，再使用 AI 情境表达")))
             return
         }
+        cancellationRequested = false
         executor.execute {
             val result = runCatching { request(config.baseUrl, config.model, key, source.trim()) }
             main.post { callback(result) }
@@ -69,6 +71,7 @@ class AiExpressionGenerator(private val context: android.content.Context) {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
         activeConnection = connection
+        if (cancellationRequested) connection.disconnect()
         try {
             connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
             val status = connection.responseCode
