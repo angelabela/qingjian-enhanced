@@ -36,8 +36,12 @@ abstract class PanelView(
         private set
     private var dragging: Scrollable? = null
 
-    protected fun scrollable(horizontal: Boolean, contains: (Float, Float) -> Boolean): ScrollState {
-        val state = ScrollState(context)
+    protected fun scrollable(
+        horizontal: Boolean,
+        friction: Float = 0.015f,
+        contains: (Float, Float) -> Boolean,
+    ): ScrollState {
+        val state = ScrollState(context, friction)
         scrollables += Scrollable(state, horizontal, contains)
         return state
     }
