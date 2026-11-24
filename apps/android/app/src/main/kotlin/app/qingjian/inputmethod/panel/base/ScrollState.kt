@@ -4,8 +4,10 @@ import android.content.Context
 import android.widget.OverScroller
 
 /** 面板里一块可滚动区域的滚动量：拖动直接加，松手按速度惯性滚，[compute] 每帧推进。 */
-class ScrollState(context: Context) {
-    private val scroller = OverScroller(context)
+class ScrollState(context: Context, friction: Float = 0.015f) {
+    private val scroller = OverScroller(context).apply {
+        setFriction(friction.coerceIn(0.003f, 0.03f))
+    }
 
     var offset = 0f
         private set
