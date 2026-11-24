@@ -127,15 +127,6 @@ data class Settings(
         COLOR_GRADIENT("渐变彩色");
 
         companion object {
-        /** 将已删除的旧特效编号迁移到新场景，避免升级后落入空白样式。 */
-        fun normalizeKeyboardBackgroundStyle(value: Int): Int = when (value) {
-            3 -> 9   // 翡翠幻境 -> 流体极光
-            5 -> 17  // 魔幻粒子 -> 梦幻光斑
-            6 -> 18  // 星云裂隙 -> 光斑穿云
-            in 0..2, 4, 7, 8, in 9..18 -> value
-            else -> 0
-        }
-
             fun of(value: String?): TextEffectPreset =
                 entries.firstOrNull { it.name == value } ?: STANDARD
         }
@@ -191,6 +182,15 @@ data class Settings(
     enum class Arrangement { STANDARD, LEFT_THUMB }
 
     companion object {
+        /** 将已删除的旧特效编号迁移到新场景，避免升级后落入空白样式。 */
+        fun normalizeKeyboardBackgroundStyle(value: Int): Int = when (value) {
+            3 -> 9   // 翡翠幻境 -> 流体极光
+            5 -> 17  // 魔幻粒子 -> 梦幻光斑
+            6 -> 18  // 星云裂隙 -> 光斑穿云
+            in 0..2, 4, 7, 8, in 9..18 -> value
+            else -> 0
+        }
+
         const val KEY_LAYOUT = "layout"
         const val KEY_HEIGHT = "height_percent"
         const val KEY_FULLSCREEN = "fullscreen_adapt"
