@@ -113,12 +113,12 @@ class DynamicBackgroundPanel(
             ink.text(canvas, "效果 ${style.first}", 9f, palette.gloss, rect.centerX(), rect.centerY() + ink.dp(15f))
         }
 
-        // 工具栏环境光效应：逐图标采样背景 RGB，连续渐变并叠加柔和光晕。
+        // 液态玻璃图标：半透明玻璃底片、高光与主题色图标；关闭后恢复普通主题图标。
         val adaptiveTop = adaptiveIconRowTop(top)
-        val adaptiveEnabled = settingsPrefs.getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
-        ink.textStart(canvas, "智能环境光效应", 13f, palette.text, card.left + ink.dp(16f), adaptiveTop + ink.dp(22f), card.right - ink.dp(104f))
-        ink.text(canvas, if (adaptiveEnabled) "渐变光效已开启" else "已关闭", 12f,
-            if (adaptiveEnabled) palette.brand else palette.gloss, card.right - ink.dp(54f), adaptiveTop + ink.dp(22f))
+        val glassEnabled = settingsPrefs.getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
+        ink.textStart(canvas, "液态玻璃图标特效", 13f, palette.text, card.left + ink.dp(16f), adaptiveTop + ink.dp(22f), card.right - ink.dp(104f))
+        ink.text(canvas, if (glassEnabled) "已开启" else "已关闭", 12f,
+            if (glassEnabled) palette.brand else palette.gloss, card.right - ink.dp(54f), adaptiveTop + ink.dp(22f))
         ink.line(canvas, card.left + ink.dp(16f), adaptiveTop + rowHeight, card.right - ink.dp(16f), adaptiveTop + rowHeight, palette.faint)
 
         // 画面调节区：与光效网格分组，滑块可拖动调整。
@@ -202,8 +202,8 @@ class DynamicBackgroundPanel(
                 }
             }
             contentY >= adaptiveIconRowTop(top) && contentY < adaptiveIconRowTop(top) + rowHeight -> {
-                val enabled = settingsPrefs.getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
-                settingsPrefs.edit().putBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, !enabled).apply()
+                val enabled = settingsPrefs.getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
+                settingsPrefs.edit().putBoolean(Settings.KEY_LIQUID_GLASS_ICONS, !enabled).apply()
                 notifyChanged()
             }
             else -> {
