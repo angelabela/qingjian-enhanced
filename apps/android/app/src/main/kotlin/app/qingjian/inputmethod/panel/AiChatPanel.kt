@@ -37,6 +37,18 @@ class AiChatPanel(
         setPadding(dp(4), dp(18), dp(4), dp(18))
     }
     private var requestNumber = 0
+    private var generating = false
+
+    /** 删除键取消当前生成，返回 true 表示本次按键已用于取消。 */
+    fun cancelGeneration(): Boolean {
+        if (!generating) return false
+        requestNumber++
+        generating = false
+        generator.cancelCurrentRequest()
+        status.visibility = View.VISIBLE
+        status.text = "已取消生成"
+        return true
+    }
     private var undoAction: TextView? = null
 
     init {
@@ -103,12 +115,14 @@ class AiChatPanel(
             return
         }
         val request = ++requestNumber
+        generating = true
         status.visibility = View.VISIBLE
         status.text = "正在理解上下文并生成回复…"
         clearGeneratedViews()
         undoAction = null
         generator.suggestReplies(initialContext) { result ->
             if (request != requestNumber) return@suggestReplies
+            generating = false
             clearGeneratedViews()
             result.onSuccess { replies ->
                 status.visibility = View.GONE
