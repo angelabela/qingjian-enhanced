@@ -668,7 +668,7 @@ class QingjianInputMethodService :
             if (gameSettings?.glosses == false) options.copy(learningLanguage = InputOptions.LEARNING_OFF) else options
         }
         composer.englishCandidates = settings.englishCandidates
-        engine.setAppearance(settings.theme, settings.candidateFontSize / 20f, settings.fontWeight.weight)
+        engine.setAppearance(settings.theme, settings.candidateFontSize / 20f, settings.candidateFontWeight.weight)
         // 云配置由 Engine.onReady 与 CloudServices 配置监听器同步；这里不再重复解密/装配，
         // 避免输入法首次显示键盘时在主线程做额外配置工作。
         // 布局没变时 layout 的 setter 不会重设方案，双拼方案、混输这些改了也得补上
