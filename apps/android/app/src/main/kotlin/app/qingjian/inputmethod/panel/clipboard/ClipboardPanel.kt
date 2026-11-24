@@ -227,12 +227,14 @@ class ClipboardPanel(
         context.getSharedPreferences(SEARCH_STATE_PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, true).apply()
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        // 顶排 QWERTY 对应 1–0，上滑输入数字（q=1 … p=0）。
+        // 顶排 QWERTY 对应 1–0：轻点输入字母，长按输入数字。
         val topRowDigits = "1234567890"
         val screenWidth = resources.displayMetrics.widthPixels
-        // 留出足够横向行程，让浮窗长按后能在屏幕左右两侧之间移动。
-        // 键盘横向铺满可用屏幕；顶部操作条既提供删除键，也提供全屏拖动抓手。
-        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f)).toInt()
+        // 浮窗保留约 14% 的横向余量，允许从屏幕左侧完整拖到右侧。
+        val popupWidth = minOf(
+            (screenWidth - ink.dp(24f)).coerceAtLeast(ink.dp(240f)),
+            maxOf(ink.dp(280f), screenWidth * 0.86f),
+        ).toInt()
         val headerHeight = ink.dp(42f)
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
@@ -242,6 +244,8 @@ class ClipboardPanel(
         var longPressTriggered = false
         var downRawX = 0f
         var downRawY = 0f
+        var downKeyForLongPress: Char? = null
+        var longPressDigitValue: Char? = null
         var popupStartX = 0
         var popupStartY = 0
         var popupCurrentX = 0
@@ -249,9 +253,17 @@ class ClipboardPanel(
         var clearPressedKey: (() -> Unit)? = null
         val beginDrag = Runnable {
             if (isAttachedToWindow) {
-                dragging = true
-                longPressTriggered = true
-                clearPressedKey?.invoke()
+                val topIndex = downKeyForLongPress?.let(rows.first()::indexOf) ?: -1
+                val digit = topRowDigits.getOrNull(topIndex)
+                if (digit != null) {
+                    longPressTriggered = true
+                    longPressDigitValue = digit
+                    clearPressedKey?.invoke()
+                } else {
+                    dragging = true
+                    longPressTriggered = true
+                    clearPressedKey?.invoke()
+                }
                 Haptics.tap(context)
             }
         }
@@ -264,8 +276,6 @@ class ClipboardPanel(
             private var downKey: Char? = null
             private var downDelete = false
             private var headerPressed = false
-            private var digitSwipe = false
-            private var digitSwipeValue: Char? = null
             init { clearPressedKey = { pressedKey = null; headerPressed = false; invalidate() } }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
@@ -308,19 +318,21 @@ class ClipboardPanel(
                     paint.color = if (pressed) palette.onBrand else palette.brand
                     canvas.drawRoundRect(keyBounds, ink.dp(8f), ink.dp(8f), paint)
                     paint.style = Paint.Style.FILL
+                    val digit = if (r.top < headerHeight + ink.dp(8f) + keyHeight) {
+                        topRowDigits.getOrNull(rows.first().indexOf(ch))
+                    } else null
+                    if (digit != null) {
+                        paint.color = if (pressed) palette.onBrand else palette.gloss
+                        paint.textAlign = Paint.Align.CENTER
+                        paint.textSize = ink.dp(9f).toFloat()
+                        canvas.drawText(digit.toString(), r.centerX(),
+                            r.top + ink.dp(11f) - (paint.ascent() + paint.descent()) / 2f, paint)
+                    }
                     paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
                     paint.textSize = ink.dp(18f).toFloat()
-                    canvas.drawText(ch.toString(), r.centerX(), r.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
-                    if (r.top < headerHeight + ink.dp(8f) + keyHeight) {
-                        val digit = topRowDigits.getOrNull(rows.first().indexOf(ch))
-                        if (digit != null) {
-                            paint.color = if (pressed) palette.onBrand else palette.gloss
-                            paint.textAlign = Paint.Align.RIGHT
-                            paint.textSize = ink.dp(9f).toFloat()
-                            canvas.drawText(digit.toString(), r.right - ink.dp(4f), r.top + ink.dp(10f), paint)
-                        }
-                    }
+                    val letterCenterY = r.centerY() + if (digit != null) ink.dp(4f) else 0f
+                    canvas.drawText(ch.toString(), r.centerX(), letterCenterY - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
             }
             override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -330,11 +342,13 @@ class ClipboardPanel(
                         longPressTriggered = false
                         downRawX = event.rawX
                         downRawY = event.rawY
+                        downKeyForLongPress = null
+                        longPressDigitValue = null
+                        parent?.requestDisallowInterceptTouchEvent(true)
                         downDelete = deleteRect.contains(event.x, event.y)
                         headerPressed = event.y < headerHeight && !downDelete
                         downKey = if (downDelete || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
-                        digitSwipe = false
-                        digitSwipeValue = null
+                        downKeyForLongPress = downKey
                         pressedKey = downKey
                         invalidate()
                         popupStartX = popupCurrentX
@@ -346,23 +360,12 @@ class ClipboardPanel(
                         val dx = event.rawX - downRawX
                         val dy = event.rawY - downRawY
                         val moved = kotlin.math.hypot(dx.toDouble(), dy.toDouble())
-                        // 顶排字母明确向上划时优先作为数字输入，不移动浮窗。
-                        val topIndex = downKey?.let(rows.first()::indexOf) ?: -1
-                        val digit = topRowDigits.getOrNull(topIndex)
-                        if (!dragging && !longPressTriggered && digit != null &&
-                            dy <= -ink.dp(16f) && kotlin.math.abs(dx) <= ink.dp(30f)) {
-                            digitSwipe = true
-                            digitSwipeValue = digit
-                            removeCallbacks(beginDrag)
-                            pressedKey = downKey
-                            invalidate()
-                            return true
-                        }
-                        // 整个键盘任意位置均可直接拖动；降低启动阈值，避免上滑拖动迟钝。
-                        if (!dragging && !digitSwipe && moved > ink.dp(8f)) {
+                        // 从键盘任意位置起步都能拖动；长按顶排按键则保留为数字输入。
+                        if (!dragging && !longPressTriggered && moved > ink.dp(7f)) {
                             removeCallbacks(beginDrag)
                             dragging = true
                             longPressTriggered = true
+                            longPressDigitValue = null
                             clearPressedKey?.invoke()
                         }
                         if (dragging) {
@@ -382,17 +385,17 @@ class ClipboardPanel(
                     }
                     MotionEvent.ACTION_UP -> {
                         removeCallbacks(beginDrag)
-                        if (!dragging && !longPressTriggered) {
+                        if (!dragging) {
                             when {
-                                digitSwipe && digitSwipeValue != null -> {
-                                    digitSwipeValue?.let { updateSearchQuery(searchQuery + it) }
+                                longPressDigitValue != null -> {
+                                    updateSearchQuery(searchQuery + longPressDigitValue)
                                     Haptics.tap(context)
                                 }
-                                downDelete && deleteRect.contains(event.x, event.y) -> {
+                                !longPressTriggered && downDelete && deleteRect.contains(event.x, event.y) -> {
                                     if (searchQuery.isNotEmpty()) updateSearchQuery(searchQuery.dropLast(1))
                                     Haptics.tap(context)
                                 }
-                                else -> {
+                                !longPressTriggered -> {
                                     val releasedKey = keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                                     if (downKey != null && releasedKey == downKey) {
                                         updateSearchQuery(searchQuery + downKey)
@@ -405,8 +408,9 @@ class ClipboardPanel(
                         downKey = null
                         downDelete = false
                         headerPressed = false
-                        digitSwipe = false
-                        digitSwipeValue = null
+                        downKeyForLongPress = null
+                        longPressDigitValue = null
+                        parent?.requestDisallowInterceptTouchEvent(false)
                         invalidate()
                         dragging = false
                         longPressTriggered = false
@@ -418,6 +422,9 @@ class ClipboardPanel(
                         downKey = null
                         downDelete = false
                         headerPressed = false
+                        downKeyForLongPress = null
+                        longPressDigitValue = null
+                        parent?.requestDisallowInterceptTouchEvent(false)
                         invalidate()
                         dragging = false
                         longPressTriggered = false
@@ -543,13 +550,13 @@ class ClipboardPanel(
             if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(11f), searchRect.centerY(), 13f, palette.gloss)
             val resultCount = visibleClipIndices.size.coerceIn(0, clips.size)
             val resultLabel = "$resultCount/${clips.size}"
+            val counterWidth = ink.measure(resultLabel, 10.5f) + ink.dp(10f)
             val counterRect = RectF(
-                searchRect.right + ink.dp(4f), searchRect.top,
-                deleteBackwardBounds().left - ink.dp(4f), searchRect.bottom,
+                searchRect.right + ink.dp(6f), searchRect.top,
+                searchRect.right + ink.dp(6f) + counterWidth, searchRect.bottom,
             )
-            // 独立计数胶囊固定留出宽度；零匹配时也明确显示 0/总数。
-            if (counterRect.width() >= ink.dp(30f)) {
-                ink.round(canvas, counterRect, 8f, palette.surface)
+            // 计数只绘制文字，不铺底色；宽度随“命中数/总数”文本自动变化。
+            if (counterRect.right <= deleteBackwardBounds().left - ink.dp(4f)) {
                 ink.text(canvas, resultLabel, 10.5f, palette.text,
                     counterRect.centerX(), counterRect.centerY() + ink.dp(1f))
             }
