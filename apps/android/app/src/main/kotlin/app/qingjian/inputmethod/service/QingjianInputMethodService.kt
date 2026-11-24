@@ -1925,7 +1925,8 @@ class QingjianInputMethodService :
 
     override fun refreshKeyboardSettings() {
         reopenPanel = panel?.openPanel
-        showKeyboard()
+        // 重新读取 Settings 快照并创建绘制层；onCreateInputView 会按 reopenPanel 恢复当前设置面板。
+        setInputView(onCreateInputView())
     }
 
     /** 面板开着时系统返回键先关面板。 */
