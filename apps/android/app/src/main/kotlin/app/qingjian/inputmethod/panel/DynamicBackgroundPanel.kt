@@ -170,7 +170,7 @@ class DynamicBackgroundPanel(
                 val gridY = contentY - effectGridTop(top)
                 val gridLeft = card.left + ink.dp(12f)
                 val gridRight = card.right - ink.dp(12f)
-                val cellGap = ink.dp(7f)
+                val cellGap = effectGridGap
                 val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
                 val col = ((x - gridLeft) / (cellWidth + cellGap)).toInt()
                 val row = (gridY / (effectCellHeight + cellGap)).toInt()
