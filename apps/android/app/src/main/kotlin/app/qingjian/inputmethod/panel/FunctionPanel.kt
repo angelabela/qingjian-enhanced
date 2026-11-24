@@ -610,7 +610,7 @@ class FunctionPanel(
         val weightY = controlsTop + ink.dp(129f)
         canvas.drawLine(left, weightY, right, weightY, ink.fill.apply { color = palette.functionalKey; strokeWidth = ink.dp(4f); strokeCap = android.graphics.Paint.Cap.ROUND })
         val weightIndex = Settings.FontWeight.entries.indexOf(weight).coerceAtLeast(0)
-        val weightX = left + (right - left) * (weightIndex / 3f)
+        val weightX = left + (right - left) * (weightIndex.toFloat() / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1))
         ink.fill.color = palette.brand
         canvas.drawLine(left, weightY, weightX, weightY, ink.fill)
         canvas.drawCircle(weightX, weightY, ink.dp(5f), ink.fill)
@@ -806,7 +806,18 @@ class FunctionPanel(
                 contentY in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
                 else -> -1
             }
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) && slider >= 0) {
+            val sliderTrackY = when (slider) {
+                0 -> controlsTop + ink.dp(29f)
+                1 -> controlsTop + ink.dp(79f)
+                2 -> controlsTop + ink.dp(129f)
+                else -> -1f
+            }
+            val trackLeft = card.left + ink.dp(18f)
+            val trackRight = card.right - ink.dp(18f)
+            val nearTrack = slider >= 0 &&
+                kotlin.math.abs(event.y - (sliderTrackY - effectScroll.offset)) <= ink.dp(9f) &&
+                event.x in (trackLeft - ink.dp(4f))..(trackRight + ink.dp(4f))
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) && nearTrack) {
                 adjustingTextSlider = slider
                 parent?.requestDisallowInterceptTouchEvent(true)
                 updateTextSlider(event.x, slider)

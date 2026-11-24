@@ -363,11 +363,9 @@ private class FlowingKeyboardBackgroundDrawable(
         uniform float iScene;
 
         float hash(float2 p) {
-            float3 p3 = fract(float3(p.x, p.y, p.x) * 0.1031);
-            p3 += dot(p3, p3.yzx + 33.33);
-            return fract((p3.x + p3.y) * p3.z);
+            return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
         }
-        float vnoise(float2 p) {
+        float noise(float2 p) {
             float2 i = floor(p);
             float2 f = fract(p);
             f = f * f * (3.0 - 2.0 * f);
@@ -375,70 +373,78 @@ private class FlowingKeyboardBackgroundDrawable(
                        mix(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x), f.y);
         }
         float fbm(float2 p) {
-            float v = 0.0;
-            float a = 0.5;
-            for (int i = 0; i < 4; i++) {
-                v += a * vnoise(p);
-                p = p * 2.0 + float2(17.0, 9.0);
-                a *= 0.5;
+            float value = 0.0;
+            float amplitude = 0.5;
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * noise(p);
+                p = p * 2.02 + float2(13.7, 9.2);
+                amplitude *= 0.5;
             }
-            return v;
+            return value;
         }
         half4 main(float2 fragCoord) {
             float2 uv = fragCoord / max(iResolution.y, 1.0);
             float scene = floor(iScene + 0.5);
-            float dusk = scene == 15.0 ? 1.0 : 0.0;
-            float night = scene == 16.0 ? 1.0 : 0.0;
-            float glowScene = scene == 14.0 ? 1.0 : 0.0;
-            float twilight = scene == 18.0 ? 1.0 : 0.0;
+            float isDusk = scene == 15.0 ? 1.0 : 0.0;
+            float isNight = scene == 16.0 ? 1.0 : 0.0;
+            float isGlow = scene == 14.0 ? 1.0 : 0.0;
+            float isTwilight = scene == 18.0 ? 1.0 : 0.0;
 
-            float3 skyTop = float3(0.20, 0.43, 0.78);
-            float3 skyBottom = float3(0.73, 0.88, 1.00);
-            skyTop = mix(skyTop, float3(0.16, 0.045, 0.30), dusk);
-            skyBottom = mix(skyBottom, float3(1.00, 0.43, 0.29), dusk);
-            skyTop = mix(skyTop, float3(0.008, 0.018, 0.065), night);
-            skyBottom = mix(skyBottom, float3(0.055, 0.12, 0.28), night);
-            skyTop = mix(skyTop, float3(0.12, 0.08, 0.30), twilight);
-            skyBottom = mix(skyBottom, float3(0.80, 0.34, 0.40), twilight);
-            float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, fragCoord.y / max(iResolution.y, 1.0)));
+            float3 skyTop = float3(0.16, 0.40, 0.76);
+            float3 skyBottom = float3(0.66, 0.84, 1.00);
+            skyTop = mix(skyTop, float3(0.13, 0.035, 0.22), isDusk);
+            skyBottom = mix(skyBottom, float3(1.00, 0.40, 0.24), isDusk);
+            skyTop = mix(skyTop, float3(0.006, 0.014, 0.050), isNight);
+            skyBottom = mix(skyBottom, float3(0.045, 0.10, 0.23), isNight);
+            skyTop = mix(skyTop, float3(0.12, 0.08, 0.29), isTwilight);
+            skyBottom = mix(skyBottom, float3(0.82, 0.37, 0.43), isTwilight);
+            float vertical = fragCoord.y / max(iResolution.y, 1.0);
+            float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, vertical));
 
-            float cloudScale = mix(2.15, 1.55, night);
-            cloudScale = mix(cloudScale, 1.85, dusk + twilight);
-            float drift = iTime * (night > 0.5 ? 0.012 : 0.022);
-            float2 p = uv * cloudScale + float2(drift, 0.0);
-            float density = fbm(p) * 0.62 + fbm(p * 1.75 + float2(8.0, 3.0)) * 0.28
-                          + fbm(p * 3.2 + float2(2.0, 11.0)) * 0.10;
-            float horizon = 1.0 - fragCoord.y / max(iResolution.y, 1.0);
-            float threshold = mix(0.48, 0.43, night);
-            float mask = smoothstep(threshold, threshold + 0.23, density);
-            mask *= smoothstep(0.0, 0.28, horizon);
+            float aspect = iResolution.x / max(iResolution.y, 1.0);
+            float2 cloudP = float2(uv.x * aspect, uv.y * 1.28);
+            float speed = isNight > 0.5 ? 0.010 : 0.018;
+            cloudP.x -= iTime * speed;
+            float2 warp = float2(fbm(cloudP * 1.35 + float2(2.0, 1.0)),
+                                 fbm(cloudP * 1.35 + float2(8.0, 4.0)));
+            float2 q = cloudP + (warp - 0.5) * 0.62;
+            float broad = fbm(q * 2.15);
+            float detail = fbm(q * 4.8 + float2(3.7, 6.1));
+            float fine = fbm(q * 9.5 + float2(11.0, 2.0));
+            float density = broad * 0.66 + detail * 0.25 + fine * 0.09;
 
-            float3 cloudLight = float3(1.0, 1.0, 0.98);
-            float3 cloudShade = float3(0.40, 0.57, 0.76);
-            cloudLight = mix(cloudLight, float3(1.0, 0.72, 0.60), dusk);
-            cloudShade = mix(cloudShade, float3(0.35, 0.12, 0.25), dusk);
-            cloudLight = mix(cloudLight, float3(0.66, 0.76, 1.0), night);
-            cloudShade = mix(cloudShade, float3(0.045, 0.075, 0.17), night);
-            cloudLight = mix(cloudLight, float3(1.0, 0.82, 0.88), twilight);
-            cloudShade = mix(cloudShade, float3(0.30, 0.15, 0.34), twilight);
-            float light = smoothstep(0.22, 0.82, density + (1.0 - horizon) * 0.12);
-            float3 cloud = mix(cloudShade, cloudLight, light);
+            float horizon = 1.0 - vertical;
+            float cloudBase = mix(0.48, 0.45, isNight);
+            float cloudMask = smoothstep(cloudBase, cloudBase + 0.20, density);
+            cloudMask *= smoothstep(0.02, 0.35, horizon);
+            cloudMask *= mix(0.94, 0.76, isNight);
 
-            float sunX = glowScene > 0.5 ? 0.78 : (dusk > 0.5 ? 0.50 : 0.72);
-            float sunY = dusk > 0.5 ? 0.84 : 0.18;
-            float2 sunDelta = float2(uv.x * iResolution.x / max(iResolution.y,1.0) - sunX, uv.y - sunY);
-            float sunGlow = exp(-dot(sunDelta, sunDelta) * 7.0);
-            cloud += float3(1.0, 0.78, 0.43) * sunGlow * (0.20 + glowScene * 0.32 + dusk * 0.18);
+            float3 lit = float3(1.0, 0.99, 0.96);
+            float3 shade = float3(0.38, 0.53, 0.72);
+            lit = mix(lit, float3(1.0, 0.68, 0.53), isDusk);
+            shade = mix(shade, float3(0.31, 0.095, 0.22), isDusk);
+            lit = mix(lit, float3(0.62, 0.73, 0.98), isNight);
+            shade = mix(shade, float3(0.035, 0.060, 0.15), isNight);
+            lit = mix(lit, float3(1.0, 0.80, 0.88), isTwilight);
+            shade = mix(shade, float3(0.29, 0.13, 0.32), isTwilight);
 
-            if (night > 0.5) {
-                float stars = step(0.997, hash(floor(fragCoord / 3.0)));
-                sky += float3(0.72, 0.82, 1.0) * stars * (0.55 + 0.45 * sin(iTime * 1.4 + fragCoord.x));
-                float moon = 1.0 - smoothstep(0.045, 0.052, length(uv - float2(0.72, 0.20)));
+            float lighting = smoothstep(0.28, 0.78, density + horizon * 0.12);
+            float3 cloudColor = mix(shade, lit, lighting);
+            float2 sunPos = float2((isDusk > 0.5 ? 0.50 : 0.78) * aspect,
+                                   isDusk > 0.5 ? 0.82 : 0.18);
+            float2 sunDelta = cloudP - sunPos;
+            float glow = exp(-dot(sunDelta, sunDelta) * 5.0);
+            cloudColor += float3(1.0, 0.72, 0.40) * glow * (0.16 + isGlow * 0.36 + isDusk * 0.18);
+
+            if (isNight > 0.5) {
+                float star = step(0.9975, hash(floor(fragCoord / 2.5)));
+                sky += float3(0.75, 0.84, 1.0) * star * 0.7;
+                float moon = 1.0 - smoothstep(0.040, 0.047, length(uv - float2(aspect * 0.72, 0.20)));
                 sky = mix(sky, float3(0.88, 0.92, 1.0), moon);
             }
-            float rim = smoothstep(0.58, 0.82, density) * (1.0 - smoothstep(0.82, 0.98, density));
-            cloud += cloudLight * rim * (0.10 + glowScene * 0.20 + dusk * 0.12);
-            return half4(mix(sky, cloud, clamp(mask, 0.0, 1.0)), 1.0);
+            float edgeLight = smoothstep(0.58, 0.82, density) * (1.0 - smoothstep(0.82, 0.96, density));
+            cloudColor += lit * edgeLight * (0.10 + isGlow * 0.20 + isDusk * 0.10);
+            return half4(mix(sky, cloudColor, clamp(cloudMask, 0.0, 1.0)), 1.0);
         }
     """.trimIndent()
 
@@ -600,14 +606,14 @@ private class FlowingKeyboardBackgroundDrawable(
                 cloudLayers(0xFFFFFFFF.toInt(), 0xFF6E91BE.toInt())
             }
             15 -> {
-                if (drawCloudShader(canvas, w, h, t)) return
+                if (drawCloudShader(canvas, w, h, t, style)) return
                 paint.shader = LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2B1055.toInt(),0xFFC2477A.toInt(),0xFFFF8A5C.toInt(),0xFFFFD08A.toInt()),floatArrayOf(0f,.5f,.8f,1f),Shader.TileMode.CLAMP)
                 canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
                 glow(w*.5f,h*.86f,maxOf(w,h)*.6f,0xFFFFC878.toInt(),185)
                 cloudLayers(0xFFFFAF9B.toInt(),0xFF551E55.toInt(),true)
             }
             16 -> {
-                if (drawCloudShader(canvas, w, h, t)) return
+                if (drawCloudShader(canvas, w, h, t, style)) return
                 background(0xFF03050F.toInt(),0xFF1B2C58.toInt())
                 for (i in 0 until 70) {
                     val seed=i*2.399
@@ -628,7 +634,7 @@ private class FlowingKeyboardBackgroundDrawable(
                 bokeh(60,intArrayOf(0xFFFF78C8.toInt(),0xFF78C8FF.toInt(),0xFFFFD278.toInt(),0xFFAA82FF.toInt(),0xFF78FFDC.toInt()),.12f,.045f)
             }
             18 -> {
-                if (drawCloudShader(canvas, w, h, t)) return
+                if (drawCloudShader(canvas, w, h, t, style)) return
                 paint.shader=LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2A1A5E.toInt(),0xFFD76D77.toInt(),0xFFFFB88C.toInt()),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
                 canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
                 bokeh(45,intArrayOf(0xFFFFE6A0.toInt(),0xFFFFA0BE.toInt(),0xFFFFFFFF.toInt(),0xFFBEAAFF.toInt()),.10f,.035f)
