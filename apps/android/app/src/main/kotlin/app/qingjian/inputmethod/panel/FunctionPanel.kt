@@ -599,13 +599,13 @@ class FunctionPanel(
             canvas.drawRoundRect(bounds, 11f, 11f, ink.fill)
             ink.fill.style = android.graphics.Paint.Style.FILL
             val sample = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                this.textSize = ink.dp((17f * textSize / 20f).coerceIn(8f, 34f))
+                this.textSize = ink.dp((24f * textSize / 20f).coerceIn(12f, 42f))
                 textAlign = android.graphics.Paint.Align.CENTER
                 color = textColor
                 typeface = weight.typeface
                 isFakeBoldText = weight.weight >= 600
             }
-            val sampleX = bounds.left + ink.dp(55f)
+            val sampleX = bounds.left + ink.dp(72f)
             val sampleY = bounds.centerY() + ink.dp(6f)
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
@@ -629,7 +629,7 @@ class FunctionPanel(
             sample.clearShadowLayer()
             sample.shader = null
             ink.textStart(canvas, preset.label, 13f, if (selected) palette.brand else palette.text,
-                bounds.left + ink.dp(105f), bounds.centerY() + ink.dp(4f), bounds.right - ink.dp(35f))
+                bounds.left + ink.dp(155f), bounds.centerY() + ink.dp(4f), bounds.right - ink.dp(35f))
             if (selected) {
                 ink.fill.color = palette.brand
                 canvas.drawCircle(bounds.right - ink.dp(14f), bounds.centerY(), ink.dp(3f), ink.fill)
@@ -783,7 +783,6 @@ class FunctionPanel(
                         updateTextSlider(event.x, adjustingTextSlider)
                         adjustingTextSlider = -1
                         parent?.requestDisallowInterceptTouchEvent(false)
-                        actions.refreshKeyboardSettings()
                     }
                 }
                 return true
@@ -900,7 +899,6 @@ class FunctionPanel(
                 }
                 if (slider >= 0) {
                     updateTextSlider(x, slider)
-                    actions.refreshKeyboardSettings()
                     return
                 }
                 val rowTop = targetTop + ink.dp(190f)
