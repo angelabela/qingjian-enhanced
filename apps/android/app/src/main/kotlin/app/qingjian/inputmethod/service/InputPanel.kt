@@ -62,8 +62,25 @@ import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
 import androidx.core.content.ContextCompat
 
+/** 各动态背景的代表性亮度，用于候选文字和全局背景衬层的自适应对比度。 */
+private fun backgroundEffectLuminance(style: Int): Float = when (style) {
+    9 -> 0.20f
+    10 -> 0.19f
+    11 -> 0.88f
+    12 -> 0.16f
+    13 -> 0.15f
+    14 -> 0.68f
+    15 -> 0.43f
+    16 -> 0.12f
+    17 -> 0.17f
+    18 -> 0.53f
+    1, 4, 7, 8 -> 0.24f
+    2 -> 0.46f
+    else -> 0.22f
+}
+
 private fun backgroundEffectTextColor(style: Int): Int =
-    if (style == 11 || style == 14) Color.BLACK else Color.WHITE
+    if (backgroundEffectLuminance(style) >= 0.56f) Color.BLACK else Color.WHITE
 
 /**
  * 覆盖整块输入法窗口的流动光影背景。键盘、候选工具栏和底部操作条共用同一层，
@@ -239,7 +256,13 @@ private class FlowingKeyboardBackgroundDrawable(
                 motionPaint.color = 0x66D17BFF
                 canvas.drawCircle(w * 0.73f, h * 0.56f, h * (0.035f + (1f - pulse) * 0.018f), motionPaint)
             }
-            in 9..18 -> drawImportedEffect(canvas, w, h, t, style)
+            in 9..18 -> {
+                val save = canvas.save()
+                canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
+                canvas.clipRect(0f, 0f, w, h)
+                drawImportedEffect(canvas, w, h, t, style)
+                canvas.restoreToCount(save)
+            }
         }
         motionPaint.style = Paint.Style.FILL
     }
@@ -335,6 +358,12 @@ private class FlowingKeyboardBackgroundDrawable(
             }
             motionPaint.style = Paint.Style.FILL
         }
+        // 每个效果从干净的 Paint 状态开始，避免前一帧/旧样式遗留 alpha、Shader 或 PorterDuff 状态。
+        paint.alpha = 255
+        paint.colorFilter = null
+        paint.xfermode = null
+        paint.shader = null
+        motionPaint.alpha = 255
         when (style) {
             9 -> fluid(0xFF050A1F.toInt(), intArrayOf(0xFF00E5A8.toInt(),0xFF2B6BFF.toInt(),0xFF8A3FFC.toInt(),0xFF00C2FF.toInt()), 24.0, true, .10f)
             10 -> fluid(0xFF2A0A2E.toInt(), intArrayOf(0xFFFF7A45.toInt(),0xFFFF3D81.toInt(),0xFFFFC14D.toInt(),0xFF7B2FF7.toInt()), 26.0, false, .10f)
@@ -534,12 +563,19 @@ class InputPanel(
     private val stack = Stack(
         context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur,
         videoBottomExtension,
+        palette.dark,
     ) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
         setBackgroundColor(Color.TRANSPARENT)
         clipChildren = false
         clipToPadding = false
     }
 
+
+    init {
+        if (backgroundEffectActive) {
+            stack.updateBackgroundContrast(backgroundEffectLuminance(settings.keyboardBackgroundStyle))
+        }
+    }
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -606,6 +642,8 @@ class InputPanel(
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
         val style = Settings.normalizeKeyboardBackgroundStyle(settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle)
+        // 视频亮度由纹理采样持续更新；纯光效则按当前效果的色彩分布设置初始对比度。
+        stack.updateBackgroundContrast(if (uri == null && effectEnabled) backgroundEffectLuminance(style) else null)
         transparentBackground = effectEnabled || uri != null
         // 候选文字与背景模式同步：视频先用主题对比色并随后按视频帧亮度微调；光效按色组切换；
         // 两种动态背景都关闭时清除旧的自适应颜色，恢复当前候选文字样式配置。
@@ -884,13 +922,37 @@ class InputPanel(
         videoBrightness: Int,
         videoBlur: Int,
         private val videoBottomExtension: Int,
+        private val contrastTextIsLight: Boolean,
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
+        private val contrastVeil = View(context).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
         private var lastVideoMeasureSignature: String? = null
+
+        /** 视频/光效与内容之间的自适应衬层，统一保护文字、按键字母和图标的对比度。 */
+        fun updateBackgroundContrast(luminance: Float?) {
+            if (luminance == null) {
+                contrastVeil.alpha = 0f
+                contrastVeil.invalidate()
+                return
+            }
+            val level = luminance.coerceIn(0f, 1f)
+            val veilColor = if (contrastTextIsLight) Color.BLACK else Color.WHITE
+            val amount = if (contrastTextIsLight) {
+                (0.12f + (level - 0.34f).coerceAtLeast(0f) * 0.48f).coerceIn(0.12f, 0.44f)
+            } else {
+                (0.12f + (0.62f - level).coerceAtLeast(0f) * 0.48f).coerceIn(0.12f, 0.44f)
+            }
+            contrastVeil.setBackgroundColor(veilColor)
+            contrastVeil.alpha = amount
+            contrastVeil.invalidate()
+        }
         private var currentVideoUri: String? = videoUri?.takeIf { it.isNotBlank() }
         private var videoBackground: DynamicVideoBackgroundView? = currentVideoUri?.let {
             DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply {
-                onAverageLuminance = onVideoLuminance
+                onAverageLuminance = { luminance ->
+                    onVideoLuminance(luminance)
+                    updateBackgroundContrast(luminance)
+                }
             }
         }
         private var videoTint: View? = makeVideoTint(context, currentVideoUri, videoBrightness)
@@ -902,7 +964,10 @@ class InputPanel(
                 currentVideoUri = normalizedUri
                 videoBackground = normalizedUri?.let {
                     DynamicVideoBackgroundView(context, Uri.parse(it), alpha, blur).apply {
-                        onAverageLuminance = onVideoLuminance
+                        onAverageLuminance = { luminance ->
+                    onVideoLuminance(luminance)
+                    updateBackgroundContrast(luminance)
+                }
                     }
                 }
                 videoBackground?.let {
@@ -944,6 +1009,12 @@ class InputPanel(
             videoTint?.let {
                 addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
             }
+            // 对比度衬层位于视频/光效上方、所有文字与图标下方。
+            addView(contrastVeil, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.TOP,
+            ))
             // The keyboard content must be a child of the overlay container.
             addView(main, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
