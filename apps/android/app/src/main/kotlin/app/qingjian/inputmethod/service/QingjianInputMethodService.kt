@@ -842,6 +842,7 @@ class QingjianInputMethodService :
 
     override fun onWindowShown() {
         super.onWindowShown()
+        panel?.animateIn()
         AppLog.info("window shown")
         // 同一编辑器中再次展开键盘时也刷新一次最新验证码/剪贴板内容。
         showLatestClipboardNotice()
@@ -852,6 +853,7 @@ class QingjianInputMethodService :
 
     override fun onWindowHidden() {
         super.onWindowHidden()
+        panel?.cancelVisibilityAnimation()
         AppLog.info("window hidden")
         // 提示只展示一个输入法会话；隐藏窗口时清掉 UI，已显示指纹仍保留在设置中。
         panel?.bar?.clearNotice()
@@ -1947,7 +1949,14 @@ class QingjianInputMethodService :
         )
     }
 
-    private fun onHideKeyboard() = requestHideSelf(0)
+    private fun onHideKeyboard() {
+        val current = panel
+        if (current == null) {
+            requestHideSelf(0)
+            return
+        }
+        current.animateOut { requestHideSelf(0) }
+    }
 
     private fun onBottomAction(action: BottomAction) = when (action) {
         BottomAction.SWITCH_INPUT_METHOD -> switchInputMethod()
