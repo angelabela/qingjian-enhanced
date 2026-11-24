@@ -349,7 +349,7 @@ class Toolbar(
                 half4 mask = content.eval(coord);
                 if (mask.a <= 0.001) return half4(0.0);
 
-                float2 texel = 1.0 / max(size, float2(1.0));
+                float2 texel = float2(1.0, 1.0);
                 float gx = content.eval(coord + float2(texel.x, 0.0)).a -
                     content.eval(coord - float2(texel.x, 0.0)).a;
                 float gy = content.eval(coord + float2(0.0, texel.y)).a -
