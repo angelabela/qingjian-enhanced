@@ -31,6 +31,7 @@ class Toolbar(
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint().apply { color = palette.faint }
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private var adaptiveColors: IntArray? = null
 
     /** 中间那排滑过去的距离（像素）。 */
     var offset = 0f
@@ -44,6 +45,26 @@ class Toolbar(
 
     fun scrollTo(value: Float, viewWidth: Int) {
         offset = value.coerceIn(0f, maxOffset(viewWidth))
+    }
+
+    /** 为每个工具图标分别设置背景采样亮度；白/黑按 WCAG 对比度较高者自动选择。 */
+    fun sampleXs(viewWidth: Int): FloatArray {
+        val slot = middleSlot(viewWidth)
+        return FloatArray(tools.size + 1) { index ->
+            if (index < tools.size) logoSlot + slot * (index + 0.5f) - offset
+            else viewWidth - hideSlot / 2f
+        }
+    }
+
+    fun setAdaptiveLuminances(luminances: FloatArray?) {
+        adaptiveColors = luminances?.let { values ->
+            IntArray(tools.size + 1) { index ->
+                val level = values.getOrElse(index) { 0.5f }.coerceIn(0f, 1f)
+                val whiteContrast = 1.05f / (level + 0.05f)
+                val blackContrast = (level + 0.05f) / 0.05f
+                if (whiteContrast >= blackContrast) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+            }
+        }
     }
 
     fun onLogo(x: Float) = x < logoSlot
@@ -91,18 +112,21 @@ class Toolbar(
         logo?.draw(canvas)
         canvas.restore()
 
-        stroke.color = palette.gloss
+        val colors = adaptiveColors
         val slot = middleSlot(viewWidth)
         val divider = viewWidth - hideSlot
         canvas.save()
         canvas.clipRect(logoSlot, 0f, divider, barHeight)
         tools.forEachIndexed { i, tool ->
+            stroke.color = colors?.getOrNull(i) ?: palette.gloss
             PanelIcons.draw(canvas, tool.icon, logoSlot + slot * (i + 0.5f) - offset, cy, 26 * density, stroke)
         }
         canvas.restore()
         line.strokeWidth = density
+        line.color = colors?.lastOrNull()?.let { (it and 0x00FFFFFF) or (0x66000000) } ?: palette.faint
         canvas.drawLine(logoSlot, cy - 12 * density, logoSlot, cy + 12 * density, line)
         canvas.drawLine(divider, cy - 12 * density, divider, cy + 12 * density, line)
+        stroke.color = colors?.lastOrNull() ?: palette.gloss
         PanelIcons.draw(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, stroke)
     }
 
