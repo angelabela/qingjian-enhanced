@@ -47,6 +47,9 @@ class DynamicBackgroundPanel(
         settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, "0")?.toIntOrNull() ?: 0
     )
     private val modeLabels = listOf("视频", "光效", "常规")
+    private fun modeChipGap() = ink.dp(4f)
+    private fun modeChipWidth(): Float = minOf(ink.dp(43f), (card.width() - ink.dp(180f) - modeChipGap() * 2f).coerceAtLeast(ink.dp(28f)) / 3f)
+    private fun modeChipLeft(): Float = card.right - ink.dp(12f) - modeChipWidth() * 3f - modeChipGap() * 2f
 
     private fun notifyChanged() {
         context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
@@ -86,7 +89,21 @@ class DynamicBackgroundPanel(
                 else -> if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"
             }
             ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(16f), y + ink.dp(22f), card.right - ink.dp(16f))
-            ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(72f), y + ink.dp(22f))
+            if (index == 1) {
+                val chipWidth = modeChipWidth()
+                val gap = modeChipGap()
+                val left = modeChipLeft()
+                val selectedMode = DynamicBackgroundActivity.displayMode(context)
+                modeLabels.forEachIndexed { mode, modeLabel ->
+                    val bounds = RectF(left + mode * (chipWidth + gap), y + ink.dp(7f),
+                        left + mode * (chipWidth + gap) + chipWidth, y + ink.dp(39f))
+                    val selected = selectedMode == mode
+                    ink.round(canvas, bounds, 8f, if (selected) palette.brand else palette.functionalKey)
+                    ink.text(canvas, modeLabel, 10.5f, if (selected) palette.onBrand else palette.text, bounds.centerX(), bounds.centerY() + ink.dp(3f))
+                }
+            } else {
+                ink.text(canvas, value, 12f, palette.brand, card.right - ink.dp(54f), y + ink.dp(22f))
+            }
             ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
         }
 
@@ -170,10 +187,15 @@ class DynamicBackgroundPanel(
                 when (index) {
                     0 -> context.startActivity(Intent(context, DynamicBackgroundActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     1 -> {
-                        val nextMode = (DynamicBackgroundActivity.displayMode(context) + 1) % 3
-                        prefs.edit().putInt(DynamicBackgroundActivity.KEY_DISPLAY_MODE, nextMode).apply()
-                        settingsPrefs.edit().putBoolean(Settings.KEY_BACKGROUND_EFFECT, nextMode == DynamicBackgroundActivity.MODE_EFFECT).apply()
-                        notifyChanged()
+                        val chipWidth = modeChipWidth()
+                        val gap = modeChipGap()
+                        val left = modeChipLeft()
+                        val mode = ((x - left) / (chipWidth + gap)).toInt()
+                        if (mode in modeLabels.indices && x <= left + mode * (chipWidth + gap) + chipWidth) {
+                            prefs.edit().putInt(DynamicBackgroundActivity.KEY_DISPLAY_MODE, mode).apply()
+                            settingsPrefs.edit().putBoolean(Settings.KEY_BACKGROUND_EFFECT, mode == DynamicBackgroundActivity.MODE_EFFECT).apply()
+                            notifyChanged()
+                        }
                     }
                     2 -> update { putBoolean(DynamicBackgroundActivity.KEY_FROSTED, !prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) }
                 }
