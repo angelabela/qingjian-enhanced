@@ -602,16 +602,16 @@ private class FlowingKeyboardBackgroundDrawable(
             14 -> {
                 background(0xFF3A7BD5.toInt(), 0xFFBFE6FF.toInt())
                 glow(w * .80f, h * .14f, maxOf(w,h) * .45f, 0xFFFFF8D2.toInt(), 215)
-                cloudLayers(0xFFFFFFFF.toInt(), 0xFF6E91BE.toInt())
+                if (!drawCloudShader(canvas, w, h, t, style)) cloudLayers(0xFFFFFFFF.toInt(), 0xFF6E91BE.toInt())
             }
             15 -> {
                 paint.shader = LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2B1055.toInt(),0xFFC2477A.toInt(),0xFFFF8A5C.toInt(),0xFFFFD08A.toInt()),floatArrayOf(0f,.5f,.8f,1f),Shader.TileMode.CLAMP)
                 canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
                 glow(w*.5f,h*.86f,maxOf(w,h)*.6f,0xFFFFC878.toInt(),185)
-                cloudLayers(0xFFFFAF9B.toInt(),0xFF551E55.toInt(),true)
+                if (!drawCloudShader(canvas, w, h, t, style)) cloudLayers(0xFFFFAF9B.toInt(),0xFF551E55.toInt(),true)
             }
             16 -> {
-                background(0xFF03050F.toInt(),0xFF1B2C58.toInt())
+                if (!drawCloudShader(canvas, w, h, t, style)) background(0xFF03050F.toInt(),0xFF1B2C58.toInt())
                 for (i in 0 until 70) {
                     val seed=i*2.399
                     val x=((i*47)%101)/101f*w
@@ -624,17 +624,19 @@ private class FlowingKeyboardBackgroundDrawable(
                 glow(mx,my,maxOf(w,h)*.40f,0xFFBED2FF.toInt(),90)
                 motionPaint.color=0xFFF6F8FF.toInt()
                 canvas.drawCircle(mx,my,minOf(w,h)*.06f,motionPaint)
-                cloudLayers(0xFF96AAD7.toInt(),0xFF0A0F28.toInt())
+                if (Build.VERSION.SDK_INT < 33) cloudLayers(0xFF96AAD7.toInt(),0xFF0A0F28.toInt())
             }
             17 -> {
                 background(0xFF10062B.toInt(),0xFF3B1260.toInt())
                 bokeh(60,intArrayOf(0xFFFF78C8.toInt(),0xFF78C8FF.toInt(),0xFFFFD278.toInt(),0xFFAA82FF.toInt(),0xFF78FFDC.toInt()),.12f,.045f)
             }
             18 -> {
-                paint.shader=LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2A1A5E.toInt(),0xFFD76D77.toInt(),0xFFFFB88C.toInt()),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
-                canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
+                if (!drawCloudShader(canvas, w, h, t, style)) {
+                    paint.shader=LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2A1A5E.toInt(),0xFFD76D77.toInt(),0xFFFFB88C.toInt()),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
+                    canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
+                }
                 bokeh(45,intArrayOf(0xFFFFE6A0.toInt(),0xFFFFA0BE.toInt(),0xFFFFFFFF.toInt(),0xFFBEAAFF.toInt()),.10f,.035f)
-                cloudLayers(0xFFFFE2EC.toInt(),0xFF7D3C73.toInt())
+                if (Build.VERSION.SDK_INT < 33) cloudLayers(0xFFFFE2EC.toInt(),0xFF7D3C73.toInt())
                 bokeh(22,intArrayOf(0xFFFFF0C8.toInt(),0xFFFFC8DC.toInt()),.16f,.018f)
             }
         }
