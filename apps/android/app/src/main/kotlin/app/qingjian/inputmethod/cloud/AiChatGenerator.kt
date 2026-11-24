@@ -18,9 +18,10 @@ import java.util.concurrent.TimeUnit
 class AiChatGenerator(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var activeConnection: HttpURLConnection? = null
+    @Volatile private var cancellationRequested = false
 
     /** 删除键可主动中断当前云端请求，而不只是隐藏等待提示。 */
-    fun cancelCurrentRequest() { activeConnection?.disconnect() }
+    fun cancelCurrentRequest() { cancellationRequested = true; activeConnection?.disconnect() }
 
     fun suggestReplies(contextText: String, callback: (Result<List<String>>) -> Unit) {
         if (contextText.isBlank()) {
@@ -188,6 +189,7 @@ class AiChatGenerator(private val context: Context) {
             callback(Result.failure(IllegalStateException("请先在「设置 → 云端大模型」填写接口地址、模型和 API Key")))
             return
         }
+        cancellationRequested = false
         try {
             executor.execute {
                 val result = runCatching { block(config, key) }
@@ -224,6 +226,7 @@ class AiChatGenerator(private val context: Context) {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
         activeConnection = connection
+        if (cancellationRequested) connection.disconnect()
         try {
             connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
             val status = connection.responseCode
