@@ -1,10 +1,12 @@
 package app.qingjian.inputmethod.background
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import app.qingjian.inputmethod.settings.Settings
 
 /** 仅负责调用系统文档选择器；视频背景参数在输入法常用功能子面板内调整。 */
 class DynamicBackgroundActivity : Activity() {
@@ -31,6 +33,7 @@ class DynamicBackgroundActivity : Activity() {
                     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                         .putString(KEY_URI, uri.toString())
                         .putBoolean(KEY_ENABLED, true)
+                        .putInt(KEY_DISPLAY_MODE, MODE_VIDEO)
                         .apply()
                     Toast.makeText(this, "视频已导入并启用", Toast.LENGTH_SHORT).show()
                 }.onFailure {
@@ -49,7 +52,29 @@ class DynamicBackgroundActivity : Activity() {
         const val KEY_ALPHA = "video_alpha"
         const val KEY_BRIGHTNESS = "video_brightness"
         const val KEY_BLUR = "video_blur"
-        const val KEY_MODE = "video_mode" // 0 视频；1 原有光效；2 视频与光效叠加
+        const val KEY_MODE = "video_mode" // 旧版模式，仅用于首次迁移
+        const val KEY_DISPLAY_MODE = "background_display_mode"
+        const val MODE_VIDEO = 0
+        const val MODE_EFFECT = 1
+        const val MODE_NORMAL = 2
+
+        /** 将旧版视频开关/叠加模式一次性迁移为新的单一显示模式。 */
+        fun displayMode(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (prefs.contains(KEY_DISPLAY_MODE)) {
+                return prefs.getInt(KEY_DISPLAY_MODE, MODE_NORMAL).coerceIn(MODE_VIDEO, MODE_NORMAL)
+            }
+            val settings = Settings.preferences(context)
+            val legacyMode = prefs.getInt(KEY_MODE, 2).coerceIn(0, 2)
+            val hasVideo = prefs.getBoolean(KEY_ENABLED, false) && !prefs.getString(KEY_URI, null).isNullOrBlank()
+            val migrated = when {
+                hasVideo && legacyMode != 1 -> MODE_VIDEO
+                settings.getBoolean(Settings.KEY_BACKGROUND_EFFECT, false) -> MODE_EFFECT
+                else -> MODE_NORMAL
+            }
+            prefs.edit().putInt(KEY_DISPLAY_MODE, migrated).apply()
+            return migrated
+        }
         const val KEY_FROSTED = "video_frosted"
         const val KEY_KEYBOARD_MARQUEE = "keyboard_key_marquee"
         const val ACTION_SETTINGS_CHANGED = "app.qingjian.inputmethod.action.DYNAMIC_BACKGROUND_CHANGED"
