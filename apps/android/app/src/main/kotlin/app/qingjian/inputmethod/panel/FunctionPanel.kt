@@ -599,7 +599,7 @@ class FunctionPanel(
             canvas.drawRoundRect(bounds, 11f, 11f, ink.fill)
             ink.fill.style = android.graphics.Paint.Style.FILL
             val sample = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = ink.dp((17f * textSize / 20f).coerceIn(8f, 34f))
+                this.textSize = ink.dp((17f * textSize / 20f).coerceIn(8f, 34f))
                 textAlign = android.graphics.Paint.Align.CENTER
                 color = textColor
                 typeface = weight.typeface
