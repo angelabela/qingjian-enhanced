@@ -615,7 +615,7 @@ class InputPanel(
     )
     // 候选栏与拼音位图始终透出统一面板背景，避免单独绘制第二层底色。
     val bar = CandidateBarView(context, palette, settings.candidateFontSize / 20f, stripSource, settings.toolbar, barListener,
-        settings.fontWeight, true, candidateTextStyleConfig).apply {
+        settings.candidateFontWeight, true, candidateTextStyleConfig).apply {
         setBackgroundColor(Color.TRANSPARENT)
         // 首帧尚未取得视频亮度时先按主题给出可读颜色；光效模式按配色组选择黑/白高对比文字。
         setAdaptiveTextColor(
