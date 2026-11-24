@@ -97,10 +97,58 @@ private class FlowingKeyboardBackgroundDrawable(
     private var shader: LinearGradient? = null
     private var shaderWidth = 0
     private var shaderHeight = 0
+    var onFrame: (() -> Unit)? = null
+    private var sampleBitmap: Bitmap? = null
     private val frame: Runnable = object : Runnable {
         override fun run() {
             invalidateSelf()
+            onFrame?.invoke()
             scheduleSelf(this, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        }
+    }
+
+    /**
+     * 将同一份动态背景以 1/8 分辨率绘制到小位图，再读取工具栏各图标附近的局部亮度。
+     * 不调用 PixelCopy、不截图整个窗口；低频复用小位图，避免影响输入响应。
+     */
+    fun sampleLuminances(xPositions: FloatArray, y: Float): FloatArray {
+        val bounds = bounds
+        if (bounds.isEmpty || xPositions.isEmpty()) return FloatArray(xPositions.size) { 0.5f }
+        val sampleWidth = (bounds.width() / 8).coerceAtLeast(1)
+        val sampleHeight = (bounds.height() / 8).coerceAtLeast(1)
+        var bitmap = sampleBitmap
+        if (bitmap == null || bitmap.width != sampleWidth || bitmap.height != sampleHeight) {
+            bitmap?.recycle()
+            bitmap = Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888)
+            sampleBitmap = bitmap
+        }
+        bitmap.eraseColor(Color.TRANSPARENT)
+        val sx = sampleWidth.toFloat() / bounds.width()
+        val sy = sampleHeight.toFloat() / bounds.height()
+        val sampleCanvas = Canvas(bitmap)
+        sampleCanvas.scale(sx, sy)
+        sampleCanvas.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
+        draw(sampleCanvas)
+
+        fun linear(channel: Int): Double {
+            val value = channel / 255.0
+            return if (value <= 0.04045) value / 12.92 else Math.pow((value + 0.055) / 1.055, 2.4)
+        }
+        return FloatArray(xPositions.size) { index ->
+            val px = ((xPositions[index] - bounds.left) * sx).toInt().coerceIn(0, sampleWidth - 1)
+            val py = ((y - bounds.top) * sy).toInt().coerceIn(0, sampleHeight - 1)
+            var total = 0.0
+            var count = 0
+            for (dy in -2..2) for (dx in -2..2) {
+                val xx = (px + dx).coerceIn(0, sampleWidth - 1)
+                val yy = (py + dy).coerceIn(0, sampleHeight - 1)
+                val pixel = bitmap.getPixel(xx, yy)
+                total += 0.2126 * linear(Color.red(pixel)) +
+                    0.7152 * linear(Color.green(pixel)) +
+                    0.0722 * linear(Color.blue(pixel))
+                count++
+            }
+            (total / count).toFloat().coerceIn(0f, 1f)
         }
     }
 
@@ -560,6 +608,10 @@ class InputPanel(
     private val videoBottomExtension = if (!floating && (!settings.fullscreenAdapt ||
         (settings.bottomLeft == BottomAction.NONE && settings.bottomRight == BottomAction.NONE))) bottomInset else 0
 
+    private var activeFlowBackground: FlowingKeyboardBackgroundDrawable? = null
+    private var currentVideoBackgroundActive = videoBackgroundUri != null
+    private var lastToolbarColorSampleAt = 0L
+
     private val stack = Stack(
         context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur,
         videoBottomExtension,
@@ -580,7 +632,7 @@ class InputPanel(
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = when {
-            backgroundEffectActive -> FlowingKeyboardBackgroundDrawable(palette, settings.keyboardBackgroundStyle)
+            backgroundEffectActive -> createFlowingBackground(settings.keyboardBackgroundStyle)
             videoBackgroundUri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
             else -> android.graphics.drawable.ColorDrawable(palette.board)
         }
@@ -622,12 +674,40 @@ class InputPanel(
         if (!settings.fullscreenAdapt || !corners) setPadding(0, 0, 0, inset)
     }
 
+    private fun createFlowingBackground(style: Int): FlowingKeyboardBackgroundDrawable =
+        FlowingKeyboardBackgroundDrawable(palette, style).also { drawable ->
+            activeFlowBackground = drawable
+            drawable.onFrame = { updateAdaptiveToolbarColors() }
+        }
+
+    /** 每 160ms 低分辨率采样一次；同一工具栏每个图标独立计算黑白对比色。 */
+    private fun updateAdaptiveToolbarColors(force: Boolean = false) {
+        val enabled = Settings.preferences(context).getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
+        if (!enabled) {
+            bar.setAdaptiveToolbarLuminances(null)
+            return
+        }
+        if (currentVideoBackgroundActive) return // 视频帧通过现有亮度回调提供保护色
+        val drawable = activeFlowBackground ?: run {
+            bar.setAdaptiveToolbarLuminances(null)
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        if (!force && now - lastToolbarColorSampleAt < 160L) return
+        if (bar.width <= 0 || bar.height <= 0) return
+        lastToolbarColorSampleAt = now
+        val xs = bar.adaptiveToolbarSampleXs()
+        val luminances = drawable.sampleLuminances(xs, bar.height / 2f)
+        bar.setAdaptiveToolbarLuminances(luminances)
+    }
+
     /** 只替换视频/亮度层，保留键盘、候选栏和当前打开的子面板实例。 */
     fun refreshDynamicBackground() {
         val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
         val enabled = prefs.getBoolean("video_enabled", false)
         val mode = prefs.getInt("video_mode", 2).coerceIn(0, 2)
         val uri = if (enabled && mode != 1) prefs.getString("video_uri", null) else null
+        currentVideoBackgroundActive = uri != null
         val alpha = prefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
         val brightness = prefs.getInt("video_brightness", 100).coerceIn(0, 200)
         val blur = if (prefs.getBoolean("video_frosted", true)) prefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
@@ -664,10 +744,18 @@ class InputPanel(
             is AiExpressionPanel -> active.setTransparentBackground(transparentBackground)
         }
         root.background = when {
-            effectEnabled -> FlowingKeyboardBackgroundDrawable(palette, style)
-            uri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-            else -> android.graphics.drawable.ColorDrawable(palette.board)
+            effectEnabled -> createFlowingBackground(style)
+            uri != null -> {
+                activeFlowBackground = null
+                android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+            }
+            else -> {
+                activeFlowBackground = null
+                android.graphics.drawable.ColorDrawable(palette.board)
+            }
         }
+        if (uri != null || !effectEnabled) bar.setAdaptiveToolbarLuminances(null)
+        else updateAdaptiveToolbarColors(force = true)
         root.invalidate()
     }
 
