@@ -611,7 +611,7 @@ class InputPanel(
     private val videoBackgroundBlur = if (videoBackgroundFrosted) dynamicBackgroundPrefs.getInt("video_blur", 8).coerceIn(0, 30) else 0
 
     val candidateTextStyleConfig = app.qingjian.inputmethod.candidates.CandidateTextStyleEngine.Config.forPreset(
-        palette.text, settings.fontWeight, settings.candidateTextPreset,
+        settings.candidateTextColor.takeIf { it != 0 } ?: palette.text, settings.candidateFontWeight, settings.candidateTextPreset,
     )
     // 候选栏与拼音位图始终透出统一面板背景，避免单独绘制第二层底色。
     val bar = CandidateBarView(context, palette, settings.candidateFontSize / 20f, stripSource, settings.toolbar, barListener,
