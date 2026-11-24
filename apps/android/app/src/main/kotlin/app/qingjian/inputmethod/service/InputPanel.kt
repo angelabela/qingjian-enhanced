@@ -97,7 +97,6 @@ private class FlowingKeyboardBackgroundDrawable(
     private val appearancePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var appearanceAlpha = 1f
     private var appearanceBrightness = 100
-    private var appearanceBlurPx = 0f
     private var drawableAlpha = 255
     private val matrix = Matrix()
     private var shader: LinearGradient? = null
@@ -176,10 +175,9 @@ private class FlowingKeyboardBackgroundDrawable(
         scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
     }
 
-    fun setAppearance(alpha: Float, brightness: Int, blurRadiusDp: Int, density: Float) {
+    fun setAppearance(alpha: Float, brightness: Int) {
         appearanceAlpha = alpha.coerceIn(0f, 1f)
         appearanceBrightness = brightness.coerceIn(0, 200)
-        appearanceBlurPx = blurRadiusDp.coerceIn(0, 30) * density.coerceAtLeast(0f)
         updateAppearancePaint()
         invalidateSelf()
     }
@@ -194,11 +192,6 @@ private class FlowingKeyboardBackgroundDrawable(
                 0f, 0f, scale, 0f, 0f,
                 0f, 0f, 0f, 1f, 0f,
             )))
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
-            appearancePaint.setRenderEffect(if (appearanceBlurPx > 0f) {
-                android.graphics.RenderEffect.createBlurEffect(appearanceBlurPx, appearanceBlurPx, android.graphics.Shader.TileMode.CLAMP)
-            } else null)
         }
     }
 
@@ -651,7 +644,9 @@ class InputPanel(
     private var lastToolbarColorSampleAt = 0L
 
     private val stack = Stack(
-        context, main, videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur,
+        context, main,
+        if (backgroundEffectActive) createFlowingBackground(settings.keyboardBackgroundStyle, videoBackgroundAlpha, videoBackgroundBrightness) else null,
+        videoBackgroundUri, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur,
         videoBottomExtension,
         palette.dark,
     ) { luminance -> bar.setVideoBackgroundLuminance(luminance) }.apply {
@@ -669,11 +664,7 @@ class InputPanel(
 
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        background = when {
-            backgroundEffectActive -> createFlowingBackground(settings.keyboardBackgroundStyle, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur)
-            videoBackgroundUri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-            else -> android.graphics.drawable.ColorDrawable(palette.board)
-        }
+        background = android.graphics.drawable.ColorDrawable(palette.board)
         clipChildren = false
         clipToPadding = false
         // 输入法面板顶部左右圆角，底部保持方正；裁切范围覆盖候选栏、键盘与底部操作条。
@@ -749,10 +740,10 @@ class InputPanel(
         bar.setLiquidGlassBackdropProvider(::captureToolbarBackdrop)
     }
 
-    private fun createFlowingBackground(style: Int, alpha: Float, brightness: Int, blur: Int): FlowingKeyboardBackgroundDrawable =
+    private fun createFlowingBackground(style: Int, alpha: Float, brightness: Int): FlowingKeyboardBackgroundDrawable =
         FlowingKeyboardBackgroundDrawable(palette, style).also { drawable ->
             activeFlowBackground = drawable
-            drawable.setAppearance(alpha, brightness, blur, context.resources.displayMetrics.density)
+            drawable.setAppearance(alpha, brightness)
             // 玻璃底片直接透出同一动态背景，不再每帧读取 RGB 生成图标保护色。
             drawable.onFrame = null
         }
@@ -807,17 +798,12 @@ class InputPanel(
         }
         toolbarBackdropBitmap?.takeUnless { it.isRecycled }?.recycle()
         toolbarBackdropBitmap = null
-        root.background = when {
-            effectEnabled -> createFlowingBackground(style, alpha, brightness, blur)
-            uri != null -> {
-                activeFlowBackground = null
-                android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-            }
-            else -> {
-                activeFlowBackground = null
-                android.graphics.drawable.ColorDrawable(palette.board)
-            }
-        }
+        stack.updateEffectBackground(
+            if (effectEnabled) createFlowingBackground(style, alpha, brightness) else null,
+            blur,
+        )
+        if (!effectEnabled) activeFlowBackground = null
+        root.background = android.graphics.drawable.ColorDrawable(palette.board)
         if (uri != null || !effectEnabled) bar.setAdaptiveToolbarColors(null)
         else updateAdaptiveToolbarColors(force = true)
         root.invalidate()
@@ -1121,6 +1107,7 @@ class InputPanel(
     private class Stack(
         context: Context,
         private val main: View,
+        initialEffectBackground: FlowingKeyboardBackgroundDrawable?,
         videoUri: String?,
         videoAlpha: Float,
         videoBrightness: Int,
@@ -1130,6 +1117,7 @@ class InputPanel(
         private val onVideoLuminance: (Float) -> Unit,
     ) : FrameLayout(context) {
         private val contrastVeil = View(context).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
+        private var effectBackgroundView: View? = initialEffectBackground?.let { makeEffectBackgroundView(it, videoBlur) }
         private var lastVideoMeasureSignature: String? = null
 
         /** 视频/光效与内容之间的自适应衬层，统一保护文字、按键字母和图标的对比度。 */
@@ -1150,6 +1138,31 @@ class InputPanel(
             contrastVeil.alpha = amount
             contrastVeil.invalidate()
         }
+        private fun makeEffectBackgroundView(drawable: FlowingKeyboardBackgroundDrawable, blurDp: Int): View =
+            View(context).apply {
+                background = drawable
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    val radius = blurDp.coerceIn(0, 30) * resources.displayMetrics.density
+                    setRenderEffect(if (radius > 0f) {
+                        android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+                    } else null)
+                }
+            }
+
+        fun updateEffectBackground(drawable: FlowingKeyboardBackgroundDrawable?, blurDp: Int) {
+            effectBackgroundView?.let(::removeView)
+            effectBackgroundView = drawable?.let { makeEffectBackgroundView(it, blurDp) }
+            effectBackgroundView?.let {
+                addView(it, 0, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.TOP,
+                ))
+            }
+            requestLayout()
+            invalidate()
+        }
+
         private var currentVideoUri: String? = videoUri?.takeIf { it.isNotBlank() }
         private var videoBackground: DynamicVideoBackgroundView? = currentVideoUri?.let {
             DynamicVideoBackgroundView(context, Uri.parse(it), videoAlpha, videoBlur).apply {
@@ -1163,6 +1176,7 @@ class InputPanel(
 
         /** 只绘制底层视频、色调与对比度衬层，跳过 main，避免递归采样工具栏自身。 */
         fun drawBackdropLayers(canvas: Canvas, scale: Float) {
+            effectBackgroundView?.let { drawChild(canvas, it, drawingTime) }
             val video = videoBackground
             if (video != null && video.isAvailable) {
                 val snapshotWidth = (width * scale).toInt().coerceAtLeast(1)
@@ -1194,7 +1208,7 @@ class InputPanel(
                     }
                 }
                 videoBackground?.let {
-                    addView(it, 0, FrameLayout.LayoutParams(
+                    addView(it, if (effectBackgroundView != null) 1 else 0, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         Gravity.TOP,
@@ -1207,7 +1221,7 @@ class InputPanel(
             videoTint?.let(::removeView)
             videoTint = makeVideoTint(context, normalizedUri, brightness)
             videoTint?.let {
-                addView(it, if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(
+                addView(it, (if (effectBackgroundView != null) 1 else 0) + if (videoBackground != null) 1 else 0, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.TOP,
@@ -1226,6 +1240,9 @@ class InputPanel(
         }
 
         init {
+            effectBackgroundView?.let {
+                addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
+            }
             videoBackground?.let {
                 addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP))
             }
@@ -1259,7 +1276,7 @@ class InputPanel(
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === main) continue
-                if (child === videoBackground || child === videoTint) {
+                if (child === effectBackgroundView || child === videoBackground || child === videoTint) {
                     child.measure(contentWidth, videoHeight)
                     continue
                 }
