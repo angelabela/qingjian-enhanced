@@ -142,9 +142,6 @@ class CandidateBarView(
 
     /** 视频背景帧亮度变化时，自动切换候选文字的高对比颜色。 */
     fun setVideoBackgroundLuminance(luminance: Float) {
-        if (Settings.preferences(context).getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)) {
-            setAdaptiveToolbarLuminance(luminance)
-        }
         val current = adaptiveVideoTextColor
         val next = when (current) {
             android.graphics.Color.BLACK -> if (luminance < 0.44f) android.graphics.Color.WHITE else android.graphics.Color.BLACK
