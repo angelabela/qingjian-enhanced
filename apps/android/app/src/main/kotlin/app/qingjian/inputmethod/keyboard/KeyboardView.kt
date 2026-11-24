@@ -144,6 +144,7 @@ class KeyboardView(
     private var voiceMode = false
     private var clipboardMode = false
     private var candidateSwipeMode = false
+    private var candidateSwipeCancelled = false
     private var candidateSwipeLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
@@ -440,13 +441,14 @@ class KeyboardView(
                 }
                 // 松手事件的坐标可能比最后一帧 MOVE 更新；释放前再做一次按钮命中检测。
                 if (pointer == spacePointer && voiceMode) trackVoice(event)
+                if (pointer == spacePointer && candidateSwipeMode) trackCursor(event)
                 val slot = pressed.remove(pointer)
                 val choosing = pointer == longPressPointer && choicePopup.showing
                 val movedCursor = pointer == spacePointer && cursorMode
                 val spoke = pointer == spacePointer && voiceMode
                 val openClipboard = pointer == spacePointer && clipboardMode
                 val selectedBySwipe = pointer == spacePointer && candidateSwipeMode
-                val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode && !candidateSwipeMode
+                val spaceTap = pointer == spacePointer && slot?.key is Key.Space && !cursorMode && !voiceMode && !clipboardMode && !candidateSwipeMode && !candidateSwipeCancelled
                 if (selectedBySwipe) listener.onCandidateSwipeEnd(commit = true)
                 if (pointer == spacePointer) {
                     timer.removeCallbacks(spaceHold)
@@ -455,6 +457,7 @@ class KeyboardView(
                     voiceMode = false
                     clipboardMode = false
                     candidateSwipeMode = false
+                    candidateSwipeCancelled = false
                     candidateSwipeLastStep = 0
                 }
                 if (pointer == longPressPointer) {
@@ -802,6 +805,7 @@ class KeyboardView(
         ) {
             listener.onCandidateSwipeEnd(commit = false)
             candidateSwipeMode = false
+            candidateSwipeCancelled = true
             candidateSwipeLastStep = 0
             timer.removeCallbacks(spaceHold)
             cursorMode = false
@@ -866,6 +870,7 @@ class KeyboardView(
         voiceMode = false
         clipboardMode = false
         candidateSwipeMode = false
+        candidateSwipeCancelled = false
         candidateSwipeLastStep = 0
         longPressPointer = -1
         if (choicePopup.showing) choicePopup.finish()
