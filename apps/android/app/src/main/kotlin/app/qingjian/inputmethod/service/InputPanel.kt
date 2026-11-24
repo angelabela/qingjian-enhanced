@@ -595,6 +595,7 @@ class InputPanel(
     onCloudSelect: (Int) -> Unit,
     private val onGenerateAiExpression: (String, (Result<List<AiExpressionGroup>>) -> Unit) -> Unit,
     private val aiChatGenerator: AiChatGenerator,
+    private val onCancelAiExpression: () -> Unit,
     /** 游戏键盘里浮着用（[GameFrame]）：不接底下的操作条，也不让导航栏。 */
     private val floating: Boolean = false,
 ) {
@@ -654,6 +655,7 @@ class InputPanel(
 
     private var panelView: View? = null
     private var chatPanel: AiChatPanel? = null
+    private var expressionPanel: AiExpressionPanel? = null
     private var voiceView: VoicePanel? = null
 
     /** AI 对话面板接管当前输入连接，让底部实体键盘可以直接编辑面板字段。 */
@@ -941,7 +943,7 @@ class InputPanel(
                 context, palette, header, text, aiChatGenerator, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
             )
             PanelKind.AI_EXPRESSION -> AiExpressionPanel(
-                context, palette, header, text, onGenerateAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
+                context, palette, header, text, onGenerateAiExpression, onCancelAiExpression, actions::replaceInputText, actions::undoInputReplacement, actions::closePanel, transparentBackground,
             )
             PanelKind.CLIPBOARD, PanelKind.PHRASES -> ClipboardPanel(context, palette, actions, header, phrasesFirst = kind == PanelKind.PHRASES)
             PanelKind.PIECES -> PiecesPanel(context, palette, actions, header, text)
@@ -1003,9 +1005,8 @@ class InputPanel(
         (panel as? app.qingjian.inputmethod.panel.base.PanelView)?.useAnimatedBackground(transparentBackground)
         // AI 对话与 AI 情境表达使用完全相同的面板容器和测量高度，
         // 不再额外搬动候选栏或创建覆盖整块输入法窗口的特殊层。
-        if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) {
-            chatPanel = panel
-        }
+        if (kind == PanelKind.AI_CHAT && panel is AiChatPanel) chatPanel = panel
+        if (kind == PanelKind.AI_EXPRESSION && panel is AiExpressionPanel) expressionPanel = panel
         stack.addView(
             panel,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
@@ -1124,6 +1125,13 @@ class InputPanel(
         }
     }
 
+    /** 删除键优先取消正在进行的 AI 一键生成；返回 true 时不删除输入框文字。 */
+    fun cancelAiGeneration(): Boolean = when (openPanel) {
+        PanelKind.AI_CHAT -> chatPanel?.cancelGeneration() == true
+        PanelKind.AI_EXPRESSION -> expressionPanel?.cancelGeneration() == true
+        else -> false
+    }
+
     /** 回到键盘；没开面板时什么都不做。 */
     fun close() {
         panelView?.let(stack::removeView)
@@ -1131,6 +1139,7 @@ class InputPanel(
         panelView = null
         voiceView = null
         chatPanel = null
+        expressionPanel = null
         openPanel = null
         main.visibility = View.VISIBLE
     }
