@@ -554,7 +554,15 @@ class QingjianInputMethodService :
         // 因此这类面板状态只持久化，不触发整套输入法视图重建。
         if (key == Settings.KEY_CLIPBOARD_PASTE_ENTER ||
             key == Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL ||
-            key == SmsCodeReceiver.KEY_ENABLED
+            key == SmsCodeReceiver.KEY_ENABLED ||
+            key == Settings.KEY_CANDIDATE_TEXT_COLOR ||
+            key == Settings.KEY_KEYBOARD_TEXT_COLOR ||
+            key == Settings.KEY_CANDIDATE_FONT_SIZE ||
+            key == Settings.KEY_KEY_FONT_SIZE ||
+            key == Settings.KEY_CANDIDATE_FONT_WEIGHT ||
+            key == Settings.KEY_KEYBOARD_FONT_WEIGHT ||
+            key == Settings.KEY_CANDIDATE_TEXT_PRESET ||
+            key == Settings.KEY_KEYBOARD_TEXT_PRESET
         ) return@OnSharedPreferenceChangeListener
         contacts.sync()
         if (!writingSettings) setInputView(onCreateInputView())
@@ -2241,9 +2249,21 @@ class QingjianInputMethodService :
 
     override fun onSwipe(input: String) = composer.onSwipe(input)
 
+    /** 删除键可中止面板 AI，也可中止空格手势触发的快捷 AI 请求。 */
+    private fun cancelQuickAiGeneration(): Boolean {
+        val connection = quickAiLoadingConnection ?: return false
+        quickAiSequence++
+        aiChat.cancelCurrentRequest()
+        aiExpression.cancelCurrentRequest()
+        stopQuickAiLoading(clearText = true, connection = connection)
+        toast("已取消 AI 生成")
+        return true
+    }
+
     override fun onBackspaceDown() {
         if (ClipboardPanel.isSearchEditorActive(this)) return
         if (panel?.cancelAiGeneration() == true) return
+        if (cancelQuickAiGeneration()) return
         composer.onBackspaceDown()
     }
 
