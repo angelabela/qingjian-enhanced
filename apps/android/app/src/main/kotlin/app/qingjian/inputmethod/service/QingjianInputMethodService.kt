@@ -1923,6 +1923,11 @@ class QingjianInputMethodService :
         Settings.preferences(this).edit().putInt(key, value).apply()
     }
 
+    override fun refreshKeyboardSettings() {
+        reopenPanel = panel?.openPanel
+        showKeyboard()
+    }
+
     /** 面板开着时系统返回键先关面板。 */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0 && panel?.openPanel != null) {
