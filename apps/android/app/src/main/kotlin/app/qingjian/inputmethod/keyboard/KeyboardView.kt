@@ -644,7 +644,8 @@ class KeyboardView(
         val key = flickSlot?.key ?: return
         val isBackspace = key == Key.Backspace
         val downAction = gestureAction(key, upward = false)
-        val allowsDown = isBackspace || downAction != Settings.GestureAction.DEFAULT
+        // Z/X/C/V 的下滑由 editPointer 专用路径处理，不交给通用 flick，避免复制被其他编辑动作覆盖。
+        val allowsDown = isBackspace || (downAction != Settings.GestureAction.DEFAULT && editShortcutOf(key) == null)
         if (flickDirection == 0) {
             if (side > abs(vertical) * FLICK_SLOPE || vertical == 0f || (vertical < 0f && !allowsDown)) {
                 flickBroken = true
