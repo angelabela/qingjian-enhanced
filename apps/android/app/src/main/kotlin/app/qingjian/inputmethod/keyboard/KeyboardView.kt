@@ -89,10 +89,11 @@ class KeyboardView(
     private val borderColors = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
     private val backgroundColors = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
     private val painter = KeyPainter(
-        palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.fontWeight,
+        palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.keyboardFontWeight,
         keyBackgroundAlpha, keyBackgroundFrosted, settings.keyboardTextPreset,
         borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)],
         backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)],
+        settings.keyboardTextColor,
     )
     private var marqueeEnabled = keyMarqueeEnabled
     private val side = SideColumn(metrics.density) { item ->
