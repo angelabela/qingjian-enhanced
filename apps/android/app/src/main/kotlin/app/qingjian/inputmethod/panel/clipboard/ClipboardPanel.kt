@@ -11,6 +11,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.LinearGradient
+import android.graphics.Shader
+import android.os.SystemClock
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
@@ -146,9 +149,8 @@ class ClipboardPanel(
     private val thumbnails = HashMap<String, Bitmap?>()
     private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val scrollGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = ink.dp(1.4f)
+    private val scrollTrailPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        style = Paint.Style.FILL
     }
 
     /** 长按打开的大图（图片完整路径），null 是没开。 */
@@ -179,9 +181,10 @@ class ClipboardPanel(
     private var swipeClipIndex = -1
     private var deleteRepeatStarted = false
 
-    // 剪贴板与常用语列表共用轻微错层回弹动效。
+    // 纵向滚动采用轻量液态拖尾；卡片本身保持稳定绘制，避免每帧逐卡片离屏合成。
     private var lastDrawnScrollOffset = 0f
-    private var scrollMotion = 0f
+    private var scrollVelocity = 0f
+    private var lastScrollFrameAt = 0L
 
     private val activateSwipeRunnable = Runnable {
         if (swipeTracking && swipeClipIndex >= 0 && !showingPhrases) {
@@ -605,16 +608,22 @@ class ClipboardPanel(
         } else {
             restoreClipScrollPending = false
         }
+        val now = SystemClock.uptimeMillis()
+        val frameDelta = (now - lastScrollFrameAt).coerceIn(1L, 48L)
         val scrollDelta = listScroll.offset - lastDrawnScrollOffset
         if (kotlin.math.abs(scrollDelta) > 0.25f) {
-            scrollMotion = (scrollMotion + scrollDelta * 0.62f).coerceIn(-ink.dp(60f), ink.dp(60f))
+            val instantaneousVelocity = (scrollDelta / frameDelta).coerceIn(-3.2f, 3.2f)
+            scrollVelocity = (scrollVelocity * 0.58f + instantaneousVelocity * 0.42f).coerceIn(-3.2f, 3.2f)
         }
         lastDrawnScrollOffset = listScroll.offset
-        if (kotlin.math.abs(scrollMotion) > 0.18f) {
-            // 以更长的缓出尾迹收束快速滑动，让减速过程清楚可见。
-            scrollMotion *= 0.92f
+        lastScrollFrameAt = now
+        val trailStrength = (kotlin.math.abs(scrollVelocity) / 3.2f).coerceIn(0f, 1f)
+        if (trailStrength > 0.018f) {
+            scrollVelocity *= kotlin.math.exp(-frameDelta / 190f)
             postInvalidateOnAnimation()
-        } else scrollMotion = 0f
+        } else {
+            scrollVelocity = 0f
+        }
         canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
@@ -627,29 +636,32 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            val phase = ((i % 4) + 1) / 4f
-            val strength = (kotlin.math.abs(scrollMotion) / ink.dp(60f).coerceAtLeast(1f)).coerceIn(0f, 1f)
-            val direction = if (scrollMotion < 0f) -1f else 1f
-            // 新的「纵向弹性波」：卡片错层上下浮动、轻微缩放，并带品牌色边缘扫光。
-            val driftY = direction * strength * ink.dp(18f) * phase
-            val driftX = direction * strength * ink.dp(5f) * phase
-            val scale = 1f - strength * 0.035f * phase
-            val motionAlpha = (255 - strength * 88f).toInt().coerceIn(150, 255)
-            val cardLayer = canvas.saveLayerAlpha(0f, top - ink.dp(22f), width.toFloat(), bottom + ink.dp(22f), motionAlpha)
             canvas.save()
-            canvas.translate(driftX, driftY)
-            canvas.scale(scale, scale, width / 2f, (top + bottom) / 2f)
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
-            if (strength > 0.08f) {
-                scrollGlowPaint.color = (palette.brand and 0x00FFFFFF) or (((0xA0 * strength).toInt().coerceIn(0, 0xA0)) shl 24)
-                val glowBounds = RectF(ink.dp(2f), top + ink.dp(2f), width - ink.dp(2f), bottom - ink.dp(2f))
-                canvas.drawRoundRect(glowBounds, ink.dp(13f), ink.dp(13f), scrollGlowPaint)
-            }
             canvas.restore()
-            canvas.restoreToCount(cardLayer)
+        }
+        // 单条边缘流光取代逐卡片缩放/透明离屏层，减少快速滑动时的绘制开销。
+        if (trailStrength > 0.025f) {
+            val trailHeight = list.height() * (0.12f + trailStrength * 0.20f)
+            val trailCenter = if (scrollVelocity > 0f) {
+                list.top + trailHeight * 0.52f
+            } else {
+                list.bottom - trailHeight * 0.52f
+            }
+            val alpha = (0x72 * trailStrength).toInt().coerceIn(0, 0x72)
+            scrollTrailPaint.shader = LinearGradient(
+                0f, trailCenter - trailHeight / 2f, 0f, trailCenter + trailHeight / 2f,
+                intArrayOf(Color.TRANSPARENT, (palette.brand and 0x00FFFFFF) or (alpha shl 24), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.5f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            val trailRect = RectF(width - ink.dp(3f), trailCenter - trailHeight / 2f,
+                width - ink.dp(1f), trailCenter + trailHeight / 2f)
+            canvas.drawRoundRect(trailRect, ink.dp(1f), ink.dp(1f), scrollTrailPaint)
+            scrollTrailPaint.shader = null
         }
         canvas.restore()
         if (showingPhrases) {
@@ -1189,7 +1201,8 @@ class ClipboardPanel(
             listScroll.reset()
             lastClipScrollOffset = 0f
             lastDrawnScrollOffset = 0f
-            scrollMotion = 0f
+            scrollVelocity = 0f
+            lastScrollFrameAt = 0L
             restoreClipScrollPending = false
         } else if (!showingPhrases) {
             lastClipScrollOffset = listScroll.offset

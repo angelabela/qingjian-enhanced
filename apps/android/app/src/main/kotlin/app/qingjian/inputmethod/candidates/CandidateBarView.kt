@@ -151,6 +151,12 @@ class CandidateBarView(
         setAdaptiveTextColor(next)
     }
 
+    /** 将输入法动态/视频背景纹理提供给液态玻璃图标。 */
+    fun setLiquidGlassBackdropProvider(provider: (() -> Bitmap?)?) {
+        toolbar.setBackdropProvider(provider)
+        invalidate()
+    }
+
     /** 工具栏图标在当前栏宽中的背景采样横坐标。 */
     fun adaptiveToolbarSampleXs(): FloatArray = toolbar.sampleXs(width)
 

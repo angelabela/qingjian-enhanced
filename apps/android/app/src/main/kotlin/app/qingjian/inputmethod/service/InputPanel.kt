@@ -670,6 +670,43 @@ class InputPanel(
         if (!settings.fullscreenAdapt || !corners) setPadding(0, 0, 0, inset)
     }
 
+    private var toolbarBackdropBitmap: Bitmap? = null
+    private var lastToolbarBackdropCaptureAt = 0L
+    private val toolbarBackdropScale = 0.25f
+
+    private fun captureToolbarBackdrop(): Bitmap? {
+        if (root.width <= 0 || root.height <= 0 || bar.width <= 0) return null
+        val now = SystemClock.uptimeMillis()
+        if (now - lastToolbarBackdropCaptureAt < 32L) return toolbarBackdropBitmap
+        lastToolbarBackdropCaptureAt = now
+        val targetWidth = (root.width * toolbarBackdropScale).toInt().coerceAtLeast(1)
+        val targetHeight = (bar.barHeight * toolbarBackdropScale).toInt().coerceAtLeast(1)
+        var bitmap = toolbarBackdropBitmap
+        if (bitmap == null || bitmap.isRecycled || bitmap.width != targetWidth || bitmap.height != targetHeight) {
+            bitmap?.takeUnless { it.isRecycled }?.recycle()
+            bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            toolbarBackdropBitmap = bitmap
+        }
+        bitmap.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(bitmap)
+        canvas.save()
+        canvas.scale(toolbarBackdropScale, toolbarBackdropScale)
+        root.background?.let { background ->
+            background.setBounds(0, 0, root.width, root.height)
+            background.draw(canvas)
+        }
+        canvas.save()
+        canvas.translate(stack.left.toFloat(), stack.top.toFloat())
+        stack.drawBackdropLayers(canvas, toolbarBackdropScale)
+        canvas.restore()
+        canvas.restore()
+        return bitmap
+    }
+
+    init {
+        bar.setLiquidGlassBackdropProvider(::captureToolbarBackdrop)
+    }
+
     private fun createFlowingBackground(style: Int): FlowingKeyboardBackgroundDrawable =
         FlowingKeyboardBackgroundDrawable(palette, style).also { drawable ->
             activeFlowBackground = drawable
@@ -725,6 +762,8 @@ class InputPanel(
             is AiChatPanel -> active.setTransparentBackground(transparentBackground)
             is AiExpressionPanel -> active.setTransparentBackground(transparentBackground)
         }
+        toolbarBackdropBitmap?.takeUnless { it.isRecycled }?.recycle()
+        toolbarBackdropBitmap = null
         root.background = when {
             effectEnabled -> createFlowingBackground(style)
             uri != null -> {
@@ -1078,6 +1117,25 @@ class InputPanel(
             }
         }
         private var videoTint: View? = makeVideoTint(context, currentVideoUri, videoBrightness)
+
+        /** 只绘制底层视频、色调与对比度衬层，跳过 main，避免递归采样工具栏自身。 */
+        fun drawBackdropLayers(canvas: Canvas, scale: Float) {
+            val video = videoBackground
+            if (video != null && video.isAvailable) {
+                val snapshotWidth = (width * scale).toInt().coerceAtLeast(1)
+                val snapshotHeight = (height * scale).toInt().coerceAtLeast(1)
+                val snapshot = runCatching { video.getBitmap(snapshotWidth, snapshotHeight) }.getOrNull()
+                if (snapshot != null) {
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                        alpha = (video.alpha * 255f).toInt().coerceIn(0, 255)
+                    }
+                    canvas.drawBitmap(snapshot, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
+                    snapshot.recycle()
+                }
+            }
+            videoTint?.let { drawChild(canvas, it, drawingTime) }
+            drawChild(canvas, contrastVeil, drawingTime)
+        }
 
         fun updateVideoBackground(uri: String?, alpha: Float, brightness: Int, blur: Int) {
             val normalizedUri = uri?.takeIf { it.isNotBlank() }

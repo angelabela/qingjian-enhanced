@@ -1,10 +1,15 @@
 package app.qingjian.inputmethod.candidates
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
 import android.os.SystemClock
@@ -42,7 +47,33 @@ class Toolbar(
     private var adaptiveTransitionStartedAt = 0L
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glassEffectPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val backdropMatrix = Matrix()
     private var liquidGlassShader: RuntimeShader? = null
+    private var backdropShaderBitmap: Bitmap? = null
+    private var backdropShader: BitmapShader? = null
+    private var backdropProvider: (() -> Bitmap?)? = null
+    private val iconMaskCache = HashMap<Pair<Icon, Int>, Bitmap>()
+
+    fun setBackdropProvider(provider: (() -> Bitmap?)?) {
+        backdropProvider = provider
+    }
+
+    private fun iconMask(icon: Icon, renderSize: Int, iconSize: Float): Bitmap {
+        val key = icon to renderSize
+        return iconMaskCache.getOrPut(key) {
+            Bitmap.createBitmap(renderSize, renderSize, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val maskCanvas = Canvas(bitmap)
+                val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+                PanelIcons.draw(maskCanvas, icon, renderSize / 2f, renderSize / 2f, iconSize, maskPaint)
+            }
+        }
+    }
 
     /** 中间那排滑过去的距离（像素）。 */
     var offset = 0f
@@ -156,74 +187,68 @@ class Toolbar(
     }
 
     /**
-     * iOS Liquid Glass 风格的图标底片：半透明材质保留后方动态背景，
-     * RuntimeShader 负责柔和的边缘折射感、高光带与主题色融合；API 26–32 使用 Canvas 降级绘制。
-     * 这里不套整棵 View 树的 RenderEffect，避免候选文字与键盘按键被一起扭曲。
+     * 玻璃材质直接作用于图标笔画，不绘制圆角方框。
+     * Refraction / dispersion 核心思路移植自 Kyant0/AndroidLiquidGlass (Backdrop)：
+     * https://github.com/Kyant0/AndroidLiquidGlass
+     * Copyright 2025 Kyant, Apache-2.0。此处改为 View/Canvas 字形 alpha mask，
+     * 并由输入法当前背景纹理作为 backdrop shader，不依赖 Compose Backdrop 容器。
      */
-    private fun drawLiquidGlassIcon(canvas: Canvas, icon: Icon, cx: Float, cy: Float, size: Float) {
-        val tileSize = size * 1.52f
-        val left = cx - tileSize / 2f
-        val top = cy - tileSize / 2f
-        val radius = tileSize * 0.30f
+    private fun drawLiquidGlassIcon(
+        canvas: Canvas,
+        icon: Icon,
+        cx: Float,
+        cy: Float,
+        size: Float,
+        backdrop: Bitmap?,
+        viewWidth: Int,
+    ) {
         val brand = palette.brand
-        val shader = if (Build.VERSION.SDK_INT >= 33) {
-            liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_AGSL).also { liquidGlassShader = it }
-        } else null
-
-        canvas.save()
-        canvas.translate(left, top)
-        if (shader != null) {
-            shader.setFloatUniform("resolution", tileSize, tileSize)
-            shader.setFloatUniform("time", (SystemClock.uptimeMillis() % 12_000L) / 12_000f)
-            shader.setFloatUniform(
-                "tint",
-                Color.red(brand) / 255f,
-                Color.green(brand) / 255f,
-                Color.blue(brand) / 255f,
-                1f,
-            )
-            glassPaint.style = Paint.Style.FILL
-            glassPaint.shader = shader
-            canvas.drawRoundRect(0f, 0f, tileSize, tileSize, radius, radius, glassPaint)
-            glassPaint.shader = null
-        } else {
-            glassPaint.style = Paint.Style.FILL
-            glassPaint.shader = LinearGradient(
-                0f, 0f, tileSize, tileSize,
-                intArrayOf(withAlpha(Color.WHITE, 68), withAlpha(brand, 30), withAlpha(Color.WHITE, 18)),
-                floatArrayOf(0f, 0.58f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawRoundRect(0f, 0f, tileSize, tileSize, radius, radius, glassPaint)
-            glassPaint.shader = null
+        if (Build.VERSION.SDK_INT < 33 || backdrop == null || backdrop.isRecycled) {
+            // 旧系统/纹理暂不可用时保留玻璃笔画高光，仍然不绘制任何外框。
+            glassPaint.style = Paint.Style.STROKE
+            glassPaint.strokeCap = Paint.Cap.ROUND
+            glassPaint.strokeJoin = Paint.Join.ROUND
+            glassPaint.color = withAlpha(brand, 224)
+            PanelIcons.draw(canvas, icon, cx, cy, size, glassPaint)
+            glassPaint.color = withAlpha(Color.WHITE, 104)
+            canvas.save()
+            canvas.translate(-0.35f * density, -0.45f * density)
+            PanelIcons.draw(canvas, icon, cx, cy, size, glassPaint)
+            canvas.restore()
+            return
         }
-        glassPaint.style = Paint.Style.STROKE
-        glassPaint.strokeWidth = 0.85f * density
-        glassPaint.color = withAlpha(Color.WHITE, if (palette.dark) 126 else 166)
-        canvas.drawRoundRect(0.5f * density, 0.5f * density, tileSize - 0.5f * density,
-            tileSize - 0.5f * density, radius, radius, glassPaint)
-        glassPaint.style = Paint.Style.FILL
-        glassPaint.shader = LinearGradient(
-            0f, 1f * density, tileSize * 0.88f, tileSize * 0.42f,
-            withAlpha(Color.WHITE, if (palette.dark) 92 else 118),
-            withAlpha(brand, 0),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRoundRect(1.5f * density, 1.5f * density, tileSize - 1.5f * density,
-            tileSize * 0.30f, radius * 0.72f, radius * 0.72f, glassPaint)
-        glassPaint.shader = null
-        canvas.restore()
 
-        val hsv = FloatArray(3)
-        Color.colorToHSV(brand, hsv)
-        val highlight = Color.HSVToColor(floatArrayOf(hsv[0], (hsv[1] * 0.48f).coerceIn(0.12f, 0.55f), 1f))
-        stroke.shader = LinearGradient(
-            cx - size * 0.52f, cy - size * 0.52f, cx + size * 0.52f, cy + size * 0.52f,
-            highlight, brand, Shader.TileMode.CLAMP,
+        val padding = 5.5f * density
+        val renderSize = kotlin.math.ceil(size + padding * 2f).toInt().coerceAtLeast(8)
+        val mask = iconMask(icon, renderSize, size)
+        val shader = liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_ICON_AGSL).also { liquidGlassShader = it }
+        val sourceScale = backdrop.width.toFloat() / viewWidth.coerceAtLeast(1)
+        val sourceShader = if (backdropShaderBitmap !== backdrop || backdropShader == null) {
+            BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                backdropShaderBitmap = backdrop
+                backdropShader = it
+            }
+        } else backdropShader!!
+
+        backdropMatrix.setScale(sourceScale, sourceScale)
+        backdropMatrix.postTranslate((cx - renderSize / 2f) * sourceScale, (cy - renderSize / 2f) * sourceScale)
+        sourceShader.setLocalMatrix(backdropMatrix)
+        shader.setInputShader("backdrop", sourceShader)
+        shader.setFloatUniform("size", renderSize.toFloat(), renderSize.toFloat())
+        shader.setFloatUniform("refractionAmount", 4.8f * density)
+        shader.setFloatUniform("dispersion", 0.65f * density)
+        shader.setFloatUniform(
+            "tint",
+            Color.red(brand) / 255f,
+            Color.green(brand) / 255f,
+            Color.blue(brand) / 255f,
+            1f,
         )
-        stroke.color = brand
-        PanelIcons.draw(canvas, icon, cx, cy, size, stroke)
-        stroke.shader = null
+        glassEffectPaint.renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
+        val left = cx - renderSize / 2f
+        val top = cy - renderSize / 2f
+        canvas.drawBitmap(mask, null, RectF(left, top, left + renderSize, top + renderSize), glassEffectPaint)
+        glassEffectPaint.renderEffect = null
     }
 
     fun onLogo(x: Float) = x < logoSlot
@@ -272,13 +297,14 @@ class Toolbar(
         canvas.restore()
 
         val liquidGlassEnabled = Settings.preferences(context).getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
+        val backdrop = if (liquidGlassEnabled && Build.VERSION.SDK_INT >= 33) backdropProvider?.invoke() else null
         val slot = middleSlot(viewWidth)
         val divider = viewWidth - hideSlot
         canvas.save()
         canvas.clipRect(logoSlot, 0f, divider, barHeight)
         tools.forEachIndexed { i, tool ->
             val cx = logoSlot + slot * (i + 0.5f) - offset
-            if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, tool.icon, cx, cy, 26 * density)
+            if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, tool.icon, cx, cy, 26 * density, backdrop, viewWidth)
             else {
                 stroke.shader = null
                 stroke.color = palette.gloss
@@ -290,7 +316,7 @@ class Toolbar(
         line.color = palette.faint
         canvas.drawLine(logoSlot, cy - 12 * density, logoSlot, cy + 12 * density, line)
         canvas.drawLine(divider, cy - 12 * density, divider, cy + 12 * density, line)
-        if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density)
+        if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, backdrop, viewWidth)
         else {
             stroke.shader = null
             stroke.color = palette.gloss
@@ -303,25 +329,45 @@ class Toolbar(
         const val LOGO_CYCLE_MS = 3_600L
         const val COLOR_TRANSITION_MS = 460f
 
-        private const val LIQUID_GLASS_AGSL = """
-            uniform float2 resolution;
-            uniform float time;
+        private const val LIQUID_GLASS_ICON_AGSL = """
+            uniform shader content;
+            uniform shader backdrop;
+            uniform float2 size;
+            uniform float refractionAmount;
+            uniform float dispersion;
             uniform float4 tint;
 
-            half4 main(float2 p) {
-                float2 uv = p / resolution;
-                float2 q = uv * 2.0 - 1.0;
-                float edgeDistance = max(abs(q.x), abs(q.y));
-                float edgeMask = 1.0 - smoothstep(0.88, 1.0, edgeDistance);
-                float rim = smoothstep(0.56, 0.80, edgeDistance) *
-                    (1.0 - smoothstep(0.82, 0.98, edgeDistance));
-                float sweepPosition = fract(time * 0.11 + uv.y * 0.22);
-                float sweep = exp(-pow((uv.x - sweepPosition) * 7.0, 2.0));
-                float topGlow = 1.0 - smoothstep(0.0, 0.72, uv.y);
-                float alpha = (0.13 + rim * 0.18 + sweep * 0.10 + topGlow * 0.035) * edgeMask;
-                float mixAmount = clamp(rim * 0.42 + sweep * 0.52 + topGlow * 0.10, 0.0, 1.0);
-                float3 baseColor = mix(tint.rgb, float3(1.0), mixAmount);
-                return half4(half3(baseColor * alpha), half(alpha));
+            half4 main(float2 coord) {
+                half4 mask = content.eval(coord);
+                if (mask.a <= 0.001) return half4(0.0);
+
+                float2 texel = 1.0 / max(size, float2(1.0));
+                float gx = content.eval(coord + float2(texel.x, 0.0)).a -
+                    content.eval(coord - float2(texel.x, 0.0)).a;
+                float gy = content.eval(coord + float2(0.0, texel.y)).a -
+                    content.eval(coord - float2(0.0, texel.y)).a;
+                float2 gradient = float2(gx, gy);
+                float edge = clamp(length(gradient) * 1.65, 0.0, 1.0);
+                float2 normal = normalize(gradient + float2(0.0001, 0.0001));
+
+                float2 refractedCoord = coord + normal * refractionAmount * edge;
+                half4 original = backdrop.eval(coord);
+                half4 refracted = backdrop.eval(refractedCoord);
+                half4 red = backdrop.eval(refractedCoord + normal * dispersion * edge);
+                half4 blue = backdrop.eval(refractedCoord - normal * dispersion * edge);
+
+                half3 glass = mix(original.rgb, refracted.rgb, 0.78);
+                glass.r = mix(glass.r, red.r, edge * 0.34);
+                glass.b = mix(glass.b, blue.b, edge * 0.34);
+                glass = mix(glass, tint.rgb, 0.18);
+
+                float facing = max(dot(normal, normalize(float2(-0.72, -0.68))), 0.0);
+                float highlight = edge * (0.16 + facing * 0.48);
+                float innerDepth = (1.0 - edge) * 0.035;
+                glass += half3(highlight + innerDepth);
+
+                float alpha = mask.a * 0.94;
+                return half4(glass * alpha, alpha);
             }
         """
     }

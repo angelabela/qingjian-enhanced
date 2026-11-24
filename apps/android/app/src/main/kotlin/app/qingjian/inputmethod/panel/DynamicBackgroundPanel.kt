@@ -23,6 +23,8 @@ class DynamicBackgroundPanel(
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
     private var sliderTouchIndex = -1
+    private var restoreScrollPending = true
+    private val scrollStateKey = "dynamic_background_panel_scroll_offset"
     private val rowHeight get() = ink.dp(58f)
     private val effectCellHeight get() = ink.dp(62f)
     private val effectGridGap get() = ink.dp(8f)
@@ -66,6 +68,10 @@ class DynamicBackgroundPanel(
         val viewportBottom = card.bottom - ink.dp(8f)
         val totalHeight = sliderRowTop(top, 7) + rowHeight - top
         scroll.max = (totalHeight - (viewportBottom - viewportTop)).coerceAtLeast(0f)
+        if (restoreScrollPending) {
+            scroll.drag(prefs.getFloat(scrollStateKey, 0f))
+            restoreScrollPending = false
+        }
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
         canvas.translate(0f, -scroll.offset)
@@ -281,6 +287,12 @@ class DynamicBackgroundPanel(
             }
             return true
         }
-        return super.onTouchEvent(event)
+        val handled = super.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_MOVE ||
+            event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            prefs.edit().putFloat(scrollStateKey, scroll.offset).apply()
+        }
+        return handled
     }
 }
