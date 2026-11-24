@@ -132,7 +132,7 @@ private class FlowingKeyboardBackgroundDrawable(
         val h = bounds.height().toFloat()
         val t = now / 1000.0
         motionPaint.style = Paint.Style.STROKE
-        when (style.coerceIn(0, 6)) {
+        when (style.coerceIn(0, 8)) {
             1 -> { // 深海蓝潮：三层错相海浪横向推进
                 for (layer in 0 until 4) {
                     val path = Path()
@@ -290,6 +290,51 @@ private class FlowingKeyboardBackgroundDrawable(
                     }
                 }
             }
+            7 -> { // 霓虹光幕：多道柔性光带上下流动并缓慢横移
+                motionPaint.style = Paint.Style.STROKE
+                for (band in 0 until 8) {
+                    val path = Path()
+                    val phase = t * (0.22 + band * 0.012) + band * 0.83
+                    for (step in 0..32) {
+                        val u = step / 32f
+                        val x = w * u + kotlin.math.sin(u * Math.PI * 2.0 + phase).toFloat() * w * 0.035f
+                        val y = h * (0.08f + band * 0.12f) +
+                            kotlin.math.sin(u * Math.PI * 2.0 + phase * 0.72).toFloat() * h * 0.075f
+                        if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    motionPaint.color = when (band % 3) {
+                        0 -> 0x6654E7F2
+                        1 -> 0x665F8FFF
+                        else -> 0x66D76BFF
+                    }
+                    motionPaint.strokeWidth = (3f + band % 3) * (h / 240f).coerceAtLeast(0.7f)
+                    canvas.drawPath(path, motionPaint)
+                }
+            }
+            8 -> { // 星环脉冲：多组同心光环舒展、淡出，再无缝循环
+                motionPaint.style = Paint.Style.STROKE
+                val centers = arrayOf(
+                    Pair(w * 0.24f, h * 0.48f),
+                    Pair(w * 0.73f, h * 0.56f),
+                )
+                centers.forEachIndexed { centerIndex, center ->
+                    for (ring in 0 until 5) {
+                        val phase = ((t * 0.16 + ring * 0.2 + centerIndex * 0.31) % 1.0).toFloat()
+                        val radius = h * (0.06f + phase * 0.58f)
+                        val alpha = ((1f - phase) * 105f).toInt().coerceIn(0, 105)
+                        val rgb = if ((ring + centerIndex) % 2 == 0) 0x005CEBFF else 0x00D17BFF
+                        motionPaint.color = (alpha shl 24) or rgb
+                        motionPaint.strokeWidth = (1.2f + (1f - phase) * 2.2f) * (h / 240f).coerceAtLeast(0.7f)
+                        canvas.drawCircle(center.first, center.second, radius, motionPaint)
+                    }
+                }
+                motionPaint.style = Paint.Style.FILL
+                val pulse = (0.5 + 0.5 * kotlin.math.sin(t * 1.15)).toFloat()
+                motionPaint.color = 0x6677DFFF
+                canvas.drawCircle(w * 0.24f, h * 0.48f, h * (0.035f + pulse * 0.018f), motionPaint)
+                motionPaint.color = 0x66D17BFF
+                canvas.drawCircle(w * 0.73f, h * 0.56f, h * (0.035f + (1f - pulse) * 0.018f), motionPaint)
+            }
         }
         motionPaint.style = Paint.Style.FILL
     }
@@ -300,17 +345,19 @@ private class FlowingKeyboardBackgroundDrawable(
     override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
 
     private companion object {
-        const val FRAME_DELAY_MS = 33L
+        const val FRAME_DELAY_MS = 24L
         const val BACKGROUND_CYCLE_MS = 75_000L
 
         private fun colorsForStyle(style: Int): IntArray {
-            val colors = when (style.coerceIn(0, 6)) {
+            val colors = when (style.coerceIn(0, 8)) {
                 1 -> intArrayOf(0xC811B8A6.toInt(), 0xC81D8FE8.toInt(), 0xC835C6D8.toInt(), 0xC8126F9A.toInt(), 0xC811B8A6.toInt())
                 2 -> intArrayOf(0xC8FF8A4C.toInt(), 0xC8F04F8B.toInt(), 0xC8B45BE8.toInt(), 0xC8FFD166.toInt(), 0xC8FF8A4C.toInt())
                 3 -> intArrayOf(0xC82DE2C5.toInt(), 0xC843B66D.toInt(), 0xC8559BEF.toInt(), 0xC89B62FF.toInt(), 0xC82DE2C5.toInt())
                 4 -> intArrayOf(0xC8D8F3FF.toInt(), 0xC887B8E8.toInt(), 0xC8B7A6F6.toInt(), 0xC8F4E9FF.toInt(), 0xC8D8F3FF.toInt())
                 5 -> intArrayOf(0xC820164A.toInt(), 0xC82C2C78.toInt(), 0xC858287E.toInt(), 0xC81B6B9B.toInt(), 0xC820164A.toInt())
                 6 -> intArrayOf(0xC81B235A.toInt(), 0xC839397C.toInt(), 0xC85C3D8C.toInt(), 0xC82C7C91.toInt(), 0xC81B235A.toInt())
+                7 -> intArrayOf(0xC8184268.toInt(), 0xC8276F9B.toInt(), 0xC83B3C91.toInt(), 0xC877318D.toInt(), 0xC8184268.toInt())
+                8 -> intArrayOf(0xC825285B.toInt(), 0xC845367E.toInt(), 0xC8336E91.toInt(), 0xC844387E.toInt(), 0xC825285B.toInt())
                 else -> intArrayOf(0xC82DE2C5.toInt(), 0xC83E8BFF.toInt(), 0xC89B62FF.toInt(), 0xC8FF62B5.toInt(), 0xC8FFB347.toInt(), 0xC82DE2C5.toInt())
             }
             return colors
@@ -499,14 +546,14 @@ class InputPanel(
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
-        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 6)
+        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 8)
         transparentBackground = effectEnabled || uri != null
         // 候选文字与背景模式同步：视频先用主题对比色并随后按视频帧亮度微调；光效按色组切换；
         // 两种动态背景都关闭时清除旧的自适应颜色，恢复当前候选文字样式配置。
         bar.setAdaptiveTextColor(
             when {
                 uri != null -> if (palette.dark) Color.WHITE else Color.BLACK
-                effectEnabled -> if (style in 5..6) Color.WHITE else Color.BLACK
+                effectEnabled -> if (style in 5..8) Color.WHITE else Color.BLACK
                 else -> null
             },
         )
