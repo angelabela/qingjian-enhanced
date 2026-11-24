@@ -888,19 +888,6 @@ class FunctionPanel(
         invalidate()
     }
 
-    override fun onBack() {
-        if (textEffectPage) {
-            // 文字效果偏好在编辑期间只写入设置；离开子页时重建输入视图，
-            // 让候选区和键盘区用最新字号、字重与预设绘制，再正常收起功能面板。
-            textEffectPage = false
-            effectScroll.reset()
-            actions.refreshKeyboardSettings()
-            actions.closePanel()
-            return
-        }
-        super.onBack()
-    }
-
     override fun onTap(x: Float, y: Float) {
         when {
             isRightIcon(x, y) -> actions.openSettings()
@@ -1034,9 +1021,15 @@ class FunctionPanel(
 
     override fun onBack() {
         if (voiceEffectPage || textEffectPage || aiLoadingEffectPage) {
+            val leavingTextEffects = textEffectPage
             voiceEffectPage = false
             textEffectPage = false
             aiLoadingEffectPage = false
+            if (leavingTextEffects) {
+                effectScroll.reset()
+                // 只刷新输入法绘制设置，不关闭整个功能面板。
+                actions.refreshKeyboardSettings()
+            }
             invalidate()
         } else {
             super.onBack()
