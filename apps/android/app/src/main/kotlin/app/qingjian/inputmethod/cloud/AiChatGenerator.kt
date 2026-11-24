@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit
 /** 用户明确触发的 AI 对话请求；不参与逐字输入或后台自动发送。 */
 class AiChatGenerator(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
+    @Volatile private var activeConnection: HttpURLConnection? = null
+
+    /** 删除键可主动中断当前云端请求，而不只是隐藏等待提示。 */
+    fun cancelCurrentRequest() { activeConnection?.disconnect() }
 
     fun suggestReplies(contextText: String, callback: (Result<List<String>>) -> Unit) {
         if (contextText.isBlank()) {
@@ -219,6 +223,7 @@ class AiChatGenerator(private val context: Context) {
             setRequestProperty("Authorization", "Bearer $apiKey")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
+        activeConnection = connection
         try {
             connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
             val status = connection.responseCode
@@ -236,6 +241,7 @@ class AiChatGenerator(private val context: Context) {
                 ?: throw IllegalStateException("模型没有返回内容")
         } finally {
             connection.disconnect()
+            if (activeConnection === connection) activeConnection = null
         }
     }
 
