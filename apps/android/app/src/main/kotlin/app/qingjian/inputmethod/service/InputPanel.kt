@@ -62,6 +62,9 @@ import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
 import androidx.core.content.ContextCompat
 
+private fun backgroundEffectTextColor(style: Int): Int =
+    if (style == 11 || style == 14) Color.BLACK else Color.WHITE
+
 /**
  * 覆盖整块输入法窗口的流动光影背景。键盘、候选工具栏和底部操作条共用同一层，
  * 避免只在 KeyboardView 自己的画布里绘制而导致上下两排仍露出纯主题色。
@@ -463,7 +466,7 @@ class InputPanel(
         setAdaptiveTextColor(
             when {
                 videoBackgroundUri != null -> if (palette.dark) Color.WHITE else Color.BLACK
-                backgroundEffectActive -> if (settings.keyboardBackgroundStyle in 5..8) Color.WHITE else Color.BLACK
+                backgroundEffectActive -> backgroundEffectTextColor(settings.keyboardBackgroundStyle)
                 else -> null
             },
         )
@@ -602,14 +605,14 @@ class InputPanel(
         val settingsPrefs = Settings.preferences(context)
         val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
             (!enabled || mode != 0)
-        val style = (settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle).coerceIn(0, 8)
+        val style = Settings.normalizeKeyboardBackgroundStyle(settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle)
         transparentBackground = effectEnabled || uri != null
         // 候选文字与背景模式同步：视频先用主题对比色并随后按视频帧亮度微调；光效按色组切换；
         // 两种动态背景都关闭时清除旧的自适应颜色，恢复当前候选文字样式配置。
         bar.setAdaptiveTextColor(
             when {
                 uri != null -> if (palette.dark) Color.WHITE else Color.BLACK
-                effectEnabled -> if (style in 5..8) Color.WHITE else Color.BLACK
+                effectEnabled -> backgroundEffectTextColor(style)
                 else -> null
             },
         )
