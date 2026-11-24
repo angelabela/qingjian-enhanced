@@ -6,6 +6,7 @@ import android.content.Intent
 import app.qingjian.inputmethod.mascot.FloatingMascotService
 import app.qingjian.inputmethod.mascot.MascotPermissionActivity
 import app.qingjian.inputmethod.candidates.CloudSuggestionsView
+import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
@@ -138,7 +139,7 @@ class FunctionPanel(
                     effectScroll.reset()
                     invalidate()
                 },
-                Feature(Icon.PALETTE, "面板背景特效", on = Settings.preferences(context).getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) || context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE).getBoolean("video_enabled", false)) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
+                Feature(Icon.PALETTE, "背景特效", on = DynamicBackgroundActivity.displayMode(context) != DynamicBackgroundActivity.MODE_NORMAL) { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
                 Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
