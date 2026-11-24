@@ -497,9 +497,18 @@ class FunctionPanel(
             0.0722f * channel(android.graphics.Color.blue(color))
     }
 
+    private fun textColorKey() = if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_COLOR else Settings.KEY_KEYBOARD_TEXT_COLOR
+    private fun textSizeKey() = if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_FONT_SIZE else Settings.KEY_KEY_FONT_SIZE
+    private fun textWeightKey() = if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_FONT_WEIGHT else Settings.KEY_KEYBOARD_FONT_WEIGHT
+    private fun currentTextColor(): Int = Settings.preferences(context).getInt(textColorKey(), 0).takeIf { it != 0 } ?: palette.text
+    private fun currentTextSize(): Int = Settings.preferences(context).getInt(textSizeKey(),
+        if (selectedTextTarget == 0) selectedCandidateFontSize else Settings.preferences(context).getInt(Settings.KEY_KEY_FONT_SIZE, 20)).coerceIn(1, 50)
+    private fun currentTextWeight(): Settings.FontWeight = Settings.FontWeight.of(
+        Settings.preferences(context).getString(textWeightKey(), Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null)))
+
     private fun drawTextEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
-        ink.textStart(canvas, "选择作用区域，下面的效果只应用于该区域", 11f, palette.gloss,
+        ink.textStart(canvas, "分别调节候选区与键盘区的字体颜色、字号和粗细", 11f, palette.gloss,
             card.left + ink.dp(14f), top + ink.dp(18f), card.right - ink.dp(12f))
         val targetTop = top + ink.dp(28f)
         val gap = ink.dp(8f)
@@ -512,38 +521,61 @@ class FunctionPanel(
             ink.text(canvas, label, 12f, if (selected) palette.onBrand else palette.text, bounds.centerX(), bounds.centerY())
         }
         val controlsTop = targetTop + ink.dp(44f)
-        if (selectedTextTarget == 0) {
-            ink.textStart(canvas, "候选字号", 11.5f, palette.text,
-                card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(64f))
-            ink.text(canvas, "${selectedCandidateFontSize}sp", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(12f))
-            val left = card.left + ink.dp(18f)
-            val right = card.right - ink.dp(18f)
-            val y = controlsTop + ink.dp(31f)
-            ink.fill.color = palette.functionalKey
-            ink.fill.strokeWidth = ink.dp(4f)
-            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-            canvas.drawLine(left, y, right, y, ink.fill)
-            val progress = left + (right - left) * ((selectedCandidateFontSize - 1) / 49f)
-            ink.fill.color = palette.brand
-            canvas.drawLine(left, y, progress, y, ink.fill)
-            canvas.drawCircle(progress, y, ink.dp(5f), ink.fill)
-        } else {
-            ink.textStart(canvas, "输入法界面字体粗细", 11.5f, palette.text,
-                card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(12f))
-            val labels = Settings.FontWeight.entries
-            val gap = ink.dp(5f)
-            val itemWidth = (card.width() - ink.dp(28f) - gap * 3f) / 4f
-            labels.forEachIndexed { index, weight ->
-                val left = card.left + ink.dp(14f) + index * (itemWidth + gap)
-                val bounds = RectF(left, controlsTop + ink.dp(20f), left + itemWidth, controlsTop + ink.dp(46f))
-                val selected = selectedFontWeight == weight
-                ink.round(canvas, bounds, 7f, if (selected) palette.brand else palette.functionalKey)
-                ink.text(canvas, weight.label, 10.5f, if (selected) palette.onBrand else palette.text,
-                    bounds.centerX(), bounds.centerY())
-            }
-        }
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val textColor = currentTextColor()
+        val textSize = currentTextSize()
+        val weight = currentTextWeight()
+
+        // RGB 色带：触摸时按色相连续取色，颜色即时写入当前区域。
+        ink.textStart(canvas, "字体颜色 RGB", 11.5f, palette.text,
+            card.left + ink.dp(14f), controlsTop + ink.dp(12f), card.right - ink.dp(64f))
+        val colorY = controlsTop + ink.dp(29f)
+        val colorRect = RectF(left, colorY - ink.dp(6f), right, colorY + ink.dp(6f))
+        val rainbow = intArrayOf(0xFFFF3030.toInt(), 0xFFFFD430.toInt(), 0xFF55E85A.toInt(),
+            0xFF25DDE8.toInt(), 0xFF397BFF.toInt(), 0xFFB34DFF.toInt(), 0xFFFF3030.toInt())
+        ink.fill.shader = android.graphics.LinearGradient(colorRect.left, 0f, colorRect.right, 0f,
+            rainbow, null, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(colorRect, ink.dp(6f), ink.dp(6f), ink.fill)
+        ink.fill.shader = null
+        ink.fill.style = android.graphics.Paint.Style.STROKE
+        ink.fill.strokeWidth = ink.dp(1f)
+        ink.fill.color = palette.text
+        canvas.drawRoundRect(colorRect, ink.dp(6f), ink.dp(6f), ink.fill)
+        ink.fill.style = android.graphics.Paint.Style.FILL
+        val hue = android.graphics.Color.colorToHSV(textColor, FloatArray(3)).let { 0f }
+        val colorMarker = left + (right - left) * (hue / 360f)
+        ink.fill.color = android.graphics.Color.WHITE
+        canvas.drawCircle(colorMarker, colorY, ink.dp(7f), ink.fill)
+        ink.fill.color = textColor
+        canvas.drawCircle(colorMarker, colorY, ink.dp(4.5f), ink.fill)
+
+        ink.textStart(canvas, "字体字号", 11.5f, palette.text,
+            card.left + ink.dp(14f), controlsTop + ink.dp(61f), card.right - ink.dp(64f))
+        ink.text(canvas, "${textSize}sp", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(61f))
+        val sizeY = controlsTop + ink.dp(79f)
+        ink.fill.color = palette.functionalKey
+        ink.fill.strokeWidth = ink.dp(4f)
+        ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
+        canvas.drawLine(left, sizeY, right, sizeY, ink.fill)
+        val sizeX = left + (right - left) * ((textSize - 1) / 49f)
+        ink.fill.color = palette.brand
+        canvas.drawLine(left, sizeY, sizeX, sizeY, ink.fill)
+        canvas.drawCircle(sizeX, sizeY, ink.dp(5f), ink.fill)
+
+        ink.textStart(canvas, "字体粗细", 11.5f, palette.text,
+            card.left + ink.dp(14f), controlsTop + ink.dp(111f), card.right - ink.dp(64f))
+        ink.text(canvas, weight.label, 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(111f))
+        val weightY = controlsTop + ink.dp(129f)
+        canvas.drawLine(left, weightY, right, weightY, ink.fill.apply { color = palette.functionalKey; strokeWidth = ink.dp(4f); strokeCap = android.graphics.Paint.Cap.ROUND })
+        val weightIndex = Settings.FontWeight.entries.indexOf(weight).coerceAtLeast(0)
+        val weightX = left + (right - left) * (weightIndex / 3f)
+        ink.fill.color = palette.brand
+        canvas.drawLine(left, weightY, weightX, weightY, ink.fill)
+        canvas.drawCircle(weightX, weightY, ink.dp(5f), ink.fill)
+
         val labels = Settings.TextEffectPreset.entries
-        val rowTop = targetTop + ink.dp(98f)
+        val rowTop = targetTop + ink.dp(190f)
         val rowStep = ink.dp(64f)
         val viewportBottom = card.bottom - ink.dp(8f)
         effectScroll.max = (labels.size * rowStep - (viewportBottom - rowTop)).coerceAtLeast(0f)
@@ -561,21 +593,22 @@ class FunctionPanel(
             canvas.drawRoundRect(bounds, 11f, 11f, ink.fill)
             ink.fill.style = android.graphics.Paint.Style.FILL
             val sample = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = ink.dp(17f)
+                textSize = ink.dp((17f * textSize / 20f).coerceIn(8f, 34f))
                 textAlign = android.graphics.Paint.Align.CENTER
-                color = palette.text
-                typeface = android.graphics.Typeface.DEFAULT
+                color = textColor
+                typeface = weight.typeface
+                isFakeBoldText = weight.weight >= 600
             }
             val sampleX = bounds.left + ink.dp(55f)
             val sampleY = bounds.centerY() + ink.dp(6f)
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
-                Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, palette.brand)
-                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = palette.brand }
+                Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, textColor)
+                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = textColor }
                 Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
                     sample.style = android.graphics.Paint.Style.STROKE
                     sample.strokeWidth = ink.dp(1.4f)
-                    sample.color = if (textLuminance(palette.text) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                    sample.color = if (textLuminance(textColor) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
                 }
                 Settings.TextEffectPreset.COLOR_GRADIENT -> sample.shader = android.graphics.LinearGradient(sampleX - ink.dp(25f), 0f, sampleX + ink.dp(25f), 0f,
                     intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
@@ -584,7 +617,7 @@ class FunctionPanel(
             canvas.drawText("青简 Aa", sampleX, sampleY, sample)
             if (preset == Settings.TextEffectPreset.NEON_OUTLINE || preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
                 sample.style = android.graphics.Paint.Style.FILL
-                sample.color = palette.text
+                sample.color = textColor
                 canvas.drawText("青简 Aa", sampleX, sampleY, sample)
             }
             sample.clearShadowLayer()
@@ -598,7 +631,6 @@ class FunctionPanel(
         }
         canvas.restore()
     }
-
 
     /** AI 等待提示特效选择；预览只画在面板卡片中，实际效果仅附着于输入框等待文字。 */
     private fun drawAiLoadingEffectSettings(canvas: Canvas) {
