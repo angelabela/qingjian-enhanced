@@ -94,6 +94,11 @@ private class FlowingKeyboardBackgroundDrawable(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val motionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val frost = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x18FFFFFF }
+    private val appearancePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var appearanceAlpha = 1f
+    private var appearanceBrightness = 100
+    private var appearanceBlurPx = 0f
+    private var drawableAlpha = 255
     private val matrix = Matrix()
     private var shader: LinearGradient? = null
     private var shaderWidth = 0
@@ -171,7 +176,37 @@ private class FlowingKeyboardBackgroundDrawable(
         scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
     }
 
+    fun setAppearance(alpha: Float, brightness: Int, blurRadiusDp: Int, density: Float) {
+        appearanceAlpha = alpha.coerceIn(0f, 1f)
+        appearanceBrightness = brightness.coerceIn(0, 200)
+        appearanceBlurPx = blurRadiusDp.coerceIn(0, 30) * density.coerceAtLeast(0f)
+        updateAppearancePaint()
+        invalidateSelf()
+    }
+
+    private fun updateAppearancePaint() {
+        appearancePaint.alpha = (appearanceAlpha * drawableAlpha).toInt().coerceIn(0, 255)
+        appearancePaint.colorFilter = if (appearanceBrightness == 100) null else {
+            val scale = appearanceBrightness / 100f
+            android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix(floatArrayOf(
+                scale, 0f, 0f, 0f, 0f,
+                0f, scale, 0f, 0f, 0f,
+                0f, 0f, scale, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f,
+            )))
+        }
+        appearancePaint.setRenderEffect(if (android.os.Build.VERSION.SDK_INT >= 31 && appearanceBlurPx > 0f) {
+            android.graphics.RenderEffect.createBlurEffect(appearanceBlurPx, appearanceBlurPx, android.graphics.Shader.TileMode.CLAMP)
+        } else null)
+    }
+
     override fun draw(canvas: Canvas) {
+        val save = canvas.saveLayer(android.graphics.RectF(bounds), appearancePaint)
+        drawBackgroundContent(canvas)
+        canvas.restoreToCount(save)
+    }
+
+    private fun drawBackgroundContent(canvas: Canvas) {
         val bounds = bounds
         val activeShader = shader ?: return
         if (bounds.isEmpty || bounds.width() != shaderWidth || bounds.height() != shaderHeight) return
@@ -466,7 +501,11 @@ private class FlowingKeyboardBackgroundDrawable(
         paint.shader = null
     }
 
-    override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+    override fun setAlpha(alpha: Int) {
+        paint.alpha = alpha
+        drawableAlpha = alpha.coerceIn(0, 255)
+        updateAppearancePaint()
+    }
     override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
@@ -629,7 +668,7 @@ class InputPanel(
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = when {
-            backgroundEffectActive -> createFlowingBackground(settings.keyboardBackgroundStyle)
+            backgroundEffectActive -> createFlowingBackground(settings.keyboardBackgroundStyle, videoBackgroundAlpha, videoBackgroundBrightness, videoBackgroundBlur)
             videoBackgroundUri != null -> android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
             else -> android.graphics.drawable.ColorDrawable(palette.board)
         }
@@ -708,9 +747,10 @@ class InputPanel(
         bar.setLiquidGlassBackdropProvider(::captureToolbarBackdrop)
     }
 
-    private fun createFlowingBackground(style: Int): FlowingKeyboardBackgroundDrawable =
+    private fun createFlowingBackground(style: Int, alpha: Float, brightness: Int, blur: Int): FlowingKeyboardBackgroundDrawable =
         FlowingKeyboardBackgroundDrawable(palette, style).also { drawable ->
             activeFlowBackground = drawable
+            drawable.setAppearance(alpha, brightness, blur, context.resources.displayMetrics.density)
             // 玻璃底片直接透出同一动态背景，不再每帧读取 RGB 生成图标保护色。
             drawable.onFrame = null
         }
@@ -766,7 +806,7 @@ class InputPanel(
         toolbarBackdropBitmap?.takeUnless { it.isRecycled }?.recycle()
         toolbarBackdropBitmap = null
         root.background = when {
-            effectEnabled -> createFlowingBackground(style)
+            effectEnabled -> createFlowingBackground(style, alpha, brightness, blur)
             uri != null -> {
                 activeFlowBackground = null
                 android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
@@ -1100,9 +1140,9 @@ class InputPanel(
             val level = luminance.coerceIn(0f, 1f)
             val veilColor = if (contrastTextIsLight) Color.BLACK else Color.WHITE
             val amount = if (contrastTextIsLight) {
-                (0.12f + (level - 0.34f).coerceAtLeast(0f) * 0.48f).coerceIn(0.12f, 0.44f)
+                (0.06f + (level - 0.34f).coerceAtLeast(0f) * 0.24f).coerceIn(0.06f, 0.22f)
             } else {
-                (0.12f + (0.62f - level).coerceAtLeast(0f) * 0.48f).coerceIn(0.12f, 0.44f)
+                (0.06f + (0.62f - level).coerceAtLeast(0f) * 0.24f).coerceIn(0.06f, 0.22f)
             }
             contrastVeil.setBackgroundColor(veilColor)
             contrastVeil.alpha = amount
