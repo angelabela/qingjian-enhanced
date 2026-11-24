@@ -32,6 +32,7 @@ class Toolbar(
     private val line = Paint().apply { color = palette.faint }
     private val noticeText = TextPaint(Paint.ANTI_ALIAS_FLAG)
     private var adaptiveColors: IntArray? = null
+    private var smoothedLuminances: FloatArray? = null
 
     /** 中间那排滑过去的距离（像素）。 */
     var offset = 0f
@@ -57,13 +58,23 @@ class Toolbar(
     }
 
     fun setAdaptiveLuminances(luminances: FloatArray?) {
-        adaptiveColors = luminances?.let { values ->
-            IntArray(tools.size + 1) { index ->
-                val level = values.getOrElse(index) { 0.5f }.coerceIn(0f, 1f)
-                val whiteContrast = 1.05f / (level + 0.05f)
-                val blackContrast = (level + 0.05f) / 0.05f
-                if (whiteContrast >= blackContrast) android.graphics.Color.WHITE else android.graphics.Color.BLACK
-            }
+        if (luminances == null) {
+            smoothedLuminances = null
+            adaptiveColors = null
+            return
+        }
+        val previous = smoothedLuminances
+        val smoothed = FloatArray(tools.size + 1) { index ->
+            val target = luminances.getOrElse(index) { 0.5f }.coerceIn(0f, 1f)
+            val old = previous?.getOrNull(index) ?: target
+            old * 0.62f + target * 0.38f
+        }
+        smoothedLuminances = smoothed
+        adaptiveColors = IntArray(smoothed.size) { index ->
+            val level = smoothed[index]
+            val whiteContrast = 1.05f / (level + 0.05f)
+            val blackContrast = (level + 0.05f) / 0.05f
+            if (whiteContrast >= blackContrast) android.graphics.Color.WHITE else android.graphics.Color.BLACK
         }
     }
 
