@@ -2,6 +2,7 @@
 
 use super::Session;
 use crate::frame::{Frame, FrameCandidate};
+use qingjian_core::CandidateKind;
 
 /// 清空之后候选条上那一项的字。
 const UNDO_LABEL: &str = "撤销";
@@ -55,7 +56,19 @@ impl Session {
             return self.refresh(String::new());
         }
         self.engine.push(c);
-        self.refresh(String::new())
+        let frame = self.refresh(String::new());
+        let full_wubi_code = self.engine.code_scheme().is_some_and(|scheme| {
+            scheme.auto_commit
+                && !self.engine.is_phonetic()
+                && self.engine.composition().text().chars().count() == scheme.code_length
+        });
+        if full_wubi_code
+            && self.candidates.items.first().is_some_and(|candidate| candidate.kind == CandidateKind::Code)
+        {
+            self.select(0)
+        } else {
+            frame
+        }
     }
 
     pub fn backspace(&mut self) -> Frame {
