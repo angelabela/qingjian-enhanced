@@ -235,8 +235,10 @@ class Toolbar(
         sourceShader.setLocalMatrix(backdropMatrix)
         shader.setInputShader("backdrop", sourceShader)
         shader.setFloatUniform("size", renderSize.toFloat(), renderSize.toFloat())
-        shader.setFloatUniform("refractionAmount", 4.8f * density)
-        shader.setFloatUniform("dispersion", 0.65f * density)
+        shader.setFloatUniform("refractionHeight", 5.5f * density)
+        shader.setFloatUniform("refractionAmount", -4.8f * density)
+        shader.setFloatUniform("depthEffect", 0.16f)
+        shader.setFloatUniform("chromaticAberration", 0.72f)
         shader.setFloatUniform(
             "tint",
             Color.red(brand) / 255f,
@@ -333,9 +335,15 @@ class Toolbar(
             uniform shader content;
             uniform shader backdrop;
             uniform float2 size;
+            uniform float refractionHeight;
             uniform float refractionAmount;
-            uniform float dispersion;
+            uniform float depthEffect;
+            uniform float chromaticAberration;
             uniform float4 tint;
+
+            float circleMap(float x) {
+                return 1.0 - sqrt(max(1.0 - x * x, 0.0));
+            }
 
             half4 main(float2 coord) {
                 half4 mask = content.eval(coord);
@@ -347,27 +355,67 @@ class Toolbar(
                 float gy = content.eval(coord + float2(0.0, texel.y)).a -
                     content.eval(coord - float2(0.0, texel.y)).a;
                 float2 gradient = float2(gx, gy);
-                float edge = clamp(length(gradient) * 1.65, 0.0, 1.0);
-                float2 normal = normalize(gradient + float2(0.0001, 0.0001));
+                float gradientLength = length(gradient);
+                float2 halfSize = size * 0.5;
+                float2 centeredCoord = coord - halfSize;
 
-                float2 refractedCoord = coord + normal * refractionAmount * edge;
+                // Backdrop 的 lens() 用圆角矩形 SDF；这里以图标 alpha-mask 的梯度估算 glyph SDF，
+                // 保留同一 circleMap、法线折射和色散采样流程，折射边缘跟随真实图标轮廓。
+                float sd = (0.5 - mask.a) / max(gradientLength, 0.0001);
                 half4 original = backdrop.eval(coord);
-                half4 refracted = backdrop.eval(refractedCoord);
-                half4 red = backdrop.eval(refractedCoord + normal * dispersion * edge);
-                half4 blue = backdrop.eval(refractedCoord - normal * dispersion * edge);
+                if (-sd >= refractionHeight) {
+                    half3 baseColor = mix(original.rgb, tint.rgb, 0.16);
+                    return half4(baseColor * mask.a, mask.a);
+                }
+                sd = min(sd, 0.0);
 
-                half3 glass = mix(original.rgb, refracted.rgb, 0.78);
-                glass.r = mix(glass.r, red.r, edge * 0.34);
-                glass.b = mix(glass.b, blue.b, edge * 0.34);
-                glass = mix(glass, tint.rgb, 0.18);
+                float d = circleMap(clamp(1.0 - -sd / refractionHeight, 0.0, 1.0)) * refractionAmount;
+                float2 normal = normalize(-gradient + depthEffect * normalize(centeredCoord + float2(0.0001, 0.0001)));
+                float2 refractedCoord = coord + d * normal;
+                float dispersionIntensity = chromaticAberration *
+                    ((centeredCoord.x * centeredCoord.y) / max(halfSize.x * halfSize.y, 0.0001));
+                float2 dispersedCoord = d * normal * dispersionIntensity;
 
+                half4 color = half4(0.0);
+                half4 red = backdrop.eval(refractedCoord + dispersedCoord);
+                color.r += red.r / 3.5;
+                color.a += red.a / 7.0;
+
+                half4 orange = backdrop.eval(refractedCoord + dispersedCoord * (2.0 / 3.0));
+                color.r += orange.r / 3.5;
+                color.g += orange.g / 7.0;
+                color.a += orange.a / 7.0;
+
+                half4 yellow = backdrop.eval(refractedCoord + dispersedCoord * (1.0 / 3.0));
+                color.r += yellow.r / 3.5;
+                color.g += yellow.g / 3.5;
+                color.a += yellow.a / 7.0;
+
+                half4 green = backdrop.eval(refractedCoord);
+                color.g += green.g / 3.5;
+                color.a += green.a / 7.0;
+
+                half4 cyan = backdrop.eval(refractedCoord - dispersedCoord * (1.0 / 3.0));
+                color.g += cyan.g / 3.5;
+                color.b += cyan.b / 3.0;
+                color.a += cyan.a / 7.0;
+
+                half4 blue = backdrop.eval(refractedCoord - dispersedCoord * (2.0 / 3.0));
+                color.b += blue.b / 3.0;
+                color.a += blue.a / 7.0;
+
+                half4 purple = backdrop.eval(refractedCoord - dispersedCoord);
+                color.r += purple.r / 7.0;
+                color.b += purple.b / 3.0;
+                color.a += purple.a / 7.0;
+
+                float edge = clamp(gradientLength * 1.65, 0.0, 1.0);
                 float facing = max(dot(normal, normalize(float2(-0.72, -0.68))), 0.0);
-                float highlight = edge * (0.16 + facing * 0.48);
-                float innerDepth = (1.0 - edge) * 0.035;
-                glass += half3(highlight + innerDepth);
-
+                float highlight = edge * (0.12 + facing * 0.36);
+                color.rgb = mix(color.rgb, tint.rgb, 0.16);
+                color.rgb += half3(highlight);
                 float alpha = mask.a * 0.94;
-                return half4(glass * alpha, alpha);
+                return half4(color.rgb * alpha, alpha);
             }
         """
     }
