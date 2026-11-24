@@ -511,7 +511,42 @@ class FunctionPanel(
     private fun currentTextWeight(): Settings.FontWeight = Settings.FontWeight.of(
         Settings.preferences(context).getString(textWeightKey(), Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null)))
 
+    private fun pairedTextKey(key: String): String? = when (key) {
+        Settings.KEY_CANDIDATE_TEXT_COLOR -> Settings.KEY_KEYBOARD_TEXT_COLOR
+        Settings.KEY_KEYBOARD_TEXT_COLOR -> Settings.KEY_CANDIDATE_TEXT_COLOR
+        Settings.KEY_CANDIDATE_FONT_SIZE -> Settings.KEY_KEY_FONT_SIZE
+        Settings.KEY_KEY_FONT_SIZE -> Settings.KEY_CANDIDATE_FONT_SIZE
+        Settings.KEY_CANDIDATE_FONT_WEIGHT -> Settings.KEY_KEYBOARD_FONT_WEIGHT
+        Settings.KEY_KEYBOARD_FONT_WEIGHT -> Settings.KEY_CANDIDATE_FONT_WEIGHT
+        Settings.KEY_CANDIDATE_TEXT_PRESET -> Settings.KEY_KEYBOARD_TEXT_PRESET
+        Settings.KEY_KEYBOARD_TEXT_PRESET -> Settings.KEY_CANDIDATE_TEXT_PRESET
+        else -> null
+    }
+
+    private fun syncTextEffectsEnabled(): Boolean =
+        Settings.preferences(context).getBoolean("text_effect_sync_targets", false)
+
+    private fun setTextInt(key: String, value: Int) {
+        actions.setIntChoice(key, value)
+        if (syncTextEffectsEnabled()) pairedTextKey(key)?.let { actions.setIntChoice(it, value) }
+    }
+
+    private fun setTextChoice(key: String, value: String) {
+        actions.setChoice(key, value)
+        if (syncTextEffectsEnabled()) pairedTextKey(key)?.let { actions.setChoice(it, value) }
+    }
+
     private fun drawTextEffectSettings(canvas: Canvas) {
+        val viewportTop = card.top + ink.dp(6f)
+        val viewportBottom = card.bottom - ink.dp(6f)
+        val targetTopForScroll = card.top + ink.dp(8f + 28f)
+        val presetRowTop = targetTopForScroll + ink.dp(230f)
+        val rowStepForScroll = ink.dp(64f)
+        val contentBottom = presetRowTop + Settings.TextEffectPreset.entries.size * rowStepForScroll
+        effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
+        canvas.save()
+        canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
+        canvas.translate(0f, -effectScroll.offset);
         val top = card.top + ink.dp(8f)
         ink.textStart(canvas, "分别调节候选区与键盘区的字体颜色、字号和粗细", 11f, palette.gloss,
             card.left + ink.dp(14f), top + ink.dp(18f), card.right - ink.dp(12f))
@@ -581,13 +616,13 @@ class FunctionPanel(
         canvas.drawCircle(weightX, weightY, ink.dp(5f), ink.fill)
 
         val labels = Settings.TextEffectPreset.entries
-        val rowTop = targetTop + ink.dp(190f)
+        val syncY = controlsTop + ink.dp(160f)
+        ink.textStart(canvas, "按键区与候选区同步调节", 11.5f, palette.text,
+            card.left + ink.dp(14f), syncY + ink.dp(4f), card.right - ink.dp(70f))
+        drawSwitch(canvas, card.right - ink.dp(38f), syncY, syncTextEffectsEnabled())
+
+        val rowTop = targetTop + ink.dp(230f)
         val rowStep = ink.dp(64f)
-        val viewportBottom = card.bottom - ink.dp(8f)
-        effectScroll.max = (labels.size * rowStep - (viewportBottom - rowTop)).coerceAtLeast(0f)
-        canvas.save()
-        canvas.clipRect(card.left, rowTop, card.right, viewportBottom)
-        canvas.translate(0f, -effectScroll.offset)
         labels.forEachIndexed { index, preset ->
             val bounds = RectF(card.left + ink.dp(12f), rowTop + index * rowStep,
                 card.right - ink.dp(12f), rowTop + index * rowStep + ink.dp(54f))
@@ -764,10 +799,11 @@ class FunctionPanel(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (textEffectPage && tabs.selected == 0) {
             val controlsTop = card.top + ink.dp(8f + 28f + 44f)
+            val contentY = event.y + effectScroll.offset
             val slider = when {
-                event.y in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
-                event.y in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
-                event.y in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
+                contentY in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
+                contentY in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
+                contentY in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
                 else -> -1
             }
             if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) && slider >= 0) {
@@ -818,12 +854,12 @@ class FunctionPanel(
         when (slider) {
             0 -> {
                 val color = android.graphics.Color.HSVToColor(floatArrayOf(fraction * 360f, 0.86f, 1f))
-                actions.setIntChoice(textColorKey(), color)
+                setTextInt(textColorKey(), color)
             }
-            1 -> actions.setIntChoice(textSizeKey(), (1 + fraction * 49f).roundToInt().coerceIn(1, 50))
+            1 -> setTextInt(textSizeKey(), (1 + fraction * 49f).roundToInt().coerceIn(1, 50))
             2 -> {
                 val index = (fraction * (Settings.FontWeight.entries.size - 1)).roundToInt()
-                actions.setChoice(textWeightKey(), Settings.FontWeight.entries[index].name)
+                setTextChoice(textWeightKey(), Settings.FontWeight.entries[index].name)
             }
         }
         invalidate()
@@ -880,8 +916,9 @@ class FunctionPanel(
                 }
             }
             tabs.selected == 0 && textEffectPage -> {
+                val contentY = y + effectScroll.offset
                 val targetTop = card.top + ink.dp(8f + 28f)
-                if (y in targetTop..(targetTop + ink.dp(36f))) {
+                if (contentY in targetTop..(targetTop + ink.dp(36f))) {
                     selectedTextTarget = if (x < card.centerX()) 0 else 1
                     selectedTextPreset = Settings.TextEffectPreset.of(Settings.preferences(context).getString(
                         if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, null))
@@ -892,22 +929,43 @@ class FunctionPanel(
                 }
                 val controlsTop = targetTop + ink.dp(44f)
                 val slider = when {
-                    y in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
-                    y in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
-                    y in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
+                    contentY in (controlsTop + ink.dp(15f))..(controlsTop + ink.dp(43f)) -> 0
+                    contentY in (controlsTop + ink.dp(65f))..(controlsTop + ink.dp(93f)) -> 1
+                    contentY in (controlsTop + ink.dp(115f))..(controlsTop + ink.dp(143f)) -> 2
                     else -> -1
                 }
                 if (slider >= 0) {
                     updateTextSlider(x, slider)
                     return
                 }
-                val rowTop = targetTop + ink.dp(190f)
+                val syncY = controlsTop + ink.dp(160f)
+                if (contentY in (syncY - ink.dp(16f))..(syncY + ink.dp(16f))) {
+                    val enable = !syncTextEffectsEnabled()
+                    Settings.preferences(context).edit().putBoolean("text_effect_sync_targets", enable).apply()
+                    if (enable) {
+                        val sourceKeys = listOf(textColorKey(), textSizeKey(), textWeightKey(),
+                            if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET)
+                        sourceKeys.forEach { key ->
+                            val paired = pairedTextKey(key) ?: return@forEach
+                            when (key) {
+                                Settings.KEY_CANDIDATE_TEXT_COLOR, Settings.KEY_KEYBOARD_TEXT_COLOR,
+                                Settings.KEY_CANDIDATE_FONT_SIZE, Settings.KEY_KEY_FONT_SIZE ->
+                                    actions.setIntChoice(paired, Settings.preferences(context).getInt(key, if (key.contains("SIZE")) 20 else 0))
+                                else -> actions.setChoice(paired, Settings.preferences(context).getString(key, null)
+                                    ?: if (key.contains("PRESET")) Settings.TextEffectPreset.STANDARD.name else Settings.FontWeight.NORMAL.name)
+                            }
+                        }
+                    }
+                    invalidate()
+                    return
+                }
+                val rowTop = targetTop + ink.dp(230f)
                 val rowStep = ink.dp(64f)
-                val index = ((y + effectScroll.offset - rowTop) / rowStep).toInt()
+                val index = ((contentY - rowTop) / rowStep).toInt()
                 val preset = Settings.TextEffectPreset.entries.getOrNull(index)
-                if (preset != null && y >= rowTop - effectScroll.offset) {
+                if (preset != null && contentY >= rowTop) {
                     selectedTextPreset = preset
-                    actions.setChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
+                    setTextChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
                     invalidate()
                 }
             }
