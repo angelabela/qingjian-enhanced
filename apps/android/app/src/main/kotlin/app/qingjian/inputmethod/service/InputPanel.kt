@@ -673,28 +673,14 @@ class InputPanel(
     private fun createFlowingBackground(style: Int): FlowingKeyboardBackgroundDrawable =
         FlowingKeyboardBackgroundDrawable(palette, style).also { drawable ->
             activeFlowBackground = drawable
-            drawable.onFrame = { updateAdaptiveToolbarColors() }
+            // 玻璃底片直接透出同一动态背景，不再每帧读取 RGB 生成图标保护色。
+            drawable.onFrame = null
         }
 
     /** 每 160ms 低分辨率采样一次；每个图标独立提取背景色并生成高对比彩色渐变。 */
+    // 697 的逐图标 RGB 自适应采样已由液态玻璃材质取代；保留兼容入口但不再做周期采样。
     private fun updateAdaptiveToolbarColors(force: Boolean = false) {
-        val enabled = Settings.preferences(context).getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)
-        if (!enabled) {
-            bar.setAdaptiveToolbarColors(null)
-            return
-        }
-        if (currentVideoBackgroundActive) return // 视频帧通过现有亮度回调提供保护色
-        val drawable = activeFlowBackground ?: run {
-            bar.setAdaptiveToolbarColors(null)
-            return
-        }
-        val now = SystemClock.uptimeMillis()
-        if (!force && now - lastToolbarColorSampleAt < 160L) return
-        if (bar.width <= 0 || bar.height <= 0) return
-        lastToolbarColorSampleAt = now
-        val xs = bar.adaptiveToolbarSampleXs()
-        val colors = drawable.sampleColors(xs, bar.height / 2f)
-        bar.setAdaptiveToolbarColors(colors)
+        bar.setAdaptiveToolbarColors(null)
     }
 
     /** 只替换视频/亮度层，保留键盘、候选栏和当前打开的子面板实例。 */
@@ -924,6 +910,58 @@ class InputPanel(
     }
 
     private var overlay: View? = null
+
+    private var visibilityAnimationGeneration = 0
+
+    /** 系统显示输入法窗口后执行轻量上浮淡入；不改变键盘内部子 View 的触摸区域。 */
+    fun animateIn() {
+        val generation = ++visibilityAnimationGeneration
+        root.animate().cancel()
+        val distance = 18f * context.resources.displayMetrics.density
+        root.alpha = 0f
+        root.translationY = distance
+        root.scaleY = 0.985f
+        root.pivotY = root.height.toFloat().coerceAtLeast(1f)
+        root.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleY(1f)
+            .setDuration(230L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+            .withEndAction {
+                if (generation == visibilityAnimationGeneration) {
+                    root.alpha = 1f
+                    root.translationY = 0f
+                    root.scaleY = 1f
+                }
+            }
+            .start()
+    }
+
+    /** 主动收起时先做短淡出，再让系统隐藏 IME；取消/重开会使旧回调失效。 */
+    fun animateOut(onEnd: () -> Unit) {
+        val generation = ++visibilityAnimationGeneration
+        root.animate().cancel()
+        root.animate()
+            .alpha(0f)
+            .translationY(14f * context.resources.displayMetrics.density)
+            .scaleY(0.99f)
+            .setDuration(155L)
+            .setInterpolator(android.view.animation.AccelerateInterpolator(1.2f))
+            .withEndAction {
+                if (generation == visibilityAnimationGeneration) onEnd()
+            }
+            .start()
+    }
+
+    /** 系统因切换应用等原因直接隐藏时，清理动画状态供下次展开复用。 */
+    fun cancelVisibilityAnimation() {
+        visibilityAnimationGeneration++
+        root.animate().cancel()
+        root.alpha = 1f
+        root.translationY = 0f
+        root.scaleY = 1f
+    }
 
     val view: View get() = root
 
