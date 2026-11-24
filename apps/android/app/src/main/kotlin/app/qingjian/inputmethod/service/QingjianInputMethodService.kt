@@ -684,6 +684,7 @@ class QingjianInputMethodService :
             onCloudSelect = { composer.select(originalCandidateIndex(it)) },
             onGenerateAiExpression = { source, callback -> aiExpression.generate(source, callback) },
             aiChatGenerator = aiChat,
+            onCancelAiExpression = aiExpression::cancelCurrentRequest,
             floating = target != null,
         )
         this.panel = panel
@@ -2242,6 +2243,7 @@ class QingjianInputMethodService :
 
     override fun onBackspaceDown() {
         if (ClipboardPanel.isSearchEditorActive(this)) return
+        if (panel?.cancelAiGeneration() == true) return
         composer.onBackspaceDown()
     }
 
