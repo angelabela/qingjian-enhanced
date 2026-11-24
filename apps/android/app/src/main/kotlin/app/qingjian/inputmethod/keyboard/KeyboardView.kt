@@ -797,8 +797,7 @@ class KeyboardView(
         val dy = event.getY(at) - spaceAnchorY
         // 候选横向预选期间一旦明显改为上下滑，立即取消预选，不提交当前候选。
         if (candidateSwipeMode &&
-            abs(dy) >= metrics.density * CANDIDATE_SWIPE_START_DP &&
-            abs(dy) > abs(dx)
+            abs(dy) >= metrics.density * TRACK_SLOP_DP
         ) {
             listener.onCandidateSwipeEnd(commit = false)
             candidateSwipeMode = false
