@@ -66,6 +66,11 @@ on:
       - 'tools/release/data.lock'
   workflow_dispatch:
 
+# 同一分支连续提交时只保留最新 APK 构建，避免中间提交的重复构建占用资源。
+concurrency:
+  group: android-signed-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
