@@ -69,7 +69,11 @@ class FunctionPanel(
         return Settings.TextEffectPreset.of(prefs.getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null)) != Settings.TextEffectPreset.STANDARD ||
             Settings.TextEffectPreset.of(prefs.getString(Settings.KEY_KEYBOARD_TEXT_PRESET, null)) != Settings.TextEffectPreset.STANDARD ||
             prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20) != 20 ||
-            Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null)) != Settings.FontWeight.NORMAL
+            prefs.getInt(Settings.KEY_KEY_FONT_SIZE, 20) != 20 ||
+            prefs.getInt(Settings.KEY_CANDIDATE_TEXT_COLOR, 0) != 0 ||
+            prefs.getInt(Settings.KEY_KEYBOARD_TEXT_COLOR, 0) != 0 ||
+            Settings.FontWeight.of(prefs.getString(Settings.KEY_CANDIDATE_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL ||
+            Settings.FontWeight.of(prefs.getString(Settings.KEY_KEYBOARD_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL
     }
 
     private fun keyEffectsActive(): Boolean {
