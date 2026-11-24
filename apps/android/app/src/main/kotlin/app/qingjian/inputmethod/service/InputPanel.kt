@@ -387,29 +387,77 @@ private class FlowingKeyboardBackgroundDrawable(
         fun glow(x: Float, y: Float, radius: Float, color: Int, alpha: Int = 150) {
             drawRadialGlow(canvas, x, y, radius, (color and 0x00FFFFFF) or (alpha shl 24))
         }
+        // 参考 CloudAnimation 的 TopClouds / BottomClouds 分层构图，
+        // 在 Android Canvas 上以贝塞尔路径重绘云团，不引入 Compose 依赖或原项目图片资源。
         fun cloud(x: Float, y: Float, scale: Float, tint: Int, shade: Int, alpha: Int) {
-            val base = scale * h
+            val base = (scale * h).coerceAtLeast(1f)
+            val left = x - base * 1.48f
+            val right = x + base * 1.48f
+            val top = y - base * 0.58f
+            val bottom = y + base * 0.34f
+            val silhouette = Path().apply {
+                moveTo(left, bottom)
+                cubicTo(left - base * .16f, bottom - base * .10f, left - base * .12f, top + base * .36f, left + base * .28f, top + base * .34f)
+                cubicTo(left + base * .34f, top - base * .16f, x - base * .48f, top - base * .48f, x - base * .12f, top - base * .47f)
+                cubicTo(x + base * .25f, top - base * .52f, x + base * .53f, top - base * .24f, x + base * .62f, top + base * .02f)
+                cubicTo(right + base * .12f, top + base * .04f, right + base * .22f, top + base * .34f, right, bottom)
+                close()
+            }
             motionPaint.style = Paint.Style.FILL
-            motionPaint.color = (tint and 0x00FFFFFF) or ((alpha * .50f).toInt() shl 24)
-            canvas.drawCircle(x - base * .28f, y, base * .20f, motionPaint)
-            canvas.drawCircle(x, y - base * .10f, base * .27f, motionPaint)
-            canvas.drawCircle(x + base * .30f, y, base * .22f, motionPaint)
-            canvas.drawRoundRect(x - base * .48f, y - base * .03f, x + base * .48f, y + base * .20f, base * .12f, base * .12f, motionPaint)
-            motionPaint.color = (shade and 0x00FFFFFF) or ((alpha * .20f).toInt() shl 24)
-            canvas.drawOval(x - base * .42f, y + base * .07f, x + base * .42f, y + base * .24f, motionPaint)
+            motionPaint.color = (shade and 0x00FFFFFF) or ((alpha * .24f).toInt().coerceIn(0, 255) shl 24)
+            canvas.drawOval(left + base * .10f, y + base * .10f, right - base * .08f, bottom + base * .18f, motionPaint)
+            motionPaint.shader = LinearGradient(
+                0f, top, 0f, bottom,
+                intArrayOf(
+                    (tint and 0x00FFFFFF) or ((alpha * .96f).toInt().coerceIn(0, 255) shl 24),
+                    (tint and 0x00FFFFFF) or ((alpha * .72f).toInt().coerceIn(0, 255) shl 24),
+                ),
+                null,
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawPath(silhouette, motionPaint)
+            motionPaint.shader = null
+            val highlight = Path().apply {
+                moveTo(left + base * .38f, y - base * .02f)
+                cubicTo(left + base * .48f, top + base * .22f, x - base * .34f, top - base * .28f, x - base * .05f, top - base * .26f)
+                cubicTo(x + base * .20f, top - base * .30f, x + base * .40f, top - base * .08f, x + base * .48f, y - base * .02f)
+            }
+            motionPaint.style = Paint.Style.STROKE
+            motionPaint.strokeWidth = (base * .035f).coerceAtLeast(1f)
+            motionPaint.color = (0x00FFFFFF) or ((alpha * .22f).toInt().coerceIn(0, 255) shl 24)
+            canvas.drawPath(highlight, motionPaint)
+            motionPaint.style = Paint.Style.FILL
         }
         fun cloudLayers(tint: Int, shade: Int, dusk: Boolean = false) {
-            for (layer in 0..2) {
-                val count = if (layer == 2) 4 else 5
+            // 上层云从画面外侧缓慢进入，下层云反向漂移，形成前后景视差。
+            for (layer in 0..3) {
+                val count = if (layer == 0 || layer == 3) 5 else 4
                 for (i in 0 until count) {
                     val seed = i * 1.73 + layer * 2.4
-                    val speed = .006 + layer * .004
-                    val drift = ((t * speed) % 1.25).toFloat()
-                    val x = ((i.toFloat() / count + drift) % 1.25f - .12f) * w
-                    val y = h * (when (layer) { 0 -> .17f; 1 -> .43f; else -> .77f } +
-                        kotlin.math.sin(t * .10 + seed).toFloat() * .025f)
-                    val scale = when (layer) { 0 -> .15f; 1 -> .22f; else -> .31f }
-                    cloud(x, y, scale, tint, shade, if (layer == 0) 80 else if (layer == 1) 125 else 165)
+                    val speed = .0045 + layer * .0018
+                    val travel = ((t * speed + i * .19 + layer * .13) % 1.40).toFloat()
+                    val position = if (layer % 2 == 0) travel else 1.30f - travel
+                    val x = (position - .15f) * w
+                    val baseY = when (layer) {
+                        0 -> .10f
+                        1 -> .31f
+                        2 -> .68f
+                        else -> .91f
+                    }
+                    val y = h * (baseY + kotlin.math.sin(t * .10 + seed).toFloat() * .022f)
+                    val scale = when (layer) {
+                        0 -> .15f
+                        1 -> .21f
+                        2 -> .27f
+                        else -> .18f
+                    }
+                    val alpha = when (layer) {
+                        0 -> if (dusk) 76 else 84
+                        1 -> if (dusk) 104 else 118
+                        2 -> if (dusk) 144 else 158
+                        else -> if (dusk) 94 else 108
+                    }
+                    cloud(x, y, scale, tint, shade, alpha)
                 }
             }
         }
@@ -553,11 +601,10 @@ class InputPanel(
     // 游戏键盘一律深色：浮在游戏画面上，浅色太扎眼
     private val palette = Palette.of(settings.theme, floating || settings.appearance.dark(context))
     private val dynamicBackgroundPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
-    private val videoBackgroundEnabled = dynamicBackgroundPrefs.getBoolean("video_enabled", false)
-    private val videoBackgroundMode = dynamicBackgroundPrefs.getInt("video_mode", 2).coerceIn(0, 2)
-    private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean("video_frosted", true)
-    private val videoBackgroundUri = if (videoBackgroundEnabled && videoBackgroundMode != 1) dynamicBackgroundPrefs.getString("video_uri", null) else null
-    private val backgroundEffectActive = settings.keyboardBackgroundEffect && (videoBackgroundUri == null || videoBackgroundMode != 0)
+    private val backgroundDisplayMode = DynamicBackgroundActivity.displayMode(context)
+    private val videoBackgroundFrosted = dynamicBackgroundPrefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)
+    private val videoBackgroundUri = if (backgroundDisplayMode == DynamicBackgroundActivity.MODE_VIDEO) dynamicBackgroundPrefs.getString(DynamicBackgroundActivity.KEY_URI, null) else null
+    private val backgroundEffectActive = backgroundDisplayMode == DynamicBackgroundActivity.MODE_EFFECT
     private var transparentBackground = backgroundEffectActive || videoBackgroundUri != null
     private val videoBackgroundAlpha = dynamicBackgroundPrefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
     private val videoBackgroundBrightness = dynamicBackgroundPrefs.getInt("video_brightness", 100).coerceIn(0, 200)
@@ -757,9 +804,8 @@ class InputPanel(
     /** 只替换视频/亮度层，保留键盘、候选栏和当前打开的子面板实例。 */
     fun refreshDynamicBackground() {
         val prefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
-        val enabled = prefs.getBoolean("video_enabled", false)
-        val mode = prefs.getInt("video_mode", 2).coerceIn(0, 2)
-        val uri = if (enabled && mode != 1) prefs.getString("video_uri", null) else null
+        val mode = DynamicBackgroundActivity.displayMode(context)
+        val uri = if (mode == DynamicBackgroundActivity.MODE_VIDEO) prefs.getString(DynamicBackgroundActivity.KEY_URI, null) else null
         currentVideoBackgroundActive = uri != null
         val alpha = prefs.getInt("video_alpha", 72).coerceIn(0, 100) / 100f
         val brightness = prefs.getInt("video_brightness", 100).coerceIn(0, 200)
@@ -772,8 +818,7 @@ class InputPanel(
         // 边缘发光、立体键帽和自定义颜色在同一 Painter 中立即刷新，不依赖关闭/重开面板。
         keyboard.refreshKeyEffects()
         val settingsPrefs = Settings.preferences(context)
-        val effectEnabled = settingsPrefs.getBoolean(Settings.KEY_BACKGROUND_EFFECT, settings.keyboardBackgroundEffect) &&
-            (!enabled || mode != 0)
+        val effectEnabled = mode == DynamicBackgroundActivity.MODE_EFFECT
         val style = Settings.normalizeKeyboardBackgroundStyle(settingsPrefs.getString(Settings.KEY_BACKGROUND_STYLE, settings.keyboardBackgroundStyle.toString())?.toIntOrNull() ?: settings.keyboardBackgroundStyle)
         // 视频亮度由纹理采样持续更新；纯光效则按当前效果的色彩分布设置初始对比度。
         stack.updateBackgroundContrast(if (uri == null && effectEnabled) backgroundEffectLuminance(style) else null)
