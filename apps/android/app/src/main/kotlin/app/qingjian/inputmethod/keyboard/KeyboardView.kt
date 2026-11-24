@@ -364,6 +364,9 @@ class KeyboardView(
                         cursorMode = false
                         voiceMode = false
                         clipboardMode = false
+                        candidateSwipeMode = false
+                        candidateSwipeCancelled = false
+                        candidateSwipeLastStep = 0
                         timer.postDelayed(spaceHold, if (settings.voiceHoldSpace) VOICE_HOLD_MS else LONG_PRESS_MS)
                     }
 
