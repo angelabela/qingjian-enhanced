@@ -195,9 +195,11 @@ private class FlowingKeyboardBackgroundDrawable(
                 0f, 0f, 0f, 1f, 0f,
             )))
         }
-        appearancePaint.setRenderEffect(if (android.os.Build.VERSION.SDK_INT >= 31 && appearanceBlurPx > 0f) {
-            android.graphics.RenderEffect.createBlurEffect(appearanceBlurPx, appearanceBlurPx, android.graphics.Shader.TileMode.CLAMP)
-        } else null)
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            appearancePaint.setRenderEffect(if (appearanceBlurPx > 0f) {
+                android.graphics.RenderEffect.createBlurEffect(appearanceBlurPx, appearanceBlurPx, android.graphics.Shader.TileMode.CLAMP)
+            } else null)
+        }
     }
 
     override fun draw(canvas: Canvas) {
