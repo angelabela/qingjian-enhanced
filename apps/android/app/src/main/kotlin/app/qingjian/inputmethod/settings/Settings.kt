@@ -85,6 +85,12 @@ data class Settings(
     val candidateFontSize: Int = 20,
     /** 输入法键盘界面字体粗细；只影响文字笔画，不改变字号与按键尺寸。 */
     val fontWeight: FontWeight,
+    /** 候选区文字粗细与键盘区分开设置。 */
+    val candidateFontWeight: FontWeight = fontWeight,
+    val keyboardFontWeight: FontWeight = fontWeight,
+    /** 自定义文字颜色；0 表示跟随主题。 */
+    val candidateTextColor: Int = 0,
+    val keyboardTextColor: Int = 0,
     /** 工具栏中间那排放的工具，按勾的先后排（#777）。 */
     val toolbar: List<ToolbarTool>,
     val enterSwipeUp: GestureAction,
@@ -204,6 +210,10 @@ data class Settings(
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
         const val KEY_KEY_FONT_SIZE = "key_font_size"
         const val KEY_CANDIDATE_FONT_SIZE = "candidate_font_size"
+        const val KEY_CANDIDATE_FONT_WEIGHT = "candidate_font_weight"
+        const val KEY_KEYBOARD_FONT_WEIGHT = "keyboard_font_weight"
+        const val KEY_CANDIDATE_TEXT_COLOR = "candidate_text_color"
+        const val KEY_KEYBOARD_TEXT_COLOR = "keyboard_text_color"
         const val KEY_KEY_SKIN = "key_skin"
         const val KEY_TRADITIONAL = "traditional"
         const val KEY_LANGUAGE = "language"
@@ -362,6 +372,10 @@ data class Settings(
                 textSize = legacyCandidateTextSize,
                 candidateFontSize = prefs.getInt(KEY_CANDIDATE_FONT_SIZE, (legacyCandidateTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 fontWeight = FontWeight.of(prefs.getString(KEY_FONT_WEIGHT, null)),
+                candidateFontWeight = FontWeight.of(prefs.getString(KEY_CANDIDATE_FONT_WEIGHT, prefs.getString(KEY_FONT_WEIGHT, null))),
+                keyboardFontWeight = FontWeight.of(prefs.getString(KEY_KEYBOARD_FONT_WEIGHT, prefs.getString(KEY_FONT_WEIGHT, null))),
+                candidateTextColor = prefs.getInt(KEY_CANDIDATE_TEXT_COLOR, 0),
+                keyboardTextColor = prefs.getInt(KEY_KEYBOARD_TEXT_COLOR, 0),
                 toolbar = ToolbarTool.parse(prefs.getString(KEY_TOOLBAR, null)),
                 enterSwipeUp = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_UP, null)),
                 enterSwipeDown = GestureAction.of(prefs.getString(KEY_ENTER_SWIPE_DOWN, null)),
