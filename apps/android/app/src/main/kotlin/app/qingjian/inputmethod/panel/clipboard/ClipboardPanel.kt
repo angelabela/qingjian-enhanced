@@ -571,7 +571,7 @@ class ClipboardPanel(
                     cursorX, searchRect.centerY() + ink.dp(8f), searchCursorPaint)
             }
             if (searchQuery.isNotEmpty()) ink.icon(canvas, Icon.CLOSE, searchRect.right - ink.dp(11f), searchRect.centerY(), 13f, palette.gloss)
-            val resultCount = visibleClipIndices.size.coerceIn(0, clips.size)
+            val resultCount = if (searchQuery.isBlank()) 0 else visibleClipIndices.size.coerceIn(0, clips.size)
             val resultLabel = "$resultCount/${clips.size}"
             val counterWidth = ink.measure(resultLabel, 10.5f) + ink.dp(10f)
             val counterRect = RectF(

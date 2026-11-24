@@ -34,9 +34,9 @@ object KeyboardLayout {
 
     /** 字母键角标：首排数字，二排常用符号（中文把 H J 换成中文引号），三排括号与标点。 */
     private const val TOP_HINTS = "1234567890"
-    private const val MIDDLE_HINTS_EN = "~!@#%'&*?"
-    private const val MIDDLE_HINTS_ZH = "~!@#%“”*?"
-    private const val BOTTOM_HINTS = "()-_:;/"
+    private const val MIDDLE_HINTS_EN = "~!@#%'&*/"
+    private const val MIDDLE_HINTS_ZH = "~!@#%“”*/"
+    private const val BOTTOM_HINTS = "()-_:;?"
 
     /** 日语罗马音的角标：二排换成 ¥ 与日文括号「」，三排是引号与句读。 */
     private const val MIDDLE_HINTS_JA = "@#¥_&「」()"

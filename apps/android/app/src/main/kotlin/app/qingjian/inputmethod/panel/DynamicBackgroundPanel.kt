@@ -26,10 +26,10 @@ class DynamicBackgroundPanel(
     private var restoreScrollPending = true
     private val scrollStateKey = "dynamic_background_panel_scroll_offset"
     private val rowHeight get() = ink.dp(58f)
-    private val effectCellHeight get() = ink.dp(62f)
-    private val effectGridGap get() = ink.dp(8f)
-    private val labels = listOf("导入或更换视频", "视频背景开关", "背景显示模式", "视频磨砂效果", "视频透明度", "背景亮度", "模糊程度")
-    private val effectRows get() = (effectStyles.size + 2) / 3
+    private val effectCellHeight get() = ink.dp(48f)
+    private val effectGridGap get() = ink.dp(6f)
+    private val labels = listOf("导入或更换视频", "视频背景开关", "背景显示模式", "背景磨砂效果", "背景透明度", "背景亮度", "模糊程度")
+    private val effectRows get() = (effectStyles.size + 3) / 4
     private fun settingsRowsTop(top: Float) = top + ink.dp(30f)
     private fun effectTitleY(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(20f)
     private fun effectGridTop(top: Float) = settingsRowsTop(top) + rowHeight * 4 + ink.dp(32f)
@@ -60,7 +60,7 @@ class DynamicBackgroundPanel(
 
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, null)
-        ink.text(canvas, "面板背景特效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
+        ink.text(canvas, "背景特效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
         ink.round(canvas, card, 16f, palette.surface)
         val top = card.top + ink.dp(8f)
@@ -91,17 +91,17 @@ class DynamicBackgroundPanel(
             ink.line(canvas, card.left + ink.dp(16f), y + rowHeight, card.right - ink.dp(16f), y + rowHeight, palette.faint)
         }
 
-        // 背景光效样式：固定三列，所有样式均在网格中展示；超出可视区域由整个内容区上下滚动。
+        // 背景光效样式：固定四列紧凑网格；超出可视区域由整个内容区上下滚动。
         val gridTop = effectGridTop(top)
         ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), effectTitleY(top), card.right - ink.dp(16f))
         val gridLeft = card.left + ink.dp(12f)
         val gridRight = card.right - ink.dp(12f)
         val cellGap = effectGridGap
-        val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
+        val cellWidth = (gridRight - gridLeft - cellGap * 3) / 4f
         val selected = selectedEffectStyle()
         effectStyles.forEachIndexed { index, style ->
-            val row = index / 3
-            val col = index % 3
+            val row = index / 4
+            val col = index % 4
             val left = gridLeft + col * (cellWidth + cellGap)
             val cellTop = gridTop + row * (effectCellHeight + cellGap)
             val rect = RectF(left, cellTop, left + cellWidth, cellTop + effectCellHeight)
@@ -115,8 +115,7 @@ class DynamicBackgroundPanel(
                 canvas.drawRoundRect(rect, ink.dp(10f), ink.dp(10f), ink.fill)
                 ink.fill.style = android.graphics.Paint.Style.FILL
             }
-            ink.text(canvas, style.second, 10f, if (isSelected) palette.brand else palette.text, rect.centerX(), rect.centerY() - ink.dp(3f))
-            ink.text(canvas, "效果 ${style.first}", 9f, palette.gloss, rect.centerX(), rect.centerY() + ink.dp(15f))
+            ink.text(canvas, style.second, 10f, if (isSelected) palette.brand else palette.text, rect.centerX(), rect.centerY() + ink.dp(4f))
         }
 
         // 液态玻璃图标：半透明玻璃底片、高光与主题色图标；关闭后恢复普通主题图标。
@@ -186,15 +185,15 @@ class DynamicBackgroundPanel(
                 val gridLeft = card.left + ink.dp(12f)
                 val gridRight = card.right - ink.dp(12f)
                 val cellGap = effectGridGap
-                val cellWidth = (gridRight - gridLeft - cellGap * 2) / 3f
+                val cellWidth = (gridRight - gridLeft - cellGap * 3) / 4f
                 val col = ((x - gridLeft) / (cellWidth + cellGap)).toInt()
                 val row = (gridY / (effectCellHeight + cellGap)).toInt()
-                if (col in 0..2 && row >= 0) {
+                if (col in 0..3 && row >= 0) {
                     val cellLeft = gridLeft + col * (cellWidth + cellGap)
                     val cellTop = row * (effectCellHeight + cellGap)
                     if (x >= cellLeft && x <= cellLeft + cellWidth &&
                         gridY >= cellTop && gridY <= cellTop + effectCellHeight) {
-                        val style = effectStyles.getOrNull(row * 3 + col) ?: return
+                        val style = effectStyles.getOrNull(row * 4 + col) ?: return
                         settingsPrefs.edit()
                             .putString(Settings.KEY_BACKGROUND_STYLE, style.first.toString())
                             .putBoolean(Settings.KEY_BACKGROUND_EFFECT, true)
