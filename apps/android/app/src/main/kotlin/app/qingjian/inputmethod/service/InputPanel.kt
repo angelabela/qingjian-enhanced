@@ -364,70 +364,92 @@ private class FlowingKeyboardBackgroundDrawable(
         uniform float uScene;
 
         float hash21(float2 p) {
-            return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+            p = fract(p * float2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
         }
         float noise2(float2 p) {
-            float2 i = floor(p);
+            float2 cell = floor(p);
             float2 f = fract(p);
             f = f * f * (3.0 - 2.0 * f);
-            float a = hash21(i);
-            float b = hash21(i + float2(1.0, 0.0));
-            float c = hash21(i + float2(0.0, 1.0));
-            float d = hash21(i + float2(1.0, 1.0));
+            float a = hash21(cell);
+            float b = hash21(cell + float2(1.0, 0.0));
+            float c = hash21(cell + float2(0.0, 1.0));
+            float d = hash21(cell + float2(1.0, 1.0));
             return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
         }
         float fbm(float2 p) {
-            float value = 0.0;
-            float amplitude = 0.52;
-            for (int i = 0; i < 5; i++) {
-                value += amplitude * noise2(p);
-                p = p * 2.03 + float2(13.7, 7.1);
-                amplitude *= 0.49;
+            float v = 0.0;
+            float a = 0.52;
+            for (int k = 0; k < 6; k++) {
+                v += a * noise2(p);
+                p = p * 2.02 + float2(17.17, 9.23);
+                a *= 0.48;
             }
-            return value;
+            return v / 0.97;
         }
         half4 main(float2 fragCoord) {
             float2 uv = fragCoord / max(iResolution, float2(1.0));
             float scene = uScene;
-            float3 skyTop = float3(0.20, 0.47, 0.78);
-            float3 skyBottom = float3(0.72, 0.88, 1.0);
-            float3 cloudColor = float3(1.0, 1.0, 1.0);
-            float3 shadowColor = float3(0.46, 0.61, 0.78);
+            float3 skyTop = float3(0.18, 0.43, 0.76);
+            float3 skyBottom = float3(0.70, 0.87, 1.0);
+            float3 cloudLit = float3(1.0, 0.99, 0.96);
+            float3 cloudShade = float3(0.42, 0.58, 0.76);
+            float cloudHeight = 0.76;
+            float cloudScale = 1.0;
             if (scene > 14.5 && scene < 15.5) {
-                skyTop = float3(0.16, 0.09, 0.30);
-                skyBottom = float3(1.0, 0.48, 0.31);
-                cloudColor = float3(1.0, 0.72, 0.62);
-                shadowColor = float3(0.30, 0.13, 0.32);
+                skyTop = float3(0.14, 0.07, 0.25);
+                skyBottom = float3(1.0, 0.39, 0.25);
+                cloudLit = float3(1.0, 0.69, 0.54);
+                cloudShade = float3(0.27, 0.10, 0.27);
+                cloudHeight = 0.88;
+                cloudScale = 0.88;
             } else if (scene > 15.5 && scene < 16.5) {
-                skyTop = float3(0.008, 0.018, 0.07);
-                skyBottom = float3(0.10, 0.19, 0.37);
-                cloudColor = float3(0.54, 0.66, 0.88);
-                shadowColor = float3(0.035, 0.055, 0.13);
+                skyTop = float3(0.008, 0.016, 0.065);
+                skyBottom = float3(0.08, 0.16, 0.32);
+                cloudLit = float3(0.52, 0.65, 0.88);
+                cloudShade = float3(0.025, 0.045, 0.12);
+                cloudHeight = 0.82;
+                cloudScale = 0.76;
             } else if (scene > 17.5) {
-                skyTop = float3(0.17, 0.10, 0.34);
-                skyBottom = float3(1.0, 0.66, 0.42);
-                cloudColor = float3(1.0, 0.86, 0.70);
-                shadowColor = float3(0.38, 0.18, 0.34);
+                skyTop = float3(0.15, 0.09, 0.30);
+                skyBottom = float3(1.0, 0.61, 0.39);
+                cloudLit = float3(1.0, 0.84, 0.68);
+                cloudShade = float3(0.34, 0.15, 0.31);
+                cloudHeight = 0.86;
+                cloudScale = 1.12;
             }
             float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, uv.y));
-            float2 p = uv * float2(3.8, 2.6) + float2(iTime * 0.010, sin(iTime * 0.006) * 0.08);
-            float broad = fbm(p * 0.48 + float2(2.0, 4.0));
-            float detail = fbm(p);
-            float wisps = fbm(p * 1.75 + float2(-iTime * 0.006, 3.0));
-            float density = detail * 0.58 + broad * 0.36 + wisps * 0.12;
-            float cloudMask = smoothstep(0.49, 0.78, density);
-            cloudMask *= (1.0 - smoothstep(0.28, 1.04, uv.y)) * 0.98 + 0.02;
-            float edge = smoothstep(0.49, 0.59, density) - smoothstep(0.72, 0.82, density);
-            float light = 0.35 + 0.65 * smoothstep(0.35, 0.82, wisps);
-            float3 cloud = mix(shadowColor, cloudColor, light);
+            float aspect = iResolution.x / max(iResolution.y, 1.0);
+            float2 p = float2(uv.x * max(aspect, 1.0), uv.y * 1.55) * (1.35 * cloudScale);
+            float t = iTime;
+            float2 drift = float2(t * 0.010, sin(t * 0.11) * 0.035);
+            float2 warp = float2(
+                fbm(p * 0.72 + drift * 0.42 + float2(2.7, 8.1)),
+                fbm(p * 0.72 - drift * 0.31 + float2(7.4, 3.2))
+            );
+            float2 q = p + (warp - 0.5) * 1.05;
+            float base = fbm(q * 1.08 + drift);
+            float detail = fbm(q * 2.05 + float2(-t * 0.004, t * 0.002));
+            float fine = fbm(q * 4.15 + float2(t * 0.006, -t * 0.003));
+            float density = base * 0.56 + detail * 0.31 + fine * 0.13;
+            float horizon = 1.0 - smoothstep(0.22, 0.98, uv.y);
+            float threshold = 0.485 + (uv.y - 0.42) * 0.075;
+            float cloudMask = smoothstep(threshold - 0.085, threshold + 0.105, density);
+            cloudMask *= smoothstep(0.02, 0.24, horizon) * cloudHeight;
+            float edge = smoothstep(threshold - 0.13, threshold - 0.015, density) *
+                         (1.0 - smoothstep(threshold + 0.04, threshold + 0.17, density));
+            float light = clamp(0.26 + 0.74 * (0.58 * detail + 0.42 * fine), 0.0, 1.0);
+            float3 cloud = mix(cloudShade, cloudLit, smoothstep(0.24, 0.82, light));
+            float2 sunPos = scene > 15.5 && scene < 16.5 ? float2(0.76, 0.18) : float2(0.82, 0.15);
+            float sunDist = length((uv - sunPos) * float2(1.0, 1.65));
+            float sunGlow = exp(-sunDist * sunDist * 16.0);
             if (scene < 14.5 || scene > 17.5) {
-                float2 sunPos = scene > 17.5 ? float2(0.78, 0.18) : float2(0.84, 0.14);
-                float sun = exp(-dot((uv - sunPos) * float2(1.0, 1.7), (uv - sunPos) * float2(1.0, 1.7)) * 18.0);
-                sky += float3(1.0, 0.78, 0.42) * sun * 0.40;
-                cloud += float3(1.0, 0.48, 0.20) * edge * sun * 0.34;
+                sky += float3(1.0, 0.72, 0.38) * sunGlow * 0.34;
+                cloud += float3(1.0, 0.43, 0.20) * edge * sunGlow * 0.28;
             }
             float3 result = mix(sky, cloud, clamp(cloudMask, 0.0, 1.0));
-            result += cloudColor * edge * (scene > 15.5 && scene < 16.5 ? 0.06 : 0.12);
+            result += cloudLit * edge * (scene > 15.5 && scene < 16.5 ? 0.035 : 0.075);
             return half4(clamp(result, 0.0, 1.0), 1.0);
         }
     """.trimIndent()
