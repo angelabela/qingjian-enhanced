@@ -142,6 +142,9 @@ class CandidateBarView(
 
     /** 视频背景帧亮度变化时，自动切换候选文字的高对比颜色。 */
     fun setVideoBackgroundLuminance(luminance: Float) {
+        if (Settings.preferences(context).getBoolean(Settings.KEY_ADAPTIVE_TOOLBAR_ICONS, true)) {
+            setAdaptiveToolbarLuminance(luminance)
+        }
         val current = adaptiveVideoTextColor
         val next = when (current) {
             android.graphics.Color.BLACK -> if (luminance < 0.44f) android.graphics.Color.WHITE else android.graphics.Color.BLACK
@@ -149,6 +152,21 @@ class CandidateBarView(
             else -> if (luminance >= 0.52f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
         }
         setAdaptiveTextColor(next)
+    }
+
+    /** 工具栏图标在当前栏宽中的背景采样横坐标。 */
+    fun adaptiveToolbarSampleXs(): FloatArray = toolbar.sampleXs(width)
+
+    /** 输入法背景采样后回填每个图标的局部亮度；null 恢复主题图标色。 */
+    fun setAdaptiveToolbarLuminances(luminances: FloatArray?) {
+        toolbar.setAdaptiveLuminances(luminances)
+        invalidate()
+    }
+
+    /** 视频层目前提供整帧亮度，先统一保护工具栏；视频背景关闭后会清除该颜色。 */
+    fun setAdaptiveToolbarLuminance(luminance: Float) {
+        val count = toolbar.sampleXs(width).size
+        setAdaptiveToolbarLuminances(FloatArray(count) { luminance.coerceIn(0f, 1f) })
     }
 
     /** 显示的是工具栏：横滑滑的是它中间那排图标，不是整条。 */
