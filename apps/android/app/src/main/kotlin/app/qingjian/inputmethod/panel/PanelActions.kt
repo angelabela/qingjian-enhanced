@@ -69,6 +69,9 @@ interface PanelActions {
     /** 就地改一个整数设置（例如候选字号）。 */
     fun setIntChoice(key: String, value: Int)
 
+    /** 设置面板里的实时滑块结束后，按新设置重建键盘并恢复当前面板。 */
+    fun refreshKeyboardSettings()
+
     /** 剪贴板里点了一张图（图片文件路径）：发进输入框，输入框不收图片就放回系统剪贴板。 */
     fun commitImage(path: String)
 
