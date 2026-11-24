@@ -230,7 +230,7 @@ class ClipboardPanel(
         val screenWidth = resources.displayMetrics.widthPixels
         // 留出足够横向行程，让浮窗长按后能在屏幕左右两侧之间移动。
         // 键盘横向铺满可用屏幕；顶部操作条既提供删除键，也提供全屏拖动抓手。
-        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f))
+        val popupWidth = (screenWidth - ink.dp(12f)).coerceAtLeast(ink.dp(260f)).toInt()
         val headerHeight = ink.dp(42f)
         val keyHeight = ink.dp(42f)
         val rowGap = ink.dp(6f)
