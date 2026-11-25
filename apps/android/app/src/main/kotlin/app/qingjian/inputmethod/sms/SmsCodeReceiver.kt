@@ -70,10 +70,28 @@ class SmsCodeReceiver : BroadcastReceiver() {
             "(验证码|校验码|动态码|短信码|verification\\s*code|one[- ]time\\s+password|\\bOTP\\b)",
             RegexOption.IGNORE_CASE,
         )
-        val match = context.find(text) ?: return null
-        val tail = text.substring(match.range.last + 1).take(36)
+        // Some SMS templates place the code before the keyword; inspect a bounded window on both sides.
         val digits = Regex("(?<!\\d)(\\d{4,6})(?!\\d)")
-        return digits.find(tail)?.groupValues?.getOrNull(1)
+        val matches = context.findAll(text).toList()
+        if (matches.isEmpty()) return null
+        data class Candidate(val code: String, val distance: Int, val afterKeyword: Boolean)
+        val candidates = matches.flatMap { match ->
+            val start = (match.range.first - 48).coerceAtLeast(0)
+            val end = (match.range.last + 49).coerceAtMost(text.length)
+            digits.findAll(text.substring(start, end)).mapNotNull { number ->
+                val numberStart = start + number.range.first
+                val numberEnd = start + number.range.last
+                when {
+                    numberStart > match.range.last ->
+                        Candidate(number.groupValues[1], numberStart - match.range.last - 1, true)
+                    numberEnd < match.range.first ->
+                        Candidate(number.groupValues[1], match.range.first - numberEnd - 1, false)
+                    else -> null
+                }
+            }.toList()
+        }
+        return candidates.filter { it.afterKeyword }.minByOrNull { it.distance }?.code
+            ?: candidates.filterNot { it.afterKeyword }.minByOrNull { it.distance }?.code
     }
 
     companion object {
