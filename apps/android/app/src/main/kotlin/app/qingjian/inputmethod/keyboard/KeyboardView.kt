@@ -872,8 +872,15 @@ class KeyboardView(
                     longPressPointer = -1
                 }
                 when {
-                    choosing -> choicePopup.finish()?.let { chosen ->
-                        if (choiceKey == Key.Language) listener.onLanguageChoice(chosen) else listener.onKeyChoice(choiceItems[chosen])
+                    choosing -> {
+                        val selectedKey = choiceKey
+                        val selectedIndex = choicePopup.finish()
+                        val selectedText = selectedIndex?.let { choiceItems.getOrNull(it) }
+                        clearChoiceState()
+                        if (selectedIndex != null && selectedText != null) {
+                            if (selectedKey == Key.Language) listener.onLanguageChoice(selectedIndex)
+                            else listener.onKeyChoice(selectedText)
+                        }
                     }
                     slot?.key == Key.Backspace -> {
                         timer.removeCallbacks(repeatBackspace)
@@ -916,10 +923,7 @@ class KeyboardView(
                 longPressPointer = -1
             }
             // Z/X/C/V 下滑一旦接管手势，就收起可能已弹出的长按提示，避免悬浮气泡挡住删除手势。
-            if (choicePopup.showing) choicePopup.finish()
-            choiceKey = null
-            choiceItems = emptyList()
-            choiceTracking = false
+            clearChoiceState()
             if (flickPointer == editPointer) endFlick()
             invalidate()
         }
@@ -940,14 +944,31 @@ class KeyboardView(
     }
 
     /** 记着的那根手指挪动：点都记上（含两帧之间的历史点），刚挪够远就转成滑行，撤掉点按的按下态、气泡与长按。 */
+    private fun clearChoiceState() {
+        if (choicePopup.showing) choicePopup.finish()
+        choiceKey = null
+        choiceItems = emptyList()
+        choiceTracking = false
+        timer.removeCallbacks(longPress)
+        longPressPointer = -1
+    }
+
     private fun trackSwipe(event: MotionEvent) {
-        if (trail.pointer < 0 || choicePopup.showing) return
+        if (trail.pointer < 0) return
         val at = event.findPointerIndex(trail.pointer)
         if (at < 0) return
-        var started = false
-        for (h in 0 until event.historySize) started = trail.add(event.getHistoricalX(at, h), event.getHistoricalY(at, h)) || started
-        started = trail.add(event.getX(at), event.getY(at)) || started
-        if (!started) return
+        for (h in 0 until event.historySize) {
+            trail.add(event.getHistoricalX(at, h), event.getHistoricalY(at, h))
+        }
+        trail.add(event.getX(at), event.getY(at))
+        if (!trail.swiping) return
+        if (choicePopup.showing && longPressPointer == trail.pointer) {
+            getLocationOnScreen(screenLocation)
+            val fingerX = screenLocation[0] + event.getX(at)
+            // 横排气泡内继续按原逻辑选字；滑出气泡左右边界后交给整键盘滑行。
+            if (choicePopup.containsX(fingerX)) return
+            clearChoiceState()
+        }
         pressed.remove(trail.pointer)
         if (longPressPointer == trail.pointer) {
             timer.removeCallbacks(longPress)
@@ -1338,8 +1359,7 @@ class KeyboardView(
         candidateSwipeMode = false
         candidateSwipeCancelled = false
         candidateSwipeLastStep = 0
-        longPressPointer = -1
-        if (choicePopup.showing) choicePopup.finish()
+        clearChoiceState()
     }
 
     override fun onDetachedFromWindow() {

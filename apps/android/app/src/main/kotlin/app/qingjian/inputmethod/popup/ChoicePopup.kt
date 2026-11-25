@@ -127,6 +127,10 @@ class ChoicePopup(
         screenTop = location[1] + top
     }
 
+    /** 当前手指是否仍在横排选项的水平范围内；滑出后可把手势交还给键盘滑行。 */
+    fun containsX(fingerScreenX: Float): Boolean =
+        window.isShowing && fingerScreenX >= screenLeft && fingerScreenX <= screenLeft + window.width
+
     /**
      * 手指移动：横排看横向落在哪项，滑出左右两端或 [cancelled] 就是取消；竖排看 [fingerScreenY] 落在哪一行，
      * 手指还在气泡下面（按着的键上）时留着原来的高亮，往上滑过顶停在第一项，横着偏出气泡太远取消。

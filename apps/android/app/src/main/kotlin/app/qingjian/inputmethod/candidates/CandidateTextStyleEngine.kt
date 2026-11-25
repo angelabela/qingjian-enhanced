@@ -73,11 +73,12 @@ class CandidateTextStyleEngine(
                         shadowColor = 0x66000000, shadowRadiusDp = 1.2f, shadowDyDp = 1f,
                     )
                     Settings.TextEffectPreset.SOFT_GLOW -> style.copy(
-                        shadowColor = color, shadowRadiusDp = 5f, shadowDxDp = 0f, shadowDyDp = 0f,
+                        shadowColor = (color and 0x00FFFFFF) or (0x99 shl 24),
+                        shadowRadiusDp = 3.5f, shadowDxDp = 0f, shadowDyDp = 0f,
                     )
                     Settings.TextEffectPreset.NEON_OUTLINE -> style.copy(
-                        strokeColor = color, strokeWidthDp = 1.15f,
-                        shadowColor = color, shadowRadiusDp = 3f,
+                        strokeColor = color, strokeWidthDp = 0.85f,
+                        shadowColor = (color and 0x00FFFFFF) or (0x99 shl 24), shadowRadiusDp = 2f,
                     )
                     Settings.TextEffectPreset.CONTRAST_OUTLINE -> style.copy(
                         strokeColor = android.graphics.Color.WHITE,
