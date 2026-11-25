@@ -189,7 +189,7 @@ class FunctionPanel(
         get() = listOf(
             Toggle(Settings.KEY_HAPTIC, "按键震动", "", settings.haptic),
             Toggle(Settings.KEY_POPUP, "功能键气泡", "控制非字母按键的放大提示", settings.keyPopup),
-            Toggle(Settings.KEY_LETTER_KEY_TIP, "字母按键短按弹出 Tips", "短按字母键时显示放大提示；关闭后不影响长按选字与滑动输入", settings.letterKeyTip),
+            Toggle(Settings.KEY_LETTER_KEY_TIP, "字母按键短按弹出 Tips", "关闭后仅隐藏短按提示，长按和滑动不受影响", settings.letterKeyTip),
             Toggle(Settings.KEY_FULLSCREEN, "全面屏适配", "手势条那一截不留白，两个角各放一个键", settings.fullscreenAdapt),
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
             Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
