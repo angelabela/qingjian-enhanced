@@ -360,6 +360,7 @@ class QingjianInputMethodService :
     private val dynamicBackgroundListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             panel?.refreshDynamicBackground()
+            panel?.refreshKeyEffects()
             panel?.refreshFunctions()
         }
     }
