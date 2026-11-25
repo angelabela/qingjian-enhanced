@@ -71,7 +71,7 @@ abstract class PanelView(
         bounds: RectF,
         state: ScrollState,
         horizontal: Boolean = false,
-        virtualId: Int = 90000,
+        virtualId: Int = 1000000,
     ): AccessibilityElement? {
         if (state.max <= 0f || bounds.isEmpty) return null
         val page = (if (horizontal) bounds.width() else bounds.height()).coerceAtLeast(ink.dp(48f)) * 0.8f
