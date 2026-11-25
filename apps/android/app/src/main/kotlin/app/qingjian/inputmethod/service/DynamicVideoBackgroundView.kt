@@ -132,7 +132,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         super.onVisibilityChanged(changedView, visibility)
         val media = player ?: return
         if (!prepared) return
-        if (visibility != VISIBLE) {
+        if (!isShown) {
             if (runCatching { media.isPlaying }.getOrDefault(false)) {
                 runCatching { media.pause() }
                 pausedForVisibility = true
