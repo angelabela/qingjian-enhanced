@@ -90,7 +90,12 @@ class KeyboardView(
         fun onClearBeforeCursor()
     }
 
-    private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
+    private val metrics = KeyboardMetrics(
+        resources.displayMetrics.density,
+        settings.heightPercent,
+        resources.displayMetrics.scaledDensity / resources.displayMetrics.density,
+        settings.keyFontSize / 20f,
+    )
     private val keyEffectPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
     private val borderColors = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
     private val backgroundColors = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
@@ -100,6 +105,7 @@ class KeyboardView(
         borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)],
         backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)],
         settings.keyboardTextColor,
+        scaledDensity = resources.displayMetrics.scaledDensity,
     )
     private var marqueeEnabled = keyMarqueeEnabled
     private val side = SideColumn(metrics.density) { item ->
@@ -203,6 +209,13 @@ class KeyboardView(
                 when (action) {
                     AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
                         if (!accessibilityManager.isEnabled || accessibilityFocusedSideItem == index) return false
+                        if (accessibilityFocusedKey >= 0) {
+                            sendVirtualAccessibilityEvent(accessibilityFocusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedKey = -1
+                        }
+                        if (accessibilityFocusedSideItem >= 0) {
+                            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        }
                         accessibilityFocusedSideItem = index
                         sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
                         invalidate()
@@ -212,6 +225,7 @@ class KeyboardView(
                         if (accessibilityFocusedSideItem != index) return false
                         accessibilityFocusedSideItem = -1
                         sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        invalidate()
                         return true
                     }
                     AccessibilityNodeInfo.ACTION_CLICK -> {
@@ -231,6 +245,10 @@ class KeyboardView(
                             accessibilityFocusedKey,
                             AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
                         )
+                    }
+                    if (accessibilityFocusedSideItem >= 0) {
+                        sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        accessibilityFocusedSideItem = -1
                     }
                     accessibilityFocusedKey = virtualViewId
                     sendVirtualAccessibilityEvent(
@@ -514,6 +532,11 @@ class KeyboardView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val mode = MeasureSpec.getMode(heightMeasureSpec)
+        val available = if (mode == MeasureSpec.AT_MOST || mode == MeasureSpec.EXACTLY) {
+            MeasureSpec.getSize(heightMeasureSpec)
+        } else null
+        metrics.setAvailableHeight(available)
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), metrics.height)
     }
 

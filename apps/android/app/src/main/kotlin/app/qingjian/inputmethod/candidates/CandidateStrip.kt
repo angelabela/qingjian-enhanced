@@ -19,13 +19,14 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
  */
 class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
-    private val fallbackBackgroundColor: Int = markColor) {
+    private val fallbackBackgroundColor: Int = markColor,
+    private val scaledDensity: Float = density) {
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
-    private val textStyles = CandidateTextStyleEngine(density, 20f * density * textScale, candidateTextColor, fontWeight, styleConfig)
+    private val textStyles = CandidateTextStyleEngine(density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig)
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
     private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
-        it.textSize = 25f * density * textScale
+        it.textSize = 25f * scaledDensity * textScale
         it.textAlign = Paint.Align.CENTER
         it.typeface = fontWeight.typeface
         it.isFakeBoldText = fontWeight.weight >= 600
@@ -41,7 +42,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 正常候选文字由 Android 原生字体重新绘制；字号、字重与键盘文字设置保持一致。 */
     private val candidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = candidateTextColor
-        textSize = 20f * density * textScale
+        textSize = 20f * scaledDensity * textScale
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
@@ -50,7 +51,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 用稍粗的 CLEAR 字形擦掉 Rust 位图中的旧字形，不动候选格底色、分隔线和译文。 */
     private val eraseCandidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.TRANSPARENT
-        textSize = 20f * density * textScale
+        textSize = 20f * scaledDensity * textScale
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
@@ -60,7 +61,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     }
     private val eraseCandidateFill = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.TRANSPARENT
-        textSize = 20f * density * textScale
+        textSize = 20f * scaledDensity * textScale
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
@@ -69,13 +70,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     }
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
-        textSize = 20f * density * textScale
+        textSize = 20f * scaledDensity * textScale
         textAlign = Paint.Align.CENTER
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
-    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * density * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface; isFakeBoldText = fontWeight.weight >= 600 }
+    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * scaledDensity * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface; isFakeBoldText = fontWeight.weight >= 600 }
     private val fallbackRects = ArrayList<RectF>()
     private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
@@ -571,11 +572,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val start = if (preedit.isNotEmpty()) 52f * density else 8f * density
         if (preedit.isNotEmpty()) {
             fallbackText.textAlign = Paint.Align.LEFT
-            fallbackText.textSize = 13f * density
+            fallbackText.textSize = 13f * scaledDensity
             canvas.drawText(preedit, 8f * density - scrollX, barHeight * 0.28f, fallbackText)
         }
         fallbackText.textAlign = Paint.Align.CENTER
-        fallbackText.textSize = 19f * density
+        fallbackText.textSize = 19f * scaledDensity
         val cell = 56f * density
         candidates.forEachIndexed { index, candidate ->
             val left = start + index * cell

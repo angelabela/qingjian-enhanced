@@ -278,8 +278,13 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
                 false
             }
         }
-        val viewport = (activity.resources.displayMetrics.heightPixels * 0.58f).toInt()
-            .coerceAtLeast(ui.dp(320))
+        // Use the actual app window height, not the full display: split-screen and freeform windows can be much shorter.
+        val windowHeight = activity.window.decorView.rootView.height
+            .takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
+        val maxViewport = (windowHeight - ui.dp(220)).coerceAtLeast(ui.dp(160))
+        val viewport = (windowHeight * 0.58f).toInt()
+            .coerceAtLeast(ui.dp(160))
+            .coerceAtMost(maxViewport)
         addView(list, LinearLayout.LayoutParams(MATCH_PARENT, viewport))
     }
 

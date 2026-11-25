@@ -1091,7 +1091,7 @@ class InputPanel(
                 context, palette, actions, header, kind,
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
-            PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.candidateFontSize / 20f)
             PanelKind.CONTEXT_TOOLS -> ContextToolsPanel(
                 context, palette, header, text, hasSelection, aiChatGenerator,
                 actions::insertAtCursor, actions::replaceSelectedText, actions::copyToClipboard, actions::closePanel,

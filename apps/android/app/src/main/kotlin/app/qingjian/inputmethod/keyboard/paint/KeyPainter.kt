@@ -29,6 +29,7 @@ class KeyPainter(
     private var customBorderColor: Int = 0,
     private var customBackgroundColor: Int = 0,
     private val customTextColor: Int = 0,
+    private val scaledDensity: Float = metrics.density,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -297,7 +298,7 @@ class KeyPainter(
     ) {
         ink.typeface = fontTypeface
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = 8.5f * density
+        ink.textSize = 8.5f * scaledDensity
         val punctuationOnly = upward && (label == "。" || label == ".")
         val arrow = if (upward) "↑" else "↓"
         val fullText = "$arrow$label"
@@ -309,7 +310,7 @@ class KeyPainter(
             ink.measureText(symbolText) <= maxLabelWidth -> symbolText
             else -> arrow
         }
-        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * density
+        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * scaledDensity
         // 只有完整动作文字超出键帽可用宽度时才退化为图标。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
@@ -371,7 +372,7 @@ class KeyPainter(
     /** 空格键剪贴板手势只显示文字，不再绘制剪贴板和箭头图标。 */
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
         ink.typeface = fontTypeface
-        ink.textSize = 8f * density
+        ink.textSize = 8f * scaledDensity
         ink.color = secondaryColor
         ink.clearShadowLayer()
         canvas.drawText("剪贴板", bounds.centerX(), bounds.bottom - 5f * density, ink)
@@ -497,7 +498,7 @@ class KeyPainter(
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
         // 每次绘制主字都强制以键位中心为锚点，避免上一次绘制状态污染标点键对齐。
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * density * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp)
         ink.color = color
         ink.shader = null
         ink.style = Paint.Style.FILL

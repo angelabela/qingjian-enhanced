@@ -85,7 +85,7 @@ class CandidateGrid(
         cells.clear()
         val rowWidth = body.width()
         val minWidth = rowWidth / MAX_PER_ROW
-        val rowHeight = ink.dp(ROW_DP * textScale)
+        val rowHeight = ink.scaledDensity * ROW_DP * textScale
         var rowStart = 0
         var used = 0f
         var top = 0f

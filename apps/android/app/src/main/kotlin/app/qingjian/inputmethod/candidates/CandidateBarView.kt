@@ -76,6 +76,7 @@ class CandidateBarView(
     }
 
     private val density = resources.displayMetrics.density
+    private val fontScale = resources.displayMetrics.scaledDensity / density
 
     private val accessibilityManager =
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
@@ -269,7 +270,7 @@ class CandidateBarView(
     }
     private var adaptiveVideoTextColor: Int? = null
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
-    val barHeight = 66f * density * maxOf(1f, textScale)
+    val barHeight = 66f * density * maxOf(1f, textScale * fontScale)
     private val strip = CandidateStrip(
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
         palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board,
