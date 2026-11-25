@@ -636,6 +636,14 @@ class ClipboardPanel(
     }
         }
         accessibilityScrollElement("剪贴板和常用语列表，可滚动", RectF(list), listScroll)?.let(elements::add)
+        if (showingPhrases && groups.accessibilityScrollable) {
+            elements += AccessibilityElement(
+                groups.accessibilityScrollLabel,
+                RectF(groups.bounds),
+                virtualId = 1000001,
+                onScroll = groups::accessibilityScroll,
+            )
+        }
         return elements.mapNotNull { element ->
             if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 90000) {
                 val visible = RectF(element.bounds)
