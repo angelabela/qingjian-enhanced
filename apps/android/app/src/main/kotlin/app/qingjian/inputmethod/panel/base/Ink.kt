@@ -27,7 +27,7 @@ class Ink(val palette: Palette, val density: Float, val scaledDensity: Float = d
         canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float,
         bold: Boolean = false, maxWidth: Float = 0f,
     ) {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.color = color
         text.isFakeBoldText = bold
         val shown = if (maxWidth > 0f) {
@@ -40,7 +40,7 @@ class Ink(val palette: Palette, val density: Float, val scaledDensity: Float = d
 
     /** 从 [x] 起往右画一行字（纵向以 [cy] 居中），超出 [right] 截断加省略号。 */
     fun textStart(canvas: Canvas, value: String, sp: Float, color: Int, x: Float, cy: Float, right: Float) {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.color = color
         text.isFakeBoldText = false
         text.textAlign = Paint.Align.LEFT
