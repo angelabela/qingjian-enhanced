@@ -103,9 +103,9 @@ class CandidateBarView(
             info.isAccessibilityFocused = accessibilityFocusedCandidate == virtualViewId
             info.setBoundsInParent(bounds)
             val screenBounds = Rect(bounds)
-            getLocationOnScreen(IntArray(2).also { screenLocation ->
-                screenBounds.offset(screenLocation[0], screenLocation[1])
-            })
+            val screenLocation = IntArray(2)
+            getLocationOnScreen(screenLocation)
+            screenBounds.offset(screenLocation[0], screenLocation[1])
             info.setBoundsInScreen(screenBounds)
             info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
             if (accessibilityFocusedCandidate == virtualViewId) {
