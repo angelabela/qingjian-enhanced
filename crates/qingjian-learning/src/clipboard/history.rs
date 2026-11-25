@@ -208,7 +208,13 @@ impl ClipboardHistory {
     fn push(&mut self, entry: ClipboardEntry) -> Result<bool, LearningError> {
         let same = |other: &ClipboardEntry| other.text == entry.text && other.image == entry.image;
         if self.entries.first().is_some_and(same) {
-            return Ok(false);
+            if self.entries[0].at == entry.at {
+                return Ok(false);
+            }
+            // 同一内容再次复制且已在首位，也要刷新“最近复制时间”。
+            self.entries[0].at = entry.at;
+            self.save()?;
+            return Ok(true);
         }
         self.entries.retain(|other| !same(other));
         self.entries.insert(0, entry);
@@ -317,10 +323,13 @@ mod tests {
         let code = "fn main() {\n\tprintln!(\"hi\");\n}\n";
         assert!(history.add_at("一", 1).unwrap());
         assert!(history.add_at(code, 2).unwrap());
-        assert!(!history.add_at(code, 3).unwrap());
+        assert!(history.add_at(code, 3).unwrap());
+        assert_eq!(history.entries()[0].at, 3);
         assert!(history.add_at("一", 4).unwrap());
         assert!(!history.add_at("  \n", 5).unwrap());
-        assert_eq!(texts(&ClipboardHistory::open(&dir)), ["一", code]);
+        let reopened = ClipboardHistory::open(&dir);
+        assert_eq!(texts(&reopened), ["一", code]);
+        assert_eq!(reopened.entries()[1].at, 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
