@@ -301,7 +301,7 @@ class KeyboardView(
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 val sideIndex = side.items.indices.firstOrNull {
-                    side.accessibilityBounds(it)?.contains(event.x.toInt(), event.y.toInt()) == true
+                    side.accessibilityBounds(it)?.contains(event.x, event.y) == true
                 }
                 val next = sideIndex?.let { SIDE_ACCESSIBILITY_BASE + it }
                     ?: slots.indexOfFirst { it.bounds.contains(event.x, event.y) }
