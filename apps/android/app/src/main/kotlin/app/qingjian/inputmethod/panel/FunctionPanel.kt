@@ -84,7 +84,9 @@ class FunctionPanel(
             prefs.getBoolean("keyboard_key_edge_glow", false) ||
             prefs.getBoolean("keyboard_key_3d", false) ||
             prefs.getInt("keyboard_key_border_index", 0) != 0 ||
-            prefs.getInt("keyboard_key_background_index", 0) != 0
+            prefs.getInt("keyboard_key_background_index", 0) != 0 ||
+            prefs.getInt("keyboard_key_border_color", 0) != 0 ||
+            prefs.getInt("keyboard_key_background_color", 0) != 0
     }
 
     private fun smsMonitoringEnabled(): Boolean =
@@ -839,7 +841,7 @@ class FunctionPanel(
             card.left + ink.dp(14f), syncY + ink.dp(4f), card.right - ink.dp(70f))
         drawSwitch(canvas, card.right - ink.dp(38f), syncY, syncTextEffectsEnabled())
 
-        val rowTop = targetTop + ink.dp(254f)
+        val rowTop = targetTop + ink.dp(218f)
         val rowStep = ink.dp(82f)
         val itemGap = ink.dp(8f)
         val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
