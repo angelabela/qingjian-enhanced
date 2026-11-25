@@ -325,7 +325,72 @@ class ClipboardPanel(
                     }
                 }
             }
-            override fun onDraw(canvas: Canvas) {
+            override fun accessibilityElements(): List<AccessibilityElement> {
+        if (list.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        if (!showingPhrases) {
+            if (!searchRect.isEmpty) {
+                elements += AccessibilityElement(
+                    if (searchQuery.isBlank()) "搜索剪贴板" else "搜索剪贴板，当前关键词$searchQuery",
+                    RectF(searchRect),
+                )
+                elements += AccessibilityElement("删除一个字符", RectF(deleteBackwardRect))
+                elements += AccessibilityElement(
+                    "粘贴后\${if (pasteEnter) "回车换行" else "不自动回车"}，点击切换",
+                    RectF(pasteToggleRect),
+                    selected = pasteEnter,
+                )
+                elements += AccessibilityElement(
+                    "粘贴后\${if (pasteNextCell) "跳到下格" else "不跳到下格"}，点击切换",
+                    RectF(pasteNextCellRect),
+                    selected = pasteNextCell,
+                )
+            }
+        } else {
+            groups.labels.indices.forEach { index ->
+                groups.accessibilityBounds(index)?.let { bounds ->
+                    elements += AccessibilityElement(
+                        "常用语分组，\${groups.labels[index]}" + if (index == groups.selected) "，已选中" else "",
+                        bounds,
+                        selected = index == groups.selected,
+                    )
+                }
+            }
+        }
+        for (i in 0 until count) {
+            val top = list.top + tops.getOrElse(i) { continue } - listScroll.offset
+            val bottom = list.top + bottoms.getOrElse(i) { continue } - listScroll.offset
+            if (bottom <= list.top || top >= list.bottom) continue
+            val summary = textOf(i).replace('\n', ' ').take(48).ifBlank { "图片或空白剪贴板内容" }
+            val label = if (showingPhrases) "常用语：$summary" else "剪贴板：$summary"
+            elements += AccessibilityElement(
+                label + if (expanded == i) "，已展开" else "，点击上屏，右侧可展开操作",
+                RectF(list.left + ink.dp(CARD_MARGIN_DP), top, list.right - ink.dp(CARD_MARGIN_DP), bottom),
+                selected = expanded == i,
+            )
+            val chevronLeft = width - ink.dp(CARD_MARGIN_DP + CHEVRON_DP + 8f)
+            elements += AccessibilityElement(
+                if (expanded == i) "收起这条记录的操作" else "展开这条记录的操作",
+                RectF(chevronLeft, top, list.right, minOf(bottom, top + ink.dp(CARD_PADDING_DP + 30f))),
+                selected = expanded == i,
+            )
+            if (expanded == i && actionLabels().isNotEmpty() && expansionProgress > 0f) {
+                val labels = actionLabels()
+                val actionTop = bottom - ink.dp(ACTIONS_DP)
+                val each = actionWidth()
+                labels.forEachIndexed { actionIndex, action ->
+                    val left = ink.dp(CARD_MARGIN_DP + CARD_PADDING_DP) + each * actionIndex
+                    elements += AccessibilityElement(
+                        action.second,
+                        RectF(left, actionTop, left + each, bottom),
+                    )
+                }
+            }
+        }
+        return elements
+    }
+
+    override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
                 paint.style = Paint.Style.FILL
                 paint.color = if (headerPressed) palette.brand else palette.surface
@@ -1199,6 +1264,25 @@ class ClipboardPanel(
             return
         }
         when {
+            !showingPhrases && deleteBackwardRect.contains(x, y) -> actions.deleteBackward()
+            !showingPhrases && pasteToggleRect.contains(x, y) -> {
+                pasteEnter = !pasteEnter
+                if (pasteEnter) pasteNextCell = false
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter)
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, pasteNextCell)
+                    .apply()
+                invalidate()
+            }
+            !showingPhrases && pasteNextCellRect.contains(x, y) -> {
+                pasteNextCell = !pasteNextCell
+                if (pasteNextCell) pasteEnter = false
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter)
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, pasteNextCell)
+                    .apply()
+                invalidate()
+            }
             y < headerHeight && isRightIcon(x, y) -> onRightIcon()
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->
