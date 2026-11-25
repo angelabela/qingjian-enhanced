@@ -145,7 +145,7 @@ abstract class PanelView(
     }
 
     private fun sendPanelAccessibilityEvent(id: Int, type: Int) {
-        val node = createAccessibilityNodeInfo(id) ?: return
+        val node = panelAccessibilityProvider.createAccessibilityNodeInfo(id) ?: return
         val event = AccessibilityEvent.obtain(type)
         event.packageName = context.packageName
         event.className = node.className
