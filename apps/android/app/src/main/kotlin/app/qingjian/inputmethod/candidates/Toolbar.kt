@@ -48,10 +48,12 @@ class Toolbar(
     private val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glassEffectPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val backdropMatrix = Matrix()
-    private var liquidGlassShader: RuntimeShader? = null
+    // 每个图标独立持有 RuntimeShader/Backdrop BitmapShader，避免同一 Shader 在一帧内
+    // 被多个图标连续改写 uniform 与纹理矩阵，导致 GPU 延迟执行时出现串帧/闪烁。
+    private val liquidGlassShaders = HashMap<Pair<Icon, Int>, RuntimeShader>()
     private var liquidGlassShaderUnavailable = false
     private var backdropShaderBitmap: Bitmap? = null
-    private var backdropShader: BitmapShader? = null
+    private val backdropShaders = HashMap<Pair<Icon, Int>, BitmapShader>()
     private var backdropProvider: (() -> Bitmap?)? = null
     private val iconMaskCache = HashMap<Pair<Icon, Int>, Bitmap>()
     private val iconMaskShaderCache = HashMap<Pair<Icon, Int>, BitmapShader>()
@@ -234,14 +236,17 @@ class Toolbar(
             val padding = 5.5f * density
             val renderSize = kotlin.math.ceil(size + padding * 2f).toInt().coerceAtLeast(8)
             iconMask(icon, renderSize, size)
-            val shader = liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_ICON_AGSL).also { liquidGlassShader = it }
+            if (backdropShaderBitmap !== backdrop) {
+                backdropShaderBitmap = backdrop
+                backdropShaders.clear()
+                liquidGlassShaders.clear()
+            }
+            val shaderKey = icon to renderSize
+            val shader = liquidGlassShaders.getOrPut(shaderKey) { RuntimeShader(LIQUID_GLASS_ICON_AGSL) }
             val sourceScale = backdrop.width.toFloat() / viewWidth.coerceAtLeast(1)
-            val sourceShader = if (backdropShaderBitmap !== backdrop || backdropShader == null) {
-                BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
-                    backdropShaderBitmap = backdrop
-                    backdropShader = it
-                }
-            } else backdropShader!!
+            val sourceShader = backdropShaders.getOrPut(shaderKey) {
+                BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            }
 
             backdropMatrix.setScale(sourceScale, sourceScale)
             backdropMatrix.postTranslate((cx - renderSize / 2f) * sourceScale, (cy - renderSize / 2f) * sourceScale)
@@ -274,7 +279,8 @@ class Toolbar(
         } catch (_: RuntimeException) {
             // 图形驱动/系统不支持当前 AGSL 时，停用故障 Shader 并保持图标可见，不让工具栏闪烁或崩溃。
             liquidGlassShaderUnavailable = true
-            liquidGlassShader = null
+            liquidGlassShaders.clear()
+            backdropShaders.clear()
             drawStableGlassStroke()
         } finally {
             glassEffectPaint.shader = null
