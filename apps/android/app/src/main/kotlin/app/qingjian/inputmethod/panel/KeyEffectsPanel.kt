@@ -135,21 +135,23 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
 
     private fun drawColorChoice(canvas: Canvas, rowTop: Float, label: String, colors: IntArray, selected: Int) {
         ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(14f), rowTop + ink.dp(18f), card.right - ink.dp(12f))
-        val swatchSize = ink.dp(17f)
-        val gap = ink.dp(6f)
+        val swatchWidth = ink.dp(19f)
+        val swatchHeight = ink.dp(14f)
+        val gap = ink.dp(5f)
         var x = card.left + ink.dp(14f)
-        val y = rowTop + ink.dp(28f)
+        val y = rowTop + ink.dp(29f)
         colors.forEachIndexed { index, color ->
+            val bounds = RectF(x, y, x + swatchWidth, y + swatchHeight)
             ink.fill.color = color
-            canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f, ink.fill)
+            canvas.drawRoundRect(bounds, ink.dp(3f), ink.dp(3f), ink.fill)
             if (index == selected) {
                 ink.fill.style = Paint.Style.STROKE
                 ink.fill.strokeWidth = ink.dp(2f)
                 ink.fill.color = palette.text
-                canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f + ink.dp(2f), ink.fill)
+                canvas.drawRoundRect(RectF(bounds).apply { inset(-ink.dp(2f), -ink.dp(2f)) }, ink.dp(4f), ink.dp(4f), ink.fill)
                 ink.fill.style = Paint.Style.FILL
             }
-            x += swatchSize + gap
+            x += swatchWidth + gap
         }
     }
 
@@ -181,9 +183,9 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             prefs.edit().putBoolean(KEY_3D, !threeDimensional).apply()
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
-            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX, BORDER_COLORS)
+            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX, PRESET_COLORS)
         } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
-            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX, BACKGROUND_COLORS)
+            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX, PRESET_COLORS)
         }
     }
 
