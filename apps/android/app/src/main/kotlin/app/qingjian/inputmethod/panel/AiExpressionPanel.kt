@@ -61,6 +61,8 @@ class AiExpressionPanel(
             background = if (transparentBackground) ColorDrawable(Color.TRANSPARENT) else rounded(palette.surface, 14)
             addView(TextView(context).apply {
                 text = "‹"
+                contentDescription = "返回键盘"
+                isFocusable = true
                 textSize = 32f
                 gravity = Gravity.CENTER
                 setTextColor(palette.text)
@@ -86,6 +88,7 @@ class AiExpressionPanel(
         }, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         addView(TextView(context).apply {
             text = "换一批表达  ↻"
+            isFocusable = true
             textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
@@ -138,6 +141,7 @@ class AiExpressionPanel(
                             setPadding(dp(13), dp(12), dp(13), dp(12))
                             background = rounded(palette.surface, 11)
                             isClickable = true
+                            isFocusable = true
                             setOnClickListener {
                                 if (onReplace(item)) {
                                     showUndoAction()
@@ -167,6 +171,7 @@ class AiExpressionPanel(
             background = rounded(palette.surface, 11)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             isClickable = true
+                            isFocusable = true
             setOnClickListener {
                 if (onUndo()) {
                     android.widget.Toast.makeText(context, "已恢复替换前的内容", android.widget.Toast.LENGTH_SHORT).show()
