@@ -228,6 +228,36 @@ class FunctionPanel(
         } else drawToggles(canvas)
     }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (width <= 0 || height <= 0 || voiceEffectPage || textEffectPage || aiLoadingEffectPage) return emptyList()
+        return if (tabs.selected == 0) {
+            val top = card.top + ink.dp(8f)
+            features.mapIndexed { index, feature ->
+                val row = index / columns
+                val column = index % columns
+                AccessibilityElement(
+                    label = feature.label,
+                    bounds = RectF(
+                        card.left + cellWidth() * column,
+                        top + cellHeight() * row,
+                        card.left + cellWidth() * (column + 1),
+                        top + cellHeight() * (row + 1),
+                    ),
+                    selected = feature.on,
+                )
+            }
+        } else {
+            toggles.mapIndexed { index, toggle ->
+                val top = card.top + rowHeight() * index
+                AccessibilityElement(
+                    label = toggle.label + if (toggle.on) "，已开启" else "，已关闭",
+                    bounds = RectF(card.left, top, card.right, top + rowHeight()),
+                    selected = toggle.on,
+                )
+            }
+        }
+    }
+
     private fun cellWidth() = card.width() / columns
 
     private fun cellHeight() = minOf(ink.dp(86f), card.height() / maxOf(2, (features.size + columns - 1) / columns))
