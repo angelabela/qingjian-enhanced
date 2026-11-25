@@ -61,6 +61,88 @@ class DynamicBackgroundPanel(
         notifyChanged()
     }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        val top = card.top + ink.dp(8f)
+        val offset = scroll.offset
+        val left = card.left + ink.dp(12f)
+        val right = card.right - ink.dp(12f)
+        val elements = mutableListOf<AccessibilityElement>()
+        val rowsTop = settingsRowsTop(top)
+        elements += AccessibilityElement(
+            if (prefs.getString(DynamicBackgroundActivity.KEY_URI, null) == null) "导入背景视频" else "更换背景视频",
+            RectF(left, rowsTop - offset, right, rowsTop + rowHeight - offset),
+        )
+        val modeWidth = modeChipWidth()
+        val modeGap = modeChipGap()
+        val modeLeft = modeChipLeft()
+        modeLabels.forEachIndexed { mode, label ->
+            val x = modeLeft + mode * (modeWidth + modeGap)
+            elements += AccessibilityElement(
+                "背景显示模式，$label",
+                RectF(x, rowsTop + rowHeight + ink.dp(7f) - offset,
+                    x + modeWidth, rowsTop + rowHeight + ink.dp(39f) - offset),
+                selected = DynamicBackgroundActivity.displayMode(context) == mode,
+            )
+        }
+        val frostTop = rowsTop + rowHeight * 2
+        elements += AccessibilityElement(
+            "背景磨砂效果，\${if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"}",
+            RectF(left, frostTop - offset, right, frostTop + rowHeight - offset),
+            selected = prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true),
+        )
+        val gridTop = effectGridTop(top)
+        val gridLeft = card.left + ink.dp(16f)
+        val cellGap = effectGridGap
+        val cellWidth = (card.width() - ink.dp(32f) - cellGap * 3f) / 4f
+        val selectedStyle = selectedEffectStyle()
+        effectStyles.forEachIndexed { index, style ->
+            val row = index / 4
+            val col = index % 4
+            val x = gridLeft + col * (cellWidth + cellGap)
+            val y = gridTop + row * (effectCellHeight + cellGap)
+            elements += AccessibilityElement(
+                "背景光效样式，\${style.second}" + if (style.first == selectedStyle) "，已选中" else "",
+                RectF(x, y - offset, x + cellWidth, y + effectCellHeight - offset),
+                selected = style.first == selectedStyle,
+            )
+        }
+        val glassTop = adaptiveIconRowTop(top)
+        val glassOn = settingsPrefs.getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
+        elements += AccessibilityElement(
+            "液态玻璃图标特效，\${if (glassOn) "已开启" else "已关闭"}",
+            RectF(left, glassTop - offset, right, glassTop + rowHeight - offset),
+            selected = glassOn,
+        )
+        for (index in 3..5) {
+            val rowTop = sliderRowTop(top, index)
+            val max = when (index) { 4 -> 200f; 5 -> 30f; else -> 100f }
+            val key = when (index) {
+                3 -> DynamicBackgroundActivity.KEY_ALPHA
+                4 -> DynamicBackgroundActivity.KEY_BRIGHTNESS
+                else -> DynamicBackgroundActivity.KEY_BLUR
+            }
+            val default = when (index) { 3 -> 72; 4 -> 100; else -> 8 }
+            val current = prefs.getInt(key, default).coerceIn(0, max.toInt())
+            val railLeft = card.left + ink.dp(18f)
+            val railRight = card.right - ink.dp(18f)
+            val railY = rowTop + ink.dp(49f) - offset
+            val label = labels[index]
+            elements += AccessibilityElement(
+                "$label，当前$current\${if (index == 5) " dp" else "%"}",
+                RectF(railLeft, railY - ink.dp(14f), railRight, railY + ink.dp(14f)),
+                rangeMin = 0f,
+                rangeMax = max,
+                rangeCurrent = current.toFloat(),
+                onSetProgress = { value ->
+                    prefs.edit().putInt(key, value.toInt().coerceIn(0, max.toInt())).apply()
+                    notifyChanged()
+                },
+            )
+        }
+        return elements
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, null)
         ink.text(canvas, "背景特效", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
