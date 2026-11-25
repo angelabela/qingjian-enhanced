@@ -594,8 +594,10 @@ class KeyboardView(
 
     /** 设置面板广播变更后立即读取颜色/开关并更新同一个 Painter，不需要重建输入法面板。 */
     fun refreshKeyEffects() {
-        val border = borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
-        val background = backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
+        val border = keyEffectPrefs.getInt("keyboard_key_border_color", 0).takeIf { it != 0 }
+            ?: borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
+        val background = keyEffectPrefs.getInt("keyboard_key_background_color", 0).takeIf { it != 0 }
+            ?: backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
         painter.setCustomKeyColors(border, background)
         painter.setKeyStyleEffects(
             edgeGlow = keyEffectPrefs.getBoolean("keyboard_key_edge_glow", false),
@@ -694,8 +696,13 @@ class KeyboardView(
             if (flicking.key != Key.Backspace) {
                 flicking.key.flick?.let { painter.drawBubble(canvas, flicking, width, it) }
             }
-        } else if (settings.keyPopup) {
-            pressed.values.filter { it.key.poppable && !choicePopup.showing }.forEach { painter.drawBubble(canvas, it, width) }
+        } else {
+            pressed.values.filter { slot ->
+                slot.key.poppable && !choicePopup.showing && when (slot.key) {
+                    is Key.Letter -> settings.letterKeyTip && !trail.swiping && !surfaceCandidateMode
+                    else -> settings.keyPopup
+                }
+            }.forEach { painter.drawBubble(canvas, it, width) }
         }
     }
 
