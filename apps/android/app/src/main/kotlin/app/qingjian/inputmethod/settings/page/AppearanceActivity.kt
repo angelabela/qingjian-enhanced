@@ -36,6 +36,11 @@ class AppearanceActivity : PageActivity() {
                 },
                 footer = R.string.appearance_note,
             ),
+            ui.group(
+                null,
+                fontControls(settings),
+                footer = getString(R.string.font_weight_note),
+            ),
             ui.sectionTitle(R.string.section_theme),
             themeGrid(settings, dark),
             ui.group(
@@ -58,8 +63,33 @@ class AppearanceActivity : PageActivity() {
     /** 当前主题、外观与已保存文字设置下的候选条和键盘预览。 */
     private fun preview(settings: Settings, dark: Boolean): View {
         val density = resources.displayMetrics.density
-        val strip = Themes.preview(settings.theme, dark, density, settings.candidateFontSize / 20f, settings.fontWeight.weight)
+        val strip = Themes.preview(settings.theme, dark, density, settings.candidateFontSize / 20f, settings.candidateFontWeight.weight)
         return framed(ThemePreview(this, strip, Palette.of(settings.theme, dark), aspect = 0.42f, keyRadiusDp = 6f), selected = false)
+    }
+
+    /** 字号与字重并排显示，各占一半宽度；字重仍映射到现有九档设置，不改变渲染选项。 */
+    private fun fontControls(settings: Settings): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        val size = ui.slider(
+            R.string.section_text_size, null,
+            1, 50, settings.candidateFontSize, step = 1,
+            format = { "${it}sp" },
+        ) { value ->
+            prefs.edit().putInt(Settings.KEY_CANDIDATE_FONT_SIZE, value).apply()
+            rebuild()
+        }
+        val weight = ui.slider(
+            R.string.section_font_weight, null,
+            100, 900, settings.candidateFontWeight.weight, step = 100,
+            format = { value -> Settings.FontWeight.entries.minByOrNull { kotlin.math.abs(it.weight - value) }?.label.orEmpty() },
+        ) { value ->
+            val selected = Settings.FontWeight.entries.minByOrNull { kotlin.math.abs(it.weight - value) }
+                ?: Settings.FontWeight.NORMAL
+            prefs.edit().putString(Settings.KEY_CANDIDATE_FONT_WEIGHT, selected.name).apply()
+            rebuild()
+        }
+        addView(size, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        addView(weight, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
     }
 
     /** 主题卡片两列排：缩小的预览加名字，选中的描品牌色边。 */
