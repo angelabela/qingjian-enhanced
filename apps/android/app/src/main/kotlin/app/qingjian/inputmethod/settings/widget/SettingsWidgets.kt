@@ -374,10 +374,7 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         isClickable = true
         isFocusable = true
-        contentDescription = context.getString(title)
-        isClickable = true
-        isFocusable = true
-        contentDescription = context.getString(title)
+        contentDescription = context.getString(title) + value?.let { "，$it" }.orEmpty()
         setOnClickListener { onClick() }
     }
 
