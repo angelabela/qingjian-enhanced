@@ -409,7 +409,8 @@ class KeyboardView(
         event.setSource(this, SIDE_ACCESSIBILITY_SCROLL_ID)
         event.text.add("拼音或标点列表，可纵向滚动")
         event.isEnabled = isEnabled
-        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
     }
 
     private fun sendSideAccessibilityEvent(index: Int, eventType: Int) {
@@ -420,7 +421,8 @@ class KeyboardView(
         event.setSource(this, SIDE_ACCESSIBILITY_BASE + index)
         event.text.add(label)
         event.isEnabled = isEnabled
-        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
     }
 
     private fun sendVirtualAccessibilityEvent(virtualViewId: Int, eventType: Int) {
@@ -431,7 +433,8 @@ class KeyboardView(
         event.setSource(this, virtualViewId)
         event.text.add(accessibilityLabel(slot.key))
         event.isEnabled = isEnabled
-        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
     }
 
     private fun accessibilityLabel(key: Key): String = when (key) {
