@@ -869,8 +869,8 @@ class FunctionPanel(
     }
 
     private fun updateTextSlider(x: Float, slider: Int) {
-        val left = card.left + ink.dp(18f)
-        val right = card.right - ink.dp(18f)
+        val left = card.left + ink.dp(14f)
+        val right = card.right - ink.dp(14f)
         val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
         when (slider) {
             0 -> {
