@@ -90,6 +90,7 @@ class DynamicBackgroundPanel(
             "背景磨砂效果，${if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"}",
             RectF(left, frostTop - offset, right, frostTop + rowHeight - offset),
             selected = prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true),
+            checked = prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true),
         )
         val gridTop = effectGridTop(top)
         val gridLeft = card.left + ink.dp(16f)
@@ -113,6 +114,7 @@ class DynamicBackgroundPanel(
             "液态玻璃图标特效，${if (glassOn) "已开启" else "已关闭"}",
             RectF(left, glassTop - offset, right, glassTop + rowHeight - offset),
             selected = glassOn,
+            checked = glassOn,
         )
         for (index in 3..5) {
             val rowTop = sliderRowTop(top, index)
