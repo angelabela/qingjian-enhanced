@@ -246,9 +246,11 @@ class FunctionPanel(
                 val top = rowTop + row * rowStep - effectScroll.offset
                 val bounds = RectF(left, top + (rowStep - itemHeight) / 2f,
                     left + cardWidth, top + (rowStep + itemHeight) / 2f)
-                if (RectF.intersects(bounds, RectF(card.left, rowTop, card.right, viewportBottom))) {
+                val viewport = RectF(card.left, rowTop, card.right, viewportBottom)
+                val visibleBounds = RectF(bounds)
+                if (visibleBounds.intersect(viewport)) {
                     val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
-                    result += AccessibilityElement(label + if (selected) "，已选中" else "", bounds, selected = selected, virtualId = 10000 + index)
+                    result += AccessibilityElement(label + if (selected) "，已选中" else "", visibleBounds, selected = selected, virtualId = 10000 + index)
                 }
             }
             val swatchLeft = card.left + ink.dp(12f)
@@ -310,7 +312,7 @@ class FunctionPanel(
                     val visible = RectF(element.bounds)
                     if (!visible.intersect(RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)))) null
                     else element.copy(bounds = visible)
-                }
+                }.toMutableList()
             accessibilityScrollElement(
                 "文字动效样式列表，可滚动",
                 RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)),
