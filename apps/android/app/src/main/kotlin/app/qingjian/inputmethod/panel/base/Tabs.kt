@@ -118,6 +118,23 @@ class Tabs(private val ink: Ink, private val scroll: ScrollState, private val st
 
     fun contains(event: MotionEvent) = bounds.contains(event.x, event.y)
 
+    val accessibilityScrollable: Boolean
+        get() {
+            arrange()
+            return scroll.max > 0f
+        }
+
+    val accessibilityScrollLabel: String
+        get() = if (style == Style.COLUMN) "分类列表，可纵向滚动" else "页签列表，可横向滚动"
+
+    fun accessibilityScroll(direction: Int) {
+        arrange()
+        if (!accessibilityScrollable) return
+        val page = (if (style == Style.COLUMN) bounds.height() else bounds.width()) * 0.8f
+        scroll.stop()
+        scroll.drag(page * direction.coerceIn(-1, 1))
+    }
+
     /** TalkBack 虚拟节点使用的页签可见区域；裁切到实际页签视口，不暴露屏幕外项目。 */
     fun accessibilityBounds(index: Int): RectF? {
         arrange()
