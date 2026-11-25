@@ -416,7 +416,9 @@ private class FlowingKeyboardBackgroundDrawable(
             float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, vertical));
 
             float aspect = iResolution.x / max(iResolution.y, 1.0);
-            float2 cloudP = float2(uv.x * aspect, uv.y * 1.28);
+            // uv 已按屏幕高度归一化，uv.x 已包含屏幕宽高比；不能再次乘 aspect。
+            // 重复乘宽高比会压缩横向噪声，形成明显的纵向幕布条纹。
+            float2 cloudP = float2(uv.x, uv.y * 1.28);
             float speed = 0.018;
             speed = mix(speed, 0.010, isClear);
             speed = mix(speed, -0.007, isDusk);
@@ -424,15 +426,15 @@ private class FlowingKeyboardBackgroundDrawable(
             speed = mix(speed, 0.024, isTwilight);
             cloudP.x -= iTime * speed;
             cloudP.y += iTime * (0.0012 * isTwilight + 0.0005 * isDusk);
-            float2 warp = float2(fbm(cloudP * 0.72 + float2(2.0, 1.0)),
-                                 fbm(cloudP * 0.72 + float2(8.0, 4.0)));
-            // 低频域扭曲负责云体整体连贯；高频仅保留少量，防止云被切成碎块。
-            float2 q = cloudP + (warp - 0.5) * 0.58;
-            float macro = fbm(q * 0.78 + float2(1.2, 2.4));
-            float broad = fbm(q * 1.28 + float2(0.0, 1.4));
-            float detail = fbm(q * 2.55 + float2(3.7, 6.1));
-            float fine = fbm(q * 5.1 + float2(11.0, 2.0));
-            float density = macro * 0.54 + broad * 0.31 + detail * 0.12 + fine * 0.03;
+            float2 warp = float2(fbm(cloudP * 0.62 + float2(2.0, 1.0)),
+                                 fbm(cloudP * 0.62 + float2(8.0, 4.0)));
+            // 低频决定连续的大体积云团，高频只刻画边缘；横纵扭曲分开控制，避免条纹。
+            float2 q = cloudP + (warp - 0.5) * float2(0.82, 0.34);
+            float macro = fbm(q * 0.62 + float2(1.2, 2.4));
+            float broad = fbm(q * 1.05 + float2(0.0, 1.4));
+            float detail = fbm(q * 2.15 + float2(3.7, 6.1));
+            float fine = fbm(q * 3.7 + float2(11.0, 2.0));
+            float density = macro * 0.58 + broad * 0.29 + detail * 0.11 + fine * 0.02;
 
             float horizon = 1.0 - vertical;
             float cloudBase = 0.485;
@@ -441,7 +443,7 @@ private class FlowingKeyboardBackgroundDrawable(
             cloudBase = mix(cloudBase, 0.525, isNight);
             cloudBase = mix(cloudBase, 0.465, isTwilight);
             // 阈值区间加宽，云边以连续的软过渡融合，不留下硬切口和透明断层。
-            float cloudMask = smoothstep(cloudBase - 0.075, cloudBase + 0.105, density);
+            float cloudMask = smoothstep(cloudBase - 0.105, cloudBase + 0.125, density);
             cloudMask *= smoothstep(0.005, 0.16, horizon);
             cloudMask *= mix(0.88, 0.70, isNight);
 
