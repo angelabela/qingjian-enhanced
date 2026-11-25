@@ -21,6 +21,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.BaseAdapter
+import android.widget.TextView
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.store.SettingChoices
 import app.qingjian.inputmethod.core.store.Vocabulary
@@ -257,7 +258,6 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
             divider = ColorDrawable(colors.divider)
             dividerHeight = ui.dp(1)
             isVerticalScrollBarEnabled = false
-            setItemViewCacheSize(8)
             adapter = object : BaseAdapter() {
                 override fun getCount() = words.size
                 override fun getItem(position: Int) = words[position]
