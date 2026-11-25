@@ -144,34 +144,38 @@ class CatalogPanel(
         categories.labels.indices.forEach { index ->
             categories.accessibilityBounds(index)?.let { bounds ->
                 elements += AccessibilityElement(
-                    "分类，\${categories.labels[index]}" + if (index == categories.selected) "，已选中" else "",
+                    "分类，${categories.labels[index]}" + if (index == categories.selected) "，已选中" else "",
                     bounds,
                     selected = index == categories.selected,
+                    virtualId = 1000 + index,
                 )
             }
         }
         if (symbols) {
             val slotHeight = side.height() / sideSlots()
             if (!leftColumn) {
-                elements += AccessibilityElement("返回键盘", RectF(side.left, side.top, side.right, side.top + slotHeight))
+                elements += AccessibilityElement("返回键盘", RectF(side.left, side.top, side.right, side.top + slotHeight), virtualId = 2000)
             } else {
-                elements += AccessibilityElement("返回键盘", RectF(back))
+                elements += AccessibilityElement("返回键盘", RectF(back), virtualId = 2000)
             }
             val firstAction = if (leftColumn) 0 else 1
             elements += AccessibilityElement(
                 "删除上一个字符",
                 RectF(side.left, side.top + slotHeight * firstAction, side.right, side.top + slotHeight * (firstAction + 1)),
+                virtualId = 2001,
             )
             elements += AccessibilityElement(
                 if (locked) "解除符号面板锁定" else "锁定符号面板",
                 RectF(side.left, side.top + slotHeight * (firstAction + 1), side.right, side.bottom),
                 selected = locked,
+                virtualId = 2002,
             )
         } else {
             val keyLeft = bottom.right - ink.dp(BOTTOM_KEY_DP)
             elements += AccessibilityElement(
                 "删除上一个字符",
                 RectF(keyLeft, bottom.top, bottom.right, bottom.bottom),
+                virtualId = 2001,
             )
         }
         val items = section?.items.orEmpty()
@@ -192,6 +196,7 @@ class CatalogPanel(
                     elements += AccessibilityElement(
                         item,
                         RectF(left, y, left + cellWidth, y + rowHeight),
+                        virtualId = 10000 + categories.selected * 10000 + index,
                     )
                 }
             }

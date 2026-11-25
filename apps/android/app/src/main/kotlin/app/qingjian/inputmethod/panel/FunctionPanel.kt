@@ -248,7 +248,7 @@ class FunctionPanel(
                     left + cardWidth, top + (rowStep + itemHeight) / 2f)
                 if (RectF.intersects(bounds, RectF(card.left, rowTop, card.right, viewportBottom))) {
                     val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
-                    result += AccessibilityElement(label + if (selected) "，已选中" else "", bounds, selected = selected)
+                    result += AccessibilityElement(label + if (selected) "，已选中" else "", bounds, selected = selected, virtualId = 10000 + index)
                 }
             }
             val swatchLeft = card.left + ink.dp(12f)
@@ -261,6 +261,7 @@ class FunctionPanel(
                     "频谱渐变颜色，" + gradientLabels[index] + if (selectedVoiceSpectrumGradient == index) "，已选中" else "",
                     RectF(left, card.bottom - ink.dp(119f), left + swatchWidth, card.bottom - ink.dp(84f)),
                     selected = selectedVoiceSpectrumGradient == index,
+                    virtualId = 20000 + index,
                 )
             }
             val left = card.left + ink.dp(18f)
@@ -272,6 +273,7 @@ class FunctionPanel(
                 rangeMax = 50f,
                 rangeCurrent = voiceGlassStrength.toFloat(),
                 onSetProgress = { value -> updateVoiceGlassStrength(left + (right - left) * ((value - 1f) / 49f)) },
+                virtualId = 30000,
             )
             return result
         }
@@ -295,6 +297,7 @@ class FunctionPanel(
                     label + if (selectedAiLoadingStyle == index) "，已选中" else "",
                     RectF(left, top, left + itemWidth, top + ink.dp(60f)),
                     selected = selectedAiLoadingStyle == index,
+                    virtualId = 40000 + index,
                 )
             }.filter { RectF.intersects(it.bounds, RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f))) }
         }
@@ -306,26 +309,26 @@ class FunctionPanel(
                 val left = card.left + ink.dp(14f) + index * (targetWidth + ink.dp(8f))
                 result += AccessibilityElement(label + if (selectedTextTarget == index) "，当前编辑区域" else "",
                     RectF(left, targetTop, left + targetWidth, targetTop + ink.dp(36f)),
-                    selected = selectedTextTarget == index)
+                    selected = selectedTextTarget == index, virtualId = 50000 + index)
             }
             val controlsTop = card.top + ink.dp(84f) - effectScroll.offset
             val left = card.left + ink.dp(14f)
             val right = card.right - ink.dp(14f)
             result += AccessibilityElement("恢复当前区域主题文字颜色",
-                RectF(card.right - ink.dp(98f), controlsTop + ink.dp(4f), card.right - ink.dp(10f), controlsTop + ink.dp(32f)))
+                RectF(card.right - ink.dp(98f), controlsTop + ink.dp(4f), card.right - ink.dp(10f), controlsTop + ink.dp(32f)), virtualId = 50010)
             val colorY = controlsTop + ink.dp(49f)
             val hsv = FloatArray(3)
             android.graphics.Color.colorToHSV(currentTextColor(), hsv)
             result += AccessibilityElement("字体颜色色相，" + hsv[0].toInt() + "度",
                 RectF(left, colorY - ink.dp(12f), right, colorY + ink.dp(12f)),
                 rangeMin = 0f, rangeMax = 360f, rangeCurrent = hsv[0],
-                onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) })
+                onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) }, virtualId = 50011)
             val sizeY = controlsTop + ink.dp(101f)
             val currentSize = currentTextSize().toFloat()
             result += AccessibilityElement("字体字号，" + currentSize.toInt() + "sp",
                 RectF(left, sizeY - ink.dp(12f), right, sizeY + ink.dp(12f)),
                 rangeMin = 1f, rangeMax = 50f, rangeCurrent = currentSize,
-                onSetProgress = { value -> updateTextSlider(left + (right - left) * ((value - 1f) / 49f), 1) })
+                onSetProgress = { value -> updateTextSlider(left + (right - left) * ((value - 1f) / 49f), 1) }, virtualId = 50012)
             val weightY = controlsTop + ink.dp(151f)
             val weightIndex = Settings.FontWeight.entries.indexOf(currentTextWeight()).coerceAtLeast(0)
             result += AccessibilityElement("字体粗细，" + currentTextWeight().label,
@@ -336,11 +339,11 @@ class FunctionPanel(
                 onSetProgress = { value ->
                     val fraction = value / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1)
                     updateTextSlider(left + (right - left) * fraction, 2)
-                })
+                }, virtualId = 50013)
             val syncY = controlsTop + ink.dp(184f)
             result += AccessibilityElement("候选区与键盘区同步调节，" + if (syncTextEffectsEnabled()) "已开启" else "已关闭",
-                RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f) - effectScroll.offset),
-                selected = syncTextEffectsEnabled())
+                RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f)),
+                selected = syncTextEffectsEnabled(), virtualId = 50014)
             val rowTop = card.top + ink.dp(290f) - effectScroll.offset
             val rowStep = ink.dp(82f)
             val itemGap = ink.dp(8f)
@@ -352,7 +355,7 @@ class FunctionPanel(
                 val top = rowTop + row * rowStep
                 result += AccessibilityElement("文字效果，" + preset.label + if (selectedTextPreset == preset) "，已选中" else "",
                     RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
-                    selected = selectedTextPreset == preset)
+                    selected = selectedTextPreset == preset, virtualId = 51000 + index)
             }
             return result.filter { RectF.intersects(it.bounds, RectF(card.left, card.top, card.right, card.bottom)) }
         }
@@ -370,6 +373,7 @@ class FunctionPanel(
                         top + cellHeight() * (row + 1),
                     ),
                     selected = feature.on,
+                    virtualId = 60000 + index,
                 )
             }
         } else {
@@ -379,6 +383,7 @@ class FunctionPanel(
                     label = toggle.label + if (toggle.on) "，已开启" else "，已关闭",
                     bounds = RectF(card.left, top, card.right, top + rowHeight()),
                     selected = toggle.on,
+                    virtualId = 70000 + index,
                 )
             }
         }

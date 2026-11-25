@@ -60,6 +60,7 @@ class PiecesPanel(
                 label + if (selected[index]) "，已选中" else "，未选中",
                 RectF(lefts[index], top, lefts[index] + widths[index], top + rowHeight),
                 selected = selected[index],
+                virtualId = 10000 + index,
             )
         }
         val each = (width - ink.dp(20f)) / buttons.size
@@ -75,6 +76,7 @@ class PiecesPanel(
                 },
                 RectF(left, top, right, height - ink.dp(8f)),
                 selected = index == 0 && selected.all { it },
+                virtualId = 20000 + index,
             )
         }
         return elements

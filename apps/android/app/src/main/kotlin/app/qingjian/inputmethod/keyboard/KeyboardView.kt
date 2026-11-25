@@ -300,28 +300,32 @@ class KeyboardView(
         if (!accessibilityManager.isTouchExplorationEnabled) return super.onHoverEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
-                val next = slots.indexOfFirst { it.bounds.contains(event.x, event.y) }
+                val sideIndex = side.items.indices.firstOrNull {
+                    side.accessibilityBounds(it)?.contains(event.x.toInt(), event.y.toInt()) == true
+                }
+                val next = sideIndex?.let { SIDE_ACCESSIBILITY_BASE + it }
+                    ?: slots.indexOfFirst { it.bounds.contains(event.x, event.y) }
                 if (next != hoveredAccessibilityKey) {
-                    if (hoveredAccessibilityKey >= 0) {
-                        sendVirtualAccessibilityEvent(
-                            hoveredAccessibilityKey,
-                            AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
-                        )
+                    if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE) {
+                        sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                    } else if (hoveredAccessibilityKey >= 0) {
+                        sendVirtualAccessibilityEvent(hoveredAccessibilityKey, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
                     }
                     hoveredAccessibilityKey = next
-                    if (next >= 0) {
+                    if (next >= SIDE_ACCESSIBILITY_BASE) {
+                        sendSideAccessibilityEvent(next - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    } else if (next >= 0) {
                         sendVirtualAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
                     }
                 }
             }
             MotionEvent.ACTION_HOVER_EXIT -> {
-                if (hoveredAccessibilityKey >= 0) {
-                    sendVirtualAccessibilityEvent(
-                        hoveredAccessibilityKey,
-                        AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
-                    )
-                    hoveredAccessibilityKey = -1
+                if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE) {
+                    sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                } else if (hoveredAccessibilityKey >= 0) {
+                    sendVirtualAccessibilityEvent(hoveredAccessibilityKey, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
                 }
+                hoveredAccessibilityKey = -1
             }
         }
         return true

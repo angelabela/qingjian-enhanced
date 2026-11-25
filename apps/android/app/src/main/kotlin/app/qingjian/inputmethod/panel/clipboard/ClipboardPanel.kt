@@ -333,26 +333,30 @@ class ClipboardPanel(
                 elements += AccessibilityElement(
                     if (searchQuery.isBlank()) "搜索剪贴板" else "搜索剪贴板，当前关键词$searchQuery",
                     RectF(searchRect),
+                    virtualId = 1001,
                 )
-                elements += AccessibilityElement("删除一个字符", RectF(deleteBackwardRect))
+                elements += AccessibilityElement("删除一个字符", RectF(deleteBackwardRect), virtualId = 1002)
                 elements += AccessibilityElement(
-                    "粘贴后\${if (pasteEnter) "回车换行" else "不自动回车"}，点击切换",
+                    "粘贴后${if (pasteEnter) "回车换行" else "不自动回车"}，点击切换",
                     RectF(pasteToggleRect),
                     selected = pasteEnter,
+                    virtualId = 1003,
                 )
                 elements += AccessibilityElement(
-                    "粘贴后\${if (pasteNextCell) "跳到下格" else "不跳到下格"}，点击切换",
+                    "粘贴后${if (pasteNextCell) "跳到下格" else "不跳到下格"}，点击切换",
                     RectF(pasteNextCellRect),
                     selected = pasteNextCell,
+                    virtualId = 1004,
                 )
             }
         } else {
             groups.labels.indices.forEach { index ->
                 groups.accessibilityBounds(index)?.let { bounds ->
                     elements += AccessibilityElement(
-                        "常用语分组，\${groups.labels[index]}" + if (index == groups.selected) "，已选中" else "",
+                        "常用语分组，${groups.labels[index]}" + if (index == groups.selected) "，已选中" else "",
                         bounds,
                         selected = index == groups.selected,
+                        virtualId = 2000 + index,
                     )
                 }
             }
@@ -368,12 +372,14 @@ class ClipboardPanel(
                 label + if (expanded == i) "，已展开" else "，点击上屏，右侧可展开操作",
                 RectF(list.left + ink.dp(CARD_MARGIN_DP), top, list.right - ink.dp(CARD_MARGIN_DP), bottom),
                 selected = expanded == i,
+                virtualId = 10000 + i,
             )
             val chevronLeft = width - ink.dp(CARD_MARGIN_DP + CHEVRON_DP + 8f)
             elements += AccessibilityElement(
                 if (expanded == i) "收起这条记录的操作" else "展开这条记录的操作",
                 RectF(chevronLeft, top, list.right, minOf(bottom, top + ink.dp(CARD_PADDING_DP + 30f))),
                 selected = expanded == i,
+                virtualId = 20000 + i,
             )
             if (expanded == i && actionLabels().isNotEmpty() && expansionProgress > 0f) {
                 val labels = actionLabels()
@@ -384,6 +390,7 @@ class ClipboardPanel(
                     elements += AccessibilityElement(
                         action.second,
                         RectF(left, actionTop, left + each, bottom),
+                        virtualId = 30000 + i * 10 + actionIndex,
                     )
                 }
             }

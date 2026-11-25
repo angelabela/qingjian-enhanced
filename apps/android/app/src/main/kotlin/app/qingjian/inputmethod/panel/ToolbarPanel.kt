@@ -68,6 +68,7 @@ class ToolbarPanel(
         elements += AccessibilityElement(
             "恢复默认工具栏顺序",
             RectF(width - ink.dp(RESET_WIDTH_DP), 0f, width.toFloat(), headerHeight),
+            virtualId = 1000,
         )
         val cellW = cellWidth()
         fun addCells(tools: List<ToolbarTool>, sectionTop: Float, placedSection: Boolean) {
@@ -87,6 +88,7 @@ class ToolbarPanel(
                     },
                     bounds,
                     selected = alreadyPlaced,
+                    virtualId = 10000 + tool.ordinal,
                 )
             }
         }

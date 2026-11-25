@@ -87,7 +87,7 @@ class DynamicBackgroundPanel(
         }
         val frostTop = rowsTop + rowHeight * 2
         elements += AccessibilityElement(
-            "背景磨砂效果，\${if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"}",
+            "背景磨砂效果，${if (prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true)) "开启" else "关闭"}",
             RectF(left, frostTop - offset, right, frostTop + rowHeight - offset),
             selected = prefs.getBoolean(DynamicBackgroundActivity.KEY_FROSTED, true),
         )
@@ -102,7 +102,7 @@ class DynamicBackgroundPanel(
             val x = gridLeft + col * (cellWidth + cellGap)
             val y = gridTop + row * (effectCellHeight + cellGap)
             elements += AccessibilityElement(
-                "背景光效样式，\${style.second}" + if (style.first == selectedStyle) "，已选中" else "",
+                "背景光效样式，${style.second}" + if (style.first == selectedStyle) "，已选中" else "",
                 RectF(x, y - offset, x + cellWidth, y + effectCellHeight - offset),
                 selected = style.first == selectedStyle,
             )
@@ -110,7 +110,7 @@ class DynamicBackgroundPanel(
         val glassTop = adaptiveIconRowTop(top)
         val glassOn = settingsPrefs.getBoolean(Settings.KEY_LIQUID_GLASS_ICONS, true)
         elements += AccessibilityElement(
-            "液态玻璃图标特效，\${if (glassOn) "已开启" else "已关闭"}",
+            "液态玻璃图标特效，${if (glassOn) "已开启" else "已关闭"}",
             RectF(left, glassTop - offset, right, glassTop + rowHeight - offset),
             selected = glassOn,
         )
@@ -129,7 +129,7 @@ class DynamicBackgroundPanel(
             val railY = rowTop + ink.dp(49f) - offset
             val label = labels[index]
             elements += AccessibilityElement(
-                "$label，当前$current\${if (index == 5) " dp" else "%"}",
+                "$label，当前$current${if (index == 5) " dp" else "%"}",
                 RectF(railLeft, railY - ink.dp(14f), railRight, railY + ink.dp(14f)),
                 rangeMin = 0f,
                 rangeMax = max,

@@ -11,6 +11,7 @@ import android.view.View
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeProvider
 import app.qingjian.inputmethod.keyboard.Haptics
@@ -39,6 +40,8 @@ abstract class PanelView(
     private val headerCard = RectF()
     private var accessibilityTabs: Tabs? = null
     private var accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+    private var hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+    private val accessibilityManager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
 
     /** Canvas 自绘面板的可操作区域；子类按当前布局提供，TalkBack 点击仍走原有 onTap。 */
     protected data class AccessibilityElement(
@@ -50,9 +53,64 @@ abstract class PanelView(
         val rangeMax: Float? = null,
         val rangeCurrent: Float? = null,
         val onSetProgress: ((Float) -> Unit)? = null,
+        val virtualId: Int? = null,
     )
 
     protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
+
+    private fun accessibilityElementId(index: Int, element: AccessibilityElement) = element.virtualId ?: index
+
+    private fun accessibilityElementForId(id: Int): AccessibilityElement? =
+        accessibilityElements().withIndex().firstOrNull { accessibilityElementId(it.index, it.value) == id }?.value
+
+    protected fun notifyAccessibilityContentChanged() {
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+    }
+
+    private fun accessibilityNodeIdAt(x: Float, y: Float): Int {
+        val elements = accessibilityElements()
+        for (index in elements.indices.reversed()) {
+            val element = elements[index]
+            if (element.enabled && element.bounds.contains(x, y)) {
+                return ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element)
+            }
+        }
+        if (hasHeader && y < headerHeight && x < ink.dp(BACK_WIDTH_DP)) return BACK_ACCESSIBILITY_ID
+        val tab = accessibilityTabs
+        if (tab != null) {
+            for (index in tab.labels.indices) {
+                if (tab.accessibilityBounds(index)?.contains(x, y) == true) return TAB_ACCESSIBILITY_BASE + index
+            }
+        }
+        return INVALID_ACCESSIBILITY_ID
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+        if (!accessibilityManager.isTouchExplorationEnabled) return super.dispatchHoverEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val next = accessibilityNodeIdAt(event.x, event.y)
+                if (next != hoveredAccessibilityId) {
+                    if (hoveredAccessibilityId != INVALID_ACCESSIBILITY_ID) {
+                        sendPanelAccessibilityEvent(hoveredAccessibilityId, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                    }
+                    hoveredAccessibilityId = next
+                    if (next != INVALID_ACCESSIBILITY_ID) {
+                        sendPanelAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    }
+                }
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (hoveredAccessibilityId != INVALID_ACCESSIBILITY_ID) {
+                    sendPanelAccessibilityEvent(hoveredAccessibilityId, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                    hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+                }
+            }
+        }
+        return true
+    }
 
     /** Canvas 表头没有真实子 View，故用虚拟节点暴露返回键和每个页签。 */
     private val panelAccessibilityProvider = object : AccessibilityNodeProvider() {
@@ -74,7 +132,7 @@ abstract class PanelView(
                 }
                 accessibilityElements().forEachIndexed { index, element ->
                     if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
-                        root.addChild(this@PanelView, ELEMENT_ACCESSIBILITY_BASE + index)
+                        root.addChild(this@PanelView, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
                     }
                 }
                 return root
@@ -82,7 +140,7 @@ abstract class PanelView(
 
             val isElement = virtualViewId >= ELEMENT_ACCESSIBILITY_BASE
             val elementIndex = virtualViewId - ELEMENT_ACCESSIBILITY_BASE
-            val element = if (isElement) accessibilityElements().getOrNull(elementIndex) else null
+            val element = if (isElement) accessibilityElementForId(elementIndex) else null
             if (isElement && (element == null || !element.enabled)) return null
             val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
             val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
@@ -101,6 +159,8 @@ abstract class PanelView(
                 val rect = tab.accessibilityBounds(tabIndex) ?: return null
                 Rect(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
             }
+            val visibleBounds = Rect(bounds)
+            if (isElement && !visibleBounds.intersect(0, 0, width, height)) return null
             val node = AccessibilityNodeInfo.obtain()
             node.setSource(this@PanelView, virtualViewId)
             node.setParent(this@PanelView)
@@ -126,13 +186,13 @@ abstract class PanelView(
             }
             node.isSelected = if (isElement) element!!.selected else !isBack && tab?.selected == tabIndex
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
-            node.setBoundsInParent(bounds)
-            val screen = Rect(bounds)
+            node.setBoundsInParent(visibleBounds)
+            val screen = Rect(visibleBounds)
             val location = IntArray(2)
             getLocationOnScreen(location)
             screen.offset(location[0], location[1])
             node.setBoundsInScreen(screen)
-            node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (node.isClickable) node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
             node.addAction(if (accessibilityFocusedId == virtualViewId)
                 AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS
             else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
@@ -171,7 +231,7 @@ abstract class PanelView(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
                     if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
-                    val item = accessibilityElements().getOrNull(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                    val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
                     val setter = item.onSetProgress ?: return false
                     val min = item.rangeMin ?: return false
                     val max = item.rangeMax ?: return false
@@ -184,6 +244,7 @@ abstract class PanelView(
                     }.coerceIn(min, max)
                     setter(next)
                     sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SELECTED)
+                    notifyAccessibilityContentChanged()
                     invalidate()
                     return true
                 }
@@ -192,9 +253,11 @@ abstract class PanelView(
                     when {
                         virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader -> onBack()
                         virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
-                            val item = accessibilityElements().getOrNull(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                            val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
                             if (!item.enabled || item.rangeMin != null) return false
-                            onTap(item.bounds.centerX(), item.bounds.centerY())
+                            val visible = Rect(item.bounds.left.toInt(), item.bounds.top.toInt(), item.bounds.right.toInt(), item.bounds.bottom.toInt())
+                            if (!visible.intersect(0, 0, width, height)) return false
+                            onTap(visible.exactCenterX(), visible.exactCenterY())
                         }
                         else -> {
                             val index = virtualViewId - TAB_ACCESSIBILITY_BASE
@@ -204,6 +267,7 @@ abstract class PanelView(
                         }
                     }
                     sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    notifyAccessibilityContentChanged()
                     invalidate()
                     return true
                 }
@@ -224,7 +288,7 @@ abstract class PanelView(
         }
         accessibilityElements().forEachIndexed { index, element ->
             if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
-                info.addChild(this, ELEMENT_ACCESSIBILITY_BASE + index)
+                info.addChild(this, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
             }
         }
     }
@@ -318,7 +382,14 @@ abstract class PanelView(
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean = gestures.onTouchEvent(event)
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        val handled = gestures.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            notifyAccessibilityContentChanged()
+            dragging = null
+        }
+        return handled
+    }
 
     /**
      * 表头：与工具栏同样浮起的圆角卡片，和下面的内容分出层次；左边返回（编辑类面板换成品牌色的 [leftIcon]，如完成的对勾），[rightIcon] 画在右边一格
