@@ -99,11 +99,15 @@ class KeyboardView(
     private val keyEffectPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
     private val borderColors = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
     private val backgroundColors = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
+    private val borderColor = keyEffectPrefs.getInt("keyboard_key_border_color", 0).takeIf { it != 0 }
+        ?: borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
+    private val backgroundColor = keyEffectPrefs.getInt("keyboard_key_background_color", 0).takeIf { it != 0 }
+        ?: backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
     private val painter = KeyPainter(
         palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.keyboardFontWeight,
         keyBackgroundAlpha, keyBackgroundFrosted, settings.keyboardTextPreset,
-        borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)],
-        backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)],
+        borderColor,
+        backgroundColor,
         settings.keyboardTextColor,
         scaledDensity = resources.displayMetrics.scaledDensity,
     )
