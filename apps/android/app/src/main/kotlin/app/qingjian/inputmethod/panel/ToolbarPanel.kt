@@ -94,7 +94,13 @@ class ToolbarPanel(
         }
         addCells(placed, sectionTitle, true)
         addCells(ToolbarTool.entries, allTop + sectionTitle, false)
-        return elements
+        accessibilityScrollElement("工具栏项目列表，可滚动", RectF(card), scroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            if (element.virtualId == 1000) element else {
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(card)) null else element.copy(bounds = visible)
+            }
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
