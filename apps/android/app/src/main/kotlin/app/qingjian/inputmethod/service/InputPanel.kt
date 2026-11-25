@@ -349,6 +349,8 @@ private class FlowingKeyboardBackgroundDrawable(
         val shader = cloudShader ?: runCatching { RuntimeShader(CLOUD_AGSL) }.getOrNull()?.also { cloudShader = it } ?: return false
         shader.setFloatUniform("iTime", time.toFloat())
         shader.setFloatUniform("iResolution", w.coerceAtLeast(1f), h.coerceAtLeast(1f))
+        // 将场景编号传入 AGSL；此前漏设该 uniform，四个主题均按默认值绘制。
+        shader.setFloatUniform("iScene", style.toFloat())
         cloudShaderPaint.shader = shader
         canvas.drawRect(0f, 0f, w, h, cloudShaderPaint)
         cloudShaderPaint.shader = null
@@ -389,6 +391,7 @@ private class FlowingKeyboardBackgroundDrawable(
             float isNight = scene == 16.0 ? 1.0 : 0.0;
             float isGlow = scene == 14.0 ? 1.0 : 0.0;
             float isTwilight = scene == 18.0 ? 1.0 : 0.0;
+            float isClear = scene == 14.0 ? 1.0 : 0.0;
 
             float3 skyTop = float3(0.16, 0.40, 0.76);
             float3 skyBottom = float3(0.66, 0.84, 1.00);
@@ -403,21 +406,31 @@ private class FlowingKeyboardBackgroundDrawable(
 
             float aspect = iResolution.x / max(iResolution.y, 1.0);
             float2 cloudP = float2(uv.x * aspect, uv.y * 1.28);
-            float speed = isNight > 0.5 ? 0.010 : 0.018;
+            float speed = 0.018;
+            speed = mix(speed, 0.010, isClear);
+            speed = mix(speed, -0.007, isDusk);
+            speed = mix(speed, 0.004, isNight);
+            speed = mix(speed, 0.024, isTwilight);
             cloudP.x -= iTime * speed;
-            float2 warp = float2(fbm(cloudP * 1.35 + float2(2.0, 1.0)),
-                                 fbm(cloudP * 1.35 + float2(8.0, 4.0)));
-            float2 q = cloudP + (warp - 0.5) * 0.62;
-            float broad = fbm(q * 2.15);
-            float detail = fbm(q * 4.8 + float2(3.7, 6.1));
-            float fine = fbm(q * 9.5 + float2(11.0, 2.0));
-            float density = broad * 0.66 + detail * 0.25 + fine * 0.09;
+            cloudP.y += iTime * (0.0012 * isTwilight + 0.0005 * isDusk);
+            float2 warp = float2(fbm(cloudP * 1.15 + float2(2.0, 1.0)),
+                                 fbm(cloudP * 1.15 + float2(8.0, 4.0)));
+            float2 q = cloudP + (warp - 0.5) * 0.82;
+            // 大尺度塑造连续云团，细节只柔化边缘，避免棋盘块状云。
+            float broad = fbm(q * 1.72 + float2(0.0, 1.4));
+            float detail = fbm(q * 3.65 + float2(3.7, 6.1));
+            float fine = fbm(q * 7.4 + float2(11.0, 2.0));
+            float density = broad * 0.70 + detail * 0.23 + fine * 0.07;
 
             float horizon = 1.0 - vertical;
-            float cloudBase = mix(0.48, 0.45, isNight);
-            float cloudMask = smoothstep(cloudBase, cloudBase + 0.20, density);
-            cloudMask *= smoothstep(0.02, 0.35, horizon);
-            cloudMask *= mix(0.94, 0.76, isNight);
+            float cloudBase = 0.485;
+            cloudBase = mix(cloudBase, 0.505, isClear);
+            cloudBase = mix(cloudBase, 0.475, isDusk);
+            cloudBase = mix(cloudBase, 0.525, isNight);
+            cloudBase = mix(cloudBase, 0.465, isTwilight);
+            float cloudMask = smoothstep(cloudBase, cloudBase + 0.17, density);
+            cloudMask *= smoothstep(0.015, 0.24, horizon);
+            cloudMask *= mix(0.88, 0.70, isNight);
 
             float3 lit = float3(1.0, 0.99, 0.96);
             float3 shade = float3(0.38, 0.53, 0.72);
@@ -434,7 +447,12 @@ private class FlowingKeyboardBackgroundDrawable(
                                    isDusk > 0.5 ? 0.82 : 0.18);
             float2 sunDelta = cloudP - sunPos;
             float glow = exp(-dot(sunDelta, sunDelta) * 5.0);
-            cloudColor += float3(1.0, 0.72, 0.40) * glow * (0.16 + isGlow * 0.36 + isDusk * 0.18);
+            cloudColor += float3(1.0, 0.72, 0.40) * glow * (0.12 + isClear * 0.10 + isGlow * 0.36 + isDusk * 0.24);
+            // 光斑穿云：柔和斜向光束随云层遮挡，其他三景不绘制光束。
+            float rayAxis = uv.x - 0.73 - (vertical - 0.22) * 0.20;
+            float rays = exp(-abs(rayAxis) * 17.0) + 0.42 * exp(-abs(rayAxis - 0.12) * 22.0);
+            sky += float3(1.0, 0.78, 0.52) * rays * (1.0 - cloudMask * 0.72) * isTwilight * 0.22;
+            cloudColor += float3(1.0, 0.86, 0.66) * rays * cloudMask * isTwilight * 0.24;
 
             if (isNight > 0.5) {
                 float star = step(0.9975, hash(floor(fragCoord / 2.5)));
