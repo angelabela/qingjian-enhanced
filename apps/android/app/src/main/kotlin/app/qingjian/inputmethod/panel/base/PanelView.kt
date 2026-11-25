@@ -52,7 +52,7 @@ abstract class PanelView(
                 root.isEnabled = isEnabled
                 root.isFocusable = false
                 root.isClickable = false
-                root.addChild(this@PanelView, BACK_ACCESSIBILITY_ID)
+                if (hasHeader) root.addChild(this@PanelView, BACK_ACCESSIBILITY_ID)
                 accessibilityTabs?.labels?.indices?.forEach { index ->
                     if (accessibilityTabs?.accessibilityBounds(index) != null) {
                         root.addChild(this@PanelView, TAB_ACCESSIBILITY_BASE + index)
@@ -63,6 +63,7 @@ abstract class PanelView(
 
             val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
             val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
+            if (isBack && !hasHeader) return null
             val tab = accessibilityTabs
             val label: String
             val bounds = if (isBack) {
@@ -115,7 +116,7 @@ abstract class PanelView(
                 }
                 AccessibilityNodeInfo.ACTION_CLICK -> {
                     if (!isEnabled) return false
-                    if (virtualViewId == BACK_ACCESSIBILITY_ID) onBack()
+                    if (virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader) onBack()
                     else {
                         val index = virtualViewId - TAB_ACCESSIBILITY_BASE
                         val tab = accessibilityTabs ?: return false
@@ -135,7 +136,7 @@ abstract class PanelView(
 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
-        info.addChild(this, BACK_ACCESSIBILITY_ID)
+        if (hasHeader) info.addChild(this, BACK_ACCESSIBILITY_ID)
         accessibilityTabs?.labels?.indices?.forEach { index ->
             if (accessibilityTabs?.accessibilityBounds(index) != null) {
                 info.addChild(this, TAB_ACCESSIBILITY_BASE + index)
