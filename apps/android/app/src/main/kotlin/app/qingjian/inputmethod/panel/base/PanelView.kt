@@ -123,17 +123,32 @@ abstract class PanelView(
             return node
         }
 
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? {
+            if (focus != AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) return null
+            val focusedId = accessibilityFocusedId
+            if (focusedId == INVALID_ACCESSIBILITY_ID) return null
+            return createAccessibilityNodeInfo(focusedId)
+        }
+
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    if (createAccessibilityNodeInfo(virtualViewId) == null) return false
+                    if (accessibilityFocusedId == virtualViewId) return true
+                    val previous = accessibilityFocusedId
                     accessibilityFocusedId = virtualViewId
+                    if (previous != INVALID_ACCESSIBILITY_ID) {
+                        sendPanelAccessibilityEvent(previous, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                    }
                     sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                    invalidate()
                     return true
                 }
                 AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
                     if (accessibilityFocusedId != virtualViewId) return false
                     accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
                     sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                    invalidate()
                     return true
                 }
                 AccessibilityNodeInfo.ACTION_CLICK -> {
