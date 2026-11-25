@@ -7,6 +7,13 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
+import kotlin.math.roundToInt
 import android.view.View
 import android.widget.OverScroller
 import kotlin.math.sin
@@ -69,6 +76,197 @@ class CandidateBarView(
     }
 
     private val density = resources.displayMetrics.density
+
+    private val accessibilityManager =
+        context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    private var accessibilityFocusedCandidate = -1
+    private var hoveredAccessibilityCandidate = -1
+
+    /** 候选条同样是 Canvas 自绘；只把当前可见候选暴露为虚拟按钮，不改变滑动/长按逻辑。 */
+    private val candidateAccessibilityProvider = object : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            val candidate = strip.candidates.getOrNull(virtualViewId) ?: return null
+            val bounds = candidateAccessibilityBounds(virtualViewId) ?: return null
+            val info = AccessibilityNodeInfo.obtain()
+            info.setSource(this@CandidateBarView, virtualViewId)
+            info.setParent(this@CandidateBarView)
+            info.packageName = context.packageName
+            info.className = "android.widget.Button"
+            info.text = candidate.text
+            info.contentDescription = "候选词 ${virtualViewId + 1}，${candidate.text}"
+            info.isEnabled = this@CandidateBarView.isEnabled
+            info.isVisibleToUser = true
+            info.isFocusable = true
+            info.isClickable = true
+            info.isSelected = virtualViewId == gestureSelectionIndex ||
+                virtualViewId == popupIndex || (gestureSelectionIndex < 0 && popupIndex < 0 && virtualViewId == 0)
+            info.isAccessibilityFocused = accessibilityFocusedCandidate == virtualViewId
+            info.setBoundsInParent(bounds)
+            val screenBounds = Rect(bounds)
+            getLocationOnScreen(IntArray(2).also { screenLocation ->
+                screenBounds.offset(screenLocation[0], screenLocation[1])
+            })
+            info.setBoundsInScreen(screenBounds)
+            info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (accessibilityFocusedCandidate == virtualViewId) {
+                info.addAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS)
+            } else {
+                info.addAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+            }
+            return info
+        }
+
+        override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            val candidate = strip.candidates.getOrNull(virtualViewId) ?: return false
+            when (action) {
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    if (!accessibilityManager.isEnabled || accessibilityFocusedCandidate == virtualViewId) return false
+                    if (accessibilityFocusedCandidate >= 0) {
+                        sendCandidateAccessibilityEvent(
+                            accessibilityFocusedCandidate,
+                            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                        )
+                    }
+                    accessibilityFocusedCandidate = virtualViewId
+                    sendCandidateAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                    if (accessibilityFocusedCandidate != virtualViewId) return false
+                    accessibilityFocusedCandidate = -1
+                    sendCandidateAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLICK -> {
+                    if (!isEnabled) return false
+                    Haptics.tap(context)
+                    listener.onSelect(virtualViewId)
+                    sendCandidateAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    return true
+                }
+            }
+            return false
+        }
+
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? =
+            if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
+                createAccessibilityNodeInfo(accessibilityFocusedCandidate)
+            } else null
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider = candidateAccessibilityProvider
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        visibleAccessibilityCandidates().forEach { info.addChild(this, it) }
+        val canScroll = !toolbarShown && maxScroll() > 0
+        info.isScrollable = canScroll
+        if (canScroll) {
+            info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+        }
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        if (!toolbarShown && !resizing) {
+            val page = (stripWidth * 0.8f).roundToInt().coerceAtLeast(1)
+            when (action) {
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> {
+                    val next = (scrollX + page).coerceAtMost(maxScroll())
+                    if (next == scrollX) return false
+                    scrollTo(next, 0)
+                    invalidate()
+                    notifyAccessibilityContentChanged()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
+                    val next = (scrollX - page).coerceAtLeast(0)
+                    if (next == scrollX) return false
+                    scrollTo(next, 0)
+                    invalidate()
+                    notifyAccessibilityContentChanged()
+                    return true
+                }
+            }
+        }
+        return super.performAccessibilityAction(action, arguments)
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (!accessibilityManager.isTouchExplorationEnabled) return super.onHoverEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val next = visibleAccessibilityCandidates().firstOrNull { id ->
+                    candidateAccessibilityBounds(id)?.contains(event.x.toInt(), event.y.toInt()) == true
+                } ?: -1
+                if (next != hoveredAccessibilityCandidate) {
+                    if (hoveredAccessibilityCandidate >= 0) {
+                        sendCandidateAccessibilityEvent(
+                            hoveredAccessibilityCandidate,
+                            AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                        )
+                    }
+                    hoveredAccessibilityCandidate = next
+                    if (next >= 0) {
+                        sendCandidateAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    }
+                }
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (hoveredAccessibilityCandidate >= 0) {
+                    sendCandidateAccessibilityEvent(
+                        hoveredAccessibilityCandidate,
+                        AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                    )
+                    hoveredAccessibilityCandidate = -1
+                }
+            }
+        }
+        return true
+    }
+
+    private fun visibleAccessibilityCandidates(): List<Int> =
+        if (toolbarShown || resizing || strip.isEmpty) emptyList()
+        else strip.candidates.indices.filter { candidateAccessibilityBounds(it) != null }
+
+    private fun candidateAccessibilityBounds(index: Int): Rect? {
+        if (toolbarShown || resizing || strip.isEmpty) return null
+        val word = strip.wordRect(index) ?: return null
+        val inset = strip.leftInsetPx(stripWidth)
+        val bounds = Rect(
+            (word.left + inset - scrollX).roundToInt(),
+            word.top.roundToInt(),
+            (word.right + inset - scrollX).roundToInt(),
+            word.bottom.roundToInt(),
+        )
+        if (expandable) bounds.right = minOf(bounds.right, stripWidth)
+        return bounds.takeIf { it.intersect(0, 0, stripWidth, height) && it.width() > 0 && it.height() > 0 }
+    }
+
+    private fun sendCandidateAccessibilityEvent(virtualViewId: Int, eventType: Int) {
+        val candidate = strip.candidates.getOrNull(virtualViewId) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, virtualViewId)
+        event.text.add(candidate.text)
+        event.isEnabled = isEnabled
+        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+    }
+
+    private fun notifyAccessibilityContentChanged() {
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+    }
     private var adaptiveVideoTextColor: Int? = null
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
     val barHeight = 66f * density * maxOf(1f, textScale)
@@ -245,6 +443,7 @@ class CandidateBarView(
     })
 
     init {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.surface)
     }
 
@@ -271,6 +470,7 @@ class CandidateBarView(
         if (!preserveScroll) scrollTo(0, 0)
         repaint()
         if (preserveScroll) scrollTo(previousScroll.coerceIn(0, maxScroll()), 0)
+        notifyAccessibilityContentChanged()
     }
 
     /** 空格横滑预选候选；不重绘 Rust 位图，只更新独立选中层。 */

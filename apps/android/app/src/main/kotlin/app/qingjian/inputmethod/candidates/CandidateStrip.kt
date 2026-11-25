@@ -262,11 +262,24 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
     fun wordRect(index: Int): RectF? {
         val frame = image ?: return fallbackRects.getOrNull(index)?.let { RectF(it) }
-        val rect = frame.wordRect(index) ?: return null
-        if (frame.candidatesTop == 0) {
-            rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f))
+        val rect = frame.wordRect(index)
+        if (rect != null) {
+            if (frame.candidatesTop == 0) {
+                rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f))
+            }
+            return rect
         }
-        return rect
+        // 超出 Rust 位图宽度的补充候选由 Android 绘制；同样提供稳定的命中/无障碍区域。
+        val extraIndex = extraCandidates().indexOf(index)
+        if (extraIndex < 0) return null
+        val top = if (frame.candidatesTop == 0) {
+            ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
+        } else frame.candidatesTop.toFloat()
+        val bottom = if (frame.candidatesTop == 0) {
+            (top + frame.bitmap.height).coerceAtMost(barHeight)
+        } else barHeight
+        val left = frame.bitmap.width + 12f * density + extraIndex * 38f * density
+        return RectF(left, top, left + 38f * density, bottom)
     }
 
     /** 首选词的整体视觉区域：同时包含词条和其下方的词性/英文释义 hit 区。 */
