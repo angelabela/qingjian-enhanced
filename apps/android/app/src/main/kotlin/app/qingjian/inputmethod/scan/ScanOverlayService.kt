@@ -134,7 +134,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private var prefixEditorHadFocus = false
     private var prefixImeRequested = false
     private val executor = Executors.newSingleThreadExecutor()
-    private val zxingFallbackExecutor = Executors.newSingleThreadExecutor()
     private val processing = AtomicBoolean(false)
     private val lifecycleGuard = Any()
     private val clientsClosed = AtomicBoolean(false)
@@ -149,6 +148,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private data class StableBarcodeHit(val lastAt: Long, val count: Int, val centerX: Float, val centerY: Float)
     private val stableBarcodeHits = java.util.concurrent.ConcurrentHashMap<String, StableBarcodeHit>()
     @Volatile private var cameraWarmupUntil = 0L
+    // 与 Binary Eye 一样逐帧交替局部/全局二值化，避免每帧重复跑两遍完整解码。
+    private var useLocalAverage = false
     private val windowPrefs by lazy { getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE) }
     private val transformFactory = ImageProxyTransformFactory().apply {
         setUsingCropRect(true)
@@ -1045,40 +1046,66 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         if (frameNumber == 1L || frameNumber % 120L == 0L) {
                             scanDiag("camera analysis active frames=$frameNumber size=${proxy.width}x${proxy.height} rotation=${proxy.imageInfo.rotationDegrees} ocrMode=$ocrMode")
                         }
-                        val deferredFrameRelease = AtomicBoolean(false)
+                        val nativeDecoded = if (android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
+                            decodeWithZxing(proxy)
+                        } else {
+                            null
+                        }
+                        if (nativeDecoded != null) {
+                            val (value, bounds) = nativeDecoded
+                            // ZXing-C++ 已校验条码内容，直接在首个有效帧提交；去重由 shouldDeliverCode 负责。
+                            ContextCompat.getMainExecutor(this@ScanOverlayService).execute {
+                                try {
+                                    handleZxingResult(proxy, value, bounds)
+                                } finally {
+                                    processing.set(false)
+                                    runCatching { proxy.close() }
+                                    if (shuttingDown) closeMlKitClients()
+                                }
+                            }
+                            return@setAnalyzer
+                        }
+
+                        // 原生解码未命中时才调用 ML Kit 补充识别，保留原有格式兼容兜底。
                         scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
                             .addOnSuccessListener { codes ->
                                 if (codes.isNotEmpty()) {
                                     val hits = barcodeResultFrameCount.incrementAndGet()
-                                    scanDiag("ML Kit returned ${codes.size} barcode candidates; hitFrames=$hits")
+                                    scanDiag("ML Kit fallback returned ${codes.size} barcode candidates; hitFrames=$hits")
                                 }
-                                // ML Kit 没有命中时，交给 ZXing Java 再尝试一次；其反色与两种二值化策略
-                                // 可补足低对比、反白、细条码等场景。异步解码期间保留 ImageProxy。
-                                val hasReadableMlKitCode = codes.any {
-                                    (it.rawValue ?: it.displayValue)?.trim()?.isNotEmpty() == true
-                                }
-                                if (!hasReadableMlKitCode && android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
-                                    deferredFrameRelease.set(true)
-                                    try {
-                                        zxingFallbackExecutor.execute {
-                                            var releaseOnWorker = true
-                                            try {
-                                                val decoded = decodeWithZxing(proxy)
-                                                if (decoded != null) {
-                                                    val (value, bounds) = decoded
-                                                    ContextCompat.getMainExecutor(this@ScanOverlayService).execute {
-                                                        try {
-                                                            // 变换与扫描框判断需要预览 View；在主线程处理完再释放 ImageProxy。
-                                                            handleZxingFallback(proxy, value, bounds)
-                                                        } finally {
-                                                            processing.set(false)
-                                                            runCatching { proxy.close() }
-                                                            if (shuttingDown) closeMlKitClients()
-                                                        }
-                                                    }
-                                                    releaseOnWorker = false
-                                                }
-                                            } catch (error: Throwable) {
+                                if (lifecycle.currentState == Lifecycle.State.DESTROYED ||
+                                    !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
+                                runCatching {
+                                    if (android.os.SystemClock.elapsedRealtime() < cameraWarmupUntil) return@runCatching
+                                    val transform = preview.outputTransform?.let { output ->
+                                        runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
+                                    }
+                                    val roi = scanArea.boundsInView()
+                                    codes.forEach { code ->
+                                        val value = (code.rawValue ?: code.displayValue)?.trim().orEmpty()
+                                        if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
+                                        val mapped = code.boundingBox?.let { RectF(it) }
+                                        if (mapped != null && transform != null) {
+                                            transform.mapRect(mapped)
+                                            if (!isBarcodeInsideScanArea(roi, mapped)) return@forEach
+                                        }
+                                        val centerX = mapped?.centerX() ?: roi.centerX()
+                                        val centerY = mapped?.centerY() ?: roi.centerY()
+                                        if (!hasStableBarcode(value, centerX, centerY)) return@forEach
+                                        scanDiag("stable ML Kit fallback accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
+                                        if (shouldDeliverCode(value)) deliverResult(value)
+                                    }
+                                }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
+                            }
+                            .addOnFailureListener { error ->
+                                scanDiag("ML Kit fallback frame analysis failed: ${error.javaClass.simpleName}: ${error.message}", warning = true)
+                            }
+                            .addOnCompleteListener {
+                                processing.set(false)
+                                runCatching { proxy.close() }
+                                if (shuttingDown) closeMlKitClients()
+                            }
+                    } catch (error: Throwable) {
                                                 android.util.Log.w(TAG, "ZXing fallback decode failed", error)
                                             } finally {
                                                 if (releaseOnWorker) {
@@ -1188,15 +1215,12 @@ class ScanOverlayService : Service(), LifecycleOwner {
 
     /** Binary Eye 同款 ZXing-C++ 兜底：直接读取 CameraX Y 平面，启用困难识别、旋转、反色与降采样。 */
     private fun decodeWithZxing(proxy: androidx.camera.core.ImageProxy): Pair<String, RectF>? {
-        val plane = proxy.planes.firstOrNull() ?: return null
-        if (proxy.width < 2 || proxy.height < 2) return null
+        if (proxy.planes.firstOrNull() == null || proxy.width < 2 || proxy.height < 2) return null
+        val binarizer = if (useLocalAverage) BarcodeReader.Binarizer.LOCAL_AVERAGE else BarcodeReader.Binarizer.GLOBAL_HISTOGRAM
+        useLocalAverage = !useLocalAverage
         val result = runCatching {
-            binaryEyeReader.options.binarizer = BarcodeReader.Binarizer.LOCAL_AVERAGE
+            binaryEyeReader.options.binarizer = binarizer
             binaryEyeReader.read(proxy).firstOrNull()
-                ?: run {
-                    binaryEyeReader.options.binarizer = BarcodeReader.Binarizer.GLOBAL_HISTOGRAM
-                    binaryEyeReader.read(proxy).firstOrNull()
-                }
         }.onFailure { android.util.Log.w(TAG, "Binary Eye ZXing-C++ decode failed", it) }.getOrNull()
             ?: return null
         val value = result.text?.trim().orEmpty()
@@ -1210,8 +1234,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
         return value to bounds
     }
 
-    /** ZXing 返回的是图像坐标；沿用与 ML Kit 相同的预览变换、扫描框过滤和双帧稳定策略。 */
-    private fun handleZxingFallback(proxy: androidx.camera.core.ImageProxy, value: String, bounds: RectF) {
+    /** ZXing-C++ 返回的是图像坐标；保留扫描框过滤，但像 Binary Eye 一样首个校验成功的结果即可提交。 */
+    private fun handleZxingResult(proxy: androidx.camera.core.ImageProxy, value: String, bounds: RectF) {
         if (shuttingDown || lifecycle.currentState == Lifecycle.State.DESTROYED ||
             !::preview.isInitialized || !::scanArea.isInitialized ||
             !ScanPreferences.accepts(this, value)
@@ -1226,8 +1250,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             if (transform != null && !isBarcodeInsideScanArea(roi, mapped)) return
             val centerX = if (transform != null) mapped.centerX() else roi.centerX()
             val centerY = if (transform != null) mapped.centerY() else roi.centerY()
-            if (!hasStableBarcode(value, centerX, centerY)) return
-            scanDiag("ZXing fallback accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
+            scanDiag("ZXing-C++ accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
             if (shouldDeliverCode(value)) deliverResult(value)
         }.onFailure { android.util.Log.w(TAG, "ZXing fallback mapping failed", it) }
     }
@@ -1447,7 +1470,6 @@ class ScanOverlayService : Service(), LifecycleOwner {
         saveWindowSize()
         if (::overlayRoot.isInitialized) runCatching { windowManager.removeView(overlayRoot) }
         executor.shutdown()
-        zxingFallbackExecutor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
     }

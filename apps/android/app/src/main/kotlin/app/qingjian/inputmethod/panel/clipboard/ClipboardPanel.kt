@@ -58,6 +58,9 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -162,6 +165,12 @@ class ClipboardPanel(
     }
 
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val clipTimestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = ink.dp(11.5f)
+        textAlign = Paint.Align.RIGHT
+        color = palette.gloss
+    }
     private val card = RectF()
     private val layouts = HashMap<String, StaticLayout>()
     private val thumbnails = HashMap<String, Bitmap?>()
@@ -609,7 +618,8 @@ class ClipboardPanel(
     val bottom = list.top + bottoms[i] - listScroll.offset
     if (bottom <= list.top || top >= list.bottom) continue
     val summary = textOf(i).replace('\n', ' ').take(48).ifBlank { "图片或空白剪贴板内容" }
-    val label = if (showingPhrases) "常用语：$summary" else "剪贴板：$summary"
+    val timeLabel = timestampOf(i)?.let { "，复制时间：$it" }.orEmpty()
+    val label = if (showingPhrases) "常用语：$summary" else "剪贴板：$summary$timeLabel"
     elements += AccessibilityElement(
         label + if (expanded == i) "，已展开" else "，点击上屏，右侧可展开操作",
         RectF(list.left + ink.dp(CARD_MARGIN_DP), top, list.right - ink.dp(CARD_MARGIN_DP), bottom),
@@ -935,9 +945,18 @@ class ClipboardPanel(
     private fun textWidth() = (width - ink.dp(CARD_MARGIN_DP) * 2 - ink.dp(CARD_PADDING_DP) * 2 - ink.dp(CHEVRON_DP)).toInt()
 
     private fun contentHeight(i: Int): Float {
-        if (!showingPhrases) clipAt(i)?.image?.let { return ink.dp(IMAGE_DP) }
-        return layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        if (showingPhrases) {
+            return layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        }
+        val clip = clipAt(i) ?: return 0f
+        val bodyHeight = if (clip.image != null) ink.dp(IMAGE_DP) else layout(i).height
+        val timestampHeight = if (clip.copiedAtSeconds > 0L) ink.dp(TIME_LINE_DP) else 0f
+        return bodyHeight + timestampHeight
     }
+
+    private fun timestampOf(i: Int): String? = clipAt(i)?.copiedAtSeconds
+        ?.takeIf { it > 0L }
+        ?.let { clipTimestampFormat.format(Date(it * 1000L)) }
 
     /** 常用语的输入码（有才画一行）。 */
     private fun codeOf(i: Int): String? = if (showingPhrases) shownPhrases()[i].code.ifEmpty { null } else null
@@ -990,7 +1009,11 @@ class ClipboardPanel(
         val padding = ink.dp(CARD_PADDING_DP)
         card.set(margin, top, width - margin, bottom)
         ink.round(canvas, card, 12f, palette.surface)
-        val image = if (showingPhrases) null else clipAt(i)?.image
+        val clip = if (showingPhrases) null else clipAt(i)
+        val image = clip?.image
+        val bodyHeight = if (image != null) ink.dp(IMAGE_DP) else {
+            layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        }
         if (image != null) {
             thumbnail(image)?.let { bitmap ->
                 val h = ink.dp(IMAGE_DP)
@@ -1007,6 +1030,12 @@ class ClipboardPanel(
                 val y = top + padding + layout(i).height + ink.dp(CODE_LINE_DP) / 2
                 ink.textStart(canvas, "输入码  $code", 12.5f, palette.gloss, margin + padding, y, width - margin)
             }
+        }
+        timestampOf(i)?.let { timestamp ->
+            timestampPaint.color = palette.gloss
+            val centerY = top + padding + bodyHeight + ink.dp(TIME_LINE_DP) / 2f
+            val baseline = centerY - (timestampPaint.ascent() + timestampPaint.descent()) / 2f
+            canvas.drawText(timestamp, width - margin - padding, baseline, timestampPaint)
         }
         val open = i == expanded
         ink.icon(canvas, if (open) Icon.COLLAPSE else Icon.EXPAND, width - margin - ink.dp(CHEVRON_DP) / 2, top + padding + ink.dp(11f), 20f, palette.gloss)
@@ -1471,6 +1500,7 @@ class ClipboardPanel(
         private const val CHEVRON_DP = 32f
         private const val ACTIONS_DP = 40f
         private const val IMAGE_DP = 96f
+        private const val TIME_LINE_DP = 18f
         private const val CODE_LINE_DP = 24f
         private const val PREVIEW_BAR_DP = 60f
         private const val SWIPE_DELETE_DP = 64f
