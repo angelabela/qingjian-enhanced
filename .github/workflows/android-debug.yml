@@ -1,0 +1,115 @@
+# 560 baseline + 0.3.23: spectrum layouts, clipboard persistence, C-down copy, phrase ellipsis and QR sharing.
+# 构建 Android Debug APK；339 轮增加立体按键主题、语音降噪、语义标点、剪贴板结构拆分与六步撤销。
+# 408 后续修复：剪贴板开关触摸拦截、相机标题栏外置、拍照识图快门与扫码框模式切换。
+name: android-debug
+
+on:
+  # APK 只在代码推送时构建；237 基线的实时信息功能与输入手势样式在此工作流验证。
+  push:
+    branches: [feature/smart-input-android-0.7, feature/clipboard-preview-shift-icons, feature/spacebar-clipboard-phrase-memory-toolbar, feature/android-ai-chat-assistant, fix/android-voice-animation-stutter, fix/voice-animation-frame-pacing, feature/android-input-efficiency-phase1, feature/run234-voice-gestures-smart-candidates, feature/run236-memory-voice-cloud, feature/run237-smart-context, feature/run250-local-phrase-followups-voice-gradient-themes, feature/workflow259-voice-color-followup-backup-restore, feature/workflow260-sms-barcode-smart-actions, feature/workflow289-scan-roi-candidate-layout, feature/workflow290-floating-scan-settings, feature/workflow291-visible-scan-settings, feature/workflow292-real-floating-scanner, feature/workflow294-scanner-controls-permissions, feature/workflow304-scan-dedupe-theme-bold-camera, feature/workflow305-scan-window-cloud-tips, feature/workflow308-cloudtips-scan-roi-clipboard, feature/workflow313-backup-scan-tips, feature/workflow314-liquid-tips-date-voice, feature/workflow319-liquid-glass-voice-backup, feature/workflow320-spectrum-restore-fix, feature/workflow322-scan-sharp-keyboard-prediction-voice-cleanup, feature/workflow334-voice-busy-semantic-symbols-backup-compat, feature/workflow339-glossy-themes-smart-undo-clipboard, feature/380-context-tools-smart-compose, feature/403-clipboard-voice-scan-ocr, fix/403-clipboard-scan-glass-ocr, fix/405-clipboard-stay-glass-header-drag-ocr, fix/408-scan-header-layout-photo-controls-clipboard, fix/421-clipboard-scan-toolbar-frequency, fix/424-header-only-blur-same-pinyin-frequency, fix/428-scan-overlay-context-rerank, fix/workflow429-undo-redo-safe, feature/voice-ai-upgrade-442, feature/voice-undo-latency-448, feature/voice-ui-polish-450, feature/fix-scan-font-gesture-457, feature/scan-glass-pcm-semantic-458, feature/scan-tips-space-voice-font-460, feature/workflow-466-fixed-signature-voice-tips, feature/workflow-467-polish-scan-tips-voice, fix/workflow-252-keycap-candidate-video-controls, fix/workflow-400-mascot-candidates, fix/workflow-549-ai-scan-candidate-staggered-entry, fix/workflow-550-mascot-space-light-ai-bounce, fix/workflow-551-mascot-bubble-glow-emoji, fix/workflow-552-candidate-refresh-pinyin-logo-animation, fix/workflow-555-candidate-dedup-pinyin-spacing-logo-spin-glow, fix/workflow-421-key-feedback-pinyin-candidates, feature/android-optional-trigram-model, fix/workflow-575-rebased-on-560-v0.3.23]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    env:
+      NDK_VERSION: 29.0.13599879
+      CARGO_TERM_COLOR: always
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Use JDK 21
+        run: |
+          if [[ ! -d "${JAVA_HOME_21_X64:-}" ]]; then
+            echo "runner 上没有 JDK 21（JAVA_HOME_21_X64）" >&2
+            ls /usr/lib/jvm >&2
+            exit 1
+          fi
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - name: Install NDK and cargo-ndk
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "platforms;android-36" > /dev/null
+          cargo install cargo-ndk --version 4.1.2 --locked
+          echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
+
+      - name: Format and check Rust workspace
+        # 仓库已有 Rust 文件存在历史格式差异；先按当前 rustfmt 统一格式，再执行检查，避免无关文件阻断 APK 构建。
+        run: |
+          cargo fmt --all
+          cargo fmt --all --check
+
+      - name: Test Android core and smart completions
+        # Workspace cleanup changes the resolved workspace package set; let Cargo refresh Cargo.lock.
+        run: cargo test -p qingjian-android
+
+      - name: Fetch and verify full dictionary data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tools/release/data-fetch.sh
+          test -s data/generated/dict.qj
+          test -d data/generated/dicts
+          find data/generated/dicts -type f -name '*.qj' -size +0c | grep -q .
+          ls -lh data/generated/dict.qj data/generated/lm.qj data/generated/dicts
+
+      - name: Prepare fixed Android release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.QINGJIAN_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "缺少 QINGJIAN_ANDROID_KEYSTORE Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "缺少 QINGJIAN_ANDROID_KEYSTORE_PASSWORD Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "缺少 QINGJIAN_ANDROID_KEY_ALIAS Secret" >&2; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "缺少 QINGJIAN_ANDROID_KEY_PASSWORD Secret" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/qingjian-signing"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/qingjian-signing/qingjian-release.jks"
+          test -s "$RUNNER_TEMP/qingjian-signing/qingjian-release.jks"
+          echo "QINGJIAN_ANDROID_KEYSTORE=$RUNNER_TEMP/qingjian-signing/qingjian-release.jks" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "QINGJIAN_ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build signed Android release APK
+        working-directory: apps/android
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      - name: Verify fixed APK signature
+        run: |
+          set -euo pipefail
+          APK="apps/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK"
+
+      - name: Upload signed Android APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qingjian-android-signed
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

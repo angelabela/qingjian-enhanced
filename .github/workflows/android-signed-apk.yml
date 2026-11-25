@@ -1,0 +1,151 @@
+# 487: scan drag-all-titlebar, Wi-Fi/URL scan actions, clipboard quick actions, and A-Z key marquee.
+# 553: clipboard latest preview fallback and one-event dedupe; candidate pulse fade and gesture-follow tracking.
+# 552: candidate edge fade, scan duplicate suppression, focus-safe floating scanner, candidate swipe reveal.
+# 551: one-shot clipboard notices, strict candidate clipping, bundled CC0 key sounds.
+# 550: mascot bubble spacing, cloud-tip shutdown, character bounce and spacebar edge glow.
+# 585: legacy floating tips removal, clipboard search focus/layout, scroll feedback and scan clipboard dedupe.
+name: android-signed-apk
+# Workflow 252: persistent-signature validation for keycap transparency and video-panel fixes.
+
+on:
+  push:
+    branches:
+      - feature/workflow-444-model-coordination
+      - feature/scan-tips-space-voice-font-460
+      - feature/workflow-466-fixed-signature-voice-tips
+      - feature/workflow-467-polish-scan-tips-voice
+      - feature/workflow-468-scan-glass-password-suggestions-system-haptics
+      - feature/workflow-469-scan-rounded-outline-voice-drag-structured-tokens
+      - feature/workflow-470-scan-window-clipping-clipboard-next-cell
+      - feature/workflow-471-scan-window-geometry-tips-glass-clipboard-tab
+      - feature/workflow-472-floating-tips-camera-memory-clipboard-stay
+      - feature/workflow-473-clipboard-tips-camera-fix
+      - feature/workflow-474-clipboard-tips-camera-fix
+      - feature/workflow-475-clipboard-tips-voice-animations
+      - feature/workflow-476-voice-picker-clipboard-state
+      - feature/workflow-477-physics-wave-floating-tips
+      - feature/workflow-478-voice-effects-7styles
+      - feature/workflow-479-voice-panel-touch-spectrum-polish
+      - feature/workflow-480-voice-effect-header-center-spectrum
+      - feature/workflow-481-theme-tips-scan-ranking
+      - fix/workflow-82-prefix-editor-focus-stability
+      - fix/workflow-83-clipboard-actions-swipe-paste
+      - fix/workflow-85-clipboard-longpress-phrase-storage-scan-outline
+      - fix/workflow-92-phrase-storage-recovery
+      - fix/workflow-94-phrase-storage-diagnostics-voice-neon
+      - fix/workflow-97-phrase-storage-diagnostics-round-voice-buttons
+      - fix/workflow-98-phrase-save-voice-layout-user-frequency
+      - fix/voice-swipe-phrases-dual-frequency
+      - fix/workflow-145-scan-lifecycle-keyboard-flow-voice-freeze
+      - fix/210-candidate-video-glass-voice-ring
+      - fix/workflow-252-keycap-candidate-video-controls
+      - fix/workflow-327-voice-gesture-glass-model-manifest
+      - fix/workflow-328-key-gesture-hints-settings
+      - fix/workflow-343-stability-scan-strip-voice
+      - fix/workflow-356-ai-animation-backspace-clear-before-cursor
+      - fix/workflow-368-backspace-ai-spectrum-palettes
+      - fix/workflow-549-ai-scan-candidate-staggered-entry
+      - fix/workflow-550-mascot-space-light-ai-bounce
+      - fix/workflow-551-mascot-bubble-glow-emoji
+      - fix/workflow-552-candidate-refresh-pinyin-logo-animation
+      - fix/workflow-555-candidate-dedup-pinyin-spacing-logo-spin-glow
+      - fix/workflow-556-clipboard-scroll-clear-tab
+      - fix/workflow-579-voice-clipboard-copy-smart-candidates
+      - fix/617-based-clipboard-search-and-candidates
+      - fix/718-wubi-background-clouds-copy
+      - fix/723-wubi-text-effects-space-gesture
+      - fix/workflow-421-key-feedback-pinyin-candidates
+      - feature/android-optional-trigram-model
+      - feature/workflow-433-zhiyi-transformer
+      - feature/workflow-436-zhiyi-monitor-candidate-voice
+    paths:
+      - '.github/workflows/android-signed-apk.yml'
+      - 'apps/android/**'
+      - 'core/**'
+      - 'crates/**'
+      - 'assets/**'
+      - 'tools/release/data-fetch.sh'
+      - 'tools/release/data.lock'
+  workflow_dispatch:
+
+# 同一分支连续提交时只保留最新 APK 构建，避免中间提交的重复构建占用资源。
+concurrency:
+  group: android-signed-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    env:
+      NDK_VERSION: 29.0.13599879
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Use JDK 21
+        run: |
+          if [[ ! -d "${JAVA_HOME_21_X64:-}" ]]; then
+            echo "runner 上没有 JDK 21（JAVA_HOME_21_X64）" >&2
+            ls /usr/lib/jvm >&2
+            exit 1
+          fi
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - name: Install NDK and cargo-ndk
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "platforms;android-36" > /dev/null
+          cargo install cargo-ndk --version 4.1.2 --locked
+          echo "sdk.dir=$ANDROID_HOME" > apps/android/local.properties
+
+      # 与 android-debug.yml 保持一致：workspace package set 清理后先解析并刷新 Cargo.lock。
+      # 该步骤已在同一提交的 Debug 工作流中通过，避免后续 --locked 构建因锁文件过期而失败。
+      - name: Resolve Rust workspace lockfile
+        run: cargo test -p qingjian-android
+
+      - name: Fetch product data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/release/data-fetch.sh
+
+      - name: Build APK with the persistent release key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE }}
+          QINGJIAN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEYSTORE_PASSWORD }}
+          QINGJIAN_ANDROID_KEY_ALIAS: ${{ secrets.QINGJIAN_ANDROID_KEY_ALIAS }}
+          QINGJIAN_ANDROID_KEY_PASSWORD: ${{ secrets.QINGJIAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$QINGJIAN_ANDROID_KEYSTORE_PASSWORD" || -z "$QINGJIAN_ANDROID_KEY_ALIAS" || -z "$QINGJIAN_ANDROID_KEY_PASSWORD" ]]; then
+            echo "Android 持久签名 Secrets 不完整。请在仓库 Settings > Secrets and variables > Actions 中配置 release.yml 使用的四个 QINGJIAN_ANDROID_* 值。" >&2
+            exit 1
+          fi
+          export QINGJIAN_ANDROID_KEYSTORE="$RUNNER_TEMP/qingjian-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$QINGJIAN_ANDROID_KEYSTORE"
+          (cd apps/android && ./gradlew assembleRelease --no-daemon --console=plain)
+          mkdir -p target/android-package
+          cp apps/android/app/build/outputs/apk/release/app-release.apk target/android-package/qingjian-android-signed.apk
+          rm -f "$QINGJIAN_ANDROID_KEYSTORE"
+
+      - name: Verify APK signature
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --verbose --print-certs target/android-package/qingjian-android-signed.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qingjian-android-signed
+          path: target/android-package/qingjian-android-signed.apk
+          if-no-files-found: error
+          retention-days: 30

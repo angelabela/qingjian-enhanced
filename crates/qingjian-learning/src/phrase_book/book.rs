@@ -1,0 +1,395 @@
+//! [`PhraseBook`]：读写、增删改、换成自定义短语。
+
+use std::path::{Path, PathBuf};
+
+use qingjian_core::CustomPhrase;
+use qingjian_core::custom_phrase::{MAX_CODE_LEN, valid_code};
+use qingjian_core::storage::{read_text_lossy, write_atomic_str};
+
+use super::Phrase;
+use crate::error::LearningError;
+
+pub const PHRASE_BOOK_FILE: &str = "phrases.json";
+
+/// 没指定分组时放进去的那组，总排第一。
+pub const DEFAULT_GROUP: &str = "默认";
+
+/// 自动记忆的短语可在容量紧张时优先淘汰，不占用用户手动短语的配额。
+pub const AUTO_MEMORY_GROUP: &str = "自动记忆";
+
+/// 最多存多少条。
+const MAX_PHRASES: usize = 10_000;
+
+/// 输入码最长几个字母，跟 Core 自定义短语的上限一致：长了挂不成短语。
+pub const MAX_CODE_CHARS: usize = MAX_CODE_LEN;
+
+#[derive(Debug, Default)]
+pub struct PhraseBook {
+    /// 越靠前越常用（新加的、移到最前的在前）。
+    phrases: Vec<Phrase>,
+
+    /// `None` 只在内存里记。
+    path: Option<PathBuf>,
+
+    /// 只读内存模式的真实原因，供 Android 面板显示并定位设备端故障。
+    storage_error: Option<String>,
+}
+
+impl PhraseBook {
+    /// 读数据目录里的常用语。先确保目录存在；损坏文件先备份，再尽可能恢复有效条目。
+    /// 任何恢复/初始化失败都退回只读内存模式，不覆盖原始数据。
+    pub fn open(dir: &Path) -> Self {
+        if let Err(error) = std::fs::create_dir_all(dir) {
+            tracing::warn!(path = %dir.display(), %error, "常用语目录不可用");
+            return Self { storage_error: Some(format!("创建目录 {} 失败：{error}", dir.display())), ..Self::default() };
+        }
+        let path = dir.join(PHRASE_BOOK_FILE);
+        match read_text_lossy(&path) {
+            Ok(None) => Self {
+                phrases: Vec::new(),
+                path: Some(path),
+                storage_error: None,
+            },
+            Ok(Some(text)) => match serde_json::from_str::<Vec<Phrase>>(&text) {
+                Ok(phrases) => Self {
+                    phrases,
+                    path: Some(path),
+                    storage_error: None,
+                },
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), %error, "常用语文件损坏，尝试备份并恢复有效条目");
+                    let recovered = recover_phrases(&text);
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_nanos())
+                        .unwrap_or_default();
+                    let backup = dir.join(format!("{PHRASE_BOOK_FILE}.corrupt-{stamp}.bak"));
+                    if let Err(backup_error) = std::fs::write(&backup, text.as_bytes()) {
+                        tracing::error!(path = %backup.display(), %backup_error, "常用语损坏文件备份失败，拒绝覆盖");
+                        return Self { storage_error: Some(format!("备份损坏文件 {} 失败：{backup_error}", backup.display())), ..Self::default() };
+                    }
+                    let serialized = match serde_json::to_string_pretty(&recovered) {
+                        Ok(value) => value,
+                        Err(serialize_error) => {
+                            tracing::error!(%serialize_error, "常用语恢复数据序列化失败");
+                            return Self { storage_error: Some(format!("恢复数据序列化失败：{serialize_error}")), ..Self::default() };
+                        }
+                    };
+                    match write_atomic_str(&path, &serialized) {
+                        Ok(()) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                backup = %backup.display(),
+                                recovered = recovered.len(),
+                                "常用语文件已备份并恢复"
+                            );
+                            Self { phrases: recovered, path: Some(path), storage_error: None }
+                        }
+                        Err(write_error) => {
+                            tracing::error!(path = %path.display(), %write_error, "常用语恢复文件写入失败");
+                            Self { storage_error: Some(format!("写入恢复文件 {} 失败：{write_error}", path.display())), ..Self::default() }
+                        }
+                    }
+                }
+            },
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "常用语读不了，本次只在内存里记");
+                Self { storage_error: Some(format!("读取文件 {} 失败：{error}", path.display())), ..Self::default() }
+            }
+        }
+    }
+
+    pub fn phrases(&self) -> &[Phrase] {
+        &self.phrases
+    }
+
+    /// 当前常用语文件是否可持久化；读入损坏/不可读时不能把内存写入误报为成功。
+    pub fn can_persist(&self) -> bool {
+        self.path.is_some()
+    }
+
+    /// 手动常用语是否达到上限。自动记忆条目不应挤占用户主动保存的名额。
+    pub fn is_full(&self) -> bool {
+        self.manual_count() >= MAX_PHRASES
+    }
+
+    /// 当前所有常用语数量（含自动记忆）。
+    pub fn total_count(&self) -> usize {
+        self.phrases.len()
+    }
+
+    /// 自动记忆条数。
+    pub fn automatic_count(&self) -> usize {
+        self.phrases.iter().filter(|phrase| phrase.group == AUTO_MEMORY_GROUP).count()
+    }
+
+    /// 用户手动保存的条数。
+    pub fn manual_count(&self) -> usize {
+        self.phrases.iter().filter(|phrase| phrase.group != AUTO_MEMORY_GROUP).count()
+    }
+
+    /// 初始化存储失败时的具体原因；不包含用户短语内容。
+    pub fn storage_error(&self) -> Option<&str> {
+        self.storage_error.as_deref()
+    }
+
+    /// 出现过的分组，[`DEFAULT_GROUP`] 总在第一个，其余按第一次出现的顺序。
+    pub fn groups(&self) -> Vec<String> {
+        let mut groups = vec![DEFAULT_GROUP.to_owned()];
+        for phrase in &self.phrases {
+            if !groups.contains(&phrase.group) {
+                groups.push(phrase.group.clone());
+            }
+        }
+        groups
+    }
+
+    /// 加一条放到最前；文字为空、或已满不加。返回有没有加。
+    pub fn add(&mut self, text: &str, group: &str, code: &str) -> Result<bool, LearningError> {
+        let Some(phrase) = normalize(text, group, code) else {
+            return Ok(false);
+        };
+        // 总容量已满时，优先淘汰最旧的自动记忆条目；绝不删除用户手动保存的短语。
+        // 新条目插在队首，因此从队尾寻找最旧的自动记忆项。
+        if self.phrases.len() >= MAX_PHRASES {
+            if let Some(index) = self.phrases.iter().rposition(|item| item.group == AUTO_MEMORY_GROUP) {
+                self.phrases.remove(index);
+            } else {
+                return Ok(false);
+            }
+        }
+        self.phrases.insert(0, phrase);
+        self.save()?;
+        Ok(true)
+    }
+
+    /// 改第 `index` 条（位置不变）；越界或文字为空不改。返回有没有改。
+    pub fn update(
+        &mut self,
+        index: usize,
+        text: &str,
+        group: &str,
+        code: &str,
+    ) -> Result<bool, LearningError> {
+        let (Some(slot), Some(phrase)) =
+            (self.phrases.get_mut(index), normalize(text, group, code))
+        else {
+            return Ok(false);
+        };
+        *slot = phrase;
+        self.save()?;
+        Ok(true)
+    }
+
+    pub fn remove(&mut self, index: usize) -> Result<(), LearningError> {
+        if index >= self.phrases.len() {
+            return Ok(());
+        }
+        self.phrases.remove(index);
+        self.save()
+    }
+
+    /// 第 `index` 条挪到最前（「移至首位」）。
+    pub fn move_to_top(&mut self, index: usize) -> Result<(), LearningError> {
+        if index == 0 || index >= self.phrases.len() {
+            return Ok(());
+        }
+        let phrase = self.phrases.remove(index);
+        self.phrases.insert(0, phrase);
+        self.save()
+    }
+
+    /// 带输入码的常用语换成 Core 的自定义短语：权重都一样，同一个码按常用语的先后排。
+    /// 以前存下的超长输入码挂不成短语，跳过它，不连累别的。
+    pub fn custom_phrases(&self) -> Vec<CustomPhrase> {
+        let mut phrases: Vec<CustomPhrase> = Vec::new();
+        for phrase in self
+            .phrases
+            .iter()
+            .filter(|phrase| valid_code(&phrase.code))
+        {
+            if !phrases
+                .iter()
+                .any(|p| p.code == phrase.code && p.text == phrase.text)
+            {
+                phrases.push(CustomPhrase::new(&phrase.code, &phrase.text));
+            }
+        }
+        phrases
+    }
+
+    fn save(&self) -> Result<(), LearningError> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let text = serde_json::to_string_pretty(&self.phrases).expect("常用语总能序列化");
+        write_atomic_str(path, &text)?;
+        Ok(())
+    }
+}
+
+/// 从损坏的 JSON 数组中逐条恢复仍然有效的常用语。
+fn recover_phrases(text: &str) -> Vec<Phrase> {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
+    items.into_iter()
+        .filter_map(|item| serde_json::from_value::<Phrase>(item).ok())
+        .filter(|phrase| !phrase.text.trim().is_empty())
+        .take(MAX_PHRASES)
+        .collect()
+}
+
+/// 文字为空返回 `None`；分组空了归 [`DEFAULT_GROUP`]；输入码只留字母、转小写、截到 [`MAX_CODE_CHARS`]。
+fn normalize(text: &str, group: &str, code: &str) -> Option<Phrase> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    let group = group.trim();
+    Some(Phrase {
+        text: text.to_owned(),
+        group: if group.is_empty() {
+            DEFAULT_GROUP
+        } else {
+            group
+        }
+        .to_owned(),
+        code: code
+            .chars()
+            .filter(char::is_ascii_alphabetic)
+            .map(|c| c.to_ascii_lowercase())
+            .take(MAX_CODE_CHARS)
+            .collect(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("qj-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn add_edit_move_and_remove_persist() {
+        let dir = temp_dir("phrases-edit");
+        let mut book = PhraseBook::open(&dir);
+        assert!(book.add("你好", "", "").unwrap());
+        assert!(book.add("在开会，稍后回复", "工作", "Kh1").unwrap());
+        assert!(!book.add("  ", "", "").unwrap());
+        assert_eq!(book.phrases()[0].code, "kh");
+        assert_eq!(book.groups(), ["默认", "工作"]);
+        book.move_to_top(1).unwrap();
+        book.update(1, "马上到", "工作", "md").unwrap();
+        book.remove(0).unwrap();
+        let reopened = PhraseBook::open(&dir);
+        assert_eq!(reopened.phrases().len(), 1);
+        assert_eq!(reopened.phrases()[0].text, "马上到");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn manual_phrase_replaces_oldest_auto_memory_at_capacity() {
+        let mut book = PhraseBook::default();
+        book.phrases = (0..MAX_PHRASES - 1)
+            .map(|i| Phrase { text: format!("手动{i}"), group: "工作".to_owned(), code: String::new() })
+            .collect();
+        book.phrases.push(Phrase {
+            text: "最旧自动记忆".to_owned(),
+            group: AUTO_MEMORY_GROUP.to_owned(),
+            code: String::new(),
+        });
+        assert_eq!(book.total_count(), MAX_PHRASES);
+        assert_eq!(book.manual_count(), MAX_PHRASES - 1);
+        assert!(!book.is_full());
+        assert!(book.add("新手动短语", "工作", "").unwrap());
+        assert_eq!(book.total_count(), MAX_PHRASES);
+        assert_eq!(book.manual_count(), MAX_PHRASES);
+        assert_eq!(book.automatic_count(), 0);
+        assert_eq!(book.phrases[0].text, "新手动短语");
+    }
+
+    #[test]
+    fn manual_capacity_limit_counts_only_manual_entries() {
+        let mut book = PhraseBook::default();
+        book.phrases = (0..MAX_PHRASES)
+            .map(|i| Phrase { text: format!("手动{i}"), group: "工作".to_owned(), code: String::new() })
+            .collect();
+        book.phrases.push(Phrase {
+            text: "自动记忆".to_owned(),
+            group: AUTO_MEMORY_GROUP.to_owned(),
+            code: String::new(),
+        });
+        assert!(book.is_full());
+        assert!(!book.add("再加一条", "工作", "").unwrap());
+        assert_eq!(book.manual_count(), MAX_PHRASES);
+        assert_eq!(book.automatic_count(), 1);
+    }
+
+    #[test]
+    fn open_creates_a_missing_user_directory_before_first_save() {
+        let dir = std::env::temp_dir()
+            .join(format!("qj-phrases-missing-dir-{}", std::process::id()))
+            .join("nested");
+        let mut book = PhraseBook::open(&dir);
+        assert!(book.can_persist());
+        assert!(book.add("首次保存", "", "").unwrap());
+        let reopened = PhraseBook::open(&dir);
+        assert_eq!(reopened.phrases()[0].text, "首次保存");
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn corrupt_file_is_backed_up_and_valid_entries_are_recovered() {
+        let dir = temp_dir("phrases-recover");
+        let path = dir.join(PHRASE_BOOK_FILE);
+        std::fs::write(
+            &path,
+            r#"[{"text":"保留下来的短语","group":"默认"},{"text":"","group":"默认"},null]"#,
+        ).unwrap();
+
+        let mut book = PhraseBook::open(&dir);
+        assert!(book.can_persist());
+        assert_eq!(book.phrases().len(), 1);
+        assert_eq!(book.phrases()[0].text, "保留下来的短语");
+        assert!(book.add("新短语", "", "").unwrap());
+
+        let reopened = PhraseBook::open(&dir);
+        assert_eq!(reopened.phrases().len(), 2);
+        assert!(std::fs::read_dir(&dir).unwrap().filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains(".corrupt-")));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn codes_become_custom_phrases_in_order() {
+        let mut book = PhraseBook::default();
+        book.add("二", "", "aa").unwrap();
+        book.add("一", "", "aa").unwrap();
+        book.add("无码", "", "").unwrap();
+        let custom = book.custom_phrases();
+        assert_eq!(custom.len(), 2);
+        assert_eq!(custom[0].text, "一");
+        assert_eq!(custom[1].text, "二");
+        assert!(qingjian_core::custom_phrase::validate_phrases(&custom).is_ok());
+    }
+
+    #[test]
+    fn long_codes_are_cut_and_old_ones_skipped() {
+        let mut book = PhraseBook::default();
+        book.add("新", "", &"a".repeat(40)).unwrap();
+        assert_eq!(book.phrases()[0].code.len(), MAX_CODE_CHARS);
+        book.phrases.push(Phrase {
+            text: "旧".to_owned(),
+            group: DEFAULT_GROUP.to_owned(),
+            code: "b".repeat(64),
+        });
+        book.add("好", "", "hh").unwrap();
+        let custom = book.custom_phrases();
+        assert_eq!(custom.len(), 2);
+        assert!(qingjian_core::custom_phrase::validate_phrases(&custom).is_ok());
+    }
+}
