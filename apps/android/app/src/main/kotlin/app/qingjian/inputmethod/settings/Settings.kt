@@ -327,7 +327,7 @@ data class Settings(
                 haptic = prefs.getBoolean(KEY_HAPTIC, true) && !keySoundEnabled,
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
-                letterKeyTip = prefs.getBoolean(KEY_LETTER_KEY_TIP, true),
+                letterKeyTip = prefs.getBoolean(KEY_LETTER_KEY_TIP, prefs.getBoolean(KEY_POPUP, true)),
                 keyTextSize = legacyKeyTextSize,
                 keyFontSize = prefs.getInt(KEY_KEY_FONT_SIZE, (legacyKeyTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 keySkin = when (prefs.getString(KEY_KEY_SKIN, null)) {
