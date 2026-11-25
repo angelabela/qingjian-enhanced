@@ -98,7 +98,9 @@ class AppearanceActivity : PageActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(4))
         }
-        Themes.choices.chunked(2).forEach { pair ->
+        // 樱雾粉与樱花同属粉色系，默认从主题选择列表收起；若用户当前正在使用樱雾粉则保留卡片，避免隐藏当前主题。
+        val visibleThemes = Themes.choices.filterNot { it.id == "rose" && settings.theme != it.id }
+        visibleThemes.chunked(2).forEach { pair ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             pair.forEachIndexed { i, theme ->
                 row.addView(themeCard(theme, theme.id == settings.theme, dark), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply {
