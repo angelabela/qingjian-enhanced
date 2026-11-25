@@ -118,6 +118,25 @@ class Tabs(private val ink: Ink, private val scroll: ScrollState, private val st
 
     fun contains(event: MotionEvent) = bounds.contains(event.x, event.y)
 
+    /** TalkBack 虚拟节点使用的页签可见区域；裁切到实际页签视口，不暴露屏幕外项目。 */
+    fun accessibilityBounds(index: Int): RectF? {
+        arrange()
+        if (index !in labels.indices) return null
+        val start = starts[index] - scroll.offset
+        val rect = if (style == Style.COLUMN) {
+            RectF(bounds.left, start, bounds.right, start + sizes[index])
+        } else {
+            RectF(start, bounds.top, start + sizes[index], bounds.bottom)
+        }
+        if (!RectF.intersects(rect, bounds)) return null
+        return RectF(
+            rect.left.coerceAtLeast(bounds.left),
+            rect.top.coerceAtLeast(bounds.top),
+            rect.right.coerceAtMost(bounds.right),
+            rect.bottom.coerceAtMost(bounds.bottom),
+        )
+    }
+
     /** 横排按 [x]、竖排按 [y] 找落在哪个页签上。 */
     fun indexAt(x: Float, y: Float = bounds.centerY()): Int? {
         arrange()
