@@ -389,7 +389,7 @@ private class FlowingKeyboardBackgroundDrawable(
             float scene = floor(iScene + 0.5);
             float isDusk = scene == 15.0 ? 1.0 : 0.0;
             float isNight = scene == 16.0 ? 1.0 : 0.0;
-            float isGlow = scene == 14.0 ? 1.0 : 0.0;
+            float isGlow = scene == 18.0 ? 1.0 : 0.0;
             float isTwilight = scene == 18.0 ? 1.0 : 0.0;
             float isClear = scene == 14.0 ? 1.0 : 0.0;
 
@@ -399,8 +399,8 @@ private class FlowingKeyboardBackgroundDrawable(
             skyBottom = mix(skyBottom, float3(1.00, 0.40, 0.24), isDusk);
             skyTop = mix(skyTop, float3(0.006, 0.014, 0.050), isNight);
             skyBottom = mix(skyBottom, float3(0.045, 0.10, 0.23), isNight);
-            skyTop = mix(skyTop, float3(0.12, 0.08, 0.29), isTwilight);
-            skyBottom = mix(skyBottom, float3(0.82, 0.37, 0.43), isTwilight);
+            skyTop = mix(skyTop, float3(0.14, 0.28, 0.55), isTwilight);
+            skyBottom = mix(skyBottom, float3(1.00, 0.72, 0.43), isTwilight);
             float vertical = fragCoord.y / max(iResolution.y, 1.0);
             float3 sky = mix(skyTop, skyBottom, smoothstep(0.0, 1.0, vertical));
 
@@ -438,8 +438,8 @@ private class FlowingKeyboardBackgroundDrawable(
             shade = mix(shade, float3(0.31, 0.095, 0.22), isDusk);
             lit = mix(lit, float3(0.62, 0.73, 0.98), isNight);
             shade = mix(shade, float3(0.035, 0.060, 0.15), isNight);
-            lit = mix(lit, float3(1.0, 0.80, 0.88), isTwilight);
-            shade = mix(shade, float3(0.29, 0.13, 0.32), isTwilight);
+            lit = mix(lit, float3(1.0, 0.91, 0.72), isTwilight);
+            shade = mix(shade, float3(0.20, 0.28, 0.48), isTwilight);
 
             float lighting = smoothstep(0.28, 0.78, density + horizon * 0.12);
             float3 cloudColor = mix(shade, lit, lighting);
