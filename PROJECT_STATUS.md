@@ -1,5 +1,16 @@
 ## 2026-11-25：Impeccable 原生 UI 审查与首轮优化
 
+- 已安装测试的基线：781 号工作流，APP 版本 0.3.58-dev / versionCode 358，提交 6d5ee1084cba4d7bd0493d7ff4e6df1e1d56aa94。
+- 本轮候选版本：0.3.59-dev / versionCode 359；开发分支 design/impeccable-native-audit-781。
+- Impeccable 固定上游提交：b49177d32788f2dc585c42831d845dacf1ebed2c。
+- 本轮修改：Canvas 面板文字系统缩放、分段选择/生词筛选/底部导航触摸区域、主题卡片选中与辅助语义；新增 PRODUCT.md、DESIGN.md 和原生 UI 审查报告。
+- GitHub Actions #783 正在构建；构建、签名验证与 APK 产物状态以 Actions 实际结果为准。
+- TalkBack、字体缩放、横竖屏/分屏、动态效果性能与原有自定义项仍待用户真机验收。
+
+---
+
+## 2026-11-25：Impeccable 原生 UI 审查与首轮优化
+
 - 开发基线：781 号工作流，分支 fix/723-wubi-text-effects-space-gesture，提交 6d5ee1084cba4d7bd0493d7ff4e6df1e1d56aa94。
 - 当前 Android 源码版本：0.3.58-dev；本轮目标版本：0.3.59-dev（仅在固定签名构建成功后作为可用版本交付）。
 - 优化分支：design/impeccable-native-audit-781。
