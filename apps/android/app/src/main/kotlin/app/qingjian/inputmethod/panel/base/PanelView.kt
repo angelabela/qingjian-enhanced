@@ -154,8 +154,6 @@ abstract class PanelView(
         node.recycle()
     }
 
-    private val scrollables = mutableListOf<Scrollable>()
-    private val headerCard = RectF()
     protected var animatedBackgroundEnabled: Boolean = false
         private set
     private var dragging: Scrollable? = null
