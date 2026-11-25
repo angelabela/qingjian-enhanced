@@ -1268,6 +1268,11 @@ class InputPanel(
         (panelView as? FunctionPanel)?.refreshState()
     }
 
+    /** 设置面板修改按键颜色后，立即刷新当前 KeyboardView 的 Painter。 */
+    fun refreshKeyEffects() {
+        keyboard.refreshKeyEffects()
+    }
+
     /** 候选展开开着时换上这一帧的拼音与候选。 */
     fun showCandidates(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
         (panelView as? CandidateGrid)?.show(preedit, candidates, singleChars)
