@@ -132,7 +132,7 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         background = pressable()
         isClickable = true
         isFocusable = true
-        contentDescription = title
+        contentDescription = listOfNotNull(title, value).joinToString("，")
         setOnClickListener { onClick() }
         addView(tile(icon, 30, muted))
         addView(text(title, 16f, colors.text).apply { setPadding(dp(12), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
@@ -144,17 +144,8 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         entry(icon, context.getString(title), value, muted, onClick)
 
     /** 不带图标块的跳转行：标题、右边灰字、›。 */
-    fun link(title: Int, value: String?, onClick: () -> Unit) = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(ROW_HEIGHT_DP)
-        setPadding(dp(16), dp(8), dp(12), dp(8))
-        background = pressable()
-        setOnClickListener { onClick() }
-        addView(text(context.getString(title), 16f, colors.text), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        value?.let { addView(valueText(it)) }
-        addView(chevron())
-    }
+    fun link(title: Int, value: String?, onClick: () -> Unit) =
+        link(context.getString(title), value, onClick)
 
     /** 字符串标题版跳转行，供动态生成的自定义设置项使用。 */
     fun link(title: String, value: String?, onClick: () -> Unit) = LinearLayout(context).apply {
@@ -235,9 +226,11 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             gravity = Gravity.CENTER_VERTICAL
             background = pressable()
             isClickable = true
-            isFocusable = true
-            contentDescription = title + if (checked) "，已开启" else "，已关闭"
-            val switch = switch(checked, onChange).apply { contentDescription = title; isFocusable = true }
+            isFocusable = false
+            val switch = switch(checked, onChange).apply {
+                contentDescription = title + if (checked) "，已开启" else "，已关闭"
+                isFocusable = true
+            }
             addView(row(title, note).apply { setPadding(dp(16), dp(12), dp(8), dp(12)); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             trailing?.let(::addView)
             addView(switch, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(16) })
@@ -331,6 +324,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = dp(ROW_HEIGHT_DP)
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = context.getString(title) + "，" + value
         setPadding(dp(16), dp(8), dp(12), dp(8))
         addView(text(context.getString(title), 16f, colors.text), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         addView(valueText(value).apply {
@@ -376,6 +372,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             gravity = Gravity.END
             setPadding(dp(12), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        isClickable = true
+        isFocusable = true
+        contentDescription = context.getString(title)
         isClickable = true
         isFocusable = true
         contentDescription = context.getString(title)
