@@ -116,6 +116,7 @@ internal class CloudAtmosphereRenderer(
             withAlpha(p.sun, (p.glow * .9f * 255f).toInt()), withAlpha(p.sun, 0), Shader.TileMode.CLAMP)
         hazePaint.shader = LinearGradient(0f, h * .6f, 0f, h,
             withAlpha(p.haze, 0), withAlpha(p.haze, 150), Shader.TileMode.CLAMP)
+        layoutLayers(h)
     }
 
     private fun drawLayer(canvas: Canvas, layer: Layer, w: Float, h: Float) {
