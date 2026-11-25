@@ -229,7 +229,133 @@ class FunctionPanel(
     }
 
     override fun accessibilityElements(): List<AccessibilityElement> {
-        if (width <= 0 || height <= 0 || voiceEffectPage || textEffectPage || aiLoadingEffectPage) return emptyList()
+        if (width <= 0 || height <= 0 || card.isEmpty) return emptyList()
+        if (voiceEffectPage) {
+            val result = mutableListOf<AccessibilityElement>()
+            val labels = VoicePanel.ANIMATION_STYLE_LABELS
+            val rowTop = card.top + ink.dp(42f)
+            val rowStep = ink.dp(64f)
+            val itemHeight = ink.dp(56f)
+            val gapX = ink.dp(7f)
+            val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+            val viewportBottom = card.bottom - ink.dp(136f)
+            labels.forEachIndexed { index, label ->
+                val column = index % 2
+                val row = index / 2
+                val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
+                val top = rowTop + row * rowStep - effectScroll.offset
+                val bounds = RectF(left, top + (rowStep - itemHeight) / 2f,
+                    left + cardWidth, top + (rowStep + itemHeight) / 2f)
+                if (RectF.intersects(bounds, RectF(card.left, rowTop, card.right, viewportBottom))) {
+                    val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
+                    result += AccessibilityElement(label + if (selected) "，已选中" else "", bounds, selected = selected)
+                }
+            }
+            val swatchLeft = card.left + ink.dp(12f)
+            val swatchGap = ink.dp(4f)
+            val swatchWidth = (card.width() - ink.dp(24f) - swatchGap * 5f) / 6f
+            val gradientLabels = listOf("默认", "海洋", "日落", "极光", "霓虹", "冰晶")
+            for (index in 0..5) {
+                val left = swatchLeft + index * (swatchWidth + swatchGap)
+                result += AccessibilityElement(
+                    "频谱渐变颜色，" + gradientLabels[index] + if (selectedVoiceSpectrumGradient == index) "，已选中" else "",
+                    RectF(left, card.bottom - ink.dp(119f), left + swatchWidth, card.bottom - ink.dp(84f)),
+                    selected = selectedVoiceSpectrumGradient == index,
+                )
+            }
+            val left = card.left + ink.dp(18f)
+            val right = card.right - ink.dp(18f)
+            result += AccessibilityElement(
+                "语音面板磨砂强度，" + voiceGlassStrength + "/50",
+                RectF(left, card.bottom - ink.dp(32f), right, card.bottom - ink.dp(12f)),
+                rangeMin = 1f,
+                rangeMax = 50f,
+                rangeCurrent = voiceGlassStrength.toFloat(),
+                onSetProgress = { value -> updateVoiceGlassStrength(left + (right - left) * ((value - 1f) / 49f)) },
+            )
+            return result
+        }
+        if (aiLoadingEffectPage) {
+            val labels = listOf(
+                "345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字",
+                "渐变 + 光点 + 扫光组合", "单色呼吸文字", "银灰金属流光", "白色下划线扫光",
+                "单色光点脉冲", "打字机光标闪烁", "极光呼吸光带", "星尘流光点阵",
+                "液态霓虹脉冲", "全息扫描光束", "数字矩阵闪烁", "字符跳动弹跳文字",
+            )
+            val rowTop = card.top + ink.dp(38f)
+            val rowStep = ink.dp(68f)
+            val gapX = ink.dp(7f)
+            val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+            return labels.mapIndexed { index, label ->
+                val col = index % 2
+                val row = index / 2
+                val left = card.left + ink.dp(10f) + col * (itemWidth + gapX)
+                val top = rowTop + row * rowStep - effectScroll.offset
+                AccessibilityElement(
+                    label + if (selectedAiLoadingStyle == index) "，已选中" else "",
+                    RectF(left, top, left + itemWidth, top + ink.dp(60f)),
+                    selected = selectedAiLoadingStyle == index,
+                )
+            }.filter { RectF.intersects(it.bounds, RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f))) }
+        }
+        if (textEffectPage) {
+            val result = mutableListOf<AccessibilityElement>()
+            val targetTop = card.top + ink.dp(36f) - effectScroll.offset
+            val targetWidth = (card.width() - ink.dp(36f)) / 2f
+            listOf("候选区", "键盘区").forEachIndexed { index, label ->
+                val left = card.left + ink.dp(14f) + index * (targetWidth + ink.dp(8f))
+                result += AccessibilityElement(label + if (selectedTextTarget == index) "，当前编辑区域" else "",
+                    RectF(left, targetTop, left + targetWidth, targetTop + ink.dp(36f)),
+                    selected = selectedTextTarget == index)
+            }
+            val controlsTop = card.top + ink.dp(84f) - effectScroll.offset
+            val left = card.left + ink.dp(14f)
+            val right = card.right - ink.dp(14f)
+            result += AccessibilityElement("恢复当前区域主题文字颜色",
+                RectF(card.right - ink.dp(98f), controlsTop + ink.dp(4f), card.right - ink.dp(10f), controlsTop + ink.dp(32f)))
+            val colorY = controlsTop + ink.dp(49f)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(currentTextColor(), hsv)
+            result += AccessibilityElement("字体颜色色相，" + hsv[0].toInt() + "度",
+                RectF(left, colorY - ink.dp(12f), right, colorY + ink.dp(12f)),
+                rangeMin = 0f, rangeMax = 360f, rangeCurrent = hsv[0],
+                onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) })
+            val sizeY = controlsTop + ink.dp(101f)
+            val currentSize = currentTextSize().toFloat()
+            result += AccessibilityElement("字体字号，" + currentSize.toInt() + "sp",
+                RectF(left, sizeY - ink.dp(12f), right, sizeY + ink.dp(12f)),
+                rangeMin = 1f, rangeMax = 50f, rangeCurrent = currentSize,
+                onSetProgress = { value -> updateTextSlider(left + (right - left) * ((value - 1f) / 49f), 1) })
+            val weightY = controlsTop + ink.dp(151f)
+            val weightIndex = Settings.FontWeight.entries.indexOf(currentTextWeight()).coerceAtLeast(0)
+            result += AccessibilityElement("字体粗细，" + currentTextWeight().label,
+                RectF(left, weightY - ink.dp(12f), right, weightY + ink.dp(12f)),
+                rangeMin = 0f,
+                rangeMax = (Settings.FontWeight.entries.size - 1).coerceAtLeast(1).toFloat(),
+                rangeCurrent = weightIndex.toFloat(),
+                onSetProgress = { value ->
+                    val fraction = value / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1)
+                    updateTextSlider(left + (right - left) * fraction, 2)
+                })
+            val syncY = controlsTop + ink.dp(184f)
+            result += AccessibilityElement("候选区与键盘区同步调节，" + if (syncTextEffectsEnabled()) "已开启" else "已关闭",
+                RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f) - effectScroll.offset),
+                selected = syncTextEffectsEnabled())
+            val rowTop = card.top + ink.dp(290f) - effectScroll.offset
+            val rowStep = ink.dp(82f)
+            val itemGap = ink.dp(8f)
+            val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
+            Settings.TextEffectPreset.entries.forEachIndexed { index, preset ->
+                val col = index % 2
+                val row = index / 2
+                val itemLeft = card.left + ink.dp(12f) + col * (itemWidth + itemGap)
+                val top = rowTop + row * rowStep
+                result += AccessibilityElement("文字效果，" + preset.label + if (selectedTextPreset == preset) "，已选中" else "",
+                    RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
+                    selected = selectedTextPreset == preset)
+            }
+            return result.filter { RectF.intersects(it.bounds, RectF(card.left, card.top, card.right, card.bottom)) }
+        }
         return if (tabs.selected == 0) {
             val top = card.top + ink.dp(8f)
             features.mapIndexed { index, feature ->
