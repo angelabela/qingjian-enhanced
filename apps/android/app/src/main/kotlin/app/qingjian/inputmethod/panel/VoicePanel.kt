@@ -138,6 +138,10 @@ class VoicePanel(
         // 语音面板是覆盖层：空白背景也必须消费触摸，绝不能把事件交回底层键盘。
         isClickable = true
         isFocusable = true
+        // 背景快照、磨砂遮罩和频谱动画仅作装饰；实际可操作按钮仍由原生 TextView 暴露。
+        backdrop.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        scrim.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        overlay.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
         blurredKeyboard?.let(backdrop::setImageBitmap)
         // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
