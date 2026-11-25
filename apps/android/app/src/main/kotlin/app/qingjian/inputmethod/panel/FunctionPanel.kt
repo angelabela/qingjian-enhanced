@@ -186,7 +186,8 @@ class FunctionPanel(
     private val toggles
         get() = listOf(
             Toggle(Settings.KEY_HAPTIC, "按键震动", "", settings.haptic),
-            Toggle(Settings.KEY_POPUP, "按键气泡", "按下字母时在上面放大显示", settings.keyPopup),
+            Toggle(Settings.KEY_POPUP, "功能键气泡", "控制非字母按键的放大提示", settings.keyPopup),
+            Toggle(Settings.KEY_LETTER_KEY_TIP, "字母按键短按弹出 Tips", "短按字母键时显示放大提示；关闭后不影响长按选字与滑动输入", settings.letterKeyTip),
             Toggle(Settings.KEY_FULLSCREEN, "全面屏适配", "手势条那一截不留白，两个角各放一个键", settings.fullscreenAdapt),
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
             Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
@@ -343,28 +344,32 @@ class FunctionPanel(
                 RectF(left, colorY - ink.dp(12f), right, colorY + ink.dp(12f)),
                 rangeMin = 0f, rangeMax = 360f, rangeCurrent = hsv[0],
                 onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) }, virtualId = 50011)
-            val sizeY = controlsTop + ink.dp(101f)
             val currentSize = currentTextSize().toFloat()
-            result += AccessibilityElement("字体字号，" + currentSize.toInt() + "sp",
-                RectF(left, sizeY - ink.dp(12f), right, sizeY + ink.dp(12f)),
-                rangeMin = 1f, rangeMax = 50f, rangeCurrent = currentSize,
-                onSetProgress = { value -> updateTextSlider(left + (right - left) * ((value - 1f) / 49f), 1) }, virtualId = 50012)
-            val weightY = controlsTop + ink.dp(151f)
             val weightIndex = Settings.FontWeight.entries.indexOf(currentTextWeight()).coerceAtLeast(0)
+            val fontTrackY = controlsTop + ink.dp(118f)
+            val mid = card.centerX()
+            val sizeLeft = left + ink.dp(4f)
+            val sizeRight = mid - ink.dp(8f)
+            val weightLeft = mid + ink.dp(8f)
+            val weightRight = right - ink.dp(4f)
+            result += AccessibilityElement("字体字号，" + currentSize.toInt() + "sp",
+                RectF(sizeLeft, fontTrackY - ink.dp(14f), sizeRight, fontTrackY + ink.dp(14f)),
+                rangeMin = 1f, rangeMax = 50f, rangeCurrent = currentSize,
+                onSetProgress = { value -> updateTextSlider(sizeLeft + (sizeRight - sizeLeft) * ((value - 1f) / 49f), 1) }, virtualId = 50012)
             result += AccessibilityElement("字体粗细，" + currentTextWeight().label,
-                RectF(left, weightY - ink.dp(12f), right, weightY + ink.dp(12f)),
+                RectF(weightLeft, fontTrackY - ink.dp(14f), weightRight, fontTrackY + ink.dp(14f)),
                 rangeMin = 0f,
                 rangeMax = (Settings.FontWeight.entries.size - 1).coerceAtLeast(1).toFloat(),
                 rangeCurrent = weightIndex.toFloat(),
                 onSetProgress = { value ->
                     val fraction = value / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1)
-                    updateTextSlider(left + (right - left) * fraction, 2)
+                    updateTextSlider(weightLeft + (weightRight - weightLeft) * fraction, 2)
                 }, virtualId = 50013)
-            val syncY = controlsTop + ink.dp(184f)
+            val syncY = controlsTop + ink.dp(151f)
             result += AccessibilityElement("候选区与键盘区同步调节，" + if (syncTextEffectsEnabled()) "已开启" else "已关闭",
                 RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f)),
                 selected = syncTextEffectsEnabled(), checked = syncTextEffectsEnabled(), virtualId = 50014)
-            val rowTop = card.top + ink.dp(290f) - effectScroll.offset
+            val rowTop = card.top + ink.dp(254f) - effectScroll.offset
             val rowStep = ink.dp(82f)
             val itemGap = ink.dp(8f)
             val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
@@ -727,7 +732,7 @@ class FunctionPanel(
         val viewportTop = card.top + ink.dp(6f)
         val viewportBottom = card.bottom - ink.dp(6f)
         val targetTopForScroll = card.top + ink.dp(8f + 28f)
-        val presetRowTop = targetTopForScroll + ink.dp(254f)
+        val presetRowTop = targetTopForScroll + ink.dp(218f)
         val rowStepForScroll = ink.dp(82f)
         val contentBottom = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll
         effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
