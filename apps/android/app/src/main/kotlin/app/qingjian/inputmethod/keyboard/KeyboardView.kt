@@ -360,11 +360,11 @@ class KeyboardView(
 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
-        slots.indices.forEach { info.addChild(this, it) }
         if (side.accessibilityScrollable) info.addChild(this, SIDE_ACCESSIBILITY_SCROLL_ID)
         side.items.indices.forEach { index ->
             if (side.accessibilityBounds(index) != null) info.addChild(this, SIDE_ACCESSIBILITY_BASE + index)
         }
+        slots.indices.forEach { info.addChild(this, it) }
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
@@ -604,6 +604,21 @@ class KeyboardView(
         relayout()
     }
 
+    private fun clearUnavailableSideAccessibilityTargets() {
+        if (accessibilityFocusedSideItem >= 0 && side.accessibilityBounds(accessibilityFocusedSideItem) == null) {
+            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+            accessibilityFocusedSideItem = -1
+        }
+        if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE && side.accessibilityBounds(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE) == null) {
+            sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+            hoveredAccessibilityKey = -1
+        }
+        if (accessibilityFocusedSideScroll && !side.accessibilityScrollable) {
+            accessibilityFocusedSideScroll = false
+            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+    }
+
     fun setSideItems(items: List<String>) {
         if (accessibilityFocusedSideItem >= 0 && side.items.getOrNull(accessibilityFocusedSideItem) != items.getOrNull(accessibilityFocusedSideItem)) {
             sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
@@ -614,10 +629,7 @@ class KeyboardView(
             hoveredAccessibilityKey = -1
         }
         side.items = items
-        if (accessibilityFocusedSideScroll && !side.accessibilityScrollable) {
-            accessibilityFocusedSideScroll = false
-            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
-        }
+        clearUnavailableSideAccessibilityTargets()
         invalidate()
         if (isAttachedToWindow && accessibilityManager.isEnabled) {
             sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
@@ -649,6 +661,7 @@ class KeyboardView(
     private fun relayout() {
         slots = metrics.layout(rows, side.enabled, width)
         side.bounds = metrics.sideBounds(width)
+        clearUnavailableSideAccessibilityTargets()
         invalidate()
         if (isAttachedToWindow && accessibilityManager.isEnabled) {
             sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
