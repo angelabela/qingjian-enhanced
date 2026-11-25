@@ -49,6 +49,8 @@ abstract class PanelView(
         val label: String,
         val bounds: RectF,
         val selected: Boolean = false,
+        /** 非空表示真实开关状态；让 TalkBack 获得可切换控件语义，而非仅朗读按钮文字。 */
+        val checked: Boolean? = null,
         val enabled: Boolean = true,
         val rangeMin: Float? = null,
         val rangeMax: Float? = null,
@@ -221,6 +223,7 @@ abstract class PanelView(
                 isTabScroll -> "android.widget.ScrollView"
                 isElement && element!!.onScroll != null -> "android.widget.ScrollView"
                 isElement && element!!.rangeMin != null -> "android.widget.SeekBar"
+                isElement && element!!.checked != null -> "android.widget.Switch"
                 isBack || isRight || isElement -> "android.widget.Button"
                 else -> "android.widget.TabWidget"
             }
@@ -247,6 +250,10 @@ abstract class PanelView(
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
             node.isSelected = if (isElement) element!!.selected else !isBack && !isRight && tab?.selected == tabIndex
+            if (isElement && element!!.checked != null) {
+                node.isCheckable = true
+                node.isChecked = element.checked
+            }
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
             node.setBoundsInParent(visibleBounds)
             val screen = Rect(visibleBounds)
