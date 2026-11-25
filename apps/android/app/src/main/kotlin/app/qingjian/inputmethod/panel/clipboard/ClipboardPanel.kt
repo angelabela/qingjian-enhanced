@@ -635,7 +635,13 @@ class ClipboardPanel(
         }
     }
         }
-        return elements
+        accessibilityScrollElement("剪贴板和常用语列表，可滚动", RectF(list), listScroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 90000) {
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(list)) null else element.copy(bounds = visible)
+            } else element
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
