@@ -708,6 +708,9 @@ class KeyboardView(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // ACTION_DOWN starts a fresh gesture; clear any shortcut state left by an interrupted
+        // pointer sequence before the side column or a new key can consume this event.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) endEditShortcut()
         if (side.onTouch(event, ::invalidate)) return true
         val index = event.actionIndex
         val pointer = event.getPointerId(index)
@@ -795,6 +798,7 @@ class KeyboardView(
                     val wasGesture = surfaceCandidateMode || surfaceCandidateCancelled
                     clearSurfaceCandidateSwipe()
                     if (wasGesture) {
+                        if (pointer == editPointer) endEditShortcut()
                         pressed.remove(pointer)
                         if (pointer == trail.pointer) trail.clear()
                         if (pointer == flickPointer) endFlick()
@@ -824,6 +828,7 @@ class KeyboardView(
                     val direction = flickDirection
                     endFlick()
                     if (flicked != null) {
+                        if (pointer == editPointer) endEditShortcut()
                         if (pointer == trail.pointer) trail.clear()
                         if (flicked.key == Key.Backspace) {
                             timer.removeCallbacks(repeatBackspace)
@@ -858,6 +863,7 @@ class KeyboardView(
                     if (swiped) listener.onSwipe(trail.toJson(slots))
                     trail.clear()
                     if (swiped) {
+                        if (pointer == editPointer) endEditShortcut()
                         pressed.remove(pointer)
                         invalidate()
                         return true
