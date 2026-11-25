@@ -275,6 +275,10 @@ class KeyboardView(
                         if (accessibilityFocusedSideItem >= 0) {
                             sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
                         }
+                        if (accessibilityFocusedSideScroll) {
+                            accessibilityFocusedSideScroll = false
+                            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        }
                         accessibilityFocusedSideItem = index
                         sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
                         invalidate()
@@ -308,6 +312,10 @@ class KeyboardView(
                     if (accessibilityFocusedSideItem >= 0) {
                         sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
                         accessibilityFocusedSideItem = -1
+                    }
+                    if (accessibilityFocusedSideScroll) {
+                        accessibilityFocusedSideScroll = false
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
                     }
                     accessibilityFocusedKey = virtualViewId
                     sendVirtualAccessibilityEvent(
