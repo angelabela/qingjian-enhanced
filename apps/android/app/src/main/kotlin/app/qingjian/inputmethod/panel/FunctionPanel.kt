@@ -788,32 +788,53 @@ class FunctionPanel(
         ink.fill.color = textColor
         canvas.drawCircle(colorMarker, colorY, ink.dp(4.5f), ink.fill)
 
-        ink.textStart(canvas, "字体字号", 11.5f, palette.text,
-            card.left + ink.dp(14f), controlsTop + ink.dp(83f), card.right - ink.dp(64f))
-        ink.text(canvas, "${textSize}sp", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(83f))
-        val sizeY = controlsTop + ink.dp(101f)
+        // 11 种固定预设紧贴在字体颜色 RGB 色带下方。
+        val swatchY = controlsTop + ink.dp(68f)
+        val swatchWidth = ink.dp(18f)
+        val swatchHeight = ink.dp(12f)
+        val swatchGap = ink.dp(4f)
+        TEXT_PRESET_COLORS.forEachIndexed { index, color ->
+            val swatchLeft = left + index * (swatchWidth + swatchGap)
+            val bounds = RectF(swatchLeft, swatchY, swatchLeft + swatchWidth, swatchY + swatchHeight)
+            ink.fill.color = color
+            canvas.drawRoundRect(bounds, ink.dp(3f), ink.dp(3f), ink.fill)
+            if (textColor == color) {
+                ink.fill.style = android.graphics.Paint.Style.STROKE
+                ink.fill.strokeWidth = ink.dp(1.5f)
+                ink.fill.color = palette.text
+                canvas.drawRoundRect(RectF(bounds).apply { inset(-ink.dp(1.5f), -ink.dp(1.5f)) }, ink.dp(4f), ink.dp(4f), ink.fill)
+                ink.fill.style = android.graphics.Paint.Style.FILL
+            }
+        }
+
+        // 字号与字重并排，各占可用宽度的一半。
+        val mid = card.centerX()
+        val sizeLeft = left + ink.dp(4f)
+        val sizeRight = mid - ink.dp(8f)
+        val weightLeft = mid + ink.dp(8f)
+        val weightRight = right - ink.dp(4f)
+        val fontLabelY = controlsTop + ink.dp(100f)
+        val fontTrackY = controlsTop + ink.dp(118f)
+        ink.textStart(canvas, "字体字号", 11f, palette.text, sizeLeft, fontLabelY, sizeRight - sizeLeft - ink.dp(34f))
+        ink.text(canvas, "${textSize}sp", 10f, palette.brand, sizeRight - ink.dp(2f), fontLabelY)
+        ink.textStart(canvas, "字体粗细", 11f, palette.text, weightLeft, fontLabelY, weightRight - weightLeft - ink.dp(42f))
+        ink.text(canvas, weight.label, 10f, palette.brand, weightRight - ink.dp(2f), fontLabelY)
         ink.fill.color = palette.functionalKey
         ink.fill.strokeWidth = ink.dp(4f)
         ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-        canvas.drawLine(left, sizeY, right, sizeY, ink.fill)
-        val sizeX = left + (right - left) * ((textSize - 1) / 49f)
-        ink.fill.color = palette.brand
-        canvas.drawLine(left, sizeY, sizeX, sizeY, ink.fill)
-        canvas.drawCircle(sizeX, sizeY, ink.dp(5f), ink.fill)
-
-        ink.textStart(canvas, "字体粗细", 11.5f, palette.text,
-            card.left + ink.dp(14f), controlsTop + ink.dp(133f), card.right - ink.dp(64f))
-        ink.text(canvas, "${weight.label} · ${weight.weight}", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(133f))
-        val weightY = controlsTop + ink.dp(151f)
-        canvas.drawLine(left, weightY, right, weightY, ink.fill.apply { color = palette.functionalKey; strokeWidth = ink.dp(4f); strokeCap = android.graphics.Paint.Cap.ROUND })
+        canvas.drawLine(sizeLeft, fontTrackY, sizeRight, fontTrackY, ink.fill)
+        canvas.drawLine(weightLeft, fontTrackY, weightRight, fontTrackY, ink.fill)
+        val sizeX = sizeLeft + (sizeRight - sizeLeft) * ((textSize - 1) / 49f)
         val weightIndex = Settings.FontWeight.entries.indexOf(weight).coerceAtLeast(0)
-        val weightX = left + (right - left) * (weightIndex.toFloat() / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1))
+        val weightX = weightLeft + (weightRight - weightLeft) * (weightIndex.toFloat() / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1))
         ink.fill.color = palette.brand
-        canvas.drawLine(left, weightY, weightX, weightY, ink.fill)
-        canvas.drawCircle(weightX, weightY, ink.dp(5f), ink.fill)
+        canvas.drawLine(sizeLeft, fontTrackY, sizeX, fontTrackY, ink.fill)
+        canvas.drawLine(weightLeft, fontTrackY, weightX, fontTrackY, ink.fill)
+        canvas.drawCircle(sizeX, fontTrackY, ink.dp(5f), ink.fill)
+        canvas.drawCircle(weightX, fontTrackY, ink.dp(5f), ink.fill)
 
         val labels = Settings.TextEffectPreset.entries
-        val syncY = controlsTop + ink.dp(184f)
+        val syncY = controlsTop + ink.dp(151f)
         ink.textStart(canvas, "按键区与候选区同步调节", 11.5f, palette.text,
             card.left + ink.dp(14f), syncY + ink.dp(4f), card.right - ink.dp(70f))
         drawSwitch(canvas, card.right - ink.dp(38f), syncY, syncTextEffectsEnabled())
@@ -847,7 +868,7 @@ class FunctionPanel(
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
                 Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, textColor)
-                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = textColor }
+                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(0.65f); sample.color = android.graphics.Color.argb(190, android.graphics.Color.red(textColor), android.graphics.Color.green(textColor), android.graphics.Color.blue(textColor)) }
                 Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
                     sample.style = android.graphics.Paint.Style.STROKE
                     sample.strokeWidth = ink.dp(1.4f)
@@ -1004,18 +1025,25 @@ class FunctionPanel(
             val contentY = event.y + effectScroll.offset
             val slider = when {
                 contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
-                contentY in (controlsTop + ink.dp(87f))..(controlsTop + ink.dp(115f)) -> 1
-                contentY in (controlsTop + ink.dp(137f))..(controlsTop + ink.dp(165f)) -> 2
+                contentY in (controlsTop + ink.dp(104f))..(controlsTop + ink.dp(132f)) ->
+                    if (event.x < card.centerX()) 1 else 2
                 else -> -1
             }
             val sliderTrackY = when (slider) {
                 0 -> controlsTop + ink.dp(49f)
-                1 -> controlsTop + ink.dp(101f)
-                2 -> controlsTop + ink.dp(151f)
+                1, 2 -> controlsTop + ink.dp(118f)
                 else -> -1f
             }
-            val trackLeft = card.left + ink.dp(14f)
-            val trackRight = card.right - ink.dp(14f)
+            val trackLeft = when (slider) {
+                1 -> card.left + ink.dp(18f)
+                2 -> card.centerX() + ink.dp(8f)
+                else -> card.left + ink.dp(14f)
+            }
+            val trackRight = when (slider) {
+                1 -> card.centerX() - ink.dp(8f)
+                2 -> card.right - ink.dp(18f)
+                else -> card.right - ink.dp(14f)
+            }
             val nearTrack = slider >= 0 &&
                 kotlin.math.abs(event.y - (sliderTrackY - effectScroll.offset)) <= ink.dp(9f) &&
                 event.x in (trackLeft - ink.dp(4f))..(trackRight + ink.dp(4f))
@@ -1061,8 +1089,11 @@ class FunctionPanel(
     }
 
     private fun updateTextSlider(x: Float, slider: Int) {
-        val left = card.left + ink.dp(14f)
-        val right = card.right - ink.dp(14f)
+        val (left, right) = when (slider) {
+            1 -> (card.left + ink.dp(18f)) to (card.centerX() - ink.dp(8f))
+            2 -> (card.centerX() + ink.dp(8f)) to (card.right - ink.dp(18f))
+            else -> (card.left + ink.dp(14f)) to (card.right - ink.dp(14f))
+        }
         val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
         when (slider) {
             0 -> {
@@ -1149,17 +1180,28 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
+                val swatchY = controlsTop + ink.dp(68f)
+                if (contentY in (swatchY - ink.dp(3f))..(swatchY + ink.dp(17f))) {
+                    val swatchWidth = ink.dp(18f)
+                    val swatchGap = ink.dp(4f)
+                    val index = ((x - (card.left + ink.dp(14f))) / (swatchWidth + swatchGap)).toInt()
+                    if (index in TEXT_PRESET_COLORS.indices) {
+                        setTextInt(textColorKey(), TEXT_PRESET_COLORS[index])
+                        invalidate()
+                    }
+                    return
+                }
                 val slider = when {
                     contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
-                    contentY in (controlsTop + ink.dp(87f))..(controlsTop + ink.dp(115f)) -> 1
-                    contentY in (controlsTop + ink.dp(137f))..(controlsTop + ink.dp(165f)) -> 2
+                    contentY in (controlsTop + ink.dp(104f))..(controlsTop + ink.dp(132f)) ->
+                        if (x < card.centerX()) 1 else 2
                     else -> -1
                 }
                 if (slider >= 0) {
                     updateTextSlider(x, slider)
                     return
                 }
-                val syncY = controlsTop + ink.dp(184f)
+                val syncY = controlsTop + ink.dp(151f)
                 if (contentY in (syncY - ink.dp(16f))..(syncY + ink.dp(16f))) {
                     val enable = !syncTextEffectsEnabled()
                     Settings.preferences(context).edit().putBoolean("text_effect_sync_targets", enable).apply()
@@ -1180,7 +1222,7 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
-                val rowTop = targetTop + ink.dp(254f)
+                val rowTop = targetTop + ink.dp(218f)
                 val rowStep = ink.dp(82f)
                 val row = ((contentY - rowTop) / rowStep).toInt()
                 val column = if (x < card.centerX()) 0 else 1
@@ -1262,6 +1304,13 @@ class FunctionPanel(
     }
 
     private companion object {
+        /** 文字颜色滑块下方的固定预设色。 */
+        val TEXT_PRESET_COLORS = intArrayOf(
+            0xFFD4042D.toInt(), 0xFF9D1F2F.toInt(), 0xFFEB6127.toInt(),
+            0xFFDB7A0E.toInt(), 0xFF5A92E5.toInt(), 0xFF5E8034.toInt(),
+            0xFF6FBA2C.toInt(), 0xFF41B5C2.toInt(), 0xFFFACA2E.toInt(),
+            0xFFEB6D98.toInt(), 0xFF722169.toInt(),
+        )
         /** 上次停在哪一页；改开关会重建键盘，回来时还在这页。 */
         var lastTab = 0
     }
