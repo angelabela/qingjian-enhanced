@@ -759,6 +759,7 @@ class KeyboardView(
             pressed.remove(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
+            if (pointer == editPointer) endEditShortcut()
             timer.removeCallbacks(longPress)
             if (longPressPointer == pointer) longPressPointer = -1
             return true
@@ -769,6 +770,7 @@ class KeyboardView(
             pressed.remove(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
+            if (pointer == editPointer) endEditShortcut()
             timer.removeCallbacks(longPress)
             if (longPressPointer == pointer) longPressPointer = -1
             timer.removeCallbacks(repeatBackspace)
