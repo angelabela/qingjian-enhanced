@@ -46,6 +46,10 @@ abstract class PanelView(
         val bounds: RectF,
         val selected: Boolean = false,
         val enabled: Boolean = true,
+        val rangeMin: Float? = null,
+        val rangeMax: Float? = null,
+        val rangeCurrent: Float? = null,
+        val onSetProgress: ((Float) -> Unit)? = null,
     )
 
     protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
@@ -101,13 +105,25 @@ abstract class PanelView(
             node.setSource(this@PanelView, virtualViewId)
             node.setParent(this@PanelView)
             node.packageName = context.packageName
-            node.className = if (isBack || isElement) "android.widget.Button" else "android.widget.TabWidget"
+            node.className = if (isElement && element!!.rangeMin != null) "android.widget.SeekBar"
+                else if (isBack || isElement) "android.widget.Button" else "android.widget.TabWidget"
             node.text = label
             node.contentDescription = if (isBack) "返回上一级面板" else label
             node.isEnabled = isEnabled
             node.isVisibleToUser = isShown
             node.isFocusable = true
-            node.isClickable = true
+            node.isClickable = isElement.not() || element!!.rangeMin == null
+            if (isElement && element!!.rangeMin != null) {
+                node.rangeInfo = AccessibilityNodeInfo.RangeInfo.obtain(
+                    AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
+                    element.rangeMin!!,
+                    element.rangeMax ?: element.rangeMin!!,
+                    element.rangeCurrent ?: element.rangeMin!!,
+                )
+                node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            }
             node.isSelected = if (isElement) element!!.selected else !isBack && tab?.selected == tabIndex
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
             node.setBoundsInParent(bounds)
@@ -151,13 +167,33 @@ abstract class PanelView(
                     invalidate()
                     return true
                 }
+                AccessibilityNodeInfo.ACTION_SET_PROGRESS,
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
+                    if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
+                    val item = accessibilityElements().getOrNull(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                    val setter = item.onSetProgress ?: return false
+                    val min = item.rangeMin ?: return false
+                    val max = item.rangeMax ?: return false
+                    val current = item.rangeCurrent ?: min
+                    val next = when (action) {
+                        AccessibilityNodeInfo.ACTION_SET_PROGRESS ->
+                            arguments?.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, current) ?: current
+                        AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> current + (max - min) / 20f
+                        else -> current - (max - min) / 20f
+                    }.coerceIn(min, max)
+                    setter(next)
+                    sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SELECTED)
+                    invalidate()
+                    return true
+                }
                 AccessibilityNodeInfo.ACTION_CLICK -> {
                     if (!isEnabled) return false
                     when {
                         virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader -> onBack()
                         virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
                             val item = accessibilityElements().getOrNull(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
-                            if (!item.enabled) return false
+                            if (!item.enabled || item.rangeMin != null) return false
                             onTap(item.bounds.centerX(), item.bounds.centerY())
                         }
                         else -> {
