@@ -77,8 +77,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             )
         }
         fun addColors(rowTop: Float, label: String, colors: IntArray, selected: Int) {
-            val size = ink.dp(25f)
-            val gap = ink.dp(9f)
+            val size = ink.dp(19f)
+            val gap = ink.dp(5f)
             val startX = card.left + ink.dp(14f)
             val y = rowTop + ink.dp(28f) - offset
             colors.forEachIndexed { index, _ ->
@@ -191,16 +191,18 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
 
     /** 按实际色块坐标命中，允许直接选择颜色。 */
     private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String, colors: IntArray) {
-        val swatchSize = ink.dp(17f)
-        val gap = ink.dp(6f)
+        val swatchWidth = ink.dp(19f)
+        val swatchHeight = ink.dp(14f)
+        val gap = ink.dp(5f)
         val startX = card.left + ink.dp(14f)
-        val centerY = rowTop + ink.dp(28f) + swatchSize / 2f
-        if (kotlin.math.abs(contentY - centerY) > ink.dp(22f)) return
+        val topY = rowTop + ink.dp(29f)
+        val centerY = topY + swatchHeight / 2f
+        if (kotlin.math.abs(contentY - centerY) > ink.dp(18f)) return
         val index = colors.indices.minByOrNull { i ->
-            kotlin.math.abs(x - (startX + i * (swatchSize + gap) + swatchSize / 2f))
+            kotlin.math.abs(x - (startX + i * (swatchWidth + gap) + swatchWidth / 2f))
         } ?: return
-        val centerX = startX + index * (swatchSize + gap) + swatchSize / 2f
-        if (kotlin.math.abs(x - centerX) > swatchSize * 0.9f) return
+        val centerX = startX + index * (swatchWidth + gap) + swatchWidth / 2f
+        if (kotlin.math.abs(x - centerX) > swatchWidth * 0.65f) return
         val color = colors[index]
         val editor = prefs.edit()
         if (key == KEY_BORDER_INDEX) {
