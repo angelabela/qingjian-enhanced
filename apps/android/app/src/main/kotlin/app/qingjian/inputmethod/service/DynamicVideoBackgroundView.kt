@@ -18,6 +18,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     private var player: MediaPlayer? = null
     private var output: Surface? = null
     private var prepared = false
+    private var pausedForVisibility = false
     private var videoWidth = 0
     private var videoHeight = 0
     var onAverageLuminance: ((Float) -> Unit)? = null
@@ -81,7 +82,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                     // TextureView 默认按源视频比例缩放，窄屏/横屏视频会在面板右侧或底部留下空白。
                     // 让解码器按目标 Surface 做居中裁切填充，保证整个输入法窗口都有视频。
                     ready.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
-                    ready.start()
+                    if (isShown) ready.start() else pausedForVisibility = true
                     invalidate()
                 }.onFailure {
                     android.util.Log.w("QingjianVideoBg", "Unable to start prepared background video", it)
@@ -127,6 +128,21 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         val renderedHeight = videoHeight * scale
         AppLog.info("[VIDEO_BG_DIAG] crop-fill view=${width}x${height} source=${videoWidth}x${videoHeight} scale=$scale rendered=${renderedWidth}x${renderedHeight}")
     }
+    override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        val media = player ?: return
+        if (!prepared) return
+        if (visibility != VISIBLE) {
+            if (runCatching { media.isPlaying }.getOrDefault(false)) {
+                runCatching { media.pause() }
+                pausedForVisibility = true
+            }
+        } else if (pausedForVisibility && isAvailable) {
+            runCatching { media.start() }
+            pausedForVisibility = false
+        }
+    }
+
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { releasePlayer(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         val now = SystemClock.elapsedRealtime()
@@ -156,6 +172,7 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     private fun releasePlayer() {
         val wasPrepared = prepared
         prepared = false
+        pausedForVisibility = false
         player?.let { media ->
             runCatching { media.setOnPreparedListener(null); media.setOnErrorListener(null); if (wasPrepared && media.isPlaying) media.stop(); media.release() }
         }
