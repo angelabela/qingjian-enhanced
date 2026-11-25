@@ -363,7 +363,7 @@ class FunctionPanel(
             val syncY = controlsTop + ink.dp(184f)
             result += AccessibilityElement("候选区与键盘区同步调节，" + if (syncTextEffectsEnabled()) "已开启" else "已关闭",
                 RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f)),
-                selected = syncTextEffectsEnabled(), virtualId = 50014)
+                selected = syncTextEffectsEnabled(), checked = syncTextEffectsEnabled(), virtualId = 50014)
             val rowTop = card.top + ink.dp(290f) - effectScroll.offset
             val rowStep = ink.dp(82f)
             val itemGap = ink.dp(8f)
@@ -408,6 +408,7 @@ class FunctionPanel(
                     label = toggle.label + if (toggle.on) "，已开启" else "，已关闭",
                     bounds = RectF(card.left, top, card.right, top + rowHeight()),
                     selected = toggle.on,
+                    checked = toggle.on,
                     virtualId = 70000 + index,
                 )
             }
