@@ -257,12 +257,13 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
             divider = ColorDrawable(colors.divider)
             dividerHeight = ui.dp(1)
             isVerticalScrollBarEnabled = false
+            setItemViewCacheSize(8)
             adapter = object : BaseAdapter() {
                 override fun getCount() = words.size
                 override fun getItem(position: Int) = words[position]
                 override fun getItemId(position: Int) = words[position].word.hashCode().toLong()
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val row = (convertView as? LinearLayout) ?: LinearLayout(activity)
+                    val row = (convertView as? LinearLayout) ?: createWordRow()
                     bindWordRow(row, words[position])
                     return row
                 }
@@ -279,60 +280,90 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
             }
         }
         // Use the actual app window height, not the full display: split-screen and freeform windows can be much shorter.
+        val configuredWindowHeight = activity.resources.configuration.screenHeightDp
+            .takeIf { it > 0 }?.let { ui.dp(it) }
         val windowHeight = activity.window.decorView.rootView.height
-            .takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
-        val maxViewport = (windowHeight - ui.dp(220)).coerceAtLeast(ui.dp(160))
+            .takeIf { it > 0 } ?: configuredWindowHeight ?: activity.resources.displayMetrics.heightPixels
+        val minimumViewport = minOf(ui.dp(160), windowHeight)
+        val maxViewport = (windowHeight - ui.dp(220)).coerceAtLeast(minimumViewport)
         val viewport = (windowHeight * 0.58f).toInt()
-            .coerceAtLeast(ui.dp(160))
+            .coerceAtLeast(minimumViewport)
             .coerceAtMost(maxViewport)
         addView(list, LinearLayout.LayoutParams(MATCH_PARENT, viewport))
     }
 
+    private data class WordRowHolder(
+        val word: TextView,
+        val source: TextView,
+        val meta: TextView,
+        val level: TextView,
+        val status: TextView,
+        var item: VocabularyWord? = null,
+    )
+
+    /** Create each row's child views once; ListView reuses both the row and its TextViews while scrolling. */
+    private fun createWordRow(): LinearLayout {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.pressable()
+            minimumHeight = ui.dp(60)
+            isClickable = true
+            isFocusable = true
+            setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
+        }
+        val content = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val title = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+        }
+        val wordText = ui.text("", 17f, colors.text, bold = true)
+        val sourceText = ui.text("", 14f, colors.secondary).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(ui.dp(8), 0, 0, ui.dp(1))
+        }
+        title.addView(wordText)
+        title.addView(sourceText)
+        val metaText = ui.text("", 12f, colors.secondary).apply { setPadding(0, ui.dp(4), 0, 0) }
+        content.addView(title)
+        content.addView(metaText)
+        row.addView(content, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        val levelTag = tag("", colors.secondary, colors.fill)
+        val statusTag = tag("", colors.secondary, colors.fill)
+        row.addView(levelTag)
+        row.addView(statusTag)
+        row.tag = WordRowHolder(wordText, sourceText, metaText, levelTag, statusTag)
+        row.setOnClickListener { (row.tag as? WordRowHolder)?.item?.let(::showWord) }
+        return row
+    }
+
     /** 一行：译词与带它上屏的中文，下面次数与最近日期；右边等级与 认识 / 眼熟 / 生词 小标签。点开看详情。 */
-    private fun wordRow(word: VocabularyWord) = LinearLayout(activity).apply { bindWordRow(this, word) }
+    private fun wordRow(word: VocabularyWord) = createWordRow().also { bindWordRow(it, word) }
 
     private fun bindWordRow(row: LinearLayout, word: VocabularyWord) {
-        row.removeAllViews()
-        row.orientation = LinearLayout.HORIZONTAL
-        row.gravity = Gravity.CENTER_VERTICAL
-        row.background = ui.pressable()
-        row.minimumHeight = ui.dp(60)
-        row.isClickable = true
-        row.isFocusable = true
-        row.contentDescription = buildList {
-            add(word.word)
-            if (word.source.isNotEmpty()) add(word.source)
-            add(activity.getString(R.string.vocabulary_seen_times, word.seen))
-            add(if (word.known) activity.getString(R.string.vocabulary_known) else if (word.fresh) activity.getString(R.string.vocabulary_fresh) else activity.getString(R.string.vocabulary_familiar))
-        }.joinToString("，")
-        row.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
-        row.setOnClickListener { showWord(word) }
-        row.addView(LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(LinearLayout(activity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.BOTTOM
-                addView(ui.text(word.word, 17f, colors.text, bold = true))
-                if (word.source.isNotEmpty()) {
-                    addView(ui.text(word.source, 14f, colors.secondary).apply {
-                        maxLines = 1
-                        ellipsize = TextUtils.TruncateAt.END
-                        setPadding(ui.dp(8), 0, 0, ui.dp(1))
-                    })
-                }
-            })
-            addView(ui.text(
-                activity.getString(R.string.vocabulary_seen_times, word.seen) + " · " + word.last.drop(5),
-                12f, colors.secondary,
-            ).apply { setPadding(0, ui.dp(4), 0, 0) })
-        }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        if (word.level.isNotEmpty()) row.addView(tag(word.level, colors.secondary, colors.fill))
+        val holder = row.tag as? WordRowHolder ?: return
+        holder.item = word
+        holder.word.text = word.word
+        holder.source.text = word.source
+        holder.source.visibility = if (word.source.isEmpty()) View.GONE else View.VISIBLE
+        holder.meta.text = activity.getString(R.string.vocabulary_seen_times, word.seen) + " · " + word.last.drop(5)
+        holder.level.text = word.level
+        holder.level.visibility = if (word.level.isEmpty()) View.GONE else View.VISIBLE
         val (label, color) = when {
             word.known -> R.string.vocabulary_known to colors.brand
             word.fresh -> R.string.vocabulary_fresh to colors.fresh
             else -> R.string.vocabulary_familiar to colors.secondary
         }
-        row.addView(tag(label, color, color and 0x00FFFFFF or 0x24000000))
+        holder.status.text = activity.getString(label)
+        holder.status.setTextColor(color)
+        holder.status.background = ui.rounded(color and 0x00FFFFFF or 0x24000000, 10f)
+        row.contentDescription = buildList {
+            add(word.word)
+            if (word.source.isNotEmpty()) add(word.source)
+            add(activity.getString(R.string.vocabulary_seen_times, word.seen))
+            add(activity.getString(label))
+        }.joinToString("，")
     }
     private fun tag(label: Int, color: Int, fill: Int) = tag(activity.getString(label), color, fill)
 

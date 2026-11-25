@@ -41,6 +41,7 @@ abstract class PanelView(
     private var accessibilityTabs: Tabs? = null
     private var accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
     private var hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+    private var accessibilityRightLabel: String? = null
     private val accessibilityManager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
 
     /** Canvas 自绘面板的可操作区域；子类按当前布局提供，TalkBack 点击仍走原有 onTap。 */
@@ -78,6 +79,7 @@ abstract class PanelView(
             }
         }
         if (hasHeader && y < headerHeight && x < ink.dp(BACK_WIDTH_DP)) return BACK_ACCESSIBILITY_ID
+        if (accessibilityRightLabel != null && y < headerHeight && x > width - ink.dp(BACK_WIDTH_DP)) return RIGHT_ACCESSIBILITY_ID
         val tab = accessibilityTabs
         if (tab != null) {
             for (index in tab.labels.indices) {
@@ -125,6 +127,7 @@ abstract class PanelView(
                 root.isFocusable = false
                 root.isClickable = false
                 if (hasHeader) root.addChild(this@PanelView, BACK_ACCESSIBILITY_ID)
+                if (accessibilityRightLabel != null) root.addChild(this@PanelView, RIGHT_ACCESSIBILITY_ID)
                 accessibilityTabs?.labels?.indices?.forEach { index ->
                     if (accessibilityTabs?.accessibilityBounds(index) != null) {
                         root.addChild(this@PanelView, TAB_ACCESSIBILITY_BASE + index)
@@ -144,7 +147,9 @@ abstract class PanelView(
             if (isElement && (element == null || !element.enabled)) return null
             val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
             val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
+            val isRight = virtualViewId == RIGHT_ACCESSIBILITY_ID
             if (isBack && !hasHeader) return null
+            if (isRight && accessibilityRightLabel == null) return null
             val tab = accessibilityTabs
             val label: String
             val bounds = if (isElement) {
@@ -153,6 +158,9 @@ abstract class PanelView(
             } else if (isBack) {
                 label = "返回"
                 Rect(0, 0, ink.dp(BACK_WIDTH_DP).toInt(), headerHeight.toInt())
+            } else if (isRight) {
+                label = accessibilityRightLabel ?: return null
+                Rect((width - ink.dp(BACK_WIDTH_DP)).toInt(), 0, width, headerHeight.toInt())
             } else {
                 if (tab == null || tabIndex !in tab.labels.indices) return null
                 label = tab.labels[tabIndex]
@@ -166,7 +174,7 @@ abstract class PanelView(
             node.setParent(this@PanelView)
             node.packageName = context.packageName
             node.className = if (isElement && element!!.rangeMin != null) "android.widget.SeekBar"
-                else if (isBack || isElement) "android.widget.Button" else "android.widget.TabWidget"
+                else if (isBack || isRight || isElement) "android.widget.Button" else "android.widget.TabWidget"
             node.text = label
             node.contentDescription = if (isBack) "返回上一级面板" else label
             node.isEnabled = isEnabled
@@ -184,7 +192,7 @@ abstract class PanelView(
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
-            node.isSelected = if (isElement) element!!.selected else !isBack && tab?.selected == tabIndex
+            node.isSelected = if (isElement) element!!.selected else !isBack && !isRight && tab?.selected == tabIndex
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
             node.setBoundsInParent(visibleBounds)
             val screen = Rect(visibleBounds)
@@ -252,6 +260,8 @@ abstract class PanelView(
                     if (!isEnabled) return false
                     when {
                         virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader -> onBack()
+                        virtualViewId == RIGHT_ACCESSIBILITY_ID && accessibilityRightLabel != null ->
+                            onTap(width - ink.dp(BACK_WIDTH_DP) / 2f, headerHeight / 2f)
                         virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
                             val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
                             if (!item.enabled || item.rangeMin != null) return false
@@ -281,6 +291,7 @@ abstract class PanelView(
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         if (hasHeader) info.addChild(this, BACK_ACCESSIBILITY_ID)
+        if (accessibilityRightLabel != null) info.addChild(this, RIGHT_ACCESSIBILITY_ID)
         accessibilityTabs?.labels?.indices?.forEach { index ->
             if (accessibilityTabs?.accessibilityBounds(index) != null) {
                 info.addChild(this, TAB_ACCESSIBILITY_BASE + index)
@@ -401,6 +412,20 @@ abstract class PanelView(
         rightIcon: PanelIcons.Icon? = null,
         leftIcon: PanelIcons.Icon = PanelIcons.Icon.BACK,
     ) {
+        accessibilityRightLabel = rightIcon?.let { icon ->
+            when (icon) {
+                PanelIcons.Icon.PLUS -> "添加或新建"
+                PanelIcons.Icon.TRASH -> "清空或删除"
+                PanelIcons.Icon.SETTINGS -> "设置"
+                PanelIcons.Icon.COPY -> "复制"
+                PanelIcons.Icon.CLEAR -> "清空"
+                PanelIcons.Icon.CHECK -> "完成"
+                PanelIcons.Icon.PEN -> "编辑"
+                PanelIcons.Icon.CLOSE -> "关闭"
+                PanelIcons.Icon.SEARCH -> "搜索"
+                else -> "更多操作"
+            }
+        }
         val inset = ink.dp(6f)
         headerCard.set(inset, inset, width - inset, headerHeight - ink.dp(4f))
         headerCard.offset(0f, ink.density)
@@ -424,6 +449,7 @@ abstract class PanelView(
     protected companion object {
         const val BACK_WIDTH_DP = 56f
         private const val BACK_ACCESSIBILITY_ID = 1
+        private const val RIGHT_ACCESSIBILITY_ID = 2
         private const val TAB_ACCESSIBILITY_BASE = 1000
         private const val ELEMENT_ACCESSIBILITY_BASE = 20000
         private const val INVALID_ACCESSIBILITY_ID = -1

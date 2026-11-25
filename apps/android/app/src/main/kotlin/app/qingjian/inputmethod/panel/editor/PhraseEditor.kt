@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.panel.editor
 
 import android.annotation.SuppressLint
 import android.content.ClipboardManager
+import android.content.ClipData
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -16,6 +17,9 @@ import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.BaseInputConnection
 import android.widget.PopupMenu
 import android.view.inputmethod.InputConnection
@@ -134,6 +138,146 @@ class PhraseEditor(
             KeyEvent.KEYCODE_ENTER -> if (field == Field.TEXT) target.insert(Selection.getSelectionEnd(target).coerceAtLeast(0), "\n")
         }
         invalidate()
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        val active = target()
+        val selectionStart = Selection.getSelectionStart(active).coerceAtLeast(0)
+        val selectionEnd = Selection.getSelectionEnd(active).coerceAtLeast(selectionStart)
+        info.className = "android.widget.EditText"
+        info.contentDescription = when (field) {
+            Field.TEXT -> if (clip == null) "常用语正文编辑框" else "剪贴板正文编辑框"
+            Field.CODE -> "输入码编辑框，只接受英文字母"
+            Field.GROUP -> "新分组名称编辑框"
+        }
+        info.text = active.toString()
+        info.hintText = when (field) {
+            Field.TEXT -> if (clip == null) "在这里输入常用语" else "在这里输入"
+            Field.CODE -> "输入码，只收字母"
+            Field.GROUP -> "新分组名称"
+        }
+        info.isEditable = true
+        info.isFocusable = true
+        info.isFocused = hasFocus()
+        info.isMultiLine = field == Field.TEXT
+        info.isClickable = true
+        info.isLongClickable = true
+        info.setTextSelection(selectionStart, selectionEnd)
+        info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+        info.addAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT)
+        info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION)
+        info.addAction(AccessibilityNodeInfo.ACTION_COPY)
+        info.addAction(AccessibilityNodeInfo.ACTION_CUT)
+        info.addAction(AccessibilityNodeInfo.ACTION_PASTE)
+        if (clip == null) {
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_SWITCH_TEXT, "切换到正文编辑"))
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_SWITCH_CODE, "切换到输入码编辑"))
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_NEXT_GROUP, "切换到下一个目录"))
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_NEW_GROUP, "新建目录名称"))
+        }
+        info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_FINISH, "完成"))
+        info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_CANCEL, "取消编辑"))
+    }
+
+    override fun onPopulateAccessibilityEvent(event: AccessibilityEvent) {
+        super.onPopulateAccessibilityEvent(event)
+        event.text.add(target().toString())
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        when (action) {
+            AccessibilityNodeInfo.ACTION_CLICK, AccessibilityNodeInfo.ACTION_FOCUS -> {
+                requestFocus()
+                return true
+            }
+            AccessibilityNodeInfo.ACTION_SET_TEXT -> {
+                val value = arguments?.getCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE)?.toString()
+                    ?: return false
+                val accepted = when (field) {
+                    Field.TEXT -> value.take(maxText)
+                    Field.CODE -> value.filter { it in 'a'..'z' || it in 'A'..'Z' }.lowercase().take(PhraseRules.maxCode)
+                    Field.GROUP -> value.filter { it != '\n' }.take(MAX_GROUP)
+                }
+                val active = target()
+                active.replace(0, active.length, accepted)
+                Selection.setSelection(active, active.length)
+                invalidate()
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED)
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                return true
+            }
+            AccessibilityNodeInfo.ACTION_SET_SELECTION -> {
+                val active = target()
+                val start = arguments?.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT) ?: return false
+                val end = arguments.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, start)
+                Selection.setSelection(active, start.coerceIn(0, active.length), end.coerceIn(0, active.length))
+                invalidate()
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED)
+                return true
+            }
+            AccessibilityNodeInfo.ACTION_COPY, AccessibilityNodeInfo.ACTION_CUT -> {
+                val active = target()
+                val anchor = Selection.getSelectionStart(active)
+                val focus = Selection.getSelectionEnd(active)
+                val start = minOf(anchor, focus).coerceAtLeast(0)
+                val end = maxOf(anchor, focus).coerceAtMost(active.length)
+                if (start >= end) return false
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+                clipboard.setPrimaryClip(ClipData.newPlainText("青简输入法", active.subSequence(start, end)))
+                if (action == AccessibilityNodeInfo.ACTION_CUT) {
+                    active.delete(start, end)
+                    Selection.setSelection(active, start)
+                    invalidate()
+                    sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED)
+                }
+                return true
+            }
+            AccessibilityNodeInfo.ACTION_PASTE -> {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+                val clipData = clipboard.primaryClip ?: return false
+                if (clipData.itemCount == 0) return false
+                val value = clipData.getItemAt(0).coerceToText(context) ?: return false
+                connection.finishComposingText()
+                val pasted = connection.commitText(value, 1)
+                if (pasted) {
+                    invalidate()
+                    sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED)
+                }
+                return pasted
+            }
+            ACTION_SWITCH_TEXT -> { focus(Field.TEXT); return true }
+            ACTION_SWITCH_CODE -> {
+                if (clip != null) return false
+                focus(Field.CODE)
+                return true
+            }
+            ACTION_NEXT_GROUP -> {
+                if (clip != null) return false
+                creatingGroup = false
+                groupIndex = (groupIndex + 1) % groups.size.coerceAtLeast(1)
+                focus(Field.TEXT)
+                return true
+            }
+            ACTION_NEW_GROUP -> {
+                if (clip != null) return false
+                creatingGroup = true
+                newGroup.clear()
+                focus(Field.GROUP)
+                return true
+            }
+            ACTION_FINISH -> {
+                connection.finishComposingText()
+                onDone(text.toString(), chosenGroup(), code.toString())
+                return true
+            }
+            ACTION_CANCEL -> {
+                onCancel()
+                return true
+            }
+        }
+        return super.performAccessibilityAction(action, arguments)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -299,6 +443,8 @@ class PhraseEditor(
         val wasCode = codeFocused
         field = to
         if (wasCode != codeFocused) onFocusCode(codeFocused)
+        invalidate()
+        sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
     }
 
     private companion object {
@@ -308,5 +454,11 @@ class PhraseEditor(
         const val NEW_GROUP_DP = 80f
         const val MAX_GROUP = 8
         const val MAX_TEXT = 500
+        const val ACTION_SWITCH_TEXT = 0x01020001
+        const val ACTION_SWITCH_CODE = 0x01020002
+        const val ACTION_NEXT_GROUP = 0x01020003
+        const val ACTION_NEW_GROUP = 0x01020004
+        const val ACTION_FINISH = 0x01020005
+        const val ACTION_CANCEL = 0x01020006
     }
 }
