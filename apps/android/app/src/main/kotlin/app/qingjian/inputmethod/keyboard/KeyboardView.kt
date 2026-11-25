@@ -146,6 +146,13 @@ class KeyboardView(
     private var candidateSwipeMode = false
     private var candidateSwipeCancelled = false
     private var candidateSwipeLastStep = 0
+    // 键盘任意按键区域横向滑动选候选；未达到阈值前仍按普通按键处理。
+    private var surfaceCandidatePointer = -1
+    private var surfaceCandidateStartX = 0f
+    private var surfaceCandidateStartY = 0f
+    private var surfaceCandidateMode = false
+    private var surfaceCandidateCancelled = false
+    private var surfaceCandidateLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
     /**
@@ -340,6 +347,16 @@ class KeyboardView(
                     editTriggered = false
                 }
                 pressed[pointer] = slot
+                if (settings.keyboardCandidateSwipe && slot.key !is Key.Space &&
+                    surfaceCandidatePointer < 0 && spacePointer < 0 && pressed.size == 1
+                ) {
+                    surfaceCandidatePointer = pointer
+                    surfaceCandidateStartX = event.getX(index)
+                    surfaceCandidateStartY = event.getY(index)
+                    surfaceCandidateMode = false
+                    surfaceCandidateCancelled = false
+                    surfaceCandidateLastStep = 0
+                }
                 if (flickPointer < 0 && flickable(slot.key)) {
                     flickPointer = pointer
                     flickSlot = slot
@@ -380,6 +397,10 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (trackKeyboardCandidateSwipe(event)) {
+                    invalidate()
+                    return true
+                }
                 trackEditShortcut(event)
                 trackFlick(event)
                 trackSwipe(event)
@@ -388,6 +409,18 @@ class KeyboardView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointer == surfaceCandidatePointer) {
+                    if (surfaceCandidateMode) listener.onCandidateSwipeEnd(commit = true)
+                    val wasGesture = surfaceCandidateMode || surfaceCandidateCancelled
+                    clearSurfaceCandidateSwipe()
+                    if (wasGesture) {
+                        pressed.remove(pointer)
+                        if (pointer == trail.pointer) trail.clear()
+                        if (pointer == flickPointer) endFlick()
+                        invalidate()
+                        return true
+                    }
+                }
                 if (pointer == editPointer) {
                     val action = editAction.takeIf { editTriggered }
                     endEditShortcut()
@@ -701,6 +734,56 @@ class KeyboardView(
         flickDirection = 0
     }
 
+    private fun clearSurfaceCandidateSwipe() {
+        surfaceCandidatePointer = -1
+        surfaceCandidateMode = false
+        surfaceCandidateCancelled = false
+        surfaceCandidateLastStep = 0
+    }
+
+    /** 键盘区域横向滑动复用空格键候选预选回调；竖向偏移达到阈值即取消且不触发按键。 */
+    private fun trackKeyboardCandidateSwipe(event: MotionEvent): Boolean {
+        val pointer = surfaceCandidatePointer
+        if (pointer < 0) return false
+        val at = event.findPointerIndex(pointer)
+        if (at < 0) return false
+        val dx = event.getX(at) - surfaceCandidateStartX
+        val dy = event.getY(at) - surfaceCandidateStartY
+        val slop = metrics.density * TRACK_SLOP_DP
+        if (surfaceCandidateCancelled) return true
+        if (surfaceCandidateMode && abs(dy) >= slop && abs(dy) > abs(dx) * .72f) {
+            listener.onCandidateSwipeEnd(commit = false)
+            surfaceCandidateMode = false
+            surfaceCandidateCancelled = true
+            surfaceCandidateLastStep = 0
+            pressed.remove(pointer)
+            if (pointer == trail.pointer) trail.clear()
+            if (pointer == flickPointer) endFlick()
+            timer.removeCallbacks(longPress)
+            if (longPressPointer == pointer) longPressPointer = -1
+            return true
+        }
+        if (!surfaceCandidateMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_START_DP && abs(dx) > abs(dy)) {
+            if (!listener.onCandidateSwipeStart()) return false
+            surfaceCandidateMode = true
+            pressed.remove(pointer)
+            if (pointer == trail.pointer) trail.clear()
+            if (pointer == flickPointer) endFlick()
+            timer.removeCallbacks(longPress)
+            if (longPressPointer == pointer) longPressPointer = -1
+            timer.removeCallbacks(repeatBackspace)
+            backspaceRepeatStarted = false
+        }
+        if (!surfaceCandidateMode) return false
+        val currentStep = (dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
+        val delta = currentStep - surfaceCandidateLastStep
+        if (delta != 0) {
+            surfaceCandidateLastStep = currentStep
+            listener.onCandidateSwipe(delta)
+        }
+        return true
+    }
+
     /** 自定义动作优先；DEFAULT 才回退到原有按键手势，NONE 吞掉该方向但不执行动作。 */
     private fun performFlick(key: Key, direction: Int) {
         val upward = direction > 0
@@ -859,6 +942,8 @@ class KeyboardView(
     }
 
     private fun release() {
+        if (surfaceCandidateMode) listener.onCandidateSwipeEnd(commit = false)
+        clearSurfaceCandidateSwipe()
         pressed.clear()
         trail.clear()
         endFlick()
