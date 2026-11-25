@@ -199,6 +199,9 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
         addView(ui.text(left, 13f, colors.secondary), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         addView(ui.text(SettingChoices.learningLanguageName(vocabulary.language) + " ⌄", 13f, colors.brand).apply {
             setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4))
+            isClickable = true
+            isFocusable = true
+            contentDescription = activity.getString(R.string.learning_language_title) + "，" + SettingChoices.learningLanguageName(vocabulary.language)
             setOnClickListener { pickLanguage(vocabulary.language) }
         })
     }
@@ -258,6 +261,14 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
         gravity = Gravity.CENTER_VERTICAL
         background = ui.pressable()
         minimumHeight = ui.dp(60)
+        isClickable = true
+        isFocusable = true
+        contentDescription = buildList {
+            add(word.word)
+            if (word.source.isNotEmpty()) add(word.source)
+            add(activity.getString(R.string.vocabulary_seen_times, word.seen))
+            add(if (word.known) activity.getString(R.string.vocabulary_known) else if (word.fresh) activity.getString(R.string.vocabulary_fresh) else activity.getString(R.string.vocabulary_familiar))
+        }.joinToString("，")
         setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
         setOnClickListener { showWord(word) }
         addView(LinearLayout(activity).apply {
