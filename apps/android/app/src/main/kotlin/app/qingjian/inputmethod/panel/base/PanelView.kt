@@ -55,6 +55,7 @@ abstract class PanelView(
         val rangeCurrent: Float? = null,
         val onSetProgress: ((Float) -> Unit)? = null,
         val virtualId: Int? = null,
+        val onScroll: ((Int) -> Unit)? = null,
     )
 
     protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
@@ -63,6 +64,27 @@ abstract class PanelView(
 
     private fun accessibilityElementForId(id: Int): AccessibilityElement? =
         accessibilityElements().withIndex().firstOrNull { accessibilityElementId(it.index, it.value) == id }?.value
+
+    /** Expose a Canvas scroll viewport as a TalkBack scroll target without changing touch gestures. */
+    protected fun accessibilityScrollElement(
+        label: String,
+        bounds: RectF,
+        state: ScrollState,
+        horizontal: Boolean = false,
+        virtualId: Int = 90000,
+    ): AccessibilityElement? {
+        if (state.max <= 0f || bounds.isEmpty) return null
+        val page = (if (horizontal) bounds.width() else bounds.height()).coerceAtLeast(ink.dp(48f)) * 0.8f
+        return AccessibilityElement(
+            label = label,
+            bounds = RectF(bounds),
+            virtualId = virtualId,
+            onScroll = { direction ->
+                state.stop()
+                state.drag(page * direction.coerceIn(-1, 1))
+            },
+        )
+    }
 
     protected fun notifyAccessibilityContentChanged() {
         // A panel may replace its dynamic rows while TalkBack is focused on one of them.
@@ -185,14 +207,23 @@ abstract class PanelView(
             node.setSource(this@PanelView, virtualViewId)
             node.setParent(this@PanelView)
             node.packageName = context.packageName
-            node.className = if (isElement && element!!.rangeMin != null) "android.widget.SeekBar"
-                else if (isBack || isRight || isElement) "android.widget.Button" else "android.widget.TabWidget"
+            node.className = when {
+                isElement && element!!.onScroll != null -> "android.widget.ScrollView"
+                isElement && element!!.rangeMin != null -> "android.widget.SeekBar"
+                isBack || isRight || isElement -> "android.widget.Button"
+                else -> "android.widget.TabWidget"
+            }
             node.text = label
             node.contentDescription = if (isBack) "返回上一级面板" else label
             node.isEnabled = isEnabled
             node.isVisibleToUser = isShown
             node.isFocusable = true
-            node.isClickable = isElement.not() || element!!.rangeMin == null
+            node.isClickable = isElement.not() || (element!!.rangeMin == null && element.onScroll == null)
+            node.isScrollable = isElement && element!!.onScroll != null
+            if (isElement && element!!.onScroll != null) {
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            }
             if (isElement && element!!.rangeMin != null) {
                 node.rangeInfo = AccessibilityNodeInfo.RangeInfo.obtain(
                     AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
@@ -252,6 +283,13 @@ abstract class PanelView(
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
                     if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
                     val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                    if (item.onScroll != null) {
+                        item.onScroll.invoke(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)
+                        sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED)
+                        notifyAccessibilityContentChanged()
+                        invalidate()
+                        return true
+                    }
                     val setter = item.onSetProgress ?: return false
                     val min = item.rangeMin ?: return false
                     val max = item.rangeMax ?: return false
@@ -276,7 +314,7 @@ abstract class PanelView(
                             onTap(width - ink.dp(BACK_WIDTH_DP) / 2f, headerHeight / 2f)
                         virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
                             val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
-                            if (!item.enabled || item.rangeMin != null) return false
+                            if (!item.enabled || item.rangeMin != null || item.onScroll != null) return false
                             val visible = Rect(item.bounds.left.toInt(), item.bounds.top.toInt(), item.bounds.right.toInt(), item.bounds.bottom.toInt())
                             if (!visible.intersect(0, 0, width, height)) return false
                             onTap(visible.exactCenterX(), visible.exactCenterY())
