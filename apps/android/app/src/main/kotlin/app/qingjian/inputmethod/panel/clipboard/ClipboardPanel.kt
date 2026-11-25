@@ -645,7 +645,7 @@ class ClipboardPanel(
             )
         }
         return elements.mapNotNull { element ->
-            if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 90000) {
+            if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 1000001) {
                 val visible = RectF(element.bounds)
                 if (!visible.intersect(list)) null else element.copy(bounds = visible)
             } else element
