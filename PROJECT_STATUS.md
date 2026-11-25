@@ -1,3 +1,14 @@
+## 2026-11-25：Impeccable 原生 UI 审查与首轮优化
+
+- 开发基线：781 号工作流，分支 fix/723-wubi-text-effects-space-gesture，提交 6d5ee1084cba4d7bd0493d7ff4e6df1e1d56aa94。
+- 当前 Android 源码版本：0.3.58-dev；本轮目标版本：0.3.59-dev（仅在固定签名构建成功后作为可用版本交付）。
+- 优化分支：design/impeccable-native-audit-781。
+- Impeccable 固定上游提交：b49177d32788f2dc585c42831d845dacf1ebed2c。
+- 本轮：保留主题与自定义项，修正 Canvas 面板文字系统缩放、分段选择/生词筛选触摸区域与导航选中语义；补充 PRODUCT.md、DESIGN.md 与完整审查报告。
+- 状态：源码修改待 CI；TalkBack、字体缩放、横竖屏和动效流畅度仍待真机验收。
+
+---
+
 ## 0.3.21-dev 修复轮次（2026-11-23，基于 551 号实机反馈）
 
 - 开发基线：分支 `feature/workflow-444-model-coordination`，父提交 `f368db25ae747a08ab2a06023514e73fba6b6d50`；只修改青简输入法仓库，不触碰 main 或其他项目。

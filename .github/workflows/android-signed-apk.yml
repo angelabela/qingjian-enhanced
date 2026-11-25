@@ -54,6 +54,7 @@ on:
       - fix/617-based-clipboard-search-and-candidates
       - fix/718-wubi-background-clouds-copy
       - fix/723-wubi-text-effects-space-gesture
+      - design/impeccable-native-audit-781
       - fix/workflow-421-key-feedback-pinyin-candidates
       - feature/android-optional-trigram-model
       - feature/workflow-433-zhiyi-transformer

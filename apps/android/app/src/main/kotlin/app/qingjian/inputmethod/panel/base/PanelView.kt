@@ -24,7 +24,7 @@ abstract class PanelView(
     /** 表头高度，与候选条一样高，盖上去时返回键正好在 logo 的位置。 */
     protected val headerHeight: Float,
 ) : View(context) {
-    protected val ink = Ink(palette, resources.displayMetrics.density)
+    protected val ink = Ink(palette, resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
     protected val palette get() = ink.palette
 
     /** 一块可滚动区域：落在 [contains] 里的拖动归它。 */

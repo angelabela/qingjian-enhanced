@@ -245,15 +245,23 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         setPadding(dp(2), dp(2), dp(2), dp(2))
         options.forEachIndexed { index, option ->
             val on = index == selected
-            addView(text(option, 13f, colors.text, bold = on).apply {
-                gravity = Gravity.CENTER
-                if (on) {
-                    background = rounded(if (colors.dark) 0xFF636366.toInt() else colors.surface, 7f)
-                    elevation = dp(1).toFloat()
-                }
+            // Keep the visual pill compact while expanding its touch target to Android's 48dp baseline.
+            val target = FrameLayout(context).apply {
+                minimumHeight = dp(48)
+                isClickable = true
+                isFocusable = true
                 isSelected = on
+                contentDescription = option
                 setOnClickListener { if (!on) onPick(index) }
-            }, LinearLayout.LayoutParams(0, dp(28), 1f))
+                addView(text(option, 13f, colors.text, bold = on).apply {
+                    gravity = Gravity.CENTER
+                    if (on) {
+                        background = rounded(if (colors.dark) 0xFF636366.toInt() else colors.surface, 7f)
+                        elevation = dp(1).toFloat()
+                    }
+                }, FrameLayout.LayoutParams(MATCH_PARENT, dp(28), Gravity.CENTER))
+            }
+            addView(target, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
     }
 

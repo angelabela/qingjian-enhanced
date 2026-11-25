@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import app.qingjian.inputmethod.R
@@ -220,11 +221,18 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
         addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             items.forEachIndexed { index, (label, selected) ->
-                addView(ui.text(label, 13.5f, if (selected) colors.brand else colors.text, bold = selected).apply {
-                    background = ui.rounded(if (selected) colors.brandSoft else colors.surface, 16f)
-                    setPadding(ui.dp(14), ui.dp(7), ui.dp(14), ui.dp(7))
+                addView(FrameLayout(activity).apply {
+                    minimumHeight = ui.dp(48)
+                    isFocusable = true
+                    isClickable = true
+                    isSelected = selected
+                    contentDescription = if (selected) "$label，已选中" else label
                     setOnClickListener { if (!selected) onPick(index) }
-                }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { if (index > 0) marginStart = ui.dp(8) })
+                    addView(ui.text(label, 13.5f, if (selected) colors.brand else colors.text, bold = selected).apply {
+                        background = ui.rounded(if (selected) colors.brandSoft else colors.surface, 16f)
+                        setPadding(ui.dp(14), ui.dp(7), ui.dp(14), ui.dp(7))
+                    }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+                }, LinearLayout.LayoutParams(WRAP_CONTENT, ui.dp(48)).apply { if (index > 0) marginStart = ui.dp(8) })
             }
         })
     }

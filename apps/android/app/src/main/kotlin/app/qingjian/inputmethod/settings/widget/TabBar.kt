@@ -35,6 +35,9 @@ class TabBar(
                 orientation = VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, ui.dp(2), 0, ui.dp(4))
+                minimumHeight = ui.dp(48)
+                isFocusable = true
+                isClickable = true
                 isSelected = on
                 contentDescription = context.getString(label)
                 setOnClickListener { onSelect(index) }

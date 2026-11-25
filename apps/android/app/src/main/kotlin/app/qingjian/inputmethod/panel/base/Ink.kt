@@ -8,7 +8,8 @@ import android.text.TextUtils
 import app.qingjian.inputmethod.theme.Palette
 
 /** 面板共用的画笔：居中的字、图标、圆角块。尺寸参数都是 dp / sp，这里乘密度。 */
-class Ink(val palette: Palette, val density: Float) {
+class Ink(val palette: Palette, val density: Float, val scaledDensity: Float = density) {
+    private fun textSize(sp: Float) = sp * scaledDensity
     val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -16,7 +17,7 @@ class Ink(val palette: Palette, val density: Float) {
     fun dp(value: Float) = value * density
 
     fun measure(value: String, sp: Float, bold: Boolean = false): Float {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.isFakeBoldText = bold
         return text.measureText(value)
     }

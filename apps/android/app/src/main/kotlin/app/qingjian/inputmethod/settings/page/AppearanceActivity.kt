@@ -88,6 +88,11 @@ class AppearanceActivity : PageActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, 0, 0, ui.dp(14))
+            minimumHeight = ui.dp(48)
+            isFocusable = true
+            isClickable = true
+            isSelected = selected
+            contentDescription = if (selected) "${theme.name}，当前主题" else "${theme.name}，应用主题"
             setOnClickListener {
                 prefs.edit().putString(Settings.KEY_THEME, theme.id).apply()
                 rebuild()
