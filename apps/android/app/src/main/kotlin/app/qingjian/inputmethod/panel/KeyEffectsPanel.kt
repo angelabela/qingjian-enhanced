@@ -41,6 +41,57 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         invalidate()
     }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        val offset = scroll.offset
+        val left = card.left + ink.dp(8f)
+        val right = card.right - ink.dp(8f)
+        val elements = mutableListOf<AccessibilityElement>()
+        val trackLeft = card.left + ink.dp(18f)
+        val trackRight = card.right - ink.dp(18f)
+        val trackY = alphaTrackY() - offset
+        elements += AccessibilityElement(
+            label = "按键透明度，$alpha%",
+            bounds = RectF(trackLeft, trackY - ink.dp(14f), trackRight, trackY + ink.dp(14f)),
+            rangeMin = 0f,
+            rangeMax = 100f,
+            rangeCurrent = alpha.toFloat(),
+            onSetProgress = { value ->
+                prefs.edit().putInt(KEY_ALPHA, value.toInt().coerceIn(0, 100)).apply()
+                notifyChanged()
+            },
+        )
+        listOf(
+            Triple(frostedTop(), "按键磨砂效果", frosted),
+            Triple(marqueeTop(), "字母按键跑马灯", marquee),
+            Triple(edgeGlowTop(), "边缘发光效果", edgeGlow),
+            Triple(threeDimensionalTop(), "立体按键效果", threeDimensional),
+        ).forEach { (rowTop, label, enabled) ->
+            elements += AccessibilityElement(
+                "$label，\${if (enabled) "已开启" else "已关闭"}",
+                RectF(left, rowTop - offset, right, rowTop + ink.dp(46f) - offset),
+                selected = enabled,
+            )
+        }
+        fun addColors(rowTop: Float, label: String, colors: IntArray, selected: Int) {
+            val size = ink.dp(25f)
+            val gap = ink.dp(9f)
+            val startX = card.left + ink.dp(14f)
+            val y = rowTop + ink.dp(28f) - offset
+            colors.forEachIndexed { index, _ ->
+                val x = startX + index * (size + gap)
+                elements += AccessibilityElement(
+                    "$label，第\${index + 1}种\${if (index == selected) "，已选中" else ""}",
+                    RectF(x, y - ink.dp(3f), x + size, y + size + ink.dp(3f)),
+                    selected = index == selected,
+                )
+            }
+        }
+        addColors(borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
+        addColors(backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
+        return elements
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, null, app.qingjian.inputmethod.panel.base.PanelIcons.Icon.SETTINGS)
         ink.text(canvas, "按键效果", 16f, palette.text, width * 0.5f, headerHeight * 0.5f)
