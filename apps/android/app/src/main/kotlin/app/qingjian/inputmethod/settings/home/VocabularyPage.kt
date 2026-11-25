@@ -12,6 +12,7 @@ import android.view.inputmethod.InputMethodManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.graphics.drawable.ColorDrawable
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.EditText
@@ -253,7 +254,7 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
     /** ListView 只保留屏幕附近的行；500 条时不再一次创建 500 组 TextView。 */
     private fun wordsCard(words: List<VocabularyWord>) = ui.card().apply {
         val list = ListView(activity).apply {
-            divider = ui.dividerDrawable()
+            divider = ColorDrawable(colors.divider)
             dividerHeight = ui.dp(1)
             isVerticalScrollBarEnabled = false
             adapter = object : BaseAdapter() {
