@@ -580,12 +580,14 @@ class ClipboardPanel(
             "粘贴后${if (pasteEnter) "回车换行" else "不自动回车"}，点击切换",
             RectF(pasteToggleRect),
             selected = pasteEnter,
+            checked = pasteEnter,
             virtualId = 1003,
         )
         elements += AccessibilityElement(
             "粘贴后${if (pasteNextCell) "跳到下格" else "不跳到下格"}，点击切换",
             RectF(pasteNextCellRect),
             selected = pasteNextCell,
+            checked = pasteNextCell,
             virtualId = 1004,
         )
     }
