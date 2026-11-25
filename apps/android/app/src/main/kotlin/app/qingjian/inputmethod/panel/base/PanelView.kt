@@ -467,6 +467,30 @@ abstract class PanelView(
         setBackgroundColor(palette.board)
     }
 
+    /**
+     * A panel can be replaced while TalkBack is focused on one of its virtual controls.
+     * Stop inertial scrolling and close virtual focus/hover before the view leaves its
+     * accessibility tree, so a detached panel cannot retain stale interaction state.
+     */
+    override fun onDetachedFromWindow() {
+        scrollables.forEach { it.state.stop() }
+        dragging = null
+
+        val focused = accessibilityFocusedId
+        accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+        if (focused != INVALID_ACCESSIBILITY_ID) {
+            sendPanelAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        val hovered = hoveredAccessibilityId
+        hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+        if (hovered != INVALID_ACCESSIBILITY_ID) {
+            sendPanelAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+
+        super.onDetachedFromWindow()
+    }
+
     override fun computeScroll() {
         var moving = false
         for (scrollable in scrollables) moving = scrollable.state.compute() || moving
