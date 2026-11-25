@@ -57,6 +57,10 @@ internal class CloudAtmosphereRenderer(
     private var palette = paletteFor(Theme.DAY)
     private var activeTheme: Theme? = null
     private var bakeVersion = 0
+    // Keep explicit references so replacing a theme releases the previous texture set.
+    private var cachedNearBitmap: Bitmap? = null
+    private var cachedFarBitmap: Bitmap? = null
+    private var cachedCirrusBitmap: Bitmap? = null
     private var time = 0.0
     private var lastWidth = 0
     private var lastHeight = 0
@@ -186,10 +190,16 @@ internal class CloudAtmosphereRenderer(
                     return@post
                 }
                 fun tile(bitmap: Bitmap) = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+                val previous = listOfNotNull(cachedNearBitmap, cachedFarBitmap, cachedCirrusBitmap)
+                // Swap all shaders first; previous bitmaps are no longer referenced by this renderer.
                 near.shader = tile(nearBitmap)
                 far.shader = tile(farBitmap)
                 cirrus.shader = tile(cirrusBitmap)
+                cachedNearBitmap = nearBitmap
+                cachedFarBitmap = farBitmap
+                cachedCirrusBitmap = cirrusBitmap
                 layoutLayers(lastHeight.toFloat())
+                previous.forEach { if (!it.isRecycled) it.recycle() }
                 invalidate()
             }
         }, "cloud-atmosphere-bake").start()
