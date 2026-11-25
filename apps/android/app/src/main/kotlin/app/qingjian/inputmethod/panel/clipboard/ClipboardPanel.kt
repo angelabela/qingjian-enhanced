@@ -1222,6 +1222,8 @@ class ClipboardPanel(
     }
 
     private fun collapse(resetScroll: Boolean = true) {
+        expansionAnimator?.cancel()
+        expansionProgress = 0f
         expanded = -1
         if (resetScroll) {
             listScroll.reset()
@@ -1259,7 +1261,9 @@ class ClipboardPanel(
         when {
             chevron -> {
                 val wasExpanded = expanded == i
+                val switchingExpandedCard = expanded >= 0 && !wasExpanded
                 expanded = if (wasExpanded) -1 else i
+                if (switchingExpandedCard) expansionProgress = 0f
                 layouts.clear()
                 animateExpansion(!wasExpanded)
             }
