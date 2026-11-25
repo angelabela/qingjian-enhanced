@@ -229,9 +229,9 @@ abstract class PanelView(
             node.isEnabled = isEnabled
             node.isVisibleToUser = isShown
             node.isFocusable = true
-            node.isClickable = isElement.not() || (element!!.rangeMin == null && element.onScroll == null)
+            node.isClickable = !isTabScroll && (isElement.not() || (element!!.rangeMin == null && element.onScroll == null))
             node.isScrollable = isTabScroll || (isElement && element!!.onScroll != null)
-            if (isElement && element!!.onScroll != null) {
+            if (isTabScroll || (isElement && element!!.onScroll != null)) {
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
