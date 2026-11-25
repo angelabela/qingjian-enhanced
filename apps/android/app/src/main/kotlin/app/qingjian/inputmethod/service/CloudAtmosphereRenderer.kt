@@ -58,6 +58,7 @@ internal class CloudAtmosphereRenderer(
     private var activeTheme: Theme? = null
     @Volatile private var bakeVersion = 0
     @Volatile private var active = true
+    @Volatile private var bakeThread: Thread? = null
     // Keep explicit references so replacing a theme releases the previous texture set.
     private var cachedNearBitmap: Bitmap? = null
     private var cachedFarBitmap: Bitmap? = null
@@ -71,6 +72,9 @@ internal class CloudAtmosphereRenderer(
         if (active == value) return
         active = value
         bakeVersion++
+        // A hidden/replaced background must not keep baking 3 x 512² textures in the background.
+        bakeThread?.interrupt()
+        bakeThread = null
         activeTheme = null
         if (!value) {
             near.shader = null
@@ -202,8 +206,9 @@ internal class CloudAtmosphereRenderer(
     }
 
     private fun bakeAsync(theme: Theme, p: Palette) {
+        bakeThread?.interrupt()
         val version = ++bakeVersion
-        Thread({
+        val worker = Thread({
             var nearBitmap: Bitmap? = null
             var farBitmap: Bitmap? = null
             var cirrusBitmap: Bitmap? = null
@@ -253,7 +258,9 @@ internal class CloudAtmosphereRenderer(
                 layoutLayers(lastHeight.toFloat())
                 invalidate()
             }
-        }, "cloud-atmosphere-bake").start()
+        }, "cloud-atmosphere-bake")
+        bakeThread = worker
+        worker.start()
     }
 
     private fun layoutLayers(h: Float) {
@@ -276,7 +283,9 @@ internal class CloudAtmosphereRenderer(
         val bx = (p.lightX * 16f).roundToInt()
         val by = (p.lightY * 16f).roundToInt()
         val pixels = IntArray(TEX * TEX)
-        for (y in 0 until TEX) for (x in 0 until TEX) {
+        for (y in 0 until TEX) {
+            if (Thread.currentThread().isInterrupted) throw RuntimeException("Cloud texture bake cancelled")
+            for (x in 0 until TEX) {
             val c = contrast(d[y * TEX + x], p.contrast)
             val mask = smoothstep(p.lo, p.hi, c)
             if (mask <= .003f) continue
@@ -288,6 +297,7 @@ internal class CloudAtmosphereRenderer(
             color = mix(color, shadow, depth * p.coreDark * (1f - shade * .6f))
             color = mix(color, lit, (1f - depth) * mask * .45f)
             pixels[y * TEX + x] = ((mask * 255f + .5f).toInt() shl 24) or (color and 0x00FFFFFF)
+            }
         }
         return Bitmap.createBitmap(pixels, TEX, TEX, Bitmap.Config.ARGB_8888)
     }
@@ -295,10 +305,14 @@ internal class CloudAtmosphereRenderer(
     private fun bakeCirrus(d: FloatArray, p: Palette): Bitmap {
         val color = mix(p.lit, p.haze, .2f) and 0x00FFFFFF
         val pixels = IntArray(TEX * TEX)
-        for (i in pixels.indices) {
-            val c = contrast(d[i], 1.8f)
-            val mask = smoothstep(.54f, .80f, c) * .8f
-            pixels[i] = ((mask * 255f + .5f).toInt() shl 24) or color
+        for (y in 0 until TEX) {
+            if (Thread.currentThread().isInterrupted) throw RuntimeException("Cloud texture bake cancelled")
+            for (x in 0 until TEX) {
+                val i = y * TEX + x
+                val c = contrast(d[i], 1.8f)
+                val mask = smoothstep(.54f, .80f, c) * .8f
+                pixels[i] = ((mask * 255f + .5f).toInt() shl 24) or color
+            }
         }
         return Bitmap.createBitmap(pixels, TEX, TEX, Bitmap.Config.ARGB_8888)
     }
@@ -372,6 +386,7 @@ internal class CloudAtmosphereRenderer(
                     tx[x] = t * t * (3f - 2f * t)
                 }
                 for (y in 0 until TEX) {
+                    if (Thread.currentThread().isInterrupted) throw RuntimeException("Cloud texture bake cancelled")
                     val fy = y * cy / TEX.toFloat()
                     val j = fy.toInt()
                     val t = fy - j
