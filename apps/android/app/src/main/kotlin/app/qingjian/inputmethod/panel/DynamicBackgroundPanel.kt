@@ -140,7 +140,12 @@ class DynamicBackgroundPanel(
                 },
             )
         }
-        return elements
+        val viewport = RectF(card.left, top, card.right, card.bottom - ink.dp(8f))
+        accessibilityScrollElement("背景设置列表，可滚动", viewport, scroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            val visible = RectF(element.bounds)
+            if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
