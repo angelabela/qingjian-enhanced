@@ -62,6 +62,39 @@ class ToolbarPanel(
 
     private enum class Badge { REMOVE, ADD, PLACED }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        elements += AccessibilityElement(
+            "恢复默认工具栏顺序",
+            RectF(width - ink.dp(RESET_WIDTH_DP), 0f, width.toFloat(), headerHeight),
+        )
+        val cellW = cellWidth()
+        fun addCells(tools: List<ToolbarTool>, sectionTop: Float, placedSection: Boolean) {
+            tools.forEachIndexed { index, tool ->
+                val row = index / columns
+                val col = index % columns
+                val left = card.left + col * cellW
+                val top = card.top + sectionTop + row * cellHeight - scroll.offset
+                val bounds = RectF(left, top, left + cellW, top + cellHeight)
+                if (!RectF.intersects(bounds, card)) return@forEachIndexed
+                val alreadyPlaced = tool in placed
+                elements += AccessibilityElement(
+                    tool.label + when {
+                        placedSection -> "，已在工具栏，点击移除"
+                        alreadyPlaced -> "，已添加，点击移除"
+                        else -> "，点击添加到工具栏"
+                    },
+                    bounds,
+                    selected = alreadyPlaced,
+                )
+            }
+        }
+        addCells(placed, sectionTitle, true)
+        addCells(ToolbarTool.entries, allTop + sectionTitle, false)
+        return elements
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, leftIcon = Icon.CHECK)
         ink.text(canvas, RESET, 14f, palette.brand, width - ink.dp(RESET_WIDTH_DP) / 2, headerHeight / 2)
