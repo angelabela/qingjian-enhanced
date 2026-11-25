@@ -239,7 +239,7 @@ abstract class PanelView(
             node.isVisibleToUser = isShown
             node.isFocusable = true
             node.isClickable = isEnabled && !isTabScroll && (!isElement || (element!!.enabled && element.rangeMin == null && element.onScroll == null))
-            node.isScrollable = isTabScroll || (isElement && element!!.onScroll != null)
+            node.isScrollable = node.isEnabled && (isTabScroll || (isElement && element!!.onScroll != null))
             if (node.isEnabled && (isTabScroll || (isElement && element!!.onScroll != null))) {
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
@@ -308,6 +308,7 @@ abstract class PanelView(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
                     if (virtualViewId == TAB_SCROLL_ACCESSIBILITY_ID) {
+                        if (!isEnabled) return false
                         val tabs = accessibilityTabs ?: return false
                         if (!tabs.accessibilityScrollable) return false
                         tabs.accessibilityScroll(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)
