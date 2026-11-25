@@ -6,6 +6,12 @@ import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
 import android.view.View
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.keyboard.layout.Key
@@ -123,6 +129,160 @@ class KeyboardView(
     private var choiceKey: Key? = null
     private val screenLocation = IntArray(2)
 
+    private val accessibilityManager =
+        context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    private var accessibilityFocusedKey = -1
+    private var hoveredAccessibilityKey = -1
+
+    /**
+     * 键盘是 Canvas 自绘，必须显式暴露每个键的虚拟节点；不改动原有触摸/滑动分发。
+     * TalkBack 点击虚拟键时只执行普通点按，不伪造长按或方向手势。
+     */
+    private val keyboardAccessibilityProvider = object : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            val slot = slots.getOrNull(virtualViewId) ?: return null
+            val info = AccessibilityNodeInfo.obtain()
+            info.setSource(this@KeyboardView, virtualViewId)
+            info.setParent(this@KeyboardView)
+            info.packageName = context.packageName
+            info.className = "android.widget.Button"
+            info.text = accessibilityLabel(slot.key)
+            info.contentDescription = accessibilityLabel(slot.key)
+            info.isEnabled = this@KeyboardView.isEnabled
+            info.isVisibleToUser = isShown
+            info.isFocusable = true
+            info.isClickable = true
+            info.isAccessibilityFocused = accessibilityFocusedKey == virtualViewId
+            val bounds = Rect()
+            slot.bounds.roundOut(bounds)
+            info.setBoundsInParent(bounds)
+            val screenBounds = Rect(bounds)
+            getLocationOnScreen(screenLocation)
+            screenBounds.offset(screenLocation[0], screenLocation[1])
+            info.setBoundsInScreen(screenBounds)
+            info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (accessibilityFocusedKey == virtualViewId) {
+                info.addAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS)
+            } else {
+                info.addAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+            }
+            return info
+        }
+
+        override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            val slot = slots.getOrNull(virtualViewId) ?: return false
+            when (action) {
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    if (!accessibilityManager.isEnabled || accessibilityFocusedKey == virtualViewId) return false
+                    if (accessibilityFocusedKey >= 0) {
+                        sendVirtualAccessibilityEvent(
+                            accessibilityFocusedKey,
+                            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                        )
+                    }
+                    accessibilityFocusedKey = virtualViewId
+                    sendVirtualAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                    if (accessibilityFocusedKey != virtualViewId) return false
+                    accessibilityFocusedKey = -1
+                    sendVirtualAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLICK -> {
+                    if (!isEnabled) return false
+                    tapFeedback()
+                    listener.onKey(slot.key)
+                    sendVirtualAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    return true
+                }
+            }
+            return false
+        }
+
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? =
+            if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
+                createAccessibilityNodeInfo(accessibilityFocusedKey)
+            } else null
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider = keyboardAccessibilityProvider
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        slots.indices.forEach { info.addChild(this, it) }
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (!accessibilityManager.isTouchExplorationEnabled) return super.onHoverEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val next = slots.indexOfFirst { it.bounds.contains(event.x, event.y) }
+                if (next != hoveredAccessibilityKey) {
+                    if (hoveredAccessibilityKey >= 0) {
+                        sendVirtualAccessibilityEvent(
+                            hoveredAccessibilityKey,
+                            AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                        )
+                    }
+                    hoveredAccessibilityKey = next
+                    if (next >= 0) {
+                        sendVirtualAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    }
+                }
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (hoveredAccessibilityKey >= 0) {
+                    sendVirtualAccessibilityEvent(
+                        hoveredAccessibilityKey,
+                        AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                    )
+                    hoveredAccessibilityKey = -1
+                }
+            }
+        }
+        return true
+    }
+
+    private fun sendVirtualAccessibilityEvent(virtualViewId: Int, eventType: Int) {
+        val slot = slots.getOrNull(virtualViewId) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, virtualViewId)
+        event.text.add(accessibilityLabel(slot.key))
+        event.isEnabled = isEnabled
+        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+    }
+
+    private fun accessibilityLabel(key: Key): String = when (key) {
+        is Key.Letter -> key.char.uppercase()
+        is Key.Digit -> "${key.letters}，数字${key.digit}"
+        is Key.Zhuyin -> key.label
+        is Key.Text -> key.text
+        is Key.Space -> "空格"
+        is Key.Enter -> "回车"
+        Key.Backspace -> "删除"
+        Key.Shift -> "大小写切换"
+        Key.Language -> "中英文切换"
+        Key.Tab, Key.TabWide -> "跳到下一格"
+        Key.TabPrevious -> "跳到上一格"
+        Key.Clear -> "清空输入"
+        is Key.Symbols -> key.label.ifBlank { "符号" }
+        is Key.SymbolPage -> key.label.ifBlank { "符号页" }
+        is Key.NumberPage -> key.label.ifBlank { "数字页" }
+        is Key.Letters -> key.label.ifBlank { "字母页" }
+    }
+
     /** 在等长按的那根手指；气泡弹出后它的移动只用来选项。 */
     private var longPressPointer = -1
 
@@ -229,6 +389,7 @@ class KeyboardView(
     val baseHeight: Float get() = metrics.baseHeight
 
     init {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         painter.setMarqueeEnabled(keyMarqueeEnabled)
         refreshKeyEffects()
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
@@ -299,6 +460,9 @@ class KeyboardView(
         slots = metrics.layout(rows, side.enabled, width)
         side.bounds = metrics.sideBounds(width)
         invalidate()
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
