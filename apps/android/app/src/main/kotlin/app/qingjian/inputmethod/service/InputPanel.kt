@@ -345,19 +345,30 @@ private class FlowingKeyboardBackgroundDrawable(
 
     /** Android 13+ 使用稳定的平滑值噪声云层；旧系统继续走 Canvas 渐变云层回退。 */
     private fun drawCloudShader(canvas: Canvas, w: Float, h: Float, time: Double, style: Int): Boolean {
-        if (Build.VERSION.SDK_INT < 33) return false
-        val shader = cloudShader ?: runCatching { RuntimeShader(CLOUD_AGSL) }.getOrNull()?.also { cloudShader = it } ?: return false
-        shader.setFloatUniform("iTime", time.toFloat())
-        shader.setFloatUniform("iResolution", w.coerceAtLeast(1f), h.coerceAtLeast(1f))
-        // 将场景编号传入 AGSL；此前漏设该 uniform，四个主题均按默认值绘制。
-        shader.setFloatUniform("iScene", style.toFloat())
-        cloudShaderPaint.shader = shader
-        canvas.drawRect(0f, 0f, w, h, cloudShaderPaint)
-        cloudShaderPaint.shader = null
-        return true
+        if (Build.VERSION.SDK_INT < 33 || cloudShaderUnavailable) return false
+        return try {
+            val shader = cloudShader ?: RuntimeShader(CLOUD_AGSL).also { cloudShader = it }
+            shader.setFloatUniform("iTime", time.toFloat())
+            shader.setFloatUniform("iResolution", w.coerceAtLeast(1f), h.coerceAtLeast(1f))
+            shader.setFloatUniform("iScene", style.toFloat())
+            cloudShaderPaint.shader = shader
+            canvas.drawRect(0f, 0f, w, h, cloudShaderPaint)
+            true
+        } catch (error: RuntimeException) {
+            // 部分 GPU/系统图形驱动会在 uniform 绑定或首次 draw 时才拒绝 AGSL。
+            // 不让动态背景的渲染异常带崩整个输入法进程，当前场景降级到 Canvas 云层。
+            cloudShaderPaint.shader = null
+            cloudShader = null
+            cloudShaderUnavailable = true
+            AppLog.w("Cloud shader disabled; using Canvas fallback: ${error.message}")
+            false
+        } finally {
+            cloudShaderPaint.shader = null
+        }
     }
 
     private var cloudShader: RuntimeShader? = null
+    private var cloudShaderUnavailable = false
     private val cloudShaderPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val CLOUD_AGSL = """
         uniform float iTime;
@@ -413,14 +424,15 @@ private class FlowingKeyboardBackgroundDrawable(
             speed = mix(speed, 0.024, isTwilight);
             cloudP.x -= iTime * speed;
             cloudP.y += iTime * (0.0012 * isTwilight + 0.0005 * isDusk);
-            float2 warp = float2(fbm(cloudP * 1.15 + float2(2.0, 1.0)),
-                                 fbm(cloudP * 1.15 + float2(8.0, 4.0)));
-            float2 q = cloudP + (warp - 0.5) * 0.82;
-            // 大尺度塑造连续云团，细节只柔化边缘，避免棋盘块状云。
-            float broad = fbm(q * 1.72 + float2(0.0, 1.4));
-            float detail = fbm(q * 3.65 + float2(3.7, 6.1));
-            float fine = fbm(q * 7.4 + float2(11.0, 2.0));
-            float density = broad * 0.70 + detail * 0.23 + fine * 0.07;
+            float2 warp = float2(fbm(cloudP * 0.72 + float2(2.0, 1.0)),
+                                 fbm(cloudP * 0.72 + float2(8.0, 4.0)));
+            // 低频域扭曲负责云体整体连贯；高频仅保留少量，防止云被切成碎块。
+            float2 q = cloudP + (warp - 0.5) * 0.58;
+            float macro = fbm(q * 0.78 + float2(1.2, 2.4));
+            float broad = fbm(q * 1.28 + float2(0.0, 1.4));
+            float detail = fbm(q * 2.55 + float2(3.7, 6.1));
+            float fine = fbm(q * 5.1 + float2(11.0, 2.0));
+            float density = macro * 0.54 + broad * 0.31 + detail * 0.12 + fine * 0.03;
 
             float horizon = 1.0 - vertical;
             float cloudBase = 0.485;
@@ -428,8 +440,9 @@ private class FlowingKeyboardBackgroundDrawable(
             cloudBase = mix(cloudBase, 0.475, isDusk);
             cloudBase = mix(cloudBase, 0.525, isNight);
             cloudBase = mix(cloudBase, 0.465, isTwilight);
-            float cloudMask = smoothstep(cloudBase, cloudBase + 0.17, density);
-            cloudMask *= smoothstep(0.015, 0.24, horizon);
+            // 阈值区间加宽，云边以连续的软过渡融合，不留下硬切口和透明断层。
+            float cloudMask = smoothstep(cloudBase - 0.075, cloudBase + 0.105, density);
+            cloudMask *= smoothstep(0.005, 0.16, horizon);
             cloudMask *= mix(0.88, 0.70, isNight);
 
             float3 lit = float3(1.0, 0.99, 0.96);
@@ -460,7 +473,7 @@ private class FlowingKeyboardBackgroundDrawable(
                 float moon = 1.0 - smoothstep(0.040, 0.047, length(uv - float2(aspect * 0.72, 0.20)));
                 sky = mix(sky, float3(0.88, 0.92, 1.0), moon);
             }
-            float edgeLight = smoothstep(0.58, 0.82, density) * (1.0 - smoothstep(0.82, 0.96, density));
+            float edgeLight = smoothstep(0.54, 0.70, density) * (1.0 - smoothstep(0.78, 0.90, density));
             cloudColor += lit * edgeLight * (0.10 + isGlow * 0.20 + isDusk * 0.10);
             return half4(mix(sky, cloudColor, clamp(cloudMask, 0.0, 1.0)), 1.0);
         }
