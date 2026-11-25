@@ -561,8 +561,8 @@ class FunctionPanel(
             ink.text(canvas, label, 12f, if (selected) palette.onBrand else palette.text, bounds.centerX(), bounds.centerY())
         }
         val controlsTop = targetTop + ink.dp(48f)
-        val left = card.left + ink.dp(18f)
-        val right = card.right - ink.dp(18f)
+        val left = card.left + ink.dp(14f)
+        val right = card.right - ink.dp(14f)
         val textColor = currentTextColor()
         val textSize = currentTextSize()
         val weight = currentTextWeight()
@@ -822,8 +822,8 @@ class FunctionPanel(
                 2 -> controlsTop + ink.dp(151f)
                 else -> -1f
             }
-            val trackLeft = card.left + ink.dp(18f)
-            val trackRight = card.right - ink.dp(18f)
+            val trackLeft = card.left + ink.dp(14f)
+            val trackRight = card.right - ink.dp(14f)
             val nearTrack = slider >= 0 &&
                 kotlin.math.abs(event.y - (sliderTrackY - effectScroll.offset)) <= ink.dp(9f) &&
                 event.x in (trackLeft - ink.dp(4f))..(trackRight + ink.dp(4f))
