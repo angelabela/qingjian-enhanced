@@ -130,6 +130,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         minimumHeight = dp(ROW_HEIGHT_DP)
         setPadding(dp(16), dp(8), dp(12), dp(8))
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = title
         setOnClickListener { onClick() }
         addView(tile(icon, 30, muted))
         addView(text(title, 16f, colors.text).apply { setPadding(dp(12), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
@@ -160,6 +163,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         minimumHeight = dp(ROW_HEIGHT_DP)
         setPadding(dp(16), dp(8), dp(12), dp(8))
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = listOfNotNull(title, value).joinToString("，")
         setOnClickListener { onClick() }
         addView(text(title, 16f, colors.text), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         value?.let { addView(valueText(it)) }
@@ -199,6 +205,8 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         addView(icon(Icon.BACK, colors.brand, 24f).apply {
             contentDescription = context.getString(android.R.string.cancel)
             background = RippleDrawable(ColorStateList.valueOf(colors.divider), null, null)
+            isClickable = true
+            isFocusable = true
             setOnClickListener { onBack() }
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.START or Gravity.CENTER_VERTICAL))
         addView(barTitle(title), FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
@@ -226,8 +234,11 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = pressable()
-            val switch = switch(checked, onChange)
-            addView(row(title, note).apply { setPadding(dp(16), dp(12), dp(8), dp(12)) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            isClickable = true
+            isFocusable = true
+            contentDescription = title + if (checked) "，已开启" else "，已关闭"
+            val switch = switch(checked, onChange).apply { contentDescription = title; isFocusable = true }
+            addView(row(title, note).apply { setPadding(dp(16), dp(12), dp(8), dp(12)); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             trailing?.let(::addView)
             addView(switch, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(16) })
             setOnClickListener { switch.toggle() }
@@ -251,7 +262,7 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
                 isClickable = true
                 isFocusable = true
                 isSelected = on
-                contentDescription = option
+                contentDescription = if (on) "$option，已选中" else option
                 setOnClickListener { if (!on) onPick(index) }
                 addView(text(option, 13f, colors.text, bold = on).apply {
                     gravity = Gravity.CENTER
@@ -365,6 +376,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             gravity = Gravity.END
             setPadding(dp(12), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        isClickable = true
+        isFocusable = true
+        contentDescription = context.getString(title)
         setOnClickListener { onClick() }
     }
 
@@ -383,12 +397,15 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             addView(label)
         })
         addView(SeekBar(context).apply {
+            contentDescription = context.getString(title)
+            isFocusable = true
             this.max = (max - min) / step
             progress = (value - min) / step
             progressTintList = ColorStateList.valueOf(colors.brand)
             thumbTintList = ColorStateList.valueOf(colors.brand)
             progressBackgroundTintList = ColorStateList.valueOf(colors.faint)
             setPadding(dp(24), dp(10), dp(24), dp(10))
+            minimumHeight = dp(48)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
                     val current = min + progress * step
