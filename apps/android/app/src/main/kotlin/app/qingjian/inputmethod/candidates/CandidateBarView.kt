@@ -273,7 +273,7 @@ class CandidateBarView(
     val barHeight = 66f * density * maxOf(1f, textScale * fontScale)
     private val strip = CandidateStrip(
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
-        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board,
+        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board, scaledDensity = resources.displayMetrics.scaledDensity,
     )
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
@@ -307,7 +307,7 @@ class CandidateBarView(
     private val smartActionText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = palette.onBrand
         textAlign = Paint.Align.CENTER
-        textSize = 11f * density
+        textSize = 11f * resources.displayMetrics.scaledDensity
     }
     /** 拼音组句时强调首候选：低透明脉冲底光 + 细描边，不遮挡候选文字。 */
     private val firstCandidateGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {

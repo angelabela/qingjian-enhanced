@@ -554,7 +554,7 @@ class KeyPainter(
     /** 同 [text]，放不下 [maxWidth] 就缩小字号（双拼韵母一个键可能有两三个）。 */
     private fun fitted(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float, maxWidth: Float) {
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * density * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp)
         val width = ink.measureText(value)
         text(canvas, value, if (width > maxWidth) sp * maxWidth / width else sp, color, cx, cy)
     }
