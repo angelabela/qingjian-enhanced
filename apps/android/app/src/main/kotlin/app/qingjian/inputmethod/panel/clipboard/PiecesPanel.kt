@@ -48,6 +48,38 @@ class PiecesPanel(
 
     private fun barTop() = height - ink.dp(BAR_DP)
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (area.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        val rowHeight = ink.dp(CHIP_DP)
+        pieces.indices.forEach { index ->
+            val top = area.top + tops.getOrElse(index) { 0f } - areaScroll.offset
+            if (top + rowHeight < area.top || top > area.bottom) return@forEach
+            val label = chipLabels[index].ifBlank { "空白" }
+            elements += AccessibilityElement(
+                label + if (selected[index]) "，已选中" else "，未选中",
+                RectF(lefts[index], top, lefts[index] + widths[index], top + rowHeight),
+                selected = selected[index],
+            )
+        }
+        val each = (width - ink.dp(20f)) / buttons.size
+        buttons.forEachIndexed { index, label ->
+            val left = ink.dp(10f) + each * index + ink.dp(4f)
+            val top = barTop() + ink.dp(8f)
+            val right = ink.dp(10f) + each * (index + 1) - ink.dp(4f)
+            elements += AccessibilityElement(
+                when (index) {
+                    0 -> if (selected.all { it }) "取消全选" else "全选"
+                    1 -> "复制已选内容"
+                    else -> "完成拆词并返回键盘"
+                },
+                RectF(left, top, right, height - ink.dp(8f)),
+                selected = index == 0 && selected.all { it },
+            )
+        }
+        return elements
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs)
         area.set(0f, headerHeight + ink.dp(4f), width.toFloat(), barTop())
