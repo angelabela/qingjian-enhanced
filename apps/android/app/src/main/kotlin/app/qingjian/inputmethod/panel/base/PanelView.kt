@@ -88,16 +88,22 @@ abstract class PanelView(
         )
     }
 
+    private fun hasAccessibilityNode(id: Int): Boolean {
+        val node = panelAccessibilityProvider.createAccessibilityNodeInfo(id) ?: return false
+        node.recycle()
+        return true
+    }
+
     protected fun notifyAccessibilityContentChanged() {
         // A panel may replace its dynamic rows while TalkBack is focused on one of them.
         // Clear stale virtual focus/hover immediately so findFocus() never points at a dead node.
         val focused = accessibilityFocusedId
-        if (focused != INVALID_ACCESSIBILITY_ID && panelAccessibilityProvider.createAccessibilityNodeInfo(focused) == null) {
+        if (focused != INVALID_ACCESSIBILITY_ID && !hasAccessibilityNode(focused)) {
             accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
             sendPanelAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
         }
         val hovered = hoveredAccessibilityId
-        if (hovered != INVALID_ACCESSIBILITY_ID && panelAccessibilityProvider.createAccessibilityNodeInfo(hovered) == null) {
+        if (hovered != INVALID_ACCESSIBILITY_ID && !hasAccessibilityNode(hovered)) {
             hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
             sendPanelAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
         }
