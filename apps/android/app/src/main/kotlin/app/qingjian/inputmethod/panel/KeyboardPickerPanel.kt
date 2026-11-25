@@ -54,6 +54,25 @@ class KeyboardPickerPanel(
     private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val columns = 5
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        card.set(ink.dp(10f), headerHeight, w - ink.dp(10f), h - ink.dp(8f))
+    }
+
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        return choices.mapIndexed { index, choice ->
+            val row = index / columns
+            val column = index % columns
+            val left = card.left + cellWidth() * column
+            val top = card.top + ink.dp(8f) + cellHeight() * row
+            AccessibilityElement(
+                label = choice.label + if (chosen(choice)) "，当前输入方式" else "",
+                bounds = RectF(left, top, left + cellWidth(), top + cellHeight()),
+                selected = chosen(choice),
+            )
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, Icon.SETTINGS)
         card.set(ink.dp(10f), headerHeight, width - ink.dp(10f), height - ink.dp(8f))
