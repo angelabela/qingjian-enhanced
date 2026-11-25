@@ -346,6 +346,16 @@ class FunctionPanel(
                 RectF(left, colorY - ink.dp(12f), right, colorY + ink.dp(12f)),
                 rangeMin = 0f, rangeMax = 360f, rangeCurrent = hsv[0],
                 onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) }, virtualId = 50011)
+            val colorSwatchY = controlsTop + ink.dp(68f)
+            TEXT_PRESET_COLORS.forEachIndexed { index, color ->
+                val swatchLeft = left + index * (ink.dp(18f) + ink.dp(4f))
+                result += AccessibilityElement(
+                    "字体颜色预设 #" + Integer.toHexString(color and 0x00FFFFFF) +
+                        if (currentTextColor() == color) "，已选中" else "",
+                    RectF(swatchLeft, colorSwatchY - ink.dp(3f), swatchLeft + ink.dp(18f), colorSwatchY + ink.dp(15f)),
+                    selected = currentTextColor() == color, virtualId = 50100 + index,
+                )
+            }
             val currentSize = currentTextSize().toFloat()
             val weightIndex = Settings.FontWeight.entries.indexOf(currentTextWeight()).coerceAtLeast(0)
             val fontTrackY = controlsTop + ink.dp(118f)
