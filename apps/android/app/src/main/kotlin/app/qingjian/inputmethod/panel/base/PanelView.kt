@@ -284,7 +284,7 @@ abstract class PanelView(
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
-                    if (createAccessibilityNodeInfo(virtualViewId) == null) return false
+                    if (!hasAccessibilityNode(virtualViewId)) return false
                     if (accessibilityFocusedId == virtualViewId) return true
                     val previous = accessibilityFocusedId
                     accessibilityFocusedId = virtualViewId
