@@ -109,6 +109,7 @@ private class FlowingKeyboardBackgroundDrawable(
     private var sampleBitmap: Bitmap? = null
     private val frame: Runnable = object : Runnable {
         override fun run() {
+            if (!isVisible) return
             invalidateSelf()
             onFrame?.invoke()
             scheduleSelf(this, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
@@ -175,7 +176,20 @@ private class FlowingKeyboardBackgroundDrawable(
             Shader.TileMode.MIRROR,
         )
         unscheduleSelf(frame)
-        scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        if (isVisible) scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+    }
+
+    override fun setVisible(visible: Boolean, restart: Boolean): Boolean {
+        val changed = super.setVisible(visible, restart)
+        unscheduleSelf(frame)
+        cloudAtmosphere.setActive(visible)
+        if (visible) {
+            if (!bounds.isEmpty) scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        } else {
+            sampleBitmap?.recycle()
+            sampleBitmap = null
+        }
+        return changed
     }
 
     fun setAppearance(alpha: Float, brightness: Int) {
