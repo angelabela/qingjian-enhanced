@@ -89,7 +89,8 @@ class ToolbarPanel(
                     },
                     bounds,
                     selected = alreadyPlaced,
-                    virtualId = 10000 + tool.ordinal,
+                    // Keep the same tool's "placed" and "all tools" rows as distinct virtual nodes.
+                    virtualId = (if (placedSection) 10000 else 11000) + tool.ordinal,
                     onMoveUp = if (placedSection && currentPlacedIndex > 0) {
                         { movePlacedTool(tool, -1) }
                     } else null,
