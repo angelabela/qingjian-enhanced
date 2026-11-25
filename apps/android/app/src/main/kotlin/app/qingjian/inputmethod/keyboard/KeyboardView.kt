@@ -929,8 +929,11 @@ class KeyboardView(
             return true
         }
         if (!surfaceCandidateMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_START_DP && abs(dx) > abs(dy)) {
-            if (!listener.onCandidateSwipeStart()) return false
-            surfaceCandidateMode = true
+            // 达到横滑阈值后先由候选手势接管；即使当前没有候选，也不能再把整段滑动
+            // 回退成普通按键点击，否则用户会感觉手势没有生效、还会误输入一个字母。
+            val started = listener.onCandidateSwipeStart()
+            surfaceCandidateMode = started
+            if (!started) surfaceCandidateCancelled = true
             pressed.remove(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
@@ -939,6 +942,7 @@ class KeyboardView(
             if (longPressPointer == pointer) longPressPointer = -1
             timer.removeCallbacks(repeatBackspace)
             backspaceRepeatStarted = false
+            if (!started) return true
         }
         if (!surfaceCandidateMode) return false
         val currentStep = (dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()

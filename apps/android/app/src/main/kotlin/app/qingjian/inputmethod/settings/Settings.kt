@@ -340,7 +340,7 @@ data class Settings(
                 longPressUpper = prefs.getBoolean(KEY_LONG_PRESS_UPPER, false),
                 flickClear = prefs.getBoolean(KEY_FLICK_CLEAR, true),
                 spaceCursor = prefs.getBoolean(KEY_SPACE_CURSOR, true),
-                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, false),
+                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, true),
                 arrangement = Arrangement.entries.firstOrNull { it.name == prefs.getString(KEY_ARRANGEMENT, null) }
                     ?: Arrangement.STANDARD,
                 shuangpinScheme = prefs.getString(KEY_SHUANGPIN, null) ?: DEFAULT_SHUANGPIN,

@@ -1652,8 +1652,9 @@ class QingjianInputMethodService :
     override fun onCursorMove(steps: Int) = composer.moveCursor(steps)
 
     override fun onCandidateSwipeStart(): Boolean {
-        if (shownCandidates.isEmpty()) return false
-        if (panel?.openPanel != null) return false
+        if (shownCandidates.isEmpty() || panel?.openPanel != null) return false
+        // 空格键与键盘面板共用同一个预选会话；避免上一笔未结束的索引残留。
+        if (spaceCandidateSwipeIndex >= 0) onCandidateSwipeEnd(commit = false)
         spaceCandidateSwipeIndex = 0
         panel?.bar?.setGestureSelection(spaceCandidateSwipeIndex)
         return true
