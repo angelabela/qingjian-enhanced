@@ -1039,8 +1039,8 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.shift = ShiftState.OFF
         host.showSideItems(pinyinChoices)
         host.showComposition("", emptyList())
-        if (!preservePage && page != Page.LETTERS) {
-            page = Page.LETTERS
+        if (page != Page.LETTERS) {
+            if (!preservePage) page = Page.LETTERS
             host.showKeyboard()
         }
     }

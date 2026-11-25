@@ -892,8 +892,8 @@ class QingjianInputMethodService :
             AppLog.info("keeping clipboard panel through finishInputView; finishingInput=$finishingInput")
         }
         composer.finishStructuredToken()
-        // finishingInput=true 可能只是编辑器动作引发的输入视图重启；保留数字/符号页状态。
-        composer.abandon(preservePage = finishingInput)
+        // 输入视图隐藏不等于编辑器会话结束；保留当前数字/符号页，真正切换输入框时由 onStartInput 重置。
+        composer.abandon(preservePage = true)
         // 即使本轮没有触发 reset，输入视图结束时也确保学习数据立即落盘。
         engine.flushLearning()
     }

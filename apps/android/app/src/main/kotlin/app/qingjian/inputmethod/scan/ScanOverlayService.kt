@@ -105,6 +105,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
     private lateinit var scanArea: ScanAreaView
     private lateinit var scanner: BarcodeScanner
     private val binaryEyeReader by lazy { BarcodeReader(BarcodeReader.Options(
+        formats = setOf(BarcodeReader.Format.ALL_READABLE),
         tryHarder = true, tryRotate = true, tryInvert = true, tryDownscale = true, maxNumberOfSymbols = 1,
     )) }
     private lateinit var textRecognizer: TextRecognizer
@@ -1167,8 +1168,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
     /** Binary Eye 同款 ZXing-C++ 兜底：直接读取 CameraX Y 平面，启用困难识别、旋转、反色与降采样。 */
     private fun decodeWithZxing(proxy: androidx.camera.core.ImageProxy): Pair<String, RectF>? {
         if (proxy.planes.firstOrNull() == null || proxy.width < 2 || proxy.height < 2) return null
-        val binarizer = if (useLocalAverage) BarcodeReader.Binarizer.LOCAL_AVERAGE else BarcodeReader.Binarizer.GLOBAL_HISTOGRAM
         useLocalAverage = !useLocalAverage
+        val binarizer = if (useLocalAverage) BarcodeReader.Binarizer.LOCAL_AVERAGE else BarcodeReader.Binarizer.GLOBAL_HISTOGRAM
         val result = runCatching {
             binaryEyeReader.options.binarizer = binarizer
             binaryEyeReader.read(proxy).firstOrNull()
@@ -1203,7 +1204,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
             val centerY = if (transform != null) mapped.centerY() else roi.centerY()
             scanDiag("ZXing-C++ accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
             if (shouldDeliverCode(value)) deliverResult(value)
-        }.onFailure { android.util.Log.w(TAG, "ZXing fallback mapping failed", it) }
+        }.onFailure { android.util.Log.w(TAG, "ZXing-C++ result mapping failed", it) }
     }
 
     /** 两种扫描模式明确互斥：拍照识图时暂停条码分析并显示拍照按钮。 */

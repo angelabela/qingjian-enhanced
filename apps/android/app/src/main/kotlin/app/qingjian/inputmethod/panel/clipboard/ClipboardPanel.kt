@@ -949,7 +949,7 @@ class ClipboardPanel(
             return layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
         }
         val clip = clipAt(i) ?: return 0f
-        val bodyHeight = if (clip.image != null) ink.dp(IMAGE_DP) else layout(i).height
+        val bodyHeight = if (clip.image != null) ink.dp(IMAGE_DP) else layout(i).height.toFloat()
         val timestampHeight = if (clip.copiedAtSeconds > 0L) ink.dp(TIME_LINE_DP) else 0f
         return bodyHeight + timestampHeight
     }

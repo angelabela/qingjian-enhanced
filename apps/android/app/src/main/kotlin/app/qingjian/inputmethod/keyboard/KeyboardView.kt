@@ -802,10 +802,7 @@ class KeyboardView(
                             timer.removeCallbacks(longPress)
                             longPressPointer = -1
                         }
-                        if (choicePopup.showing) choicePopup.finish()
-                        choiceKey = null
-                        choiceItems = emptyList()
-                        choiceTracking = false
+                        clearChoiceState()
                         listener.onEditShortcut(action)
                         invalidate()
                         return true
@@ -836,7 +833,17 @@ class KeyboardView(
                     }
                 }
                 if (pointer == trail.pointer) {
-                    val swiped = trail.swiping
+                    if (trail.swiping && choicePopup.showing && longPressPointer == pointer) {
+                        val pointerIndex = event.findPointerIndex(pointer)
+                        if (pointerIndex >= 0) {
+                            getLocationOnScreen(screenLocation)
+                            val fingerX = screenLocation[0] + event.getX(pointerIndex)
+                            if (!choicePopup.containsX(fingerX)) clearChoiceState()
+                        }
+                    }
+                    // 手指仍在长按气泡范围内时，抬手应提交气泡选项；滑出气泡后才提交整键盘滑行。
+                    val choosingLongPress = choicePopup.showing && longPressPointer == pointer
+                    val swiped = trail.swiping && !choosingLongPress
                     if (swiped) listener.onSwipe(trail.toJson(slots))
                     trail.clear()
                     if (swiped) {
