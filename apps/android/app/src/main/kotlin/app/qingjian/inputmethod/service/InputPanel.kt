@@ -360,7 +360,7 @@ private class FlowingKeyboardBackgroundDrawable(
             cloudShaderPaint.shader = null
             cloudShader = null
             cloudShaderUnavailable = true
-            AppLog.w("Cloud shader disabled; using Canvas fallback: ${error.message}")
+            AppLog.warn("Cloud shader disabled; using Canvas fallback: ${error.message}")
             false
         } finally {
             cloudShaderPaint.shader = null
