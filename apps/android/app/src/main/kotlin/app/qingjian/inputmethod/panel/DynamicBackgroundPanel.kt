@@ -110,8 +110,8 @@ class DynamicBackgroundPanel(
         // 背景光效样式：固定四列紧凑网格；超出可视区域由整个内容区上下滚动。
         val gridTop = effectGridTop(top)
         ink.textStart(canvas, "背景光效样式", 13f, palette.text, card.left + ink.dp(16f), effectTitleY(top), card.right - ink.dp(16f))
-        val gridLeft = card.left + ink.dp(12f)
-        val gridRight = card.right - ink.dp(12f)
+        val gridLeft = card.left + ink.dp(16f)
+        val gridRight = card.right - ink.dp(16f)
         val cellGap = effectGridGap
         val cellWidth = (gridRight - gridLeft - cellGap * 3) / 4f
         val selected = selectedEffectStyle()
@@ -202,8 +202,8 @@ class DynamicBackgroundPanel(
             }
             contentY >= effectGridTop(top) && contentY < effectGridBottom(top) + effectGridGap -> {
                 val gridY = contentY - effectGridTop(top)
-                val gridLeft = card.left + ink.dp(12f)
-                val gridRight = card.right - ink.dp(12f)
+                val gridLeft = card.left + ink.dp(16f)
+                val gridRight = card.right - ink.dp(16f)
                 val cellGap = effectGridGap
                 val cellWidth = (gridRight - gridLeft - cellGap * 3) / 4f
                 val col = ((x - gridLeft) / (cellWidth + cellGap)).toInt()
