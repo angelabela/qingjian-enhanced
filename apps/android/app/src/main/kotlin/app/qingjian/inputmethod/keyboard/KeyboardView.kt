@@ -1158,8 +1158,7 @@ class KeyboardView(
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
-            timer.removeCallbacks(longPress)
-            if (longPressPointer == pointer) longPressPointer = -1
+            clearChoiceState()
             return true
         }
         if (!surfaceCandidateMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_START_DP && abs(dx) > abs(dy)) {
@@ -1172,8 +1171,9 @@ class KeyboardView(
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
-            timer.removeCallbacks(longPress)
-            if (longPressPointer == pointer) longPressPointer = -1
+            // Candidate swipes take ownership of this pointer. Dismiss any key-tip/long-press
+            // popup at the hand-off so it cannot remain visible after the gesture ends.
+            clearChoiceState()
             timer.removeCallbacks(repeatBackspace)
             backspaceRepeatStarted = false
             if (!started) return true
