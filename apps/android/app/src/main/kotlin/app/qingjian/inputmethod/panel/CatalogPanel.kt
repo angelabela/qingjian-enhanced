@@ -138,6 +138,67 @@ class CatalogPanel(
         else -> ink.dp(52f)
     }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (grid.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        categories.labels.indices.forEach { index ->
+            categories.accessibilityBounds(index)?.let { bounds ->
+                elements += AccessibilityElement(
+                    "分类，\${categories.labels[index]}" + if (index == categories.selected) "，已选中" else "",
+                    bounds,
+                    selected = index == categories.selected,
+                )
+            }
+        }
+        if (symbols) {
+            val slotHeight = side.height() / sideSlots()
+            if (!leftColumn) {
+                elements += AccessibilityElement("返回键盘", RectF(side.left, side.top, side.right, side.top + slotHeight))
+            } else {
+                elements += AccessibilityElement("返回键盘", RectF(back))
+            }
+            val firstAction = if (leftColumn) 0 else 1
+            elements += AccessibilityElement(
+                "删除上一个字符",
+                RectF(side.left, side.top + slotHeight * firstAction, side.right, side.top + slotHeight * (firstAction + 1)),
+            )
+            elements += AccessibilityElement(
+                if (locked) "解除符号面板锁定" else "锁定符号面板",
+                RectF(side.left, side.top + slotHeight * (firstAction + 1), side.right, side.bottom),
+                selected = locked,
+            )
+        } else {
+            val keyLeft = bottom.right - ink.dp(BOTTOM_KEY_DP)
+            elements += AccessibilityElement(
+                "删除上一个字符",
+                RectF(keyLeft, bottom.top, bottom.right, bottom.bottom),
+            )
+        }
+        val items = section?.items.orEmpty()
+        val columnCount = columns()
+        val cellWidth = grid.width() / columnCount
+        val rowHeight = rowHeight(columnCount)
+        if (cellWidth > 0f && rowHeight > 0f) {
+            val firstRow = (gridScroll.offset / rowHeight).toInt().coerceAtLeast(0)
+            val lastRow = ((gridScroll.offset + grid.height()) / rowHeight).toInt().coerceAtMost(
+                (items.size + columnCount - 1) / columnCount - 1
+            )
+            for (row in firstRow..lastRow) {
+                val y = grid.top + row * rowHeight - gridScroll.offset
+                for (column in 0 until columnCount) {
+                    val index = row * columnCount + column
+                    val item = items.getOrNull(index) ?: break
+                    val left = grid.left + column * cellWidth
+                    elements += AccessibilityElement(
+                        item,
+                        RectF(left, y, left + cellWidth, y + rowHeight),
+                    )
+                }
+            }
+        }
+        return elements
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (!symbols) drawHeader(canvas, top)
         drawGrid(canvas)
