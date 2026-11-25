@@ -23,8 +23,10 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private val marquee get() = prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false)
     private val edgeGlow get() = prefs.getBoolean(KEY_EDGE_GLOW, false)
     private val threeDimensional get() = prefs.getBoolean(KEY_3D, false)
-    private val borderIndex get() = prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)
-    private val backgroundIndex get() = prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)
+    private val borderColor get() = prefs.getInt(KEY_BORDER_COLOR, 0).takeIf { it != 0 }
+        ?: BORDER_COLORS[prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)]
+    private val backgroundColor get() = prefs.getInt(KEY_BACKGROUND_COLOR, 0).takeIf { it != 0 }
+        ?: BACKGROUND_COLORS[prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)]
     private fun top() = card.top + ink.dp(12f)
     private fun alphaTop() = top() + ink.dp(4f)
     private fun alphaTrackY() = alphaTop() + ink.dp(40f)
@@ -88,8 +90,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
                 )
             }
         }
-        addColors(borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
-        addColors(backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
+        addColors(borderTop(), "按键边框效果", PRESET_COLORS, PRESET_COLORS.indexOf(borderColor))
+        addColors(backgroundTop(), "按键背景效果", PRESET_COLORS, PRESET_COLORS.indexOf(backgroundColor and 0x00FFFFFF or 0xFF000000.toInt()))
         val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
         accessibilityScrollElement("按键效果设置列表，可滚动", viewport, scroll)?.let(elements::add)
         return elements.mapNotNull { element ->
@@ -125,17 +127,16 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         drawToggle(canvas, marqueeTop(), "字母按键跑马灯", marquee, "A-Z 依次流动，带彩虹渐变光尾")
         drawToggle(canvas, edgeGlowTop(), "边缘发光效果", edgeGlow, "按键轮廓增加柔和外扩光晕")
         drawToggle(canvas, threeDimensionalTop(), "立体按键效果", threeDimensional, "增加底部厚度阴影与顶部高光")
-        drawColorChoice(canvas, borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
-        drawColorChoice(canvas, backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
+        drawColorChoice(canvas, borderTop(), "按键边框效果", PRESET_COLORS, PRESET_COLORS.indexOf(borderColor))
+        drawColorChoice(canvas, backgroundTop(), "按键背景效果", PRESET_COLORS, PRESET_COLORS.indexOf(backgroundColor and 0x00FFFFFF or 0xFF000000.toInt()))
         canvas.restore()
         if (marquee && isShown) postInvalidateDelayed(32L)
     }
 
     private fun drawColorChoice(canvas: Canvas, rowTop: Float, label: String, colors: IntArray, selected: Int) {
         ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(14f), rowTop + ink.dp(18f), card.right - ink.dp(12f))
-        val swatchSize = ink.dp(19f)
-        val gap = ink.dp(9f)
-        val total = colors.size * swatchSize + (colors.size - 1) * gap
+        val swatchSize = ink.dp(17f)
+        val gap = ink.dp(6f)
         var x = card.left + ink.dp(14f)
         val y = rowTop + ink.dp(28f)
         colors.forEachIndexed { index, color ->
@@ -188,8 +189,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
 
     /** 按实际色块坐标命中，允许直接选择颜色。 */
     private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String, colors: IntArray) {
-        val swatchSize = ink.dp(19f)
-        val gap = ink.dp(9f)
+        val swatchSize = ink.dp(17f)
+        val gap = ink.dp(6f)
         val startX = card.left + ink.dp(14f)
         val centerY = rowTop + ink.dp(28f) + swatchSize / 2f
         if (kotlin.math.abs(contentY - centerY) > ink.dp(22f)) return
@@ -198,7 +199,14 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         } ?: return
         val centerX = startX + index * (swatchSize + gap) + swatchSize / 2f
         if (kotlin.math.abs(x - centerX) > swatchSize * 0.9f) return
-        prefs.edit().putInt(key, index).apply()
+        val color = colors[index]
+        val editor = prefs.edit()
+        if (key == KEY_BORDER_INDEX) {
+            editor.putInt(KEY_BORDER_COLOR, color).putInt(KEY_BORDER_INDEX, 0)
+        } else {
+            editor.putInt(KEY_BACKGROUND_COLOR, color and 0x00FFFFFF or 0x40000000).putInt(KEY_BACKGROUND_INDEX, 0)
+        }
+        editor.apply()
         notifyChanged()
     }
 
@@ -242,6 +250,14 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         const val KEY_3D = "keyboard_key_3d"
         const val KEY_BORDER_INDEX = "keyboard_key_border_index"
         const val KEY_BACKGROUND_INDEX = "keyboard_key_background_index"
+        const val KEY_BORDER_COLOR = "keyboard_key_border_color"
+        const val KEY_BACKGROUND_COLOR = "keyboard_key_background_color"
+        val PRESET_COLORS = intArrayOf(
+            0xFFD4042D.toInt(), 0xFF9D1F2F.toInt(), 0xFFEB6127.toInt(),
+            0xFFDB7A0E.toInt(), 0xFF5A92E5.toInt(), 0xFF5E8034.toInt(),
+            0xFF6FBA2C.toInt(), 0xFF41B5C2.toInt(), 0xFFFACA2E.toInt(),
+            0xFFEB6D98.toInt(), 0xFF722169.toInt(),
+        )
         val BORDER_COLORS = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
         val BACKGROUND_COLORS = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
     }
