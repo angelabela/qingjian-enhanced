@@ -31,14 +31,16 @@ class ChoicePopup(
 
     private val context: Context = anchor.context
     private val density = context.resources.displayMetrics.density
-    private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { it.textSize = titleSp * density }
-    private val notePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { it.textSize = 11.5f * density }
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+    private val fontScale = scaledDensity / density
+    private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { it.textSize = titleSp * scaledDensity }
+    private val notePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { it.textSize = 11.5f * scaledDensity }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
 
     private val margin = 6f * density
     private val itemPadding = (if (titleSp > 20f) 6f else 16f) * density
-    private val minItemWidth = maxOf(40f, titleSp * 1.8f) * density
+    private val minItemWidth = maxOf(40f, titleSp * 1.8f) * scaledDensity
 
     private var slots: List<Slot> = emptyList()
     private var highlighted = -1
@@ -90,7 +92,7 @@ class ChoicePopup(
             x += slot.size
         }
         val width = x + margin
-        val height = (if (items.any { it.note.isNotEmpty() }) 64f else maxOf(52f, titleSp * 2.4f)) * density
+        val height = (if (items.any { it.note.isNotEmpty() }) 64f * fontScale else maxOf(52f, titleSp * 2.4f * fontScale)) * density
         val target = slots[initial.coerceAtLeast(0)]
         val offset = if (centred) width / 2 else target.start + target.size / 2
         screenLeft = clampLeft(fingerScreenX - offset, width)
@@ -99,7 +101,7 @@ class ChoicePopup(
 
     /** 竖排：每项一行、同宽，整列居中对着手指，底边贴着 [bottom]。 */
     private fun showColumn(items: List<Item>, fingerScreenX: Float, bottom: Float) {
-        val rowHeight = ROW_HEIGHT_DP * density
+        val rowHeight = ROW_HEIGHT_DP * density * fontScale
         slots = items.map { Slot(it, rowHeight) }
         slots.forEachIndexed { i, slot -> slot.start = margin + i * rowHeight }
         val width = maxOf(items.maxOf { titlePaint.measureText(it.title) } + itemPadding * 2, minItemWidth) + margin * 2
@@ -185,12 +187,12 @@ class ChoicePopup(
             val item = slot.item
             titlePaint.textAlign = Paint.Align.CENTER
             titlePaint.color = if (item.fresh) palette.fresh else palette.text
-            val titleBaseline = if (item.note.isEmpty()) height / 2 + titleSp * 0.35f * density else 29 * density
+            val titleBaseline = if (item.note.isEmpty()) height / 2 + titleSp * 0.35f * scaledDensity else 29 * density * fontScale
             canvas.drawText(item.title, centre, titleBaseline, titlePaint)
             if (item.note.isNotEmpty()) {
                 notePaint.textAlign = Paint.Align.CENTER
                 notePaint.color = palette.gloss
-                canvas.drawText(item.note, centre, 48 * density, notePaint)
+                canvas.drawText(item.note, centre, 48 * density * fontScale, notePaint)
             }
         }
     }
@@ -205,7 +207,7 @@ class ChoicePopup(
                 canvas.drawRoundRect(rect, 8 * density, 8 * density, fill)
             }
             titlePaint.color = if (slot.item.fresh) palette.fresh else palette.text
-            val baseline = slot.start + slot.size / 2 + titleSp * 0.35f * density
+            val baseline = slot.start + slot.size / 2 + titleSp * 0.35f * scaledDensity
             canvas.drawText(slot.item.title, width / 2, baseline, titlePaint)
         }
     }

@@ -258,6 +258,8 @@ class PhraseEditor(
                 creatingGroup = false
                 groupIndex = (groupIndex + 1) % groups.size.coerceAtLeast(1)
                 focus(Field.TEXT)
+                invalidate()
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                 return true
             }
             ACTION_NEW_GROUP -> {
@@ -265,6 +267,8 @@ class PhraseEditor(
                 creatingGroup = true
                 newGroup.clear()
                 focus(Field.GROUP)
+                invalidate()
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                 return true
             }
             ACTION_FINISH -> {
