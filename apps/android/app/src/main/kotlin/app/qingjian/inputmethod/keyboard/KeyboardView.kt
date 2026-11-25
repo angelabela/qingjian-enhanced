@@ -1340,6 +1340,32 @@ class KeyboardView(
     }
 
     override fun onDetachedFromWindow() {
+        // Clear virtual accessibility state while the keyboard is still attached to its parent.
+        val focusedKey = accessibilityFocusedKey
+        accessibilityFocusedKey = -1
+        if (focusedKey >= 0) {
+            sendVirtualAccessibilityEvent(focusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        val focusedSideItem = accessibilityFocusedSideItem
+        accessibilityFocusedSideItem = -1
+        if (focusedSideItem >= 0) {
+            sendSideAccessibilityEvent(focusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        if (accessibilityFocusedSideScroll) {
+            accessibilityFocusedSideScroll = false
+            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        val hovered = hoveredAccessibilityKey
+        hoveredAccessibilityKey = -1
+        if (hovered >= SIDE_ACCESSIBILITY_BASE) {
+            sendSideAccessibilityEvent(hovered - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        } else if (hovered >= 0) {
+            sendVirtualAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+
         super.onDetachedFromWindow()
         release()
     }
