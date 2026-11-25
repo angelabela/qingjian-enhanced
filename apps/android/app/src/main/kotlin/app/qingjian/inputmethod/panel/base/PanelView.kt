@@ -116,7 +116,7 @@ abstract class PanelView(
         val elements = accessibilityElements()
         for (index in elements.indices.reversed()) {
             val element = elements[index]
-            if (element.enabled && element.bounds.contains(x, y)) {
+            if (element.bounds.contains(x, y)) {
                 return ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element)
             }
         }
@@ -180,7 +180,7 @@ abstract class PanelView(
                     }
                 }
                 accessibilityElements().forEachIndexed { index, element ->
-                    if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
+                    if (RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
                         root.addChild(this@PanelView, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
                     }
                 }
@@ -191,7 +191,7 @@ abstract class PanelView(
             val isTabScroll = virtualViewId == TAB_SCROLL_ACCESSIBILITY_ID
             val elementIndex = virtualViewId - ELEMENT_ACCESSIBILITY_BASE
             val element = if (isElement) accessibilityElementForId(elementIndex) else null
-            if (isElement && (element == null || !element.enabled)) return null
+            if (isElement && element == null) return null
             val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
             val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
             val isRight = virtualViewId == RIGHT_ACCESSIBILITY_ID
@@ -235,12 +235,12 @@ abstract class PanelView(
             }
             node.text = label
             node.contentDescription = if (isBack) "返回上一级面板" else label
-            node.isEnabled = isEnabled
+            node.isEnabled = isEnabled && (!isElement || element!!.enabled)
             node.isVisibleToUser = isShown
             node.isFocusable = true
-            node.isClickable = !isTabScroll && (isElement.not() || (element!!.rangeMin == null && element.onScroll == null))
+            node.isClickable = isEnabled && !isTabScroll && (!isElement || (element!!.enabled && element.rangeMin == null && element.onScroll == null))
             node.isScrollable = isTabScroll || (isElement && element!!.onScroll != null)
-            if (isTabScroll || (isElement && element!!.onScroll != null)) {
+            if (node.isEnabled && (isTabScroll || (isElement && element!!.onScroll != null))) {
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
@@ -251,9 +251,11 @@ abstract class PanelView(
                     element.rangeMax ?: element.rangeMin!!,
                     element.rangeCurrent ?: element.rangeMin!!,
                 )
-                node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
-                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                if (node.isEnabled) {
+                    node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
+                    node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                }
             }
             node.isSelected = if (isElement) element!!.selected else !isBack && !isRight && tab?.selected == tabIndex
             if (isElement && element!!.checked != null) {
@@ -316,6 +318,7 @@ abstract class PanelView(
                     }
                     if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
                     val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                    if (!isEnabled || !item.enabled) return false
                     if (item.onScroll != null) {
                         item.onScroll.invoke(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)
                         sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED)
@@ -382,7 +385,7 @@ abstract class PanelView(
             }
         }
         accessibilityElements().forEachIndexed { index, element ->
-            if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
+            if (RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
                 info.addChild(this, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
             }
         }
