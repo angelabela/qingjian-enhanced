@@ -227,7 +227,7 @@ abstract class PanelView(
                     invalidate()
                     return true
                 }
-                AccessibilityNodeInfo.ACTION_SET_PROGRESS,
+                AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
                     if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
@@ -237,7 +237,7 @@ abstract class PanelView(
                     val max = item.rangeMax ?: return false
                     val current = item.rangeCurrent ?: min
                     val next = when (action) {
-                        AccessibilityNodeInfo.ACTION_SET_PROGRESS ->
+                        AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id ->
                             arguments?.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, current) ?: current
                         AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> current + (max - min) / 20f
                         else -> current - (max - min) / 20f

@@ -71,7 +71,11 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
             media.isLooping = true
             media.setVolume(0f, 0f)
             media.setOnPreparedListener { ready ->
-                if (player !== ready || !isAvailable || output?.isValid != true) {
+                if (player !== ready) {
+                    runCatching { ready.setOnPreparedListener(null); ready.setOnErrorListener(null); ready.release() }
+                    return@setOnPreparedListener
+                }
+                if (!isAvailable || output?.isValid != true) {
                     releasePlayer()
                     return@setOnPreparedListener
                 }
@@ -82,7 +86,10 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                     // TextureView 默认按源视频比例缩放，窄屏/横屏视频会在面板右侧或底部留下空白。
                     // 让解码器按目标 Surface 做居中裁切填充，保证整个输入法窗口都有视频。
                     ready.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
-                    if (isShown) ready.start() else pausedForVisibility = true
+                    if (shouldPlayNow()) {
+                        ready.start()
+                        pausedForVisibility = false
+                    } else pausedForVisibility = true
                     invalidate()
                 }.onFailure {
                     android.util.Log.w("QingjianVideoBg", "Unable to start prepared background video", it)
@@ -90,7 +97,8 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
                 }
             }
             media.setOnInfoListener { ready, what, _ ->
-                if (player === ready && what == MediaPlayer.MEDIA_INFO_BUFFERING_END && prepared && !ready.isPlaying) {
+                if (player === ready && what == MediaPlayer.MEDIA_INFO_BUFFERING_END && prepared &&
+                    shouldPlayNow() && !runCatching { ready.isPlaying }.getOrDefault(false)) {
                     runCatching { ready.start() }
                 }
                 false
@@ -130,16 +138,25 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
     }
     override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
         super.onVisibilityChanged(changedView, visibility)
+        updatePlaybackVisibility()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        updatePlaybackVisibility()
+    }
+
+    private fun shouldPlayNow(): Boolean =
+        isAttachedToWindow && isShown && windowVisibility == android.view.View.VISIBLE && isAvailable
+
+    private fun updatePlaybackVisibility() {
         val media = player ?: return
         if (!prepared) return
-        if (!isShown) {
-            if (runCatching { media.isPlaying }.getOrDefault(false)) {
-                runCatching { media.pause() }
-                pausedForVisibility = true
-            }
-        } else if (pausedForVisibility && isAvailable) {
-            runCatching { media.start() }
-            pausedForVisibility = false
+        if (!shouldPlayNow()) {
+            if (runCatching { media.isPlaying }.getOrDefault(false)) runCatching { media.pause() }
+            pausedForVisibility = true
+        } else if (pausedForVisibility) {
+            if (runCatching { media.start() }.isSuccess) pausedForVisibility = false
         }
     }
 
@@ -174,7 +191,16 @@ internal class DynamicVideoBackgroundView(context: Context, private val videoUri
         prepared = false
         pausedForVisibility = false
         player?.let { media ->
-            runCatching { media.setOnPreparedListener(null); media.setOnErrorListener(null); if (wasPrepared && media.isPlaying) media.stop(); media.release() }
+            runCatching {
+                media.setOnPreparedListener(null)
+                media.setOnVideoSizeChangedListener(null)
+                media.setOnInfoListener(null)
+                media.setOnErrorListener(null)
+            }
+            if (wasPrepared) runCatching { if (media.isPlaying) media.stop() }
+            runCatching { media.reset() }
+            // Always release even if stop/reset throws because the player is already in an error state.
+            runCatching { media.release() }
         }
         player = null
         videoWidth = 0

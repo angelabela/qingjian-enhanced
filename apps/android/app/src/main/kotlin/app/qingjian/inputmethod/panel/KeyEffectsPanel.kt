@@ -68,7 +68,7 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             Triple(threeDimensionalTop(), "立体按键效果", threeDimensional),
         ).forEach { (rowTop, label, enabled) ->
             elements += AccessibilityElement(
-                "$label，\${if (enabled) "已开启" else "已关闭"}",
+                "$label，${if (enabled) "已开启" else "已关闭"}",
                 RectF(left, rowTop - offset, right, rowTop + ink.dp(46f) - offset),
                 selected = enabled,
             )
@@ -81,7 +81,7 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             colors.forEachIndexed { index, _ ->
                 val x = startX + index * (size + gap)
                 elements += AccessibilityElement(
-                    "$label，第\${index + 1}种\${if (index == selected) "，已选中" else ""}",
+                    "$label，第${index + 1}种${if (index == selected) "，已选中" else ""}",
                     RectF(x, y - ink.dp(3f), x + size, y + size + ink.dp(3f)),
                     selected = index == selected,
                 )

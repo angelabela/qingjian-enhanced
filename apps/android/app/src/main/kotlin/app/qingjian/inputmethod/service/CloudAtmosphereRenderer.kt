@@ -204,27 +204,52 @@ internal class CloudAtmosphereRenderer(
     private fun bakeAsync(theme: Theme, p: Palette) {
         val version = ++bakeVersion
         Thread({
-            val nearBitmap = bakeCumulus(DENSITY_CUMULUS, p, 0f)
-            val farBitmap = bakeCumulus(DENSITY_CUMULUS, p, .55f)
-            val cirrusBitmap = bakeCirrus(DENSITY_CIRRUS, p)
-            if (!active || version != bakeVersion) {
-                nearBitmap.recycle(); farBitmap.recycle(); cirrusBitmap.recycle()
+            var nearBitmap: Bitmap? = null
+            var farBitmap: Bitmap? = null
+            var cirrusBitmap: Bitmap? = null
+            try {
+                val near = bakeCumulus(DENSITY_CUMULUS, p, 0f)
+                nearBitmap = near
+                if (!active || version != bakeVersion) {
+                    near.recycle()
+                    return@Thread
+                }
+                val far = bakeCumulus(DENSITY_CUMULUS, p, .55f)
+                farBitmap = far
+                if (!active || version != bakeVersion) {
+                    near.recycle()
+                    far.recycle()
+                    return@Thread
+                }
+                val cirrus = bakeCirrus(DENSITY_CIRRUS, p)
+                cirrusBitmap = cirrus
+                if (!active || version != bakeVersion) {
+                    near.recycle(); far.recycle(); cirrus.recycle()
+                    return@Thread
+                }
+            } catch (error: RuntimeException) {
+                nearBitmap?.recycle()
+                farBitmap?.recycle()
+                cirrusBitmap?.recycle()
                 return@Thread
             }
+            val readyNear = nearBitmap ?: return@Thread
+            val readyFar = farBitmap ?: run { readyNear.recycle(); return@Thread }
+            val readyCirrus = cirrusBitmap ?: run { readyNear.recycle(); readyFar.recycle(); return@Thread }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 if (!active || version != bakeVersion || activeTheme != theme) {
-                    nearBitmap.recycle(); farBitmap.recycle(); cirrusBitmap.recycle()
+                    readyNear.recycle(); readyFar.recycle(); readyCirrus.recycle()
                     return@post
                 }
                 fun tile(bitmap: Bitmap) = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
                 // Replace all shaders together on the main thread. Old BitmapShader references are
                 // left to GC after the renderer drops them; do not recycle during hardware rendering.
-                near.shader = tile(nearBitmap)
-                far.shader = tile(farBitmap)
-                cirrus.shader = tile(cirrusBitmap)
-                cachedNearBitmap = nearBitmap
-                cachedFarBitmap = farBitmap
-                cachedCirrusBitmap = cirrusBitmap
+                near.shader = tile(readyNear)
+                far.shader = tile(readyFar)
+                cirrus.shader = tile(readyCirrus)
+                cachedNearBitmap = readyNear
+                cachedFarBitmap = readyFar
+                cachedCirrusBitmap = readyCirrus
                 layoutLayers(lastHeight.toFloat())
                 invalidate()
             }
