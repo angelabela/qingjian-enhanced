@@ -209,3 +209,13 @@
 - `PanelView` 会据此将节点暴露为可勾选的 Switch，而不只是朗读“已开启/已关闭”的普通按钮。
 - 保留原有设置值、点击逻辑、外观与布局；源码提交：`a3f3fd06f8032565eff9e63453665ebdfa7122b9`。
 - APP 版本：`0.3.75-dev` / versionCode `30075`；待 CI 与 TalkBack 真机验证。
+
+
+### 2026-11-25：#873 验证结果与工具栏排序无障碍缺口
+
+- GitHub Actions #873（run ID `45610436723`）已成功完成；Release APK 构建、`Verify APK signature`、`Upload signed APK` 均成功。
+- 对应提交：`e53f3e0af16b652f9b074646c97b6bd248172dc2`；APP `0.3.75-dev` / versionCode `30075`。
+- Artifact：`qingjian-android-signed`，ID `15018999644`，约 148.2 MiB，未过期。
+- 进一步审查 `ToolbarPanel`：现有虚拟节点覆盖“恢复默认”“添加/移除工具”及滚动；已放入工具栏的项目只能通过拖动排序。TalkBack/Switch Access 没有等价的上移/下移操作。
+- 此项暂不以隐藏重叠节点或改写触摸手势的方式仓促处理。下一步应在 `AccessibilityElement` / `PanelView` 增加真正的自定义无障碍动作（如“上移一位”“下移一位”），并在动作边界禁用对应操作；保留现有拖动排序与视觉布局。
+- 当前状态：#873 自动化签名构建通过；工具栏辅助排序仍未实现，需单独源码修改与测试；TalkBack/Switch Access 真机验收未做。
