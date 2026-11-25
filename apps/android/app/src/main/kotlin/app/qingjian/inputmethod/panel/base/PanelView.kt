@@ -97,6 +97,24 @@ abstract class PanelView(
         return true
     }
 
+    /**
+     * Clear focused/hovered Canvas content nodes before replacing a dynamic list whose rows
+     * reuse position-based virtual IDs. This prevents TalkBack focus from silently moving
+     * to a different item after deletion or reordering; header and tab focus remain intact.
+     */
+    protected fun clearAccessibilityElementFocusForContentReplacement() {
+        val focused = accessibilityFocusedId
+        if (focused >= ELEMENT_ACCESSIBILITY_BASE) {
+            accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+            sendPanelAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityId
+        if (hovered >= ELEMENT_ACCESSIBILITY_BASE) {
+            hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+            sendPanelAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+    }
+
     protected fun notifyAccessibilityContentChanged() {
         // A panel may replace its dynamic rows while TalkBack is focused on one of them.
         // Clear stale virtual focus/hover immediately so findFocus() never points at a dead node.
