@@ -38,7 +38,7 @@ class AppearanceActivity : PageActivity() {
             ),
             ui.group(
                 null,
-                fontControls(settings),
+                listOf(fontControls(settings)),
                 footer = getString(R.string.font_weight_note),
             ),
             ui.sectionTitle(R.string.section_theme),
