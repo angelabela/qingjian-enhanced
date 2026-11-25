@@ -65,6 +65,18 @@ abstract class PanelView(
         accessibilityElements().withIndex().firstOrNull { accessibilityElementId(it.index, it.value) == id }?.value
 
     protected fun notifyAccessibilityContentChanged() {
+        // A panel may replace its dynamic rows while TalkBack is focused on one of them.
+        // Clear stale virtual focus/hover immediately so findFocus() never points at a dead node.
+        val focused = accessibilityFocusedId
+        if (focused != INVALID_ACCESSIBILITY_ID && panelAccessibilityProvider.createAccessibilityNodeInfo(focused) == null) {
+            accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+            sendPanelAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityId
+        if (hovered != INVALID_ACCESSIBILITY_ID && panelAccessibilityProvider.createAccessibilityNodeInfo(hovered) == null) {
+            hoveredAccessibilityId = INVALID_ACCESSIBILITY_ID
+            sendPanelAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
         if (isAttachedToWindow && accessibilityManager.isEnabled) {
             sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
@@ -305,14 +317,17 @@ abstract class PanelView(
     }
 
     private fun sendPanelAccessibilityEvent(id: Int, type: Int) {
-        val node = panelAccessibilityProvider.createAccessibilityNodeInfo(id) ?: return
+        // Focus-cleared/hover-exit can arrive after a dynamic item has been removed.
+        // Still dispatch the lifecycle event, and recycle it if the parent declines it.
+        val node = panelAccessibilityProvider.createAccessibilityNodeInfo(id)
         val event = AccessibilityEvent.obtain(type)
         event.packageName = context.packageName
-        event.className = node.className
+        event.className = node?.className ?: this@PanelView.javaClass.name
         event.setSource(this, id)
-        node.text?.let(event.text::add)
-        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
-        node.recycle()
+        node?.text?.let(event.text::add)
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
+        node?.recycle()
     }
 
     protected var animatedBackgroundEnabled: Boolean = false
