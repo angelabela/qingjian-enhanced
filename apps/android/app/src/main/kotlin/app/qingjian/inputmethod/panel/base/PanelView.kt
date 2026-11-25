@@ -252,7 +252,7 @@ abstract class PanelView(
             node.isSelected = if (isElement) element!!.selected else !isBack && !isRight && tab?.selected == tabIndex
             if (isElement && element!!.checked != null) {
                 node.isCheckable = true
-                node.isChecked = element.checked
+                node.isChecked = element!!.checked == true
             }
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
             node.setBoundsInParent(visibleBounds)
