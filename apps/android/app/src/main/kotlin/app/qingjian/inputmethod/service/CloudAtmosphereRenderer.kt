@@ -60,7 +60,7 @@ internal class CloudAtmosphereRenderer(
         time = seconds
         if (activeTheme != theme) {
             activeTheme = theme
-            palette = palette(theme)
+            palette = paletteFor(theme)
             buildSky(width, height)
             bakeAsync(theme, palette)
         } else if (lastWidth != width.toInt() || lastHeight != height.toInt()) {
