@@ -358,8 +358,9 @@ class ClipboardPanel(
             }
         }
         for (i in 0 until count) {
-            val top = list.top + tops.getOrElse(i) { continue } - listScroll.offset
-            val bottom = list.top + bottoms.getOrElse(i) { continue } - listScroll.offset
+            if (i !in tops.indices || i !in bottoms.indices) continue
+            val top = list.top + tops[i] - listScroll.offset
+            val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom <= list.top || top >= list.bottom) continue
             val summary = textOf(i).replace('\n', ' ').take(48).ifBlank { "图片或空白剪贴板内容" }
             val label = if (showingPhrases) "常用语：$summary" else "剪贴板：$summary"
