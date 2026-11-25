@@ -517,9 +517,10 @@ class KeyPainter(
                 canvas.drawText(value, cx, baseline, ink)
             }
             Settings.TextEffectPreset.NEON_OUTLINE -> {
-                ink.setShadowLayer(3f * density, 0f, 0f, color)
+                // 降低外发光半径、透明度与描边宽度，保留霓虹轮廓但避免压住字形。
+                ink.setShadowLayer(1.6f * density, 0f, 0f, withAlpha(color, 0x72))
                 ink.style = Paint.Style.STROKE
-                ink.strokeWidth = 1.15f * density
+                ink.strokeWidth = 0.75f * density
                 canvas.drawText(value, cx, baseline, ink)
                 ink.style = Paint.Style.FILL
                 canvas.drawText(value, cx, baseline, ink)
