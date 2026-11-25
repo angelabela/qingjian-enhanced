@@ -71,6 +71,7 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
                 "$label，${if (enabled) "已开启" else "已关闭"}",
                 RectF(left, rowTop - offset, right, rowTop + ink.dp(46f) - offset),
                 selected = enabled,
+                checked = enabled,
             )
         }
         fun addColors(rowTop: Float, label: String, colors: IntArray, selected: Int) {
