@@ -19,3 +19,12 @@
 - APP patch 版本递增至 `0.3.74-dev` / versionCode `30074`；版本提交：`e1e1baafffc405ffe0874d279ca1736a1afb4874`。
 - 本轮新版本尚未构建；待 Release 编译、签名验证与产物上传。TalkBack 触摸探索、线性焦点导航、Switch Access 仍需真机验证。
 - A 阶段继续开放：SideColumn 源码已有逐项虚拟节点、点击/焦点/辅助滚动实现，现需真机验收；各 Canvas 面板仍需逐项核对节点覆盖与操作语义，工具栏排序仍缺少明确的非拖拽辅助操作；B/C/D 及真机回归未完成。
+
+## 2026-11-25：功能面板开关语义补齐
+
+- `FunctionPanel` 的键盘设置开关与“候选区/键盘区同步调节”开关增加 `checked`，由现有 `PanelView` provider 暴露为 Switch/checkable 节点。
+- 保留现有选中状态、持久化值、点击路径、视觉样式与布局；不修改其他功能开关行为。
+- 源码提交：`a3f3fd06f8032565eff9e63453665ebdfa7122b9`。
+- APP patch 版本递增至 `0.3.75-dev` / versionCode `30075`；版本提交：`e53f3e0af16b652f9b074646c97b6bd248172dc2`。
+- 此提交触发新一轮签名 Release 构建；之前 #871 可能因同分支后续提交被并发策略取消，以最新 run 为准。
+- 待 CI 编译/签名/产物检查与 TalkBack 真机验收。
