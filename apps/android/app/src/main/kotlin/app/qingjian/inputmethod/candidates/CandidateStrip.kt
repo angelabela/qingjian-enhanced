@@ -285,14 +285,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val extras = extraCandidates()
         val extraIndex = cachedExtraCandidatePositions?.get(index) ?: extras.indexOf(index)
         if (extraIndex < 0) return null
-        val top = if (frame.candidatesTop == 0) {
-            ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
-        } else frame.candidatesTop.toFloat()
-        val bottom = if (frame.candidatesTop == 0) {
-            (top + frame.bitmap.height).coerceAtMost(barHeight)
-        } else barHeight
         val left = frame.bitmap.width + 12f * density + extraIndex * 38f * density
-        return RectF(left, top, left + 38f * density, bottom)
+        return RectF(
+            left + 2f * density,
+            8f * density,
+            left + 38f * density - 2f * density,
+            barHeight - 8f * density,
+        )
     }
 
     /** 首选词的整体视觉区域：同时包含词条和其下方的词性/英文释义 hit 区。 */
