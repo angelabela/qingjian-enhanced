@@ -279,7 +279,7 @@ class FunctionPanel(
                 "语音动效样式列表，可滚动",
                 RectF(card.left, rowTop, card.right, viewportBottom),
                 effectScroll,
-                virtualId = 90001,
+                virtualId = 1000001,
             )?.let(result::add)
             return result
         }
@@ -315,7 +315,7 @@ class FunctionPanel(
                 "文字动效样式列表，可滚动",
                 RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)),
                 effectScroll,
-                virtualId = 90002,
+                virtualId = 1000002,
             )?.let(result::add)
             return result
         }
@@ -376,7 +376,7 @@ class FunctionPanel(
                     selected = selectedTextPreset == preset, virtualId = 51000 + index)
             }
             val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
-            accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 90003)?.let(result::add)
+            accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 1000003)?.let(result::add)
             return result.mapNotNull { element ->
                 val visible = RectF(element.bounds)
                 if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
