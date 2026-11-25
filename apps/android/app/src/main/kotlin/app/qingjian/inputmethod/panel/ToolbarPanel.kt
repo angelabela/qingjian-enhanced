@@ -80,15 +80,22 @@ class ToolbarPanel(
                 val bounds = RectF(left, top, left + cellW, top + cellHeight)
                 if (!RectF.intersects(bounds, card)) return@forEachIndexed
                 val alreadyPlaced = tool in placed
+                val currentPlacedIndex = placed.indexOf(tool)
                 elements += AccessibilityElement(
                     tool.label + when {
-                        placedSection -> "，已在工具栏，点击移除"
+                        placedSection -> "，已在工具栏，可点击移除，也可使用上移或下移操作排序"
                         alreadyPlaced -> "，已添加，点击移除"
                         else -> "，点击添加到工具栏"
                     },
                     bounds,
                     selected = alreadyPlaced,
                     virtualId = 10000 + tool.ordinal,
+                    onMoveUp = if (placedSection && currentPlacedIndex > 0) {
+                        { movePlacedTool(tool, -1) }
+                    } else null,
+                    onMoveDown = if (placedSection && currentPlacedIndex in 0 until placed.lastIndex) {
+                        { movePlacedTool(tool, 1) }
+                    } else null,
                 )
             }
         }
@@ -220,6 +227,19 @@ class ToolbarPanel(
             })
             start()
         }
+    }
+
+    /** Reorder a placed tool without requiring a drag gesture (TalkBack / Switch Access). */
+    private fun movePlacedTool(tool: ToolbarTool, delta: Int) {
+        val from = placed.indexOf(tool)
+        if (from < 0) return
+        val target = (from + delta).coerceIn(0, placed.lastIndex)
+        if (target == from) return
+        val reordered = placed.toMutableList()
+        val moving = reordered.removeAt(from)
+        reordered.add(target, moving)
+        placed = reordered
+        invalidate()
     }
 
     override fun onBack() {
