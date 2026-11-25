@@ -79,7 +79,13 @@ class PiecesPanel(
                 virtualId = 20000 + index,
             )
         }
-        return elements
+        accessibilityScrollElement("拆词内容，可滚动", RectF(area), areaScroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            if ((element.virtualId ?: -1) in 10000 until 20000) {
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(area)) null else element.copy(bounds = visible)
+            } else element
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
