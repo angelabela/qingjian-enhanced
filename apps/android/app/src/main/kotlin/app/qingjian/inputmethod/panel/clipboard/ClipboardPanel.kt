@@ -1,5 +1,6 @@
 package app.qingjian.inputmethod.panel.clipboard
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -129,6 +130,23 @@ class ClipboardPanel(
 
     /** 展开着的那一张（列表里的下标），-1 是都收着。 */
     private var expanded = -1
+    private var expansionProgress = 0f
+    private var expansionAnimator: ValueAnimator? = null
+    private fun animateExpansion(expand: Boolean) {
+        expansionAnimator?.cancel()
+        val start = expansionProgress
+        val end = if (expand) 1f else 0f
+        expansionAnimator = ValueAnimator.ofFloat(start, end).apply {
+            duration = 190L
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener {
+                expansionProgress = it.animatedValue as Float
+                arrange()
+                invalidate()
+            }
+            start()
+        }
+    }
 
     /** 剪贴板「清空」点了第一下，等第二下确认。 */
     private var clearArmed = false
@@ -817,7 +835,8 @@ class ClipboardPanel(
         var y = ink.dp(2f)
         for (i in 0 until count) {
             tops[i] = y
-            y += contentHeight(i) + ink.dp(CARD_PADDING_DP) * 2 + (if (i == expanded && actionLabels().isNotEmpty()) ink.dp(ACTIONS_DP) else 0f)
+            val actionHeight = if (i == expanded && actionLabels().isNotEmpty()) ink.dp(ACTIONS_DP) * expansionProgress else 0f
+            y += contentHeight(i) + ink.dp(CARD_PADDING_DP) * 2 + actionHeight
             bottoms[i] = y
             y += ink.dp(CARD_GAP_DP)
         }
@@ -902,7 +921,14 @@ class ClipboardPanel(
         }
         val open = i == expanded
         ink.icon(canvas, if (open) Icon.COLLAPSE else Icon.EXPAND, width - margin - ink.dp(CHEVRON_DP) / 2, top + padding + ink.dp(11f), 20f, palette.gloss)
-        if (open && actionLabels().isNotEmpty()) drawActions(canvas, bottom - ink.dp(ACTIONS_DP), bottom)
+        if (open && actionLabels().isNotEmpty() && expansionProgress > 0f) {
+            val save = canvas.save()
+            val actionHeight = ink.dp(ACTIONS_DP) * expansionProgress
+            canvas.clipRect(card.left, bottom - actionHeight, card.right, bottom)
+            canvas.saveLayerAlpha(card.left, bottom - actionHeight, card.right, bottom, (255 * expansionProgress).toInt())
+            drawActions(canvas, bottom - ink.dp(ACTIONS_DP), bottom)
+            canvas.restoreToCount(save)
+        }
     }
 
     private fun actionLabels(): List<Pair<Icon, String>> {
@@ -1232,8 +1258,10 @@ class ClipboardPanel(
         val inActions = i == expanded && actionLabels().isNotEmpty() && y > bottoms[i] - ink.dp(ACTIONS_DP)
         when {
             chevron -> {
-                expanded = if (expanded == i) -1 else i
+                val wasExpanded = expanded == i
+                expanded = if (wasExpanded) -1 else i
                 layouts.clear()
+                animateExpansion(!wasExpanded)
             }
             inActions -> onAction(i, ((x - ink.dp(CARD_MARGIN_DP + CARD_PADDING_DP)) / actionWidth()).toInt())
             showingPhrases -> actions.commitText(shownPhrases()[i].text)
@@ -1319,7 +1347,7 @@ class ClipboardPanel(
         private const val SEARCH_BAR_DP = 42f
         private const val GROUP_BAR_DP = 48f
         private const val CARD_MARGIN_DP = 10f
-        private const val CARD_PADDING_DP = 14f
+        private const val CARD_PADDING_DP = 10f
         private const val CARD_GAP_DP = 8f
         private const val CHEVRON_DP = 32f
         private const val ACTIONS_DP = 40f
