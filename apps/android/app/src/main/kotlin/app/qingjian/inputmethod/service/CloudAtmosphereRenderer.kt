@@ -56,7 +56,8 @@ internal class CloudAtmosphereRenderer(
     private val rayBeams = ArrayList<RayBeam>()
     private var palette = paletteFor(Theme.DAY)
     private var activeTheme: Theme? = null
-    private var bakeVersion = 0
+    @Volatile private var bakeVersion = 0
+    @Volatile private var active = true
     // Keep explicit references so replacing a theme releases the previous texture set.
     private var cachedNearBitmap: Bitmap? = null
     private var cachedFarBitmap: Bitmap? = null
@@ -65,8 +66,30 @@ internal class CloudAtmosphereRenderer(
     private var lastWidth = 0
     private var lastHeight = 0
 
+    /** Pause texture generation while the owning drawable is hidden; release cached references safely. */
+    fun setActive(value: Boolean) {
+        if (active == value) return
+        active = value
+        bakeVersion++
+        activeTheme = null
+        if (!value) {
+            near.shader = null
+            far.shader = null
+            cirrus.shader = null
+            near.paint.shader = null
+            far.paint.shader = null
+            cirrus.paint.shader = null
+            // Drop references rather than force-recycling bitmaps that a hardware Canvas may still be uploading.
+            cachedNearBitmap = null
+            cachedFarBitmap = null
+            cachedCirrusBitmap = null
+        } else {
+            invalidate()
+        }
+    }
+
     fun draw(canvas: Canvas, width: Float, height: Float, seconds: Double, theme: Theme) {
-        if (width <= 0f || height <= 0f) return
+        if (!active || width <= 0f || height <= 0f) return
         time = seconds
         if (activeTheme != theme) {
             activeTheme = theme
@@ -184,14 +207,18 @@ internal class CloudAtmosphereRenderer(
             val nearBitmap = bakeCumulus(DENSITY_CUMULUS, p, 0f)
             val farBitmap = bakeCumulus(DENSITY_CUMULUS, p, .55f)
             val cirrusBitmap = bakeCirrus(DENSITY_CIRRUS, p)
+            if (!active || version != bakeVersion) {
+                nearBitmap.recycle(); farBitmap.recycle(); cirrusBitmap.recycle()
+                return@Thread
+            }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                if (version != bakeVersion || activeTheme != theme) {
+                if (!active || version != bakeVersion || activeTheme != theme) {
                     nearBitmap.recycle(); farBitmap.recycle(); cirrusBitmap.recycle()
                     return@post
                 }
                 fun tile(bitmap: Bitmap) = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-                val previous = listOfNotNull(cachedNearBitmap, cachedFarBitmap, cachedCirrusBitmap)
-                // Swap all shaders first; previous bitmaps are no longer referenced by this renderer.
+                // Replace all shaders together on the main thread. Old BitmapShader references are
+                // left to GC after the renderer drops them; do not recycle during hardware rendering.
                 near.shader = tile(nearBitmap)
                 far.shader = tile(farBitmap)
                 cirrus.shader = tile(cirrusBitmap)
@@ -199,7 +226,6 @@ internal class CloudAtmosphereRenderer(
                 cachedFarBitmap = farBitmap
                 cachedCirrusBitmap = cirrusBitmap
                 layoutLayers(lastHeight.toFloat())
-                previous.forEach { if (!it.isRecycled) it.recycle() }
                 invalidate()
             }
         }, "cloud-atmosphere-bake").start()
