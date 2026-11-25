@@ -33,7 +33,9 @@
 - 类别：Accessibility / Platform Conformance
 - 影响：这些 View 通过 Canvas 绘制大量按键、候选和面板选项，触摸由自定义 onTouchEvent 分发；本次检查未发现 ExploreByTouchHelper、AccessibilityNodeProvider 或等价虚拟节点实现。仅给父 View 一个 contentDescription 不能让 TalkBack 用户逐个访问与操作选项。
 - 建议：分模块建立虚拟节点树，先从键盘按键、候选项和面板表头/主操作开始；节点需提供 bounds、label、click/long-click/scroll action 与选中状态。不可一次性改写所有触摸判定。
-- 状态：未在本轮修复；列为后续 P1 专项工作。
+- 当前分支进展：KeyboardView 已加入 AccessibilityNodeProvider，为每个可见按键提供独立文本、边界、聚焦/点击/悬停事件；CandidateBarView 已为候选词提供独立节点、选中状态与辅助滚动，并补齐超出 Rust 位图的补充候选区域。普通点按仍调用原有 listener，不模拟长按或方向手势。
+- 未完成：PanelView 各面板表头、标签、滑块和自绘选项尚未建立完整虚拟节点树；键盘侧边拼音列与工具栏子项也需进一步补齐。
+- 状态：键盘主键与候选词源码已实现，待 CI 编译和真机 TalkBack/触摸探索验收。
 
 ### P1 — Canvas 面板文字未跟随系统字体缩放
 - 位置：panel/base/Ink.kt、panel/base/PanelView.kt
@@ -93,6 +95,7 @@
 5. [P2] impeccable polish：完成各主题、深浅色、字体缩放和主要面板的最终视觉回归。
 
 ## Verification Status
-- 已完成：源码审查、设计系统文档、首轮触摸区域与字体缩放源码调整。
-- 待 CI：Android Debug/Release 构建、签名验证与 APK 产物检查。
-- 待真机：TalkBack、字体缩放、横竖屏/分屏、主题切换、动态背景性能与所有既有自定义项回归。
+- 已完成：源码审查、设计系统文档、首轮触摸区域与字体缩放源码调整；784 号固定签名 Release 构建、签名验证和产物上传成功。
+- 当前分支已实现：键盘主按键与候选词的虚拟无障碍节点、候选栏辅助滚动。
+- 待 CI：当前 0.3.60-dev 版本的 Android Release 构建、签名验证与 APK 产物检查。
+- 待真机：TalkBack 逐键/逐候选访问、焦点顺序、键盘侧边列与功能面板语义、字体缩放、横竖屏/分屏、主题切换、动态背景性能与所有既有自定义项回归。

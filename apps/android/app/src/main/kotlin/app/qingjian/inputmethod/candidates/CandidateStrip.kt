@@ -126,6 +126,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val changed = this.preedit != preedit || this.candidates.map { it.text } != candidates.map { it.text }
         this.preedit = preedit
         this.candidates = candidates
+        cachedExtraCandidates = null
+        cachedExtraCandidatePositions = null
         if (animateReveal && changed && (preedit.isNotEmpty() || candidates.isNotEmpty())) {
             textFadeStartedAt = android.os.SystemClock.uptimeMillis()
             textFadeActive = true
@@ -182,6 +184,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             return
         }
         this.image = image
+        cachedExtraCandidates = null
+        cachedExtraCandidatePositions = null
         renderedBitmap = if (transparentBackground) {
             // 不假设 Rust 返回的 Bitmap 可变；复制后再清理底色，避免污染渲染器缓存。
             val source = image.bitmap
@@ -254,9 +258,17 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         return extras.getOrNull(((contentX - start) / (38f * density)).toInt()) ?: -1
     }
 
+    private var cachedExtraCandidates: List<Int>? = null
+    private var cachedExtraCandidatePositions: Map<Int, Int>? = null
+
     private fun extraCandidates(): List<Int> {
         val frame = image ?: return emptyList()
-        return candidates.indices.filter { frame.wordRect(it) == null }
+        return cachedExtraCandidates ?: candidates.indices
+            .filter { frame.wordRect(it) == null }
+            .also { extra ->
+                cachedExtraCandidates = extra
+                cachedExtraCandidatePositions = extra.withIndex().associate { it.value to it.index }
+            }
     }
 
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
@@ -270,7 +282,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             return rect
         }
         // 超出 Rust 位图宽度的补充候选由 Android 绘制；同样提供稳定的命中/无障碍区域。
-        val extraIndex = extraCandidates().indexOf(index)
+        val extras = extraCandidates()
+        val extraIndex = cachedExtraCandidatePositions?.get(index) ?: extras.indexOf(index)
         if (extraIndex < 0) return null
         val top = if (frame.candidatesTop == 0) {
             ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
