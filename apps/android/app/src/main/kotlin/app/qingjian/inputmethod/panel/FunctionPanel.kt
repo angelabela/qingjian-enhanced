@@ -275,6 +275,12 @@ class FunctionPanel(
                 onSetProgress = { value -> updateVoiceGlassStrength(left + (right - left) * ((value - 1f) / 49f)) },
                 virtualId = 30000,
             )
+            accessibilityScrollElement(
+                "语音动效样式列表，可滚动",
+                RectF(card.left, rowTop, card.right, viewportBottom),
+                effectScroll,
+                virtualId = 90001,
+            )?.let(result::add)
             return result
         }
         if (aiLoadingEffectPage) {
@@ -288,7 +294,7 @@ class FunctionPanel(
             val rowStep = ink.dp(68f)
             val gapX = ink.dp(7f)
             val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
-            return labels.mapIndexed { index, label ->
+            val result = labels.mapIndexed { index, label ->
                 val col = index % 2
                 val row = index / 2
                 val left = card.left + ink.dp(10f) + col * (itemWidth + gapX)
@@ -300,6 +306,18 @@ class FunctionPanel(
                     virtualId = 40000 + index,
                 )
             }.filter { RectF.intersects(it.bounds, RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f))) }
+                .mapNotNull { element ->
+                    val visible = RectF(element.bounds)
+                    if (!visible.intersect(RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)))) null
+                    else element.copy(bounds = visible)
+                }
+            accessibilityScrollElement(
+                "文字动效样式列表，可滚动",
+                RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)),
+                effectScroll,
+                virtualId = 90002,
+            )?.let(result::add)
+            return result
         }
         if (textEffectPage) {
             val result = mutableListOf<AccessibilityElement>()
@@ -357,7 +375,12 @@ class FunctionPanel(
                     RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
                     selected = selectedTextPreset == preset, virtualId = 51000 + index)
             }
-            return result.filter { RectF.intersects(it.bounds, RectF(card.left, card.top, card.right, card.bottom)) }
+            val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
+            accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 90003)?.let(result::add)
+            return result.mapNotNull { element ->
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
+            }
         }
         return if (tabs.selected == 0) {
             val top = card.top + ink.dp(8f)
