@@ -46,6 +46,8 @@ data class Settings(
     val flickClear: Boolean,
     /** 按住空格左右滑逐字挪光标（缺省开）；关了空格上横滑不响应。 */
     val spaceCursor: Boolean,
+    /** 在键盘区域左右滑动预选候选（缺省关），与空格键候选滑动共用选词逻辑。 */
+    val keyboardCandidateSwipe: Boolean = false,
     /** 键位排法：缺省是 [Arrangement.STANDARD]，另一套挪动了几个键的位置，见 [Arrangement]。 */
     val arrangement: Arrangement,
     /** 双拼方案（Core 的方案名，同 PC 的 `[general] shuangpin`），键盘选「双拼」时用。 */
@@ -229,6 +231,7 @@ data class Settings(
         const val KEY_FLICK_SYMBOLS = "flick_symbols"
         const val KEY_LONG_PRESS_UPPER = "long_press_upper"
         const val KEY_SPACE_CURSOR = "space_cursor"
+        const val KEY_KEYBOARD_CANDIDATE_SWIPE = "keyboard_candidate_swipe"
         const val KEY_FLICK_CLEAR = "flick_clear"
         const val KEY_ARRANGEMENT = "arrangement"
         const val KEY_SHUANGPIN = "shuangpin_scheme"
@@ -337,6 +340,7 @@ data class Settings(
                 longPressUpper = prefs.getBoolean(KEY_LONG_PRESS_UPPER, false),
                 flickClear = prefs.getBoolean(KEY_FLICK_CLEAR, true),
                 spaceCursor = prefs.getBoolean(KEY_SPACE_CURSOR, true),
+                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, false),
                 arrangement = Arrangement.entries.firstOrNull { it.name == prefs.getString(KEY_ARRANGEMENT, null) }
                     ?: Arrangement.STANDARD,
                 shuangpinScheme = prefs.getString(KEY_SHUANGPIN, null) ?: DEFAULT_SHUANGPIN,
