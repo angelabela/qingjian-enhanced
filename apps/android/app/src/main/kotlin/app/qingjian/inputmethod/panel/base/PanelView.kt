@@ -169,16 +169,18 @@ abstract class PanelView(
                 root.isEnabled = isEnabled
                 root.isFocusable = false
                 root.isClickable = false
+                // Keep the virtual focus order aligned with the visible header:
+                // back, tabs, optional tab-scroll action, then the trailing action.
                 if (hasHeader) root.addChild(this@PanelView, BACK_ACCESSIBILITY_ID)
-                if (accessibilityRightLabel != null) root.addChild(this@PanelView, RIGHT_ACCESSIBILITY_ID)
-                if (accessibilityTabs?.accessibilityScrollable == true) {
-                    root.addChild(this@PanelView, TAB_SCROLL_ACCESSIBILITY_ID)
-                }
                 accessibilityTabs?.labels?.indices?.forEach { index ->
                     if (accessibilityTabs?.accessibilityBounds(index) != null) {
                         root.addChild(this@PanelView, TAB_ACCESSIBILITY_BASE + index)
                     }
                 }
+                if (accessibilityTabs?.accessibilityScrollable == true) {
+                    root.addChild(this@PanelView, TAB_SCROLL_ACCESSIBILITY_ID)
+                }
+                if (accessibilityRightLabel != null) root.addChild(this@PanelView, RIGHT_ACCESSIBILITY_ID)
                 accessibilityElements().forEachIndexed { index, element ->
                     if (RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
                         root.addChild(this@PanelView, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
@@ -377,14 +379,15 @@ abstract class PanelView(
 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
+        // Mirror the provider root order so framework and virtual-tree queries agree.
         if (hasHeader) info.addChild(this, BACK_ACCESSIBILITY_ID)
-        if (accessibilityRightLabel != null) info.addChild(this, RIGHT_ACCESSIBILITY_ID)
-        if (accessibilityTabs?.accessibilityScrollable == true) info.addChild(this, TAB_SCROLL_ACCESSIBILITY_ID)
         accessibilityTabs?.labels?.indices?.forEach { index ->
             if (accessibilityTabs?.accessibilityBounds(index) != null) {
                 info.addChild(this, TAB_ACCESSIBILITY_BASE + index)
             }
         }
+        if (accessibilityTabs?.accessibilityScrollable == true) info.addChild(this, TAB_SCROLL_ACCESSIBILITY_ID)
+        if (accessibilityRightLabel != null) info.addChild(this, RIGHT_ACCESSIBILITY_ID)
         accessibilityElements().forEachIndexed { index, element ->
             if (RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
                 info.addChild(this, ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element))
