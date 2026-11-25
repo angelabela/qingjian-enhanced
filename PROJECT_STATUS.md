@@ -4,7 +4,7 @@
 - 本轮候选版本：0.3.59-dev / versionCode 359；开发分支 design/impeccable-native-audit-781。
 - Impeccable 固定上游提交：b49177d32788f2dc585c42831d845dacf1ebed2c。
 - 本轮修改：Canvas 面板文字系统缩放、分段选择/生词筛选/底部导航触摸区域、主题卡片选中与辅助语义；新增 PRODUCT.md、DESIGN.md 和原生 UI 审查报告。
-- GitHub Actions #783 正在构建；构建、签名验证与 APK 产物状态以 Actions 实际结果为准。
+- GitHub Actions #784 正在构建；构建、签名验证与 APK 产物状态以 Actions 实际结果为准。
 - TalkBack、字体缩放、横竖屏/分屏、动态效果性能与原有自定义项仍待用户真机验收。
 
 ---

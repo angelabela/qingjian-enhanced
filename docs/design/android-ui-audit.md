@@ -6,6 +6,7 @@
 - 范围：Android 输入法键盘、候选栏、工具栏、功能面板、设置 App。
 - 方法：按 Impeccable native Android、audit.native、critique rubric 与 craft-floor 对源码审查。该项目使用 Android Views / Canvas；网页 detector 与浏览器 live mode 不适用于这些原生控件。
 - 限制：本次没有连接用户手机或 Android 模拟器，未取得新版本屏幕截图、TalkBack 录屏、帧率/内存剖析；凡依赖设备表现的结论均标为待验。
+- 执行边界：本次通过 GitHub 源码访问完成原生代码审查，没有本地仓库 checkout，未运行 Impeccable launcher/engine 命令；本报告是按固定版本 Skill 文档执行的人工源码审查，不冒充 CLI 自动扫描结果。
 
 ## Audit Health Score（781 基线源码）
 
