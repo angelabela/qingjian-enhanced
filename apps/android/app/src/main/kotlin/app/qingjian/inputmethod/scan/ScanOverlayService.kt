@@ -1046,6 +1046,8 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         if (frameNumber == 1L || frameNumber % 120L == 0L) {
                             scanDiag("camera analysis active frames=$frameNumber size=${proxy.width}x${proxy.height} rotation=${proxy.imageInfo.rotationDegrees} ocrMode=$ocrMode")
                         }
+
+                        // 先用 Binary Eye 同源的 ZXing-C++ 原生解码；局部/全局二值化逐帧交替。
                         val nativeDecoded = if (android.os.SystemClock.elapsedRealtime() >= cameraWarmupUntil) {
                             decodeWithZxing(proxy)
                         } else {
@@ -1053,7 +1055,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                         }
                         if (nativeDecoded != null) {
                             val (value, bounds) = nativeDecoded
-                            // ZXing-C++ 已校验条码内容，直接在首个有效帧提交；去重由 shouldDeliverCode 负责。
+                            // ZXing-C++ 已完成格式/校验判断，首个有效帧即可提交；短时间重复由 shouldDeliverCode 去重。
                             ContextCompat.getMainExecutor(this@ScanOverlayService).execute {
                                 try {
                                     handleZxingResult(proxy, value, bounds)
@@ -1066,7 +1068,7 @@ class ScanOverlayService : Service(), LifecycleOwner {
                             return@setAnalyzer
                         }
 
-                        // 原生解码未命中时才调用 ML Kit 补充识别，保留原有格式兼容兜底。
+                        // 原生解码未命中时才调用 ML Kit 补充识别，保留额外格式兼容能力。
                         scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
                             .addOnSuccessListener { codes ->
                                 if (codes.isNotEmpty()) {
@@ -1106,60 +1108,9 @@ class ScanOverlayService : Service(), LifecycleOwner {
                                 if (shuttingDown) closeMlKitClients()
                             }
                     } catch (error: Throwable) {
-                                                android.util.Log.w(TAG, "ZXing fallback decode failed", error)
-                                            } finally {
-                                                if (releaseOnWorker) {
-                                                    processing.set(false)
-                                                    runCatching { proxy.close() }
-                                                    if (shuttingDown) closeMlKitClients()
-                                                }
-                                            }
-                                        }
-                                    } catch (error: Throwable) {
-                                        deferredFrameRelease.set(false)
-                                        android.util.Log.w(TAG, "ZXing fallback executor unavailable", error)
-                                    }
-                                    if (deferredFrameRelease.get()) return@addOnSuccessListener
-                                }
-                                // 窗口关闭或相机解绑后，迟到的识别回调不再访问 View。
-                                if (lifecycle.currentState == Lifecycle.State.DESTROYED ||
-                                    !::preview.isInitialized || !::scanArea.isInitialized) return@addOnSuccessListener
-                                runCatching {
-                                    if (android.os.SystemClock.elapsedRealtime() < cameraWarmupUntil) return@runCatching
-                                    val transform = preview.outputTransform?.let { output ->
-                                        runCatching { CoordinateTransform(transformFactory.getOutputTransform(proxy), output) }.getOrNull()
-                                    }
-                                    val roi = scanArea.boundsInView()
-                                    codes.forEach { code ->
-                                        val value = (code.rawValue ?: code.displayValue)?.trim().orEmpty()
-                                        if (value.isBlank() || !ScanPreferences.accepts(this@ScanOverlayService, value)) return@forEach
-                                        val mapped = code.boundingBox?.let { RectF(it) }
-                                        if (mapped != null && transform != null) {
-                                            transform.mapRect(mapped)
-                                            if (!isBarcodeInsideScanArea(roi, mapped)) return@forEach
-                                        }
-                                        val centerX = mapped?.centerX() ?: roi.centerX()
-                                        val centerY = mapped?.centerY() ?: roi.centerY()
-                                        if (!hasStableBarcode(value, centerX, centerY)) return@forEach
-                                        scanDiag("stable barcode accepted center=" + centerX.toInt() + "," + centerY.toInt() + " mapped=" + (transform != null))
-                                        if (shouldDeliverCode(value)) deliverResult(value)
-                                    }
-                                }.onFailure { android.util.Log.w(TAG, "Barcode result mapping failed", it) }
-                            }
-                            .addOnFailureListener { error ->
-                                scanDiag("ML Kit frame analysis failed: ${error.javaClass.simpleName}: ${error.message}", warning = true)
-                            }
-                            .addOnCompleteListener {
-                                if (!deferredFrameRelease.get()) {
-                                    processing.set(false)
-                                    runCatching { proxy.close() }
-                                    if (shuttingDown) closeMlKitClients()
-                                }
-                            }
-                    } catch (error: Throwable) {
                         processing.set(false)
                         runCatching { proxy.close() }
-                        android.util.Log.e(TAG, "Unable to submit barcode frame to ML Kit", error)
+                        android.util.Log.e(TAG, "Unable to submit barcode frame to ZXing-C++ / ML Kit", error)
                         if (shuttingDown) closeMlKitClients()
                     }
                 }

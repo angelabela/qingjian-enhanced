@@ -954,7 +954,7 @@ class ClipboardPanel(
         return bodyHeight + timestampHeight
     }
 
-    private fun timestampOf(i: Int): String? = clipAt(i)?.copiedAtSeconds
+    private fun timestampOf(i: Int): String? = if (showingPhrases) null else clipAt(i)?.copiedAtSeconds
         ?.takeIf { it > 0L }
         ?.let { clipTimestampFormat.format(Date(it * 1000L)) }
 
