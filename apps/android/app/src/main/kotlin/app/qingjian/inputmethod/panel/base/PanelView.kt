@@ -58,6 +58,9 @@ abstract class PanelView(
         val onSetProgress: ((Float) -> Unit)? = null,
         val virtualId: Int? = null,
         val onScroll: ((Int) -> Unit)? = null,
+        /** Optional non-touch alternatives for drag-only operations, exposed as named TalkBack actions. */
+        val onMoveUp: (() -> Unit)? = null,
+        val onMoveDown: (() -> Unit)? = null,
     )
 
     protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
@@ -276,6 +279,14 @@ abstract class PanelView(
             screen.offset(location[0], location[1])
             node.setBoundsInScreen(screen)
             if (node.isClickable) node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (isElement && element!!.enabled) {
+                element!!.onMoveUp?.let {
+                    node.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_UP, "上移一位"))
+                }
+                element!!.onMoveDown?.let {
+                    node.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_DOWN, "下移一位"))
+                }
+            }
             node.addAction(if (accessibilityFocusedId == virtualViewId)
                 AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS
             else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
@@ -290,6 +301,18 @@ abstract class PanelView(
         }
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            if (action == ACTION_MOVE_UP || action == ACTION_MOVE_DOWN) {
+                if (!isEnabled || virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
+                val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                if (!item.enabled) return false
+                val operation = if (action == ACTION_MOVE_UP) item.onMoveUp else item.onMoveDown
+                operation ?: return false
+                operation.invoke()
+                sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SELECTED)
+                notifyAccessibilityContentChanged()
+                invalidate()
+                return true
+            }
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
                     if (!hasAccessibilityNode(virtualViewId)) return false
@@ -575,6 +598,8 @@ abstract class PanelView(
         private const val TAB_ACCESSIBILITY_BASE = 1000
         private const val TAB_SCROLL_ACCESSIBILITY_ID = 3
         private const val ELEMENT_ACCESSIBILITY_BASE = 20000
+        private const val ACTION_MOVE_UP = 0x010F0001
+        private const val ACTION_MOVE_DOWN = 0x010F0002
         private const val INVALID_ACCESSIBILITY_ID = -1
     }
 }
