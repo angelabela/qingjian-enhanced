@@ -132,6 +132,7 @@ class KeyboardView(
     private val accessibilityManager =
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
     private var accessibilityFocusedKey = -1
+    private var accessibilityFocusedSideItem = -1
     private var hoveredAccessibilityKey = -1
 
     /**
@@ -140,6 +141,32 @@ class KeyboardView(
      */
     private val keyboardAccessibilityProvider = object : AccessibilityNodeProvider() {
         override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
+                val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
+                val label = side.items.getOrNull(index) ?: return null
+                val itemBounds = side.accessibilityBounds(index) ?: return null
+                val info = AccessibilityNodeInfo.obtain()
+                info.setSource(this@KeyboardView, virtualViewId)
+                info.setParent(this@KeyboardView)
+                info.packageName = context.packageName
+                info.className = "android.widget.Button"
+                info.text = label
+                info.contentDescription = "拼音或标点候选，第" + (index + 1) + "项，" + label
+                info.isEnabled = this@KeyboardView.isEnabled
+                info.isVisibleToUser = isShown
+                info.isFocusable = true
+                info.isClickable = true
+                info.isAccessibilityFocused = accessibilityFocusedSideItem == index
+                val bounds = Rect(itemBounds.left.toInt(), itemBounds.top.toInt(), itemBounds.right.toInt(), itemBounds.bottom.toInt())
+                info.setBoundsInParent(bounds)
+                val screenBounds = Rect(bounds)
+                getLocationOnScreen(screenLocation)
+                screenBounds.offset(screenLocation[0], screenLocation[1])
+                info.setBoundsInScreen(screenBounds)
+                info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+                info.addAction(if (accessibilityFocusedSideItem == index) AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+                return info
+            }
             val slot = slots.getOrNull(virtualViewId) ?: return null
             val info = AccessibilityNodeInfo.obtain()
             info.setSource(this@KeyboardView, virtualViewId)
@@ -170,6 +197,31 @@ class KeyboardView(
         }
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
+                val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
+                if (side.items.getOrNull(index) == null) return false
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                        if (!accessibilityManager.isEnabled || accessibilityFocusedSideItem == index) return false
+                        accessibilityFocusedSideItem = index
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                        invalidate()
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                        if (accessibilityFocusedSideItem != index) return false
+                        accessibilityFocusedSideItem = -1
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLICK -> {
+                        if (!isEnabled || !side.clickAccessibilityItem(index)) return false
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                        return true
+                    }
+                }
+                return false
+            }
             val slot = slots.getOrNull(virtualViewId) ?: return false
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
@@ -211,7 +263,8 @@ class KeyboardView(
 
         override fun findFocus(focus: Int): AccessibilityNodeInfo? =
             if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
-                createAccessibilityNodeInfo(accessibilityFocusedKey)
+                if (accessibilityFocusedSideItem >= 0) createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_BASE + accessibilityFocusedSideItem)
+                else createAccessibilityNodeInfo(accessibilityFocusedKey)
             } else null
     }
 
@@ -220,6 +273,9 @@ class KeyboardView(
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         slots.indices.forEach { info.addChild(this, it) }
+        side.items.indices.forEach { index ->
+            if (side.accessibilityBounds(index) != null) info.addChild(this, SIDE_ACCESSIBILITY_BASE + index)
+        }
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
@@ -251,6 +307,17 @@ class KeyboardView(
             }
         }
         return true
+    }
+
+    private fun sendSideAccessibilityEvent(index: Int, eventType: Int) {
+        val label = side.items.getOrNull(index) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, SIDE_ACCESSIBILITY_BASE + index)
+        event.text.add(label)
+        event.isEnabled = isEnabled
+        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
     }
 
     private fun sendVirtualAccessibilityEvent(virtualViewId: Int, eventType: Int) {
@@ -1153,6 +1220,7 @@ class KeyboardView(
     }
 
     private companion object {
+        const val SIDE_ACCESSIBILITY_BASE = 10000
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 50L
         const val LONG_PRESS_MS = 350L
