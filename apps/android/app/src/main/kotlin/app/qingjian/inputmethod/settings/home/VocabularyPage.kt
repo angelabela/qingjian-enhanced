@@ -18,6 +18,8 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ListView
+import android.widget.BaseAdapter
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.core.store.SettingChoices
 import app.qingjian.inputmethod.core.store.Vocabulary
@@ -248,30 +250,58 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
         },
     )
 
+    /** ListView 只保留屏幕附近的行；500 条时不再一次创建 500 组 TextView。 */
     private fun wordsCard(words: List<VocabularyWord>) = ui.card().apply {
-        words.forEachIndexed { index, word ->
-            if (index > 0) addView(ui.divider())
-            addView(wordRow(word))
+        val list = ListView(activity).apply {
+            divider = ui.dividerDrawable()
+            dividerHeight = ui.dp(1)
+            isVerticalScrollBarEnabled = false
+            adapter = object : BaseAdapter() {
+                override fun getCount() = words.size
+                override fun getItem(position: Int) = words[position]
+                override fun getItemId(position: Int) = words[position].word.hashCode().toLong()
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val row = (convertView as? LinearLayout) ?: LinearLayout(activity)
+                    bindWordRow(row, words[position])
+                    return row
+                }
+            }
+            // 外层页面仍可滚动标题与筛选；手指在词表内时交给 ListView 自己回收滚动。
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE ->
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                        view.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
         }
+        val viewport = (activity.resources.displayMetrics.heightPixels * 0.58f).toInt()
+            .coerceAtLeast(ui.dp(320))
+        addView(list, LinearLayout.LayoutParams(MATCH_PARENT, viewport))
     }
 
     /** 一行：译词与带它上屏的中文，下面次数与最近日期；右边等级与 认识 / 眼熟 / 生词 小标签。点开看详情。 */
-    private fun wordRow(word: VocabularyWord) = LinearLayout(activity).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        background = ui.pressable()
-        minimumHeight = ui.dp(60)
-        isClickable = true
-        isFocusable = true
-        contentDescription = buildList {
+    private fun wordRow(word: VocabularyWord) = LinearLayout(activity).apply { bindWordRow(this, word) }
+
+    private fun bindWordRow(row: LinearLayout, word: VocabularyWord) {
+        row.removeAllViews()
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.background = ui.pressable()
+        row.minimumHeight = ui.dp(60)
+        row.isClickable = true
+        row.isFocusable = true
+        row.contentDescription = buildList {
             add(word.word)
             if (word.source.isNotEmpty()) add(word.source)
             add(activity.getString(R.string.vocabulary_seen_times, word.seen))
             add(if (word.known) activity.getString(R.string.vocabulary_known) else if (word.fresh) activity.getString(R.string.vocabulary_fresh) else activity.getString(R.string.vocabulary_familiar))
         }.joinToString("，")
-        setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
-        setOnClickListener { showWord(word) }
-        addView(LinearLayout(activity).apply {
+        row.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
+        row.setOnClickListener { showWord(word) }
+        row.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -290,15 +320,14 @@ class VocabularyPage(private val activity: Activity, private val ui: SettingsWid
                 12f, colors.secondary,
             ).apply { setPadding(0, ui.dp(4), 0, 0) })
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        if (word.level.isNotEmpty()) addView(tag(word.level, colors.secondary, colors.fill))
+        if (word.level.isNotEmpty()) row.addView(tag(word.level, colors.secondary, colors.fill))
         val (label, color) = when {
             word.known -> R.string.vocabulary_known to colors.brand
             word.fresh -> R.string.vocabulary_fresh to colors.fresh
             else -> R.string.vocabulary_familiar to colors.secondary
         }
-        addView(tag(label, color, color and 0x00FFFFFF or 0x24000000))
+        row.addView(tag(label, color, color and 0x00FFFFFF or 0x24000000))
     }
-
     private fun tag(label: Int, color: Int, fill: Int) = tag(activity.getString(label), color, fill)
 
     private fun tag(label: String, color: Int, fill: Int) = ui.text(label, 12f, color).apply {
