@@ -114,10 +114,14 @@ abstract class PanelView(
 
     private fun accessibilityNodeIdAt(x: Float, y: Float): Int {
         val elements = accessibilityElements()
-        for (index in elements.indices.reversed()) {
-            val element = elements[index]
-            if (element.bounds.contains(x, y)) {
-                return ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element)
+        // 滚动视口常覆盖整块内容区，先命中具体控件，避免容器遮住子节点。
+        for (pass in 0..1) {
+            for (index in elements.indices.reversed()) {
+                val element = elements[index]
+                if ((element.onScroll != null) != (pass == 1)) continue
+                if (element.bounds.contains(x, y)) {
+                    return ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element)
+                }
             }
         }
         if (hasHeader && y < headerHeight && x < ink.dp(BACK_WIDTH_DP)) return BACK_ACCESSIBILITY_ID
