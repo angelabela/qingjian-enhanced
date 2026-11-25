@@ -8,6 +8,11 @@ import android.graphics.RectF
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.panel.PanelActions
 import app.qingjian.inputmethod.theme.Palette
@@ -29,6 +34,125 @@ abstract class PanelView(
 
     /** 一块可滚动区域：落在 [contains] 里的拖动归它。 */
     protected class Scrollable(val state: ScrollState, val horizontal: Boolean, val contains: (Float, Float) -> Boolean)
+
+    private val scrollables = mutableListOf<Scrollable>()
+    private val headerCard = RectF()
+    private var accessibilityTabs: Tabs? = null
+    private var accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+
+    /** Canvas 表头没有真实子 View，故用虚拟节点暴露返回键和每个页签。 */
+    private val panelAccessibilityProvider = object : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            if (virtualViewId == View.NO_ID) {
+                val root = AccessibilityNodeInfo.obtain()
+                root.setSource(this@PanelView)
+                root.packageName = context.packageName
+                root.className = this@PanelView.javaClass.name
+                root.isVisibleToUser = isShown
+                root.isEnabled = isEnabled
+                root.isFocusable = false
+                root.isClickable = false
+                root.addChild(this@PanelView, BACK_ACCESSIBILITY_ID)
+                accessibilityTabs?.labels?.indices?.forEach { index ->
+                    if (accessibilityTabs?.accessibilityBounds(index) != null) {
+                        root.addChild(this@PanelView, TAB_ACCESSIBILITY_BASE + index)
+                    }
+                }
+                return root
+            }
+
+            val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
+            val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
+            val tab = accessibilityTabs
+            val label: String
+            val bounds = if (isBack) {
+                label = "返回"
+                Rect(0, 0, ink.dp(BACK_WIDTH_DP).toInt(), headerHeight.toInt())
+            } else {
+                if (tab == null || tabIndex !in tab.labels.indices) return null
+                label = tab.labels[tabIndex]
+                val rect = tab.accessibilityBounds(tabIndex) ?: return null
+                Rect(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
+            }
+            val node = AccessibilityNodeInfo.obtain()
+            node.setSource(this@PanelView, virtualViewId)
+            node.setParent(this@PanelView)
+            node.packageName = context.packageName
+            node.className = if (isBack) "android.widget.Button" else "android.widget.TabWidget"
+            node.text = label
+            node.contentDescription = if (isBack) "返回上一级面板" else label
+            node.isEnabled = isEnabled
+            node.isVisibleToUser = isShown
+            node.isFocusable = true
+            node.isClickable = true
+            node.isSelected = !isBack && tab?.selected == tabIndex
+            node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
+            node.setBoundsInParent(bounds)
+            val screen = Rect(bounds)
+            val location = IntArray(2)
+            getLocationOnScreen(location)
+            screen.offset(location[0], location[1])
+            node.setBoundsInScreen(screen)
+            node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            node.addAction(if (accessibilityFocusedId == virtualViewId)
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS
+            else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+            return node
+        }
+
+        override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            when (action) {
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    accessibilityFocusedId = virtualViewId
+                    sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                    if (accessibilityFocusedId != virtualViewId) return false
+                    accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
+                    sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLICK -> {
+                    if (!isEnabled) return false
+                    if (virtualViewId == BACK_ACCESSIBILITY_ID) onBack()
+                    else {
+                        val index = virtualViewId - TAB_ACCESSIBILITY_BASE
+                        val tab = accessibilityTabs ?: return false
+                        val rect = tab.accessibilityBounds(index) ?: return false
+                        onTap(rect.centerX(), rect.centerY())
+                    }
+                    sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    invalidate()
+                    return true
+                }
+            }
+            return false
+        }
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider = panelAccessibilityProvider
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.addChild(this, BACK_ACCESSIBILITY_ID)
+        accessibilityTabs?.labels?.indices?.forEach { index ->
+            if (accessibilityTabs?.accessibilityBounds(index) != null) {
+                info.addChild(this, TAB_ACCESSIBILITY_BASE + index)
+            }
+        }
+    }
+
+    private fun sendPanelAccessibilityEvent(id: Int, type: Int) {
+        val node = createAccessibilityNodeInfo(id) ?: return
+        val event = AccessibilityEvent.obtain(type)
+        event.packageName = context.packageName
+        event.className = node.className
+        event.setSource(this, id)
+        node.text?.let(event.text::add)
+        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+        node.recycle()
+    }
 
     private val scrollables = mutableListOf<Scrollable>()
     private val headerCard = RectF()
@@ -134,8 +258,9 @@ abstract class PanelView(
         ink.icon(canvas, leftIcon, ink.dp(BACK_WIDTH_DP) / 2, cy, 24f, if (leftIcon == PanelIcons.Icon.BACK) palette.text else palette.brand)
         tabs?.let {
             it.setBounds(ink.dp(BACK_WIDTH_DP), headerCard.top, width - ink.dp(BACK_WIDTH_DP), headerCard.bottom)
+            accessibilityTabs = it
             it.draw(canvas)
-        }
+        } ?: run { accessibilityTabs = null }
         rightIcon?.let { ink.icon(canvas, it, width - ink.dp(BACK_WIDTH_DP) / 2, cy, 24f, palette.gloss) }
     }
 
@@ -143,5 +268,8 @@ abstract class PanelView(
 
     protected companion object {
         const val BACK_WIDTH_DP = 56f
+        private const val BACK_ACCESSIBILITY_ID = 1
+        private const val TAB_ACCESSIBILITY_BASE = 1000
+        private const val INVALID_ACCESSIBILITY_ID = -1
     }
 }
