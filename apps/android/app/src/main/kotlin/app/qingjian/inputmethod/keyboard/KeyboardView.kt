@@ -139,6 +139,7 @@ class KeyboardView(
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
     private var accessibilityFocusedKey = -1
     private var accessibilityFocusedSideItem = -1
+    private var accessibilityFocusedSideScroll = false
     private var hoveredAccessibilityKey = -1
 
     /**
@@ -147,6 +148,31 @@ class KeyboardView(
      */
     private val keyboardAccessibilityProvider = object : AccessibilityNodeProvider() {
         override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            if (virtualViewId == SIDE_ACCESSIBILITY_SCROLL_ID) {
+                if (!side.accessibilityScrollable) return null
+                val info = AccessibilityNodeInfo.obtain()
+                info.setSource(this@KeyboardView, virtualViewId)
+                info.setParent(this@KeyboardView)
+                info.packageName = context.packageName
+                info.className = "android.widget.ScrollView"
+                info.text = "拼音或标点列表"
+                info.contentDescription = "拼音或标点列表，可纵向滚动"
+                info.isEnabled = this@KeyboardView.isEnabled
+                info.isVisibleToUser = isShown
+                info.isFocusable = true
+                info.isScrollable = true
+                info.isAccessibilityFocused = accessibilityFocusedSideScroll
+                val bounds = Rect(side.bounds.left.toInt(), side.bounds.top.toInt(), side.bounds.right.toInt(), side.bounds.bottom.toInt())
+                info.setBoundsInParent(bounds)
+                val screenBounds = Rect(bounds)
+                getLocationOnScreen(screenLocation)
+                screenBounds.offset(screenLocation[0], screenLocation[1])
+                info.setBoundsInScreen(screenBounds)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                info.addAction(if (accessibilityFocusedSideScroll) AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+                return info
+            }
             if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
                 val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
                 val label = side.items.getOrNull(index) ?: return null
@@ -203,6 +229,39 @@ class KeyboardView(
         }
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            if (virtualViewId == SIDE_ACCESSIBILITY_SCROLL_ID) {
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                        if (!accessibilityManager.isEnabled || accessibilityFocusedSideScroll) return false
+                        if (accessibilityFocusedKey >= 0) {
+                            sendVirtualAccessibilityEvent(accessibilityFocusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedKey = -1
+                        }
+                        if (accessibilityFocusedSideItem >= 0) {
+                            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedSideItem = -1
+                        }
+                        accessibilityFocusedSideScroll = true
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                        if (!accessibilityFocusedSideScroll) return false
+                        accessibilityFocusedSideScroll = false
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
+                        val direction = if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1
+                        if (!side.accessibilityScroll(direction)) return false
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SCROLLED)
+                        sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                        invalidate()
+                        return true
+                    }
+                }
+                return false
+            }
             if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
                 val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
                 if (side.items.getOrNull(index) == null) return false
@@ -281,8 +340,11 @@ class KeyboardView(
 
         override fun findFocus(focus: Int): AccessibilityNodeInfo? =
             if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
-                if (accessibilityFocusedSideItem >= 0) createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_BASE + accessibilityFocusedSideItem)
-                else createAccessibilityNodeInfo(accessibilityFocusedKey)
+                when {
+                    accessibilityFocusedSideScroll -> createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_SCROLL_ID)
+                    accessibilityFocusedSideItem >= 0 -> createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_BASE + accessibilityFocusedSideItem)
+                    else -> createAccessibilityNodeInfo(accessibilityFocusedKey)
+                }
             } else null
     }
 
@@ -291,6 +353,7 @@ class KeyboardView(
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         slots.indices.forEach { info.addChild(this, it) }
+        if (side.accessibilityScrollable) info.addChild(this, SIDE_ACCESSIBILITY_SCROLL_ID)
         side.items.indices.forEach { index ->
             if (side.accessibilityBounds(index) != null) info.addChild(this, SIDE_ACCESSIBILITY_BASE + index)
         }
@@ -329,6 +392,16 @@ class KeyboardView(
             }
         }
         return true
+    }
+
+    private fun sendSideScrollAccessibilityEvent(eventType: Int) {
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.ScrollView"
+        event.setSource(this, SIDE_ACCESSIBILITY_SCROLL_ID)
+        event.text.add("拼音或标点列表，可纵向滚动")
+        event.isEnabled = isEnabled
+        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
     }
 
     private fun sendSideAccessibilityEvent(index: Int, eventType: Int) {
@@ -524,8 +597,23 @@ class KeyboardView(
     }
 
     fun setSideItems(items: List<String>) {
+        if (accessibilityFocusedSideItem >= 0 && side.items.getOrNull(accessibilityFocusedSideItem) != items.getOrNull(accessibilityFocusedSideItem)) {
+            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+            accessibilityFocusedSideItem = -1
+        }
+        if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE && side.items.getOrNull(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE) != items.getOrNull(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE)) {
+            sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+            hoveredAccessibilityKey = -1
+        }
         side.items = items
+        if (accessibilityFocusedSideScroll && !side.accessibilityScrollable) {
+            accessibilityFocusedSideScroll = false
+            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
         invalidate()
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
     }
 
     /** 拖动调高度时逐帧调：键跟着拉伸，不重建视图（重建会断掉正在进行的拖动）。 */
@@ -1247,6 +1335,7 @@ class KeyboardView(
     }
 
     private companion object {
+        const val SIDE_ACCESSIBILITY_SCROLL_ID = 9999
         const val SIDE_ACCESSIBILITY_BASE = 10000
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 50L
