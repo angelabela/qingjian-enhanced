@@ -83,9 +83,9 @@ class ToolbarPanel(
                 val currentPlacedIndex = placed.indexOf(tool)
                 elements += AccessibilityElement(
                     tool.label + when {
-                        placedSection -> "，已在工具栏，可点击移除，也可使用上移或下移操作排序"
-                        alreadyPlaced -> "，已添加，点击移除"
-                        else -> "，点击添加到工具栏"
+                        placedSection -> "，工具栏第${index + 1}项，共${placed.size}项，可点击移除，也可使用上移或下移操作排序"
+                        alreadyPlaced -> "，已添加到工具栏，全部工具列表第${index + 1}项，共${ToolbarTool.entries.size}项，点击移除"
+                        else -> "，未添加，全部工具列表第${index + 1}项，共${ToolbarTool.entries.size}项，点击添加到工具栏"
                     },
                     bounds,
                     selected = alreadyPlaced,
