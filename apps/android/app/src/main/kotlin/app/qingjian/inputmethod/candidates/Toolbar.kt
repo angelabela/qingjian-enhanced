@@ -49,6 +49,7 @@ class Toolbar(
     private val glassEffectPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val backdropMatrix = Matrix()
     private var liquidGlassShader: RuntimeShader? = null
+    private var liquidGlassShaderUnavailable = false
     private var backdropShaderBitmap: Bitmap? = null
     private var backdropShader: BitmapShader? = null
     private var backdropProvider: (() -> Bitmap?)? = null
@@ -210,8 +211,8 @@ class Toolbar(
         viewWidth: Int,
     ) {
         val brand = palette.brand
-        if (Build.VERSION.SDK_INT < 33 || backdrop == null || backdrop.isRecycled) {
-            // 旧系统/纹理暂不可用时保留玻璃笔画高光，仍然不绘制任何外框。
+        fun drawStableGlassStroke() {
+            // 软件 Canvas、纹理暂不可用或 Shader 初始化失败时，使用稳定的双层玻璃描边。
             glassPaint.style = Paint.Style.STROKE
             glassPaint.strokeCap = Paint.Cap.ROUND
             glassPaint.strokeJoin = Paint.Join.ROUND
@@ -222,47 +223,62 @@ class Toolbar(
             canvas.translate(-0.35f * density, -0.45f * density)
             PanelIcons.draw(canvas, icon, cx, cy, size, glassPaint)
             canvas.restore()
+        }
+        if (Build.VERSION.SDK_INT < 33 || !canvas.isHardwareAccelerated ||
+            liquidGlassShaderUnavailable || backdrop == null || backdrop.isRecycled) {
+            drawStableGlassStroke()
             return
         }
 
-        val padding = 5.5f * density
-        val renderSize = kotlin.math.ceil(size + padding * 2f).toInt().coerceAtLeast(8)
-        val mask = iconMask(icon, renderSize, size)
-        val shader = liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_ICON_AGSL).also { liquidGlassShader = it }
-        val sourceScale = backdrop.width.toFloat() / viewWidth.coerceAtLeast(1)
-        val sourceShader = if (backdropShaderBitmap !== backdrop || backdropShader == null) {
-            BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
-                backdropShaderBitmap = backdrop
-                backdropShader = it
-            }
-        } else backdropShader!!
+        try {
+            val padding = 5.5f * density
+            val renderSize = kotlin.math.ceil(size + padding * 2f).toInt().coerceAtLeast(8)
+            iconMask(icon, renderSize, size)
+            val shader = liquidGlassShader ?: RuntimeShader(LIQUID_GLASS_ICON_AGSL).also { liquidGlassShader = it }
+            val sourceScale = backdrop.width.toFloat() / viewWidth.coerceAtLeast(1)
+            val sourceShader = if (backdropShaderBitmap !== backdrop || backdropShader == null) {
+                BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                    backdropShaderBitmap = backdrop
+                    backdropShader = it
+                }
+            } else backdropShader!!
 
-        backdropMatrix.setScale(sourceScale, sourceScale)
-        backdropMatrix.postTranslate((cx - renderSize / 2f) * sourceScale, (cy - renderSize / 2f) * sourceScale)
-        sourceShader.setLocalMatrix(backdropMatrix)
-        shader.setInputShader("content", iconMaskShader(icon, renderSize, size))
-        shader.setInputShader("backdrop", sourceShader)
-        shader.setFloatUniform("size", renderSize.toFloat(), renderSize.toFloat())
-        shader.setFloatUniform("refractionHeight", 5.5f * density)
-        shader.setFloatUniform("refractionAmount", -4.8f * density)
-        shader.setFloatUniform("depthEffect", 0.16f)
-        shader.setFloatUniform("chromaticAberration", 0.72f)
-        shader.setFloatUniform(
-            "tint",
-            Color.red(brand) / 255f,
-            Color.green(brand) / 255f,
-            Color.blue(brand) / 255f,
-            1f,
-        )
-        glassEffectPaint.color = Color.WHITE
-        glassEffectPaint.shader = shader
-        val left = cx - renderSize / 2f
-        val top = cy - renderSize / 2f
-        canvas.save()
-        canvas.translate(left, top)
-        canvas.drawRect(0f, 0f, renderSize.toFloat(), renderSize.toFloat(), glassEffectPaint)
-        canvas.restore()
-        glassEffectPaint.shader = null
+            backdropMatrix.setScale(sourceScale, sourceScale)
+            backdropMatrix.postTranslate((cx - renderSize / 2f) * sourceScale, (cy - renderSize / 2f) * sourceScale)
+            sourceShader.setLocalMatrix(backdropMatrix)
+            shader.setInputShader("content", iconMaskShader(icon, renderSize, size))
+            shader.setInputShader("backdrop", sourceShader)
+            shader.setFloatUniform("size", renderSize.toFloat(), renderSize.toFloat())
+            shader.setFloatUniform("refractionHeight", 5.5f * density)
+            shader.setFloatUniform("refractionAmount", -4.8f * density)
+            shader.setFloatUniform("depthEffect", 0.16f)
+            shader.setFloatUniform("chromaticAberration", 0.72f)
+            shader.setFloatUniform(
+                "tint",
+                Color.red(brand) / 255f,
+                Color.green(brand) / 255f,
+                Color.blue(brand) / 255f,
+                1f,
+            )
+            glassEffectPaint.color = Color.WHITE
+            glassEffectPaint.shader = shader
+            val left = cx - renderSize / 2f
+            val top = cy - renderSize / 2f
+            val save = canvas.save()
+            try {
+                canvas.translate(left, top)
+                canvas.drawRect(0f, 0f, renderSize.toFloat(), renderSize.toFloat(), glassEffectPaint)
+            } finally {
+                canvas.restoreToCount(save)
+            }
+        } catch (_: RuntimeException) {
+            // 图形驱动/系统不支持当前 AGSL 时，停用故障 Shader 并保持图标可见，不让工具栏闪烁或崩溃。
+            liquidGlassShaderUnavailable = true
+            liquidGlassShader = null
+            drawStableGlassStroke()
+        } finally {
+            glassEffectPaint.shader = null
+        }
     }
 
     fun onLogo(x: Float) = x < logoSlot

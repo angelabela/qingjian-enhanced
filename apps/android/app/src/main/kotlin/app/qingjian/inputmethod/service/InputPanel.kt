@@ -345,7 +345,7 @@ private class FlowingKeyboardBackgroundDrawable(
 
     /** Android 13+ 使用稳定的平滑值噪声云层；旧系统继续走 Canvas 渐变云层回退。 */
     private fun drawCloudShader(canvas: Canvas, w: Float, h: Float, time: Double, style: Int): Boolean {
-        if (Build.VERSION.SDK_INT < 33 || cloudShaderUnavailable) return false
+        // RuntimeShader 只能绘制到硬件加速 Canvas。工具栏背景采样使用 Bitmap/软件 Canvas，\n        // 必须走 Canvas 云层回退，且不能因此把硬件 Shader 全局标记为不可用。\n        if (Build.VERSION.SDK_INT < 33 || cloudShaderUnavailable || !canvas.isHardwareAccelerated) return false
         return try {
             val shader = cloudShader ?: RuntimeShader(CLOUD_AGSL).also { cloudShader = it }
             shader.setFloatUniform("iTime", time.toFloat())
@@ -566,35 +566,48 @@ private class FlowingKeyboardBackgroundDrawable(
             motionPaint.style = Paint.Style.FILL
         }
         fun cloudLayers(tint: Int, shade: Int, dusk: Boolean = false) {
-            // 上层云从画面外侧缓慢进入，下层云反向漂移，形成前后景视差。
+            // 以相互覆盖的宽云体组成连续云带，避免稀疏、彼此分离的小云块。
+            // 四个场景采用不同漂移速度与层高：晴空轻缓、暮色舒展、月夜厚云慢流、
+            // 光斑穿云则前后景反向移动，给光束留出层次。
+            val sceneSpeed = when (style) {
+                14 -> 0.72
+                15 -> 0.56
+                16 -> 0.34
+                18 -> 1.08
+                else -> 0.72
+            }
+            val layerHeights = when (style) {
+                15 -> floatArrayOf(.12f, .34f, .69f, .90f)
+                16 -> floatArrayOf(.08f, .28f, .62f, .84f)
+                18 -> floatArrayOf(.10f, .32f, .66f, .88f)
+                else -> floatArrayOf(.09f, .30f, .65f, .89f)
+            }
+            val scales = when (style) {
+                16 -> floatArrayOf(.19f, .23f, .29f, .22f)
+                18 -> floatArrayOf(.18f, .24f, .28f, .21f)
+                else -> floatArrayOf(.19f, .24f, .29f, .22f)
+            }
             for (layer in 0..3) {
-                val count = if (layer == 0 || layer == 3) 5 else 4
+                val count = 7
+                val speed = (.0042 + layer * .0011) * sceneSpeed
+                val travel = ((t * speed + layer * .137) % 1.0).toFloat()
                 for (i in 0 until count) {
                     val seed = i * 1.73 + layer * 2.4
-                    val speed = .0045 + layer * .0018
-                    val travel = ((t * speed + i * .19 + layer * .13) % 1.40).toFloat()
-                    val position = if (layer % 2 == 0) travel else 1.30f - travel
-                    val x = (position - .15f) * w
-                    val baseY = when (layer) {
-                        0 -> .10f
-                        1 -> .31f
-                        2 -> .68f
-                        else -> .91f
+                    val fraction = if (layer % 2 == 0) {
+                        (i + travel) / count
+                    } else {
+                        (count - 1 - i + travel) / count
                     }
-                    val y = h * (baseY + kotlin.math.sin(t * .10 + seed).toFloat() * .022f)
-                    val scale = when (layer) {
-                        0 -> .15f
-                        1 -> .21f
-                        2 -> .27f
-                        else -> .18f
-                    }
+                    val x = fraction * w
+                    val y = h * (layerHeights[layer] +
+                        kotlin.math.sin(t * (.055 + layer * .012) + seed).toFloat() * .018f)
                     val alpha = when (layer) {
-                        0 -> if (dusk) 76 else 84
-                        1 -> if (dusk) 104 else 118
-                        2 -> if (dusk) 144 else 158
-                        else -> if (dusk) 94 else 108
+                        0 -> if (dusk) 92 else 108
+                        1 -> if (dusk) 116 else 138
+                        2 -> if (dusk) 150 else 176
+                        else -> if (dusk) 108 else 126
                     }
-                    cloud(x, y, scale, tint, shade, alpha)
+                    cloud(x, y, scales[layer], tint, shade, alpha)
                 }
             }
         }
@@ -642,7 +655,10 @@ private class FlowingKeyboardBackgroundDrawable(
                 if (!drawCloudShader(canvas, w, h, t, style)) cloudLayers(0xFFFFAF9B.toInt(),0xFF551E55.toInt(),true)
             }
             16 -> {
-                if (!drawCloudShader(canvas, w, h, t, style)) background(0xFF03050F.toInt(),0xFF1B2C58.toInt())
+                if (!drawCloudShader(canvas, w, h, t, style)) {
+                    background(0xFF03050F.toInt(),0xFF1B2C58.toInt())
+                    cloudLayers(0xFFB8C9F0.toInt(),0xFF101A3C.toInt())
+                }
                 for (i in 0 until 70) {
                     val seed=i*2.399
                     val x=((i*47)%101)/101f*w
@@ -655,7 +671,6 @@ private class FlowingKeyboardBackgroundDrawable(
                 glow(mx,my,maxOf(w,h)*.40f,0xFFBED2FF.toInt(),90)
                 motionPaint.color=0xFFF6F8FF.toInt()
                 canvas.drawCircle(mx,my,minOf(w,h)*.06f,motionPaint)
-                if (Build.VERSION.SDK_INT < 33) cloudLayers(0xFF96AAD7.toInt(),0xFF0A0F28.toInt())
             }
             17 -> {
                 background(0xFF10062B.toInt(),0xFF3B1260.toInt())
@@ -665,9 +680,9 @@ private class FlowingKeyboardBackgroundDrawable(
                 if (!drawCloudShader(canvas, w, h, t, style)) {
                     paint.shader=LinearGradient(0f,0f,0f,h,intArrayOf(0xFF2A1A5E.toInt(),0xFFD76D77.toInt(),0xFFFFB88C.toInt()),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP)
                     canvas.drawRect(0f,0f,w,h,paint); paint.shader=null
+                    cloudLayers(0xFFFFF0F4.toInt(),0xFF8A526E.toInt(),true)
                 }
                 bokeh(45,intArrayOf(0xFFFFE6A0.toInt(),0xFFFFA0BE.toInt(),0xFFFFFFFF.toInt(),0xFFBEAAFF.toInt()),.10f,.035f)
-                if (Build.VERSION.SDK_INT < 33) cloudLayers(0xFFFFE2EC.toInt(),0xFF7D3C73.toInt())
                 bokeh(22,intArrayOf(0xFFFFF0C8.toInt(),0xFFFFC8DC.toInt()),.16f,.018f)
             }
         }
