@@ -89,7 +89,12 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         }
         addColors(borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
         addColors(backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
-        return elements
+        val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
+        accessibilityScrollElement("按键效果设置列表，可滚动", viewport, scroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            val visible = RectF(element.bounds)
+            if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
