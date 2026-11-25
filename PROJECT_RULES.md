@@ -31,7 +31,7 @@
 - 每次推进必须同步更新 Android `versionName` 与 `versionCode`，确保 versionCode 单调递增且可覆盖升级。
 - GitHub Actions run number / workflow 编号与 APP 版本号独立管理。
 - 当前工程实际版本来源需以源码核对为准：`apps/android/core/Cargo.toml` 的 package version；`apps/android/app/build.gradle.kts` 从该文件计算 versionName/versionCode。仓库其他平台 Cargo.toml 与锁文件也可能有统一版本约束，变更前检查发布文档并按项目要求同步。
-- 当前源码核对值为 `0.3.4-dev` / versionCode `30400`；不得在不检查发布策略的情况下擅自去掉 `-dev`。
+- 本轮源码核对值为 `0.3.59-dev` / versionCode `359`（基于 781 号已安装测试的 `0.3.58-dev` 递增 patch）；不得在不检查发布策略的情况下擅自去掉 `-dev`。
 
 ## 5. 签名与仓库边界
 
