@@ -48,7 +48,7 @@ internal class CloudAtmosphereRenderer(
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hazePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var palette = palette(Theme.DAY)
+    private var palette = paletteFor(Theme.DAY)
     private var activeTheme: Theme? = null
     private var bakeVersion = 0
     private var time = 0.0
@@ -198,7 +198,7 @@ internal class CloudAtmosphereRenderer(
         return Bitmap.createBitmap(pixels, TEX, TEX, Bitmap.Config.ARGB_8888)
     }
 
-    private fun palette(theme: Theme) = when (theme) {
+    private fun paletteFor(theme: Theme) = when (theme) {
         Theme.DAY -> Palette(0xFF3A7BD9.toInt(),0xFF7DB5F0.toInt(),0xFFDCEEFF.toInt(),0xFFEAF4FF.toInt(),
             0xFFFFF2CC.toInt(),.84f,.05f,.70f,ColorWhite,0xFF93AACB.toInt(),.6f,-.8f,.56f,.74f,1.5f,.55f,.16f,118f)
         Theme.SUNSET -> Palette(0xFF2A2C6E.toInt(),0xFFA8508A.toInt(),0xFFFFB07A.toInt(),0xFFFFC7A0.toInt(),
