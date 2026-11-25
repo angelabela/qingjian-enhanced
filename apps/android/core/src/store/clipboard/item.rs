@@ -9,4 +9,7 @@ pub struct ClipboardItem {
 
     /// 图片文件的完整路径；文字条目为 `None`。
     pub image: Option<String>,
+
+    /// 最近一次复制的 Unix 秒；供 Android 剪贴板列表展示。
+    pub at: i64,
 }
