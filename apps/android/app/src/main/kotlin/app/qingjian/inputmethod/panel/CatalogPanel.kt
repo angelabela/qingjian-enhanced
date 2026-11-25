@@ -168,6 +168,7 @@ class CatalogPanel(
                 if (locked) "解除符号面板锁定" else "锁定符号面板",
                 RectF(side.left, side.top + slotHeight * (firstAction + 1), side.right, side.bottom),
                 selected = locked,
+                checked = locked,
                 virtualId = 2002,
             )
         } else {
