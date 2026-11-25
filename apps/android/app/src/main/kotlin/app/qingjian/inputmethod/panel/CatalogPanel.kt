@@ -202,6 +202,14 @@ class CatalogPanel(
             }
         }
         accessibilityScrollElement("分类内容网格，可滚动", RectF(grid), gridScroll)?.let(elements::add)
+        if (categories.accessibilityScrollable) {
+            elements += AccessibilityElement(
+                categories.accessibilityScrollLabel,
+                RectF(categories.bounds),
+                virtualId = 1000001,
+                onScroll = categories::accessibilityScroll,
+            )
+        }
         return elements.mapNotNull { element ->
             if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 90000) {
                 val visible = RectF(element.bounds)
