@@ -40,6 +40,16 @@ abstract class PanelView(
     private var accessibilityTabs: Tabs? = null
     private var accessibilityFocusedId = INVALID_ACCESSIBILITY_ID
 
+    /** Canvas 自绘面板的可操作区域；子类按当前布局提供，TalkBack 点击仍走原有 onTap。 */
+    protected data class AccessibilityElement(
+        val label: String,
+        val bounds: RectF,
+        val selected: Boolean = false,
+        val enabled: Boolean = true,
+    )
+
+    protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
+
     /** Canvas 表头没有真实子 View，故用虚拟节点暴露返回键和每个页签。 */
     private val panelAccessibilityProvider = object : AccessibilityNodeProvider() {
         override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
@@ -58,15 +68,27 @@ abstract class PanelView(
                         root.addChild(this@PanelView, TAB_ACCESSIBILITY_BASE + index)
                     }
                 }
+                accessibilityElements().forEachIndexed { index, element ->
+                    if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
+                        root.addChild(this@PanelView, ELEMENT_ACCESSIBILITY_BASE + index)
+                    }
+                }
                 return root
             }
 
+            val isElement = virtualViewId >= ELEMENT_ACCESSIBILITY_BASE
+            val elementIndex = virtualViewId - ELEMENT_ACCESSIBILITY_BASE
+            val element = if (isElement) accessibilityElements().getOrNull(elementIndex) else null
+            if (isElement && (element == null || !element.enabled)) return null
             val tabIndex = virtualViewId - TAB_ACCESSIBILITY_BASE
             val isBack = virtualViewId == BACK_ACCESSIBILITY_ID
             if (isBack && !hasHeader) return null
             val tab = accessibilityTabs
             val label: String
-            val bounds = if (isBack) {
+            val bounds = if (isElement) {
+                label = element!!.label
+                Rect(element.bounds.left.toInt(), element.bounds.top.toInt(), element.bounds.right.toInt(), element.bounds.bottom.toInt())
+            } else if (isBack) {
                 label = "返回"
                 Rect(0, 0, ink.dp(BACK_WIDTH_DP).toInt(), headerHeight.toInt())
             } else {
@@ -79,14 +101,14 @@ abstract class PanelView(
             node.setSource(this@PanelView, virtualViewId)
             node.setParent(this@PanelView)
             node.packageName = context.packageName
-            node.className = if (isBack) "android.widget.Button" else "android.widget.TabWidget"
+            node.className = if (isBack || isElement) "android.widget.Button" else "android.widget.TabWidget"
             node.text = label
             node.contentDescription = if (isBack) "返回上一级面板" else label
             node.isEnabled = isEnabled
             node.isVisibleToUser = isShown
             node.isFocusable = true
             node.isClickable = true
-            node.isSelected = !isBack && tab?.selected == tabIndex
+            node.isSelected = if (isElement) element!!.selected else !isBack && tab?.selected == tabIndex
             node.isAccessibilityFocused = accessibilityFocusedId == virtualViewId
             node.setBoundsInParent(bounds)
             val screen = Rect(bounds)
@@ -116,12 +138,19 @@ abstract class PanelView(
                 }
                 AccessibilityNodeInfo.ACTION_CLICK -> {
                     if (!isEnabled) return false
-                    if (virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader) onBack()
-                    else {
-                        val index = virtualViewId - TAB_ACCESSIBILITY_BASE
-                        val tab = accessibilityTabs ?: return false
-                        val rect = tab.accessibilityBounds(index) ?: return false
-                        onTap(rect.centerX(), rect.centerY())
+                    when {
+                        virtualViewId == BACK_ACCESSIBILITY_ID && hasHeader -> onBack()
+                        virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
+                            val item = accessibilityElements().getOrNull(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
+                            if (!item.enabled) return false
+                            onTap(item.bounds.centerX(), item.bounds.centerY())
+                        }
+                        else -> {
+                            val index = virtualViewId - TAB_ACCESSIBILITY_BASE
+                            val tab = accessibilityTabs ?: return false
+                            val rect = tab.accessibilityBounds(index) ?: return false
+                            onTap(rect.centerX(), rect.centerY())
+                        }
                     }
                     sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
                     invalidate()
@@ -140,6 +169,11 @@ abstract class PanelView(
         accessibilityTabs?.labels?.indices?.forEach { index ->
             if (accessibilityTabs?.accessibilityBounds(index) != null) {
                 info.addChild(this, TAB_ACCESSIBILITY_BASE + index)
+            }
+        }
+        accessibilityElements().forEachIndexed { index, element ->
+            if (element.enabled && RectF.intersects(element.bounds, RectF(0f, 0f, width.toFloat(), height.toFloat()))) {
+                info.addChild(this, ELEMENT_ACCESSIBILITY_BASE + index)
             }
         }
     }
@@ -269,6 +303,7 @@ abstract class PanelView(
         const val BACK_WIDTH_DP = 56f
         private const val BACK_ACCESSIBILITY_ID = 1
         private const val TAB_ACCESSIBILITY_BASE = 1000
+        private const val ELEMENT_ACCESSIBILITY_BASE = 20000
         private const val INVALID_ACCESSIBILITY_ID = -1
     }
 }
