@@ -1260,11 +1260,13 @@ class ClipboardPanel(
     private fun deleteClipAt(index: Int) {
         val sourceIndex = clipSourceIndex(index)
         if (sourceIndex !in clips.indices) return
+        clearAccessibilityElementFocusForContentReplacement()
         ClipboardStore.remove(context, sourceIndex, actions.clipboardLimit)
         clips = ClipboardStore.list(context, actions.clipboardLimit)
         app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
         // 删除当前卡片后保留列表滚动量，下一条内容自然补位，不跳回第一条。
         collapse(resetScroll = false)
+        notifyAccessibilityContentChanged()
     }
 
     override fun onTap(x: Float, y: Float) {
@@ -1351,10 +1353,12 @@ class ClipboardPanel(
             actions.editPhrase(null, visiblePhraseGroups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup)
         } else if (clips.isNotEmpty()) {
             if (clearArmed) {
+                clearAccessibilityElementFocusForContentReplacement()
                 clips = ClipboardStore.clear(context, actions.clipboardLimit)
                 app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
                 clearArmed = false
                 collapse()
+                notifyAccessibilityContentChanged()
             } else {
                 clearArmed = true
             }
@@ -1437,12 +1441,15 @@ class ClipboardPanel(
     }
 
     private fun reloadPhrases(page: PhrasePage) {
+        val replacingVisiblePhraseRows = showingPhrases
+        if (replacingVisiblePhraseRows) clearAccessibilityElementFocusForContentReplacement()
         this.page = page
         groups.labels = visiblePhraseGroups
         groups.selected = visiblePhraseGroups.indexOf(lastGroup).coerceAtLeast(0)
         actions.phrasesChanged()
         // 从剪贴板条目添加常用语时仍留在剪贴板页，不能把当前浏览位置重置到顶部。
         collapse(resetScroll = showingPhrases)
+        if (replacingVisiblePhraseRows) notifyAccessibilityContentChanged()
     }
 
     companion object {
