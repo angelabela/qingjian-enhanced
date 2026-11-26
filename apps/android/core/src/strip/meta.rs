@@ -6,6 +6,9 @@ use super::StripHit;
 
 #[derive(Debug, Serialize)]
 pub struct StripMeta {
+    /// 与候选内容同步的单调帧序号；Android 丢弃迟到的旧帧元数据。
+    pub frame_id: u64,
+
     /// 位图像素宽高；像素是预乘 RGBA，与 `Bitmap.Config.ARGB_8888` 的内存布局一致。
     pub width: u32,
 

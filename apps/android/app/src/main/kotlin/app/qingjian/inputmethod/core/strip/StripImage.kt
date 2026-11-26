@@ -11,6 +11,8 @@ import org.json.JSONObject
  * [emoji] 里的候选渲染器画不出彩色 emoji（Android 13 起是 COLRv1），壳在 [wordRect] 上自己画。
  */
 class StripImage(
+    /** Rust 候选帧序号；用于阻止异步旧帧覆盖当前候选。 */
+    val frameId: Long,
     val bitmap: Bitmap,
     val candidatesTop: Int,
     /** 主题底色（ARGB），位图没铺满的地方用它填。 */
@@ -50,6 +52,7 @@ class StripImage(
             val emoji = meta.getJSONArray("emoji")
             val edges = meta.optJSONArray("preedit_edges") ?: JSONArray()
             return StripImage(
+                frameId = meta.getLong("frame_id"),
                 bitmap = bitmap,
                 candidatesTop = meta.getInt("candidates_top"),
                 background = meta.getLong("background").toInt(),

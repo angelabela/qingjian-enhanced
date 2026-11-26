@@ -23,6 +23,9 @@ pub struct StripPainter {
     /// 最新一帧要画的内容。
     content: RenderFrame,
 
+    /// 单调递增的候选帧序号；随布局元数据传给 Android，拒绝旧帧回写。
+    frame_id: u64,
+
     /// 渲染器的连续行下标 -> 原始候选下标（云候选被独立显示）。
     candidate_indices: Vec<usize>,
 
@@ -44,6 +47,7 @@ impl StripPainter {
             dark: Theme::dark().with_animations(false),
             text_scale: 1.0,
             content: RenderFrame::default(),
+            frame_id: 0,
             candidate_indices: Vec::new(),
             emoji: Vec::new(),
             last: None,
@@ -72,6 +76,7 @@ impl StripPainter {
 
     /// 记下一帧要显示的拼音、提示与候选。
     pub fn show(&mut self, frame: &Frame) {
+        self.frame_id = self.frame_id.saturating_add(1);
         self.candidate_indices = visible_indices(&frame.candidates);
         // Emoji 下标覆盖所有候选，包括被独立追加到 Kotlin 侧的云候选；
         // Kotlin 用自己的 wordRect 取得补充候选区域，再统一绘制彩色 Emoji。
@@ -114,6 +119,7 @@ impl StripPainter {
         {
             self.last = None;
             return Ok(StripMeta {
+                frame_id: self.frame_id,
                 width: 0,
                 height: 0,
                 candidates_top: 0,
@@ -155,6 +161,7 @@ impl StripPainter {
         let offset = (rendered.content_x, rendered.content_y);
         let background = theme.variable("surface").map_or(0, appearance::argb);
         let meta = StripMeta {
+            frame_id: self.frame_id,
             width,
             height,
             candidates_top: rendered.candidates_top(),

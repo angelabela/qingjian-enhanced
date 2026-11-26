@@ -174,6 +174,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** 换上新画的一帧；画不出来（null）时只铺底色。 */
     fun paint(image: StripImage?) {
+        // JNI/渲染线程可能异步回传旧帧；帧序号较小的布局和位图不能覆盖新帧。
+        if (image != null && this.image != null && image.frameId < this.image!!.frameId) return
         // 释放上一帧透明背景副本，避免候选频繁变化时 Bitmap 持续堆积。
         renderedBitmap?.let { if (!it.isRecycled) it.recycle() }
         renderedBitmap = null
