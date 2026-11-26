@@ -41,6 +41,21 @@ class AppearanceActivity : PageActivity() {
                 listOf(fontControls(settings)),
                 footer = getString(R.string.font_weight_note),
             ),
+            ui.group(
+                "文字效果",
+                ui.picker(
+                    "候选栏选中框",
+                    listOf("柔光呼吸", "霓虹描边", "流光扫过", "实心强调", "简洁边框")[
+                        prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
+                    ],
+                    listOf("柔光呼吸", "霓虹描边", "流光扫过", "实心强调", "简洁边框"),
+                    prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4),
+                ) { index ->
+                    prefs.edit().putInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, index).apply()
+                    rebuild()
+                },
+                footer = "调整键盘左右滑动与空格左右滑动预选候选词时的选中框样式。",
+            ),
             ui.sectionTitle(R.string.section_theme),
             themeGrid(settings, dark),
             ui.group(
