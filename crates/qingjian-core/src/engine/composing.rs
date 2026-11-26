@@ -4,7 +4,7 @@ use super::commit::LastCommit;
 use super::input_log::{INPUT_LOG_VERSION, InputLogEntry, InputLogger, InputSource};
 use super::learning::Learner;
 use super::mode_keys::QUESTION_PREFIX;
-use super::{Engine, RECENT_COMMITS, is_raw, looks_like_english_word, segment_longest_prefix};
+use super::{Engine, RECENT_COMMITS, is_raw, segment_longest_prefix};
 use crate::composition::Composition;
 use crate::shortcut;
 use std::time::Instant;
