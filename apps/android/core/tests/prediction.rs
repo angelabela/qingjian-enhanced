@@ -40,6 +40,7 @@ impl Predictor for FakeCloud {
             return None;
         }
         Some(Prediction {
+            kind: Default::default(),
             sequence,
             words: vec![CloudWord {
                 text: "拟好".to_owned(),
