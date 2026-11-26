@@ -216,9 +216,8 @@ fn broken_lines_are_skipped_instead_of_failing_the_load() {
     assert_eq!(learner.typo_count("gan", "guan"), 1);
     assert_eq!(learner.word_count(), 1);
     assert_eq!(learner.english_count(), 0, "旧的两次记录和损坏行都必须迁移清理");
-    assert!(learner.english_dirty, "清理结果必须安排回写");
+    assert!(!learner.english_dirty, "启动加载时应立即完成迁移回写");
     assert!(learner.path.is_some());
-    learner.flush();
     let cleaned = std::fs::read_to_string(FrequencyLearner::english_path(&path)).unwrap();
     assert!(!cleaned.contains("gist"), "{cleaned:?}");
     std::fs::remove_dir_all(dir).unwrap();
@@ -409,8 +408,7 @@ fn legacy_personal_english_is_filtered_and_rewritten_on_first_flush() {
     for dirty in ["hhw1", "hhgh.", "xoxfpfdnBadm", "two", "ab", "MixedCASE"] {
         assert_eq!(list.get(dirty), None, "{dirty}");
     }
-    assert!(learner.english_dirty);
-    learner.flush();
+    assert!(!learner.english_dirty, "from_path 应已立即完成迁移回写");
 
     let saved = std::fs::read_to_string(&english_path).unwrap();
     assert!(saved.contains("hello\t3"), "{saved:?}");
