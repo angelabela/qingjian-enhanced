@@ -43,7 +43,22 @@ fn lookup_choice(choices: &HashMap<String, HashMap<String, u32>>, key: &str, tex
         .unwrap_or(0)
 }
 
-/// 个人英文词只收稳定的字母词；拒绝原始按键串、数字/标点混入和异常大小写。\nfn valid_personal_english(word: &str) -> bool {\n    if !(3..=32).contains(&word.len()) || !word.is_ascii() || !word.bytes().all(|b| b.is_ascii_alphabetic()) {\n        return false;\n    }\n    let lower = word.bytes().all(|b| b.is_ascii_lowercase());\n    let upper = word.bytes().all(|b| b.is_ascii_uppercase());\n    let title = word.as_bytes().first().is_some_and(u8::is_ascii_uppercase)\n        && word.as_bytes()[1..].iter().all(u8::is_ascii_lowercase);\n    lower || upper || title\n}\n\nimpl Learner for FrequencyLearner {
+/// 个人英文词只收稳定的字母词；拒绝原始按键串、数字/标点混入和异常大小写。
+fn valid_personal_english(word: &str) -> bool {
+    if !(3..=32).contains(&word.len())
+        || !word.is_ascii()
+        || !word.bytes().all(|b| b.is_ascii_alphabetic())
+    {
+        return false;
+    }
+    let lower = word.bytes().all(|b| b.is_ascii_lowercase());
+    let upper = word.bytes().all(|b| b.is_ascii_uppercase());
+    let title = word.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+        && word.as_bytes()[1..].iter().all(u8::is_ascii_lowercase);
+    lower || upper || title
+}
+
+impl Learner for FrequencyLearner {
     fn record(&mut self, candidate: &Candidate) {
         self.tick();
         let now = self.now_seconds.get();
