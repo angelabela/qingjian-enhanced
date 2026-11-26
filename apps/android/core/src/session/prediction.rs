@@ -20,9 +20,12 @@ impl Session {
         }
     }
 
-    /// 组句刷新完：开着自动联想就按新拼音再要一次（停键防抖在 worker 里），旧的云端结果随新查询作废。
-    /// 没开自动联想（或工具框开着）时直接返回，不取消在飞请求。
+    /// 组句刷新完：开着自动联想就按新拼音再要一次（停键防抖在 worker 里）；非自动模式也要作废旧组句结果。
+    /// 工具框打开时不发请求；已排队的旧组句结果也不能在下一次轮询中复活。
     pub(super) fn request_prediction(&mut self) {
+        self.pending_predictions.retain(|queued| {
+            !matches!(queued.prediction.kind, PredictionKind::Compose | PredictionKind::Question)
+        });
         self.sentence_at = None;
         self.sentence_text = None;
         if self.tools_open
