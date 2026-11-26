@@ -38,7 +38,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private fun borderTrackY() = borderTop() + ink.dp(36f)
     private fun backgroundTop() = borderTop() + ink.dp(82f)
     private fun backgroundTrackY() = backgroundTop() + ink.dp(36f)
-    private fun contentBottom() = backgroundTop() + ink.dp(82f)
+    private fun restoreTop() = backgroundTop() + ink.dp(82f)
+    private fun contentBottom() = restoreTop() + ink.dp(48f)
 
     private fun notifyChanged() {
         context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
@@ -106,6 +107,10 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         )
         addColors(borderTop(), "按键边框效果", PRESET_COLORS, PRESET_COLORS.indexOf(borderColor))
         addColors(backgroundTop(), "按键背景效果", PRESET_COLORS, PRESET_COLORS.indexOf(backgroundColor and 0x00FFFFFF or 0xFF000000.toInt()))
+        elements += AccessibilityElement(
+            "恢复按键边框和背景默认主题色",
+            RectF(card.left + ink.dp(14f), restoreTop() - offset + ink.dp(4f), card.right - ink.dp(14f), restoreTop() - offset + ink.dp(40f)),
+        )
         val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
         accessibilityScrollElement("按键效果设置列表，可滚动", viewport, scroll)?.let(elements::add)
         return elements.mapNotNull { element ->
@@ -143,6 +148,9 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         drawToggle(canvas, threeDimensionalTop(), "立体按键效果", threeDimensional, "增加底部厚度阴影与顶部高光")
         drawColorChoice(canvas, borderTop(), "按键边框效果 RGB", borderColor, isBackground = false)
         drawColorChoice(canvas, backgroundTop(), "按键背景效果 RGB", backgroundColor, isBackground = true)
+        val restoreBounds = RectF(card.left + ink.dp(14f), restoreTop() + ink.dp(4f), card.right - ink.dp(14f), restoreTop() + ink.dp(40f))
+        ink.round(canvas, restoreBounds, 10f, palette.functionalKey)
+        ink.text(canvas, "恢复默认主题色", 12f, palette.text, restoreBounds.centerX(), restoreBounds.centerY())
         canvas.restore()
         if (marquee && isShown) postInvalidateDelayed(32L)
     }
@@ -216,9 +224,22 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
             selectColorAt(x, contentY, borderTop(), KEY_BORDER_COLOR, isBackground = false)
-        } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
+        } else if (contentY >= backgroundTop() && contentY < restoreTop()) {
             selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_COLOR, isBackground = true)
+        } else if (contentY >= restoreTop() && contentY < contentBottom()) {
+            restoreThemeColors()
         }
+    }
+
+    /** 恢复边框与背景色的主题默认值；不改透明度、磨砂和其他按键效果。 */
+    private fun restoreThemeColors() {
+        prefs.edit()
+            .remove(KEY_BORDER_COLOR)
+            .remove(KEY_BACKGROUND_COLOR)
+            .putInt(KEY_BORDER_INDEX, 0)
+            .putInt(KEY_BACKGROUND_INDEX, 0)
+            .apply()
+        notifyChanged()
     }
 
     /** 点击 11 个固定预设色，背景色保留半透明以透出主题/视频背景。 */
