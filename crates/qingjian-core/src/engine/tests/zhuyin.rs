@@ -43,8 +43,10 @@ fn zhuyin_ranks_candidates_by_typed_tone() {
     engine.set_input("a8 ");
     assert_eq!(engine.composition().text(), "a8 ");
     assert_eq!(crate::zhuyin::decode(engine.composition().scope()).tones(), [Some(1)]);
+    assert_eq!(engine.decode_readings("a8 ").first().unwrap().tones(), [Some(1)]);
     let first = engine.query().unwrap();
     assert!(first.decoded_keys);
+    assert!(first.correction.is_none(), "{:?}", first.correction);
     assert_eq!(first.candidates.items[0].text, "妈", "{:?}", first.candidates.items);
     assert_eq!(first_candidate(&mut engine, "a83"), "马");
     assert_eq!(first_candidate(&mut engine, "a87"), "吗");
