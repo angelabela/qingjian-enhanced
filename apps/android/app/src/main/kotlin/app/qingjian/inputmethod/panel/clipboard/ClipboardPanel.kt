@@ -563,6 +563,8 @@ class ClipboardPanel(
                         downKey = null
                         downDelete = false
                         downClose = false
+                        downDeleteControl = false
+                        downCloseControl = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
