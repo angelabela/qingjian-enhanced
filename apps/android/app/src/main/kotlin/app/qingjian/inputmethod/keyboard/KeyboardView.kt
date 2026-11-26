@@ -772,7 +772,9 @@ class KeyboardView(
                         timer.postDelayed(spaceHold, if (settings.voiceHoldSpace) VOICE_HOLD_MS else LONG_PRESS_MS)
                     }
 
-                    choicesOf(slot.key).isNotEmpty() && !choicePopup.showing -> {
+                    choicesOf(slot.key).isNotEmpty() &&
+                        (slot.key !is Key.Letter || settings.letterKeyPopup) &&
+                        !choicePopup.showing -> {
                         timer.removeCallbacks(longPress)
                         longPressPointer = pointer
                         longPressX = event.getX(index)
@@ -1230,6 +1232,8 @@ class KeyboardView(
     private fun openChoices() {
         val slot = pressed[longPressPointer] ?: return
         val key = slot.key
+        // 该开关只控制字母键长按选择气泡；其他按键（如中英键）仍保留原有长按功能。
+        if (key is Key.Letter && !settings.letterKeyPopup) return
         choiceKey = key
         choiceItems = choicesOf(key)
         if (choiceItems.isEmpty()) return

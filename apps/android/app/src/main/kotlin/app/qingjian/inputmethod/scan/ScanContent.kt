@@ -106,6 +106,15 @@ object ScanContent {
             RegexOption.IGNORE_CASE,
         )
         val digits = Regex("(?<!\\d)(\\d{4,6})(?!\\d)")
+        // 先处理运营商常见格式：验证码是[8542]、随机码【7780】。
+        // 允许关键词后有少量中文说明，但数字必须是独立的 4–6 位，不能截取手机号/长编号。
+        val bracketed = Regex(
+            "(?:短信验证码|验证码|校验码|动态码|短信码|随机码|安全码|确认码|verification\\s*code|one[- ]time\\s+password|\\bOTP\\b)" +
+                "[^0-9]{0,20}(?<!\\d)(\\d{4,6})(?!\\d)",
+            RegexOption.IGNORE_CASE,
+        ).find(text)
+        bracketed?.groupValues?.getOrNull(1)?.let { return it }
+
         val matches = context.findAll(text).toList()
         if (matches.isEmpty()) return null
         data class Candidate(val code: String, val distance: Int, val afterKeyword: Boolean)

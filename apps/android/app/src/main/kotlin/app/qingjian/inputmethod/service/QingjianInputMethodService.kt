@@ -1811,6 +1811,16 @@ class QingjianInputMethodService :
         // 文字工具仅展示本地识别结果；只有用户点击具体 AI 操作时才会请求云端。
         panel?.open(kind, source, selected.isNotBlank())
         showKeyboard()
+        if (kind == PanelKind.CLIPBOARD) {
+            // 面板打开时重新识别系统剪贴板最新内容；即使此前键盘提示过，也允许在这次打开时再展示一次。
+            clipboardWatcher.capture()
+            clipboardNoticeEventPending = true
+            if (shownPreedit.isEmpty()) {
+                Handler(mainLooper).post { showLatestClipboardNotice() }
+            } else {
+                clipboardNoticePending = true
+            }
+        }
     }
 
     override fun closePanel() {

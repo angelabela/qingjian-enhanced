@@ -23,6 +23,8 @@ data class Settings(
     val keyPopup: Boolean,
     /** 字母按键短按时显示放大 Tips；独立于功能键气泡开关。 */
     val letterKeyTip: Boolean = true,
+    /** 字母键长按时是否弹出大小写字母与符号选择气泡。 */
+    val letterKeyPopup: Boolean = true,
     /** 键面字号档（#826），与候选字号分开。 */
     val keyTextSize: TextSize,
     /** 键面字号（sp），滑动范围 1–50；旧版分档设置仅用于首次迁移。 */
@@ -217,6 +219,7 @@ data class Settings(
         const val KEY_KEY_SOUND_STYLE = "key_sound_style"
         const val KEY_POPUP = "key_popup"
         const val KEY_LETTER_KEY_TIP = "letter_key_short_tip"
+        const val KEY_LETTER_KEY_POPUP = "letter_key_long_popup"
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
         const val KEY_KEY_FONT_SIZE = "key_font_size"
         const val KEY_CANDIDATE_FONT_SIZE = "candidate_font_size"
@@ -328,6 +331,7 @@ data class Settings(
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
                 letterKeyTip = prefs.getBoolean(KEY_LETTER_KEY_TIP, prefs.getBoolean(KEY_POPUP, true)),
+                letterKeyPopup = prefs.getBoolean(KEY_LETTER_KEY_POPUP, true),
                 keyTextSize = legacyKeyTextSize,
                 keyFontSize = prefs.getInt(KEY_KEY_FONT_SIZE, (legacyKeyTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 keySkin = when (prefs.getString(KEY_KEY_SKIN, null)) {
