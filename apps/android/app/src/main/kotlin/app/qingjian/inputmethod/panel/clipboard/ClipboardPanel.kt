@@ -114,7 +114,7 @@ class ClipboardPanel(
             item.text.forEach { ch ->
                 when {
                     ch.isWhitespace() -> Unit
-                    ch in '\\u4e00'..'\\u9fff' -> {
+                    ch in '\u4e00'..'\u9fff' -> {
                         val initials = PinyinHelper.toHanyuPinyinStringArray(ch).orEmpty()
                             .mapNotNull { it.firstOrNull()?.lowercaseChar()?.takeIf { letter -> letter in 'a'..'z' } }
                             .distinct().joinToString("")
