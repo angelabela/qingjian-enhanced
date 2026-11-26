@@ -244,7 +244,7 @@ class KeyPainter(
         val index = QWERTY_ORDER.indexOf(letter.lowercaseChar())
         if (index < 0) return
         val now = SystemClock.uptimeMillis()
-        // 2.6s -> 6.5s：速度降低 60%（保留原有亮度/拖尾观感）。
+        // 6.5s -> 13s：在现有基础上再减速 50%，保留亮度与拖尾观感。
         val phase = (now % MARQUEE_CYCLE_MS).toFloat() / MARQUEE_STEP_MS
         val trail = (phase - index + 26f) % 26f
         if (trail > 4.8f) return
@@ -574,8 +574,8 @@ class KeyPainter(
     private fun scaleOf(sp: Float) = if (sp > HINT_MAX_SP) textScale else 1f
 
     private companion object {
-        const val MARQUEE_CYCLE_MS = 6_500L
-        const val MARQUEE_STEP_MS = 250f
+        const val MARQUEE_CYCLE_MS = 13_000L
+        const val MARQUEE_STEP_MS = 500f
         const val BREATH_CYCLE_MS = 2_400L
         const val QWERTY_ORDER = "qwertyuiopasdfghjklzxcvbnm"
         val EDIT_GESTURE_KEYS = setOf('z', 'x', 'c', 'v')
