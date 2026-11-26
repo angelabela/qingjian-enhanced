@@ -11,6 +11,7 @@ import android.widget.Toast
 import android.os.Build
 import app.qingjian.inputmethod.mascot.FloatingMascotService
 import app.qingjian.inputmethod.core.AppLog
+import app.qingjian.inputmethod.scan.ScanContent
 
 /** 仅在用户开启验证码监测后处理短信；只在本机提取验证码，不上传短信正文。 */
 class SmsCodeReceiver : BroadcastReceiver() {
@@ -27,7 +28,7 @@ class SmsCodeReceiver : BroadcastReceiver() {
             Telephony.Sms.Intents.getMessagesFromIntent(intent).toList()
         }.getOrDefault(emptyList())
         val body = messages.joinToString("") { it.messageBody.orEmpty() }
-        val code = extractCode(body)
+        val code = ScanContent.extractSmsCode(body)
         if (code == null) {
             AppLog.info("[SMS_CODE_DIAG] no code extracted messageCount=${messages.size}")
             return
@@ -62,36 +63,6 @@ class SmsCodeReceiver : BroadcastReceiver() {
             }.onFailure { android.util.Log.w("QingjianMascot", "Unable to show SMS code in mascot", it) }
         }
         Toast.makeText(context, "验证码 $code 已复制", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun extractCode(text: String): String? {
-        if (text.isBlank()) return null
-        val context = Regex(
-            "(验证码|校验码|动态码|短信码|verification\\s*code|one[- ]time\\s+password|\\bOTP\\b)",
-            RegexOption.IGNORE_CASE,
-        )
-        // Some SMS templates place the code before the keyword; inspect a bounded window on both sides.
-        val digits = Regex("(?<!\\d)(\\d{4,6})(?!\\d)")
-        val matches = context.findAll(text).toList()
-        if (matches.isEmpty()) return null
-        data class Candidate(val code: String, val distance: Int, val afterKeyword: Boolean)
-        val candidates = matches.flatMap { match ->
-            val start = (match.range.first - 48).coerceAtLeast(0)
-            val end = (match.range.last + 49).coerceAtMost(text.length)
-            digits.findAll(text.substring(start, end)).mapNotNull { number ->
-                val numberStart = start + number.range.first
-                val numberEnd = start + number.range.last
-                when {
-                    numberStart > match.range.last ->
-                        Candidate(number.groupValues[1], numberStart - match.range.last - 1, true)
-                    numberEnd < match.range.first ->
-                        Candidate(number.groupValues[1], match.range.first - numberEnd - 1, false)
-                    else -> null
-                }
-            }.toList()
-        }
-        return candidates.filter { it.afterKeyword }.minByOrNull { it.distance }?.code
-            ?: candidates.filterNot { it.afterKeyword }.minByOrNull { it.distance }?.code
     }
 
     companion object {

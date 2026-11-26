@@ -33,6 +33,8 @@ import app.qingjian.inputmethod.theme.AppColors
  */
 class SettingsWidgets(private val context: Context, val colors: AppColors) {
     private val density = context.resources.displayMetrics.density
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+    private val fontScale = scaledDensity / density
 
     fun dp(value: Int) = (value * density).toInt()
 
@@ -247,11 +249,13 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         orientation = LinearLayout.HORIZONTAL
         background = rounded(colors.fill, 9f)
         setPadding(dp(2), dp(2), dp(2), dp(2))
+        val pillHeight = maxOf(dp(28), (13f * scaledDensity + dp(8)).toInt())
+        val targetHeight = maxOf(dp(48), pillHeight + dp(16))
         options.forEachIndexed { index, option ->
             val on = index == selected
             // Keep the visual pill compact while expanding its touch target to Android's 48dp baseline.
             val target = FrameLayout(context).apply {
-                minimumHeight = dp(48)
+                minimumHeight = targetHeight
                 isClickable = true
                 isFocusable = true
                 isSelected = on
@@ -259,19 +263,22 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
                 setOnClickListener { if (!on) onPick(index) }
                 addView(text(option, 13f, colors.text, bold = on).apply {
                     gravity = Gravity.CENTER
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                     if (on) {
                         background = rounded(if (colors.dark) 0xFF636366.toInt() else colors.surface, 7f)
                         elevation = dp(1).toFloat()
                     }
-                }, FrameLayout.LayoutParams(MATCH_PARENT, dp(28), Gravity.CENTER))
+                }, FrameLayout.LayoutParams(MATCH_PARENT, pillHeight, Gravity.CENTER))
             }
-            addView(target, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(target, LinearLayout.LayoutParams(0, targetHeight, 1f))
         }
     }
 
     /** 左边标题、右边分段选择的一行；选项多或字长时分段选择单独占满一行。 */
     fun segmentedRow(title: Int, options: List<String>, selected: Int, onPick: (Int) -> Unit): View {
-        val wide = options.size > 4 || options.any { it.length > 3 }
+        val wide = options.size > 4 || options.any { it.length > 3 } || fontScale >= 1.3f ||
+            context.resources.configuration.screenWidthDp in 1..359
         return if (wide) {
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL

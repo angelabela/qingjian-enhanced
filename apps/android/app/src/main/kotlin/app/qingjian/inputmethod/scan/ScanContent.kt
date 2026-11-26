@@ -80,5 +80,79 @@ object ScanContent {
         }
     }
 
+
+    sealed interface ClipboardAction {
+        data class Wifi(val credentials: WifiQrCredentials) : ClipboardAction
+        data class Url(val url: String) : ClipboardAction
+        data class SmsCode(val code: String) : ClipboardAction
+        data class Phone(val number: String) : ClipboardAction
+    }
+
+    /** Detect one actionable item from clipboard text; Wi-Fi credentials take precedence and stay hidden. */
+    fun detectClipboardAction(raw: String): ClipboardAction? {
+        if (raw.isBlank()) return null
+        parseWifi(raw)?.let { return ClipboardAction.Wifi(it) }
+        extractSmsCode(raw)?.let { return ClipboardAction.SmsCode(it) }
+        extractPhone(raw)?.let { return ClipboardAction.Phone(it) }
+        findWebUrl(raw)?.let { return ClipboardAction.Url(it) }
+        return null
+    }
+
+    /** Extract only a code adjacent to an explicit verification-code phrase; never guess from bare numbers. */
+    fun extractSmsCode(text: String): String? {
+        if (text.isBlank()) return null
+        val context = Regex(
+            "(验证码|校验码|动态码|短信码|随机码|安全码|确认码|verification\\s*code|one[- ]time\\s+password|\\bOTP\\b)",
+            RegexOption.IGNORE_CASE,
+        )
+        val digits = Regex("(?<!\\d)(\\d{4,6})(?!\\d)")
+        val matches = context.findAll(text).toList()
+        if (matches.isEmpty()) return null
+        data class Candidate(val code: String, val distance: Int, val afterKeyword: Boolean)
+        val candidates = matches.flatMap { match ->
+            val start = (match.range.first - 48).coerceAtLeast(0)
+            val end = (match.range.last + 49).coerceAtMost(text.length)
+            digits.findAll(text.substring(start, end)).mapNotNull { number ->
+                val numberStart = start + number.range.first
+                val numberEnd = start + number.range.last
+                when {
+                    numberStart > match.range.last ->
+                        Candidate(number.groupValues[1], numberStart - match.range.last - 1, true)
+                    numberEnd < match.range.first ->
+                        Candidate(number.groupValues[1], match.range.first - numberEnd - 1, false)
+                    else -> null
+                }
+            }.toList()
+        }
+        return candidates.filter { it.afterKeyword }.minByOrNull { it.distance }?.code
+            ?: candidates.filterNot { it.afterKeyword }.minByOrNull { it.distance }?.code
+    }
+
+    /** Find a mainland mobile number in mixed text; accept a plain international number only when it is the whole clip. */
+    fun extractPhone(raw: String): String? {
+        val match = MAINLAND_PHONE.find(raw)
+        if (match != null) {
+            val digits = match.groupValues[2].filter(Char::isDigit)
+            val prefix = match.groupValues[1]
+            return if (prefix.isNotBlank()) "+86$digits" else digits
+        }
+        val value = raw.trim()
+        if (value.length !in 7..40 || !PLAIN_PHONE.matches(value)) return null
+        val digits = value.filter(Char::isDigit)
+        if (digits.length !in 7..15) return null
+        return if (value.startsWith("+")) "+$digits" else digits
+    }
+
+    private fun findWebUrl(raw: String): String? =
+        URL_IN_TEXT.findAll(raw).mapNotNull { match ->
+            val candidate = match.value.trimEnd('.', ',', ';', ':', '!', '?', '，', '。', '；', '：', '！', '？', ')', '）', ']', '】', '}', '》')
+            webUrl(candidate)
+        }.firstOrNull()
+
     private val DOMAIN_PATTERN = Regex("^(?:www\\.)?(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/[^\\s]*)?(?:\\?[^\\s]*)?(?:#[^\\s]*)?$")
+
+    private val MAINLAND_PHONE = Regex("(?<!\\d)(\\+?86[\\s-]?)?(1[3-9](?:[\\s-]?\\d){9})(?!\\d)")
+    private val PLAIN_PHONE = Regex("[+0-9()\\-\\s]+")
+    private val URL_IN_TEXT = Regex("""(?i)(?:https?://|www\.)[^\s<>"]+|(?<![\w@])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:/[^\s<>"]*)?(?:\?[^\s<>"]*)?(?:#[^\s<>"]*)?""")
+
 }

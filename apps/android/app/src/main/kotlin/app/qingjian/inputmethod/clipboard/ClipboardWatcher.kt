@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.clipboard
 
 import app.qingjian.inputmethod.clipboard.sync.ClipboardSync
+import app.qingjian.inputmethod.scan.ScanContent
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
@@ -95,6 +96,10 @@ class ClipboardWatcher(
                 AppLog.debug("[CLIPBOARD_DIAG] capture skipped: item has no convertible text")
                 return
             }
+        if (ScanContent.parseWifi(text) != null) {
+            AppLog.info("[CLIPBOARD_DIAG] Wi-Fi configuration omitted from clipboard history and sync")
+            return
+        }
         if (!firstSeen("text:$text")) {
             AppLog.debug("[CLIPBOARD_DIAG] duplicate text clip ignored length=${text.length}")
             return

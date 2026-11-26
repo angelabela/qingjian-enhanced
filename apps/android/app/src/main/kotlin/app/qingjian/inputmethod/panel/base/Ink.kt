@@ -16,6 +16,9 @@ class Ink(val palette: Palette, val density: Float, val scaledDensity: Float = d
 
     fun dp(value: Float) = value * density
 
+    /** Convert scalable text units to pixels; use dp() only for geometry. */
+    fun sp(value: Float) = value * scaledDensity
+
     fun measure(value: String, sp: Float, bold: Boolean = false): Float {
         text.textSize = textSize(sp)
         text.isFakeBoldText = bold

@@ -339,8 +339,42 @@ class QingjianInputMethodService :
             AppLog.info("[CLIPBOARD_NOTICE] duplicate suppressed: already shown; reopen must stay silent source=$source length=${text.length}")
             return
         }
+        // 结构化内容只显示类型提示；Wi-Fi 密码、路由器管理密码和设备标识不会展示或写入日志。
+        val smartAction = preferredCode?.let { ScanContent.ClipboardAction.SmsCode(it) }
+            ?: ScanContent.detectClipboardAction(text)
+        val notice = when (smartAction) {
+            is ScanContent.ClipboardAction.Wifi -> "发现 Wi-Fi「" + smartAction.credentials.ssid + "」，点击连接"
+            is ScanContent.ClipboardAction.Url -> "发现网址，点击打开"
+            is ScanContent.ClipboardAction.SmsCode -> "发现短信验证码：" + smartAction.code + "，点击填入"
+            is ScanContent.ClipboardAction.Phone -> "发现电话号码：" + smartAction.number + "，点击拨号"
+            null -> text
+        }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
-        bar.showPersistentNotice(text) { commitText(text) }
+        bar.showPersistentNotice(notice) {
+            when (val action = smartAction) {
+                is ScanContent.ClipboardAction.Wifi -> startActivity(
+                    Intent(this, WifiJoinActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        putExtra(WifiJoinActivity.EXTRA_SSID, action.credentials.ssid)
+                        putExtra(WifiJoinActivity.EXTRA_PASSWORD, action.credentials.password)
+                        putExtra(WifiJoinActivity.EXTRA_SECURITY, action.credentials.security)
+                        putExtra(WifiJoinActivity.EXTRA_HIDDEN, action.credentials.hidden)
+                    },
+                )
+                is ScanContent.ClipboardAction.Url -> runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    Toast.makeText(this, "无法打开此网址", Toast.LENGTH_SHORT).show()
+                }
+                is ScanContent.ClipboardAction.SmsCode -> commitText(action.code)
+                is ScanContent.ClipboardAction.Phone -> runCatching {
+                    startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + action.number)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    Toast.makeText(this, "无法打开拨号界面", Toast.LENGTH_SHORT).show()
+                }
+                null -> commitText(text)
+            }
+        }
         if (preferredCode == null) clipboardNoticeEventPending = false
         AppLog.info("[CLIPBOARD_NOTICE] displayed source=$source length=${text.length} attached=${bar.isAttachedToWindow} shown=${bar.isShown}")
         prefs.edit()
@@ -1009,14 +1043,12 @@ class QingjianInputMethodService :
     /** 剪贴板出现电话号码时由小精灵提示；点击提示框打开系统拨号器并预填号码。 */
     private fun maybeShowClipboardPhonePrompt() {
         val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
+        if (isInputViewShown || !prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) ||
+            !android.provider.Settings.canDrawOverlays(this)) return
         val clip = runCatching { getSystemService(ClipboardManager::class.java)?.primaryClip }.getOrNull() ?: return
         if (clip.itemCount == 0 || (Build.VERSION.SDK_INT >= 33 && clip.description.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)) return
         val raw = clip.getItemAt(0).text?.toString()?.trim().orEmpty()
-        if (raw.length !in 7..40 || !raw.matches(Regex("[+0-9()\\-\\s]+"))) return
-        val digits = raw.filter(Char::isDigit)
-        if (digits.length !in 7..15) return
-        val number = (if (raw.trimStart().startsWith("+")) "+" else "") + digits
+        val number = ScanContent.extractPhone(raw) ?: return
         val now = android.os.SystemClock.elapsedRealtime()
         if (number == lastClipboardPhoneNumber && now - lastClipboardPhonePromptAt < 30_000L) return
         lastClipboardPhoneNumber = number

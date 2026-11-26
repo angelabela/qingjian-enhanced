@@ -167,7 +167,7 @@ class ClipboardPanel(
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
     private val clipTimestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = ink.dp(11.5f)
+        textSize = ink.sp(11.5f)
         textAlign = Paint.Align.RIGHT
         color = palette.gloss
     }
@@ -340,13 +340,13 @@ class ClipboardPanel(
                 paint.color = if (headerPressed) palette.brand else palette.surface
                 canvas.drawRoundRect(RectF(ink.dp(7f).toFloat(), ink.dp(5f).toFloat(), (width - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat()), ink.dp(9f).toFloat(), ink.dp(9f).toFloat(), paint)
                 paint.color = if (headerPressed) palette.onBrand else palette.gloss
-                paint.textSize = ink.dp(12f).toFloat()
+                paint.textSize = ink.sp(12f)
                 paint.textAlign = Paint.Align.CENTER
                 canvas.drawText("移动键盘：按住任意位置拖动 · 长按数字/符号输入", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
                 paint.color = palette.brand
                 canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
                 paint.color = palette.onBrand
-                paint.textSize = ink.dp(21f).toFloat()
+                paint.textSize = ink.sp(21f)
                 canvas.drawText("⌫", deleteRect.centerX(), deleteRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 keys.forEach { (ch, r) ->
                     val pressed = ch == pressedKey
@@ -369,14 +369,14 @@ class ClipboardPanel(
                     if (alternate != null) {
                         paint.color = if (pressed) palette.onBrand else palette.gloss
                         paint.textAlign = Paint.Align.CENTER
-                        paint.textSize = ink.dp(if (rowIndex == 0) 9f else 10f).toFloat()
+                        paint.textSize = ink.sp(if (rowIndex == 0) 9f else 10f)
                         // 数字和符号都在键帽上方横向居中，字母留在下方。
                         canvas.drawText(alternate.toString(), r.centerX(),
                             r.top + ink.dp(11f) - (paint.ascent() + paint.descent()) / 2f, paint)
                     }
                     paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
-                    paint.textSize = ink.dp(18f).toFloat()
+                    paint.textSize = ink.sp(18f)
                     val letterCenterY = r.centerY() + if (alternate != null) ink.dp(4f) else 0f
                     canvas.drawText(ch.toString(), r.centerX(), letterCenterY - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
@@ -974,7 +974,7 @@ class ClipboardPanel(
         return layouts.getOrPut(key) {
             val shown = text.take(if (open) 3000 else 600)
             val view = CodeView.of(shown)
-            textPaint.textSize = ink.dp(if (view.code) 13f else 15.5f)
+            textPaint.textSize = ink.sp(if (view.code) 13f else 15.5f)
             textPaint.typeface = if (view.code) Typeface.MONOSPACE else Typeface.DEFAULT
             textPaint.color = palette.text
             val styled: CharSequence = if (view.code && highlight) colored(shown, view) else shown
