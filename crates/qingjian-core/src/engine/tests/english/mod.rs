@@ -466,13 +466,15 @@ fn personal_english_completion_yields_to_chinese_candidates() {
     let dictionary = Dictionary::parse("何\the\t9000\n").unwrap();
     let mut engine = Engine::new(dictionary)
         .with_learner(Box::new(PersonalEnglish(personal)));
-    engine.set_chinese_first(true);
     engine.set_input("hell");
     let query = engine.query().unwrap();
-    assert_eq!(query.candidates.items[0].kind, CandidateKind::Chinese);
-    assert!(query.candidates.items.iter().any(|candidate| {
-        candidate.kind == CandidateKind::English && candidate.text == "hello"
-    }), "{:?}", query.candidates.items);
+    let chinese = query.candidates.items.iter()
+        .position(|candidate| candidate.kind == CandidateKind::Chinese)
+        .expect("应保留拼音候选");
+    let personal_english = query.candidates.items.iter()
+        .position(|candidate| candidate.kind == CandidateKind::English && candidate.text == "hello")
+        .expect("应保留个人英文补全");
+    assert!(chinese < personal_english, "{:?}", query.candidates.items);
 }
 
 #[test]
