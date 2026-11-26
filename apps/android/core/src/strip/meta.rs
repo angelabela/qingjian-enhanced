@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use super::StripHit;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StripMeta {
     /// 与候选内容同步的单调帧序号；Android 丢弃迟到的旧帧元数据。
     pub frame_id: u64,

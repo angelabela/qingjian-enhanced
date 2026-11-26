@@ -4,7 +4,7 @@ use qingjian_render::{HitRegion, HitTarget};
 use serde::Serialize;
 
 /// 位图像素坐标；`sense` 有值时是这个候选下面的第几条译文。
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StripHit {
     pub candidate: usize,
 

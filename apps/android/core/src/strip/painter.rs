@@ -6,6 +6,22 @@ use super::{StripHit, StripMeta, has_emoji, preedit, rows, visible_indices};
 use crate::appearance;
 use crate::error::AndroidError;
 use crate::frame::Frame;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StripCacheKey {
+    theme_id: String,
+    font_identity: &'static str,
+    text_scale_bits: u32,
+    candidate_weight: u16,
+    density_bits: u32,
+    dark: bool,
+    highlighted: Option<usize>,
+    visible_width: u32,
+    content_signature: u64,
+    layout: u8,
+}
 
 /// 中日同形字按简体选字形；学习语言是日语时译文里的汉字也用简体字形，与桌面端一致。
 const LOCALE: &str = "zh-CN";
@@ -31,6 +47,10 @@ pub struct StripPainter {
 
     /// 原始候选中有 emoji 的下标。
     emoji: Vec<usize>,
+    theme_id: String,
+    candidate_weight: u16,
+    content_signature: u64,
+    cache: Option<(StripCacheKey, StripMeta)>,
 
 }
 
@@ -48,6 +68,10 @@ impl StripPainter {
             frame_id: 0,
             candidate_indices: Vec::new(),
             emoji: Vec::new(),
+            theme_id: "default".to_owned(),
+            candidate_weight: 400,
+            content_signature: 0,
+            cache: None,
         })
     }
 
@@ -69,11 +93,33 @@ impl StripPainter {
         self.light = sized(false);
         self.dark = sized(true);
         self.text_scale = text_scale;
+        self.theme_id = theme.to_owned();
+        self.candidate_weight = candidate_weight;
+        self.cache = None;
     }
 
     /// 记下一帧要显示的拼音、提示与候选。
     pub fn show(&mut self, frame: &Frame) {
         self.frame_id = self.frame_id.saturating_add(1);
+        let mut signature = DefaultHasher::new();
+        frame.preedit.hash(&mut signature);
+        frame.preedit_cursor.hash(&mut signature);
+        frame.preedit_pinned.hash(&mut signature);
+        frame.notice.hash(&mut signature);
+        for candidate in &frame.candidates {
+            candidate.text.hash(&mut signature);
+            candidate.forgettable.hash(&mut signature);
+            candidate.cloud.hash(&mut signature);
+            candidate.contact.hash(&mut signature);
+            candidate.custom_phrase.hash(&mut signature);
+            for sense in &candidate.senses {
+                sense.pos.hash(&mut signature);
+                sense.text.hash(&mut signature);
+                sense.reading.hash(&mut signature);
+                sense.fresh.hash(&mut signature);
+            }
+        }
+        self.content_signature = signature.finish();
         self.candidate_indices = visible_indices(&frame.candidates);
         // Emoji 下标覆盖所有候选，包括被独立追加到 Kotlin 侧的云候选；
         // Kotlin 用自己的 wordRect 取得补充候选区域，再统一绘制彩色 Emoji。
@@ -108,6 +154,7 @@ impl StripPainter {
         highlighted: Option<usize>,
         scale: f32,
         dark: bool,
+        visible_width: u32,
     ) -> Result<StripMeta, AndroidError> {
         // 空候选帧不进入栅格渲染器；无可绘制内容时返回空元数据，避免生成 0×N 位图。
         if self.content.rows.is_empty()
@@ -136,6 +183,25 @@ impl StripPainter {
                 .position(|&index| index == original)
         });
         let theme = if dark { &self.dark } else { &self.light };
+        let key = StripCacheKey {
+            theme_id: self.theme_id.clone(),
+            font_identity: LOCALE,
+            text_scale_bits: self.text_scale.to_bits(),
+            candidate_weight: self.candidate_weight,
+            density_bits: scale.to_bits(),
+            dark,
+            highlighted: self.content.highlighted,
+            visible_width,
+            content_signature: self.content_signature,
+            layout: 0,
+        };
+        if let Some((cached_key, cached_meta)) = &self.cache {
+            if cached_key == &key {
+                let mut cached = cached_meta.clone();
+                cached.frame_id = self.frame_id;
+                return Ok(cached);
+            }
+        }
         let snapshot = self.renderer.layout_only(&self.content, Layout::Strip, theme, scale)?;
         let width = snapshot.width.ceil().max(0.0) as u32;
         let height = snapshot.height.ceil().max(0.0) as u32;
@@ -179,6 +245,7 @@ impl StripPainter {
             preedit_bottom: snapshot.preedit.as_ref().map_or(0.0, |hit| hit.y + hit.height),
             emoji: self.emoji.clone(),
         };
+        self.cache = Some((key, meta.clone()));
         Ok(meta)
     }
 
