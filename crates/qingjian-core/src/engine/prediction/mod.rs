@@ -421,6 +421,13 @@ impl Engine {
                     } else {
                         self.validate_cloud_words(&mut prediction.words);
                     }
+                    // 整句补全此前只做了清理与前文去重叠，没有做内容校验。
+                    // 模型偶尔会把内部码串/原始按键（如「1:zhud」「hhw1」）当整句返回，
+                    // 这些内容没有汉字，不应进入可上屏候选；允许正常中文句子夹带 Docker、GitHub 等术语。
+                    if prediction.sentence.as_deref().is_some_and(|text| !contains_han(text)) {
+                        tracing::debug!(sentence = ?prediction.sentence, "云端整句不含汉字，丢弃疑似原始编码");
+                        prediction.sentence = None;
+                    }
                     if !prediction.is_empty() {
                         // 给过用户什么：紧接着的上屏说明接没接受（本地联想能不能替代云端的尺子）
                         self.logger.record(InputLogEntry::Prediction {
@@ -461,7 +468,8 @@ impl Engine {
         let letters = typed.chars().filter(|c| *c != '\'').count();
         let allowed = tolerance(letters);
         words.retain(|word| {
-            let fits = !word.syllables.is_empty()
+            let fits = contains_han(&word.text)
+                && !word.syllables.is_empty()
                 && word.text.chars().count() == word.syllables.len()
                 && word.syllables.iter().all(|s| parser::is_syllable(s))
                 && mismatch_count(typed, &word.syllables) <= allowed;
@@ -580,6 +588,21 @@ fn is_translation(kind: PredictionKind) -> bool {
     )
 }
 
+/// 组句云候选必须包含汉字。纯 ASCII 的码串/请求标记不能作为中文拼音候选上屏；
+/// 中文技术句可以夹带 GitHub、Docker 等英文术语，因此不限制其余字符。
+fn contains_han(text: &str) -> bool {
+    text.chars().any(|ch| {
+        matches!(
+            ch as u32,
+            0x3400..=0x4DBF
+                | 0x4E00..=0x9FFF
+                | 0xF900..=0xFAFF
+                | 0x20000..=0x2FA1F
+                | 0x30000..=0x323AF
+        )
+    })
+}
+
 /// 半数以上音节是缩写（声母 `f` 或未打完的前缀 `zho`）：这种输入下模型按声母凑词基本只会给生造词，
 /// 只问整句补全。`fhyq` → 符合要求 是缩写，`fuheyaoqiu` 不是，`nih`（两全一缩）也不是。
 fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
@@ -592,4 +615,24 @@ fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
             .count()
             * 2
             >= total
+}
+
+
+#[cfg(test)]
+mod cloud_candidate_sanity_tests {
+    use super::contains_han;
+
+    #[test]
+    fn accepts_chinese_sentences_with_english_technical_terms() {
+        assert!(contains_han("我已经上传到 GitHub 了"));
+        assert!(contains_han("用 Docker 部署服务"));
+        assert!(contains_han("知道吗？"));
+    }
+
+    #[test]
+    fn rejects_raw_codes_and_ascii_echoes() {
+        for text in ["1:zhud", "1:cb...", "1:aj", "hhw1", "hhgh.", "hhghd:"] {
+            assert!(!contains_han(text), "{text}");
+        }
+    }
 }
