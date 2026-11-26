@@ -1,6 +1,7 @@
-use std::collections::HashSet;
 //! 云联想与整句补全：组句时按停键发请求，结果插在本地首选之后（先整句补全，再云端词），选中整句走 `accept_prediction`。
 //! 光标前后文由壳在每段组句开始时交一次（[`Session::set_surrounding`]）；工具框（快捷翻译、常用语编辑）开着时不发。
+
+use std::collections::HashSet;
 
 use qingjian_core::{CandidateList, CloudWord, SurroundingText};
 
@@ -13,12 +14,14 @@ impl Session {
     pub fn set_surrounding(&mut self, before: String, after: String) {
         self.surrounding = Some(SurroundingText { before, after });
         if !self.engine.composition().is_empty() {
+            // 清除旧整句，避免新上下文返回后重复显示；不改动已重建的本地候选。
+            self.drop_sentence();
             self.request_prediction();
         }
     }
 
     /// 组句刷新完：开着自动联想就按新拼音再要一次（停键防抖在 worker 里），旧的云端结果随新查询作废。
-    /// 没开自动联想时什么都不做：`request_prediction` 会顺手取消在飞的请求，快捷翻译的译文也在里面。
+    /// 没开自动联想（或工具框开着）时直接返回，不取消在飞请求。
     pub(super) fn request_prediction(&mut self) {
         self.sentence_at = None;
         if self.tools_open
@@ -34,6 +37,16 @@ impl Session {
         }
         self.engine
             .request_prediction(self.surrounding.clone(), &self.candidates.items);
+    }
+
+    /// 摘掉已插入的云端整句（如果有），并清除标记。
+    fn drop_sentence(&mut self) {
+        if let Some(i) = self.sentence_at.take() {
+            if i < self.candidates.items.len() {
+                self.candidates.items.remove(i);
+            }
+        }
+        self.sentence_text = None;
     }
 
     /// 取回云联想的结果插进候选：整句补全在本地首选之后，云端词再其后，与本地重复的不要。
@@ -91,6 +104,7 @@ impl Session {
             let pos = at.min(self.candidates.items.len());
             self.candidates.items.insert(pos, candidate);
             self.sentence_at = Some(pos);
+            self.sentence_text = Some(candidate.text.clone());
             at = pos + 1;
         } else if let Some(s) = self.sentence_at {
             // 已有云端整句：新词放在它后面，避免挤乱 sentence_at
@@ -109,7 +123,13 @@ impl Session {
             return None;
         }
         let text = self.candidates.items.get(index)?.text.clone();
+        if self.sentence_text.as_deref() != Some(text.as_str()) {
+            self.sentence_at = None;
+            self.sentence_text = None;
+            return None;
+        }
         self.sentence_at = None;
+        self.sentence_text = None;
         Some(self.engine.accept_prediction(&text))
     }
 }
