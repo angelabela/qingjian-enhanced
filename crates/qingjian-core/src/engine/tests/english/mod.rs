@@ -487,14 +487,14 @@ fn english_completion_never_joins_text_after_the_cursor_to_the_prefix() {
     let personal = WordList::parse("hello\thello\t3\n").unwrap();
     let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
         .with_learner(Box::new(PersonalEnglish(personal)));
-    engine.set_input("1:hell");
+    engine.set_input("nihell");
     for _ in 0..4 {
         assert!(engine.move_cursor_left());
     }
-    assert_eq!(engine.composition().scope(), "1:");
+    assert_eq!(engine.composition().scope(), "ni");
     let query = engine.query().unwrap();
     assert!(!query.candidates.items.iter().any(|candidate| candidate.text == "hello"),
-        "光标后的 hell 不得拼接到光标前的 1: 形成英文补全");
+        "光标后的 hell 不得拼接到光标前的 ni 形成英文补全");
 }
 
 #[test]
