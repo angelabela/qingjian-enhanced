@@ -23,12 +23,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val textStyles = CandidateTextStyleEngine(density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig)
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
-    private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also {
-        it.textSize = 25f * scaledDensity * textScale
-        it.textAlign = Paint.Align.CENTER
-        it.typeface = fontWeight.typeface
-        it.isFakeBoldText = fontWeight.weight >= 600
-    }
     private val fill = Paint()
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
@@ -301,10 +295,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // 选中/首选高亮统一由 CandidateBarView 绘制，确保同一时刻只有一个高亮层。
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
-            if (image.emoji.contains(index)) return@forEachIndexed
             val word = image.wordRect(index) ?: return@forEachIndexed
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
             val role = when {
+                image.emoji.contains(index) -> CandidateTextStyleEngine.Role.EMOJI
                 index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
@@ -335,6 +329,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                 textStyles.drawReplacing(
                     canvas, preedit, RectF(left, topY, right, bottomY),
                     CandidateTextStyleEngine.Role.PREEDIT,
+                    eraseUnderlay = false,
                 )
             }
         }
@@ -378,12 +373,14 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val candidate = candidates.getOrNull(index) ?: return@forEachIndexed
             // 没有 Rust hit 矩形的云端/补充候选也必须走同一套 Android 样式引擎，
             // 不能再用 extraText 的 markColor + 粗体直接 drawText，否则会露出黑色粗体且丢失释义。
-            if (image.emoji.contains(index)) return@forEachIndexed
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
             val alpha = candidateRevealAlpha(index)
-            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
-                else CandidateTextStyleEngine.Role.CANDIDATE
+            val role = when {
+                image.emoji.contains(index) -> CandidateTextStyleEngine.Role.EMOJI
+                index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else -> CandidateTextStyleEngine.Role.CANDIDATE
+            }
             val senses = candidate.senses.firstOrNull()
             val wordBottom = if (senses == null) rect.bottom else rect.top + rect.height() * 0.62f
             val wordRect = RectF(rect.left, rect.top, rect.right, wordBottom)
@@ -406,19 +403,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                     maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
                 )
             }
-            canvas.restoreToCount(revealSave)
-        }
-        for (index in image.emoji) {
-            val word = wordRect(index) ?: continue
-            if (word.right < scrollX || word.left > scrollX + contentViewWidth) continue
-            val text = candidates.getOrNull(index)?.text ?: continue
-            val baseline = word.centerY() + shift - (emojiPaint.ascent() + emojiPaint.descent()) / 2
-            val originalAlpha = emojiPaint.alpha
-            val revealSave = canvas.save()
-            canvas.translate(candidateRevealOffset(index), 0f)
-            emojiPaint.alpha = originalAlpha * candidateRevealAlpha(index) / 255
-            canvas.drawText(text, word.centerX(), baseline, emojiPaint)
-            emojiPaint.alpha = originalAlpha
             canvas.restoreToCount(revealSave)
         }
         val size = CONTACT_MARK_DP * density
