@@ -54,6 +54,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     private var preedit = ""
     private var image: StripImage? = null
+    private var lastAcceptedFrameId = -1L
+    private var awaitingCandidateFrame = false
 
     /** 当前一帧的候选，长按气泡要它们的译文。 */
     var candidates: List<Candidate> = emptyList()
@@ -88,7 +90,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private var textFadeActive = false
 
     fun show(preedit: String, candidates: List<Candidate>, animateReveal: Boolean = true) {
-        val changed = this.preedit != preedit || this.candidates.map { it.text } != candidates.map { it.text }
+        val changed = this.preedit != preedit || this.candidates != candidates
+        if (changed) awaitingCandidateFrame = true
         this.preedit = preedit
         this.candidates = candidates
         cachedExtraCandidates = null
@@ -138,12 +141,19 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     /** Replace the current layout snapshot and reject stale asynchronous frames. */
     fun paint(image: StripImage?) {
-        if (image != null && this.image != null && image.frameId < this.image!!.frameId) return
+        if (image != null && image.frameId < lastAcceptedFrameId) return
         if (image == null || image.width <= 0 || image.height <= 0) {
             this.image = null
             return
         }
+        val expectedLocalCandidates = candidates.indices.filter { !candidates[it].cloud }
+        if (image.candidateIndices != expectedLocalCandidates) return
+        if (awaitingCandidateFrame && image.frameId <= lastAcceptedFrameId) return
+        // 本地候选缺少主矩形属于布局协议错误，不能降级伪装成云候选补充项。
+        if (expectedLocalCandidates.any { image.wordRect(it) == null }) return
         this.image = image
+        lastAcceptedFrameId = image.frameId
+        awaitingCandidateFrame = false
         cachedExtraCandidates = null
         cachedExtraCandidatePositions = null
     }

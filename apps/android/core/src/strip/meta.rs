@@ -20,6 +20,9 @@ pub struct StripMeta {
     /// 主题的底色（ARGB），位图没铺满的地方壳用它填。
     pub background: u32,
 
+    /// Rust 布局中实际参与排版的本地候选原始下标；Android 必须逐项找到有效主矩形。
+    pub candidate_indices: Vec<usize>,
+
     /// 可点区域，译文在前（先命中）。
     pub hits: Vec<StripHit>,
 

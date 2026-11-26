@@ -8,7 +8,7 @@ import org.json.JSONObject
 /** Rust layout snapshot: geometry and hit regions only; glyphs are drawn by Android Canvas. */
 class StripImage(
     val frameId: Long, val width: Int, val height: Int, val candidatesTop: Int,
-    val background: Int, val hits: List<StripHit>, val emoji: Set<Int>,
+    val background: Int, val candidateIndices: List<Int>, val hits: List<StripHit>, val emoji: Set<Int>,
     val preeditEdges: List<Float>, val preeditTop: Float, val preeditBottom: Float,
 ) {
     fun caretAt(x: Float, y: Float): Int {
@@ -25,25 +25,37 @@ class StripImage(
     companion object {
         fun parse(meta: JSONObject): StripImage {
             val hits = meta.getJSONArray("hits")
+            val candidateIndicesJson = meta.getJSONArray("candidate_indices")
             val emoji = meta.getJSONArray("emoji")
             val edges = meta.optJSONArray("preedit_edges") ?: JSONArray()
             val width = meta.getInt("width")
             val height = meta.getInt("height")
             require(width > 0 && height > 0) { "Invalid strip layout size: ${width}x${height}" }
+            val candidateIndices = List(candidateIndicesJson.length()) { candidateIndicesJson.getInt(it) }
+            require(candidateIndices.distinct().size == candidateIndices.size && candidateIndices.all { it >= 0 }) {
+                "Invalid candidate index list"
+            }
+            val parsedHits = List(hits.length()) { i ->
+                val h = hits.getJSONObject(i)
+                val x = h.getDouble("x").toFloat()
+                val y = h.getDouble("y").toFloat()
+                val w = h.getDouble("width").toFloat()
+                val ht = h.getDouble("height").toFloat()
+                require(x.isFinite() && y.isFinite() && w.isFinite() && ht.isFinite() &&
+                    w > 0f && ht > 0f && x >= 0f && y >= 0f &&
+                    x + w <= width + 1f && y + ht <= height + 1f) {
+                    "Invalid strip hit rectangle at index $i"
+                }
+                StripHit(h.getInt("candidate"), if (h.isNull("sense")) null else h.getInt("sense"), RectF(x, y, x + w, y + ht))
+            }
+            require(candidateIndices.all { index -> parsedHits.any { it.candidate == index && it.sense == null } }) {
+                "Missing primary hit rectangle for candidate"
+            }
             return StripImage(
                 frameId = meta.getLong("frame_id"), width = width, height = height,
                 candidatesTop = meta.getInt("candidates_top"), background = meta.getLong("background").toInt(),
-                hits = List(hits.length()) { i ->
-                    val h = hits.getJSONObject(i)
-                    val x = h.getDouble("x").toFloat()
-                    val y = h.getDouble("y").toFloat()
-                    val w = h.getDouble("width").toFloat()
-                    val ht = h.getDouble("height").toFloat()
-                    require(x.isFinite() && y.isFinite() && w.isFinite() && ht.isFinite() && w > 0f && ht > 0f) {
-                        "Invalid strip hit rectangle at index $i"
-                    }
-                    StripHit(h.getInt("candidate"), if (h.isNull("sense")) null else h.getInt("sense"), RectF(x, y, x + w, y + ht))
-                },
+                candidateIndices = candidateIndices,
+                hits = parsedHits,
                 emoji = List(emoji.length(), emoji::getInt).toSet(),
                 preeditEdges = List(edges.length()) { edges.getDouble(it).toFloat() },
                 preeditTop = meta.optDouble("preedit_top").toFloat(),

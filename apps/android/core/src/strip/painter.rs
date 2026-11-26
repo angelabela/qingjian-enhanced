@@ -120,6 +120,7 @@ impl StripPainter {
                 height: 0,
                 candidates_top: 0,
                 background: 0,
+                candidate_indices: self.candidate_indices.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
@@ -159,6 +160,7 @@ impl StripPainter {
             height,
             candidates_top: snapshot.candidates_top().ceil().max(0.0) as u32,
             background,
+            candidate_indices: self.candidate_indices.clone(),
             hits: snapshot
                 .hits
                 .iter()
