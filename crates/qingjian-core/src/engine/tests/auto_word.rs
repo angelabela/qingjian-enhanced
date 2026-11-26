@@ -212,10 +212,10 @@ fn erasing_the_sentence_and_picking_another_forgets_the_new_word() {
 fn common_three_syllable_abbreviations_are_available() {
     // 回归：常用三字短语「已回访」与「我爱你」应能用首字母简拼直接找到。
     let dictionary = concat!(
-        "已回访\\tyi hui fang\\t9000\\n",
-        "我爱你\\two ai ni\\t9000\\n",
-        "一会儿\\tyi hui er\\t8000\\n",
-        "晚安\\twan an\\t8000\\n",
+        "已回访\tyi hui fang\t9000\n",
+        "我爱你\two ai ni\t9000\n",
+        "一会儿\tyi hui er\t8000\n",
+        "晚安\twan an\t8000\n",
     );
     let mut engine = Engine::new(Dictionary::parse(dictionary).unwrap());
     for (input, expected) in [("yhf", "已回访"), ("wan", "我爱你")] {
