@@ -12,9 +12,8 @@ import app.qingjian.inputmethod.core.strip.StripImage
 import app.qingjian.inputmethod.panel.base.PanelIcons
 
 /**
- * 候选条的内容：Rust 渲染器按主题画好的位图（拼音行 + 横排候选 + 译文），这里只贴图。
- * 拼音行那一截钉在视口上，候选那一截随横向滚动；emoji 候选渲染器画不出，在词的位置上用 Canvas 补；
- * 通讯录里的名字在词的右上角补一个人头（各主题都有，不用每个主题自己画）。
+ * 候选条的原生绘制层：Rust 只提供布局快照与命中矩形，文字、拼音、释义和标记由 Android Canvas 绘制。
+ * 拼音行钉在视口上，候选行随横向滚动；Emoji、云候选补充项和通讯录标记沿用统一样式与命中体系。
  */
 class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
     private val fallbackBackgroundColor: Int = markColor,
@@ -66,10 +65,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     /** 主题底色；还没画过为透明。 */
     val background: Int get() = image?.background ?: 0
 
-    /** 拼音行与候选行的分界（位图像素）。 */
+    /** 拼音行与候选行的分界（布局快照像素）。 */
     val candidatesTop: Int get() = image?.candidatesTop ?: 0
 
-    /** 位图宽（像素），比视口宽时可以横向滚动。 */
+    /** 布局内容宽（像素），比视口宽时可以横向滚动。 */
     val contentWidth: Float
         get() {
             val frame = image ?: return fallbackWidth()
@@ -91,7 +90,13 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     fun show(preedit: String, candidates: List<Candidate>, animateReveal: Boolean = true) {
         val changed = this.preedit != preedit || this.candidates != candidates
-        if (changed) awaitingCandidateFrame = true
+        if (changed) {
+            // 新候选不能复用上一帧的矩形：先清空快照，等待与当前候选列表匹配的新 frame。
+            image = null
+            awaitingCandidateFrame = true
+            cachedExtraCandidates = null
+            cachedExtraCandidatePositions = null
+        }
         this.preedit = preedit
         this.candidates = candidates
         cachedExtraCandidates = null
@@ -195,7 +200,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
             return rect
         }
-        // 超出 Rust 位图宽度的补充候选由 Android 绘制；同样提供稳定的命中/无障碍区域。
+        // 超出 Rust 布局宽度的补充候选由 Android 绘制；同样提供稳定的命中/无障碍区域。
         val extras = extraCandidates()
         val extraIndex = cachedExtraCandidatePositions?.get(index) ?: extras.indexOf(index)
         if (extraIndex < 0) return null
@@ -372,7 +377,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
                     canvas.restoreToCount(revealSave)
                 }
             }
-        // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
+        // Kotlin 侧补充的语义标点没有 Rust 主布局格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
         val extraStart = image.width + 12f * density
         val extraCell = 38f * density
@@ -459,7 +464,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         leftFadePaint.shader = null
     }
 
-    /** 原生位图暂不可用时，仍按候选数据绘制可见、可点击的候选。 */
+    /** 布局快照暂不可用时，仍按候选数据绘制可见、可点击的候选。 */
     private fun fallbackWidth(): Float = (if (preedit.isNotEmpty()) 52f * density else 8f * density) + candidates.size * 56f * density + 8f * density
 
     private fun drawFallback(canvas: Canvas, scrollX: Int, viewWidth: Int) {

@@ -27,7 +27,7 @@ import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
 
 /**
- * 键盘上方那一条，三种样子：组句中是候选（[CandidateStrip]，位图来自 [source]，横向滑动、长按弹译词气泡），
+ * 键盘上方那一条，三种样子：组句中是候选（[CandidateStrip]，布局快照来自 [source]，横向滑动、长按弹译词气泡），
  * 平时是工具栏（[Toolbar]，中间那排可横滑），调高度时是拖动手柄（[ResizeHandle]）。
  */
 @SuppressLint("ViewConstructor")
@@ -286,7 +286,7 @@ class CandidateBarView(
         }
     }
     private var adaptiveVideoTextColor: Int? = null
-    // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
+    // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免内容被候选栏裁切。
     val barHeight = 66f * density * maxOf(1f, textScale * fontScale)
     private val strip = CandidateStrip(
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
@@ -305,7 +305,7 @@ class CandidateBarView(
             invalidate()
         }
 
-    // 防止同一候选快照被上游重复回调时再次关闭弹层、重置滚动并触发位图重绘。
+    // 防止同一候选快照被上游重复回调时再次关闭弹层、重置滚动并触发重复布局。
     private var lastShownPreedit: String? = null
     private var lastShownCandidates: List<Candidate>? = null
 
@@ -493,7 +493,7 @@ class CandidateBarView(
         notifyAccessibilityContentChanged()
     }
 
-    /** 空格横滑预选候选；不重绘 Rust 位图，只更新独立选中层。 */
+    /** 空格横滑预选候选；不重新计算 Rust 布局，只更新独立选中层。 */
     fun setGestureSelection(index: Int) {
         val next = index.takeIf { it in strip.candidates.indices } ?: -1
         if (gestureSelectionIndex == next) return
@@ -550,7 +550,7 @@ class CandidateBarView(
         invalidate()
     }
 
-    /** 动态背景开关变化时同步更新候选条底色及 Rust 位图透明处理。 */
+    /** 动态背景开关变化时同步更新候选条底色及布局快照的透明背景处理。 */
     fun setTransparentBackground(enabled: Boolean, backgroundColor: Int) {
         if (transparentBackground != enabled) {
             transparentBackground = enabled
@@ -575,9 +575,9 @@ class CandidateBarView(
         resizing = true
     }
 
-    /** 按当前高亮重画位图：新的一帧到了、或长按气泡换了对着的候选。 */
+    /** 按当前高亮刷新候选条：新的一帧到了、或长按气泡换了对着的候选。 */
     private fun repaint() {
-        // 旧 Rust 选中底色会残留在位图里；选中态统一由上层液态玻璃绘制。
+        // 选中态统一由上层液态玻璃绘制，布局快照不再包含候选高亮像素。
         strip.paint(if (strip.isEmpty) null else source.render(-1, palette.dark, stripWidth))
         invalidate()
     }
