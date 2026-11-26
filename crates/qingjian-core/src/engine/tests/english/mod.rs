@@ -417,7 +417,7 @@ fn english_mode_suggests_from_the_word_list_and_keeps_the_typed_text() {
 }
 
 #[test]
-fn raw_committed_english_words_are_learned_and_come_back_as_candidates() {
+fn raw_committed_english_words_are_not_learned_but_explicit_choices_are() {
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -428,65 +428,38 @@ fn raw_committed_english_words_are_learned_and_come_back_as_candidates() {
     }
     impl Learner for EnglishLearner {
         fn record(&mut self, _candidate: &Candidate) {}
-        fn weight(&self, _text: &str) -> u32 {
-            0
-        }
+        fn weight(&self, _text: &str) -> u32 { 0 }
         fn learn_english(&mut self, word: &str) {
             self.words.push(word.to_owned());
-            let tsv: String = self
-                .words
-                .iter()
-                .map(|w| format!("{w}\t{w}\t1\n"))
-                .collect();
+            let tsv: String = self.words.iter().map(|w| format!("{w}\\t{w}\\t1\\n")).collect();
             self.list = WordList::parse(&tsv).ok();
         }
-        fn user_english(&self) -> Option<&WordList> {
-            self.list.as_ref()
-        }
+        fn user_english(&self) -> Option<&WordList> { self.list.as_ref() }
     }
+
     let _ = Rc::new(RefCell::new(()));
+    let words = WordList::parse("gist\\tgist\\t4500\\nhello\\thello\\t4720\\n").unwrap();
+    let learner = EnglishLearner::default();
     let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
-        .with_learner(Box::new(EnglishLearner::default()));
-    // 随包词表里没有 gist：第一次只有拼音候选，回车原样上屏
-    engine.set_input("gist");
-    let first = engine.query().unwrap();
-    assert!(
-        first
-            .candidates
-            .items
-            .iter()
-            .all(|c| c.kind != CandidateKind::English)
-    );
-    assert_eq!(engine.take_raw(), "gist");
-    // 第二次 gist 就是英文候选，而且排第一（拼音不像话）
-    engine.set_input("gist");
-    let second = engine.query().unwrap();
-    assert_eq!(second.candidates.items[0].text, "gist");
-    assert_eq!(second.candidates.items[0].kind, CandidateKind::English);
-    // 能切成完整拼音的串回车不算英文词
-    engine.set_input("hao");
-    assert_eq!(engine.take_raw(), "hao");
-    engine.set_input("hao");
-    let hao = engine.query().unwrap();
-    assert!(
-        hao.candidates
-            .items
-            .iter()
-            .all(|c| c.kind != CandidateKind::English)
-    );
-    // 英文模式下直通的词也学
-    engine.set_english_mode(true);
-    engine.set_input("wo");
-    assert_eq!(engine.take_raw(), "wo");
-    engine.set_english_mode(false);
-    engine.set_input("wo");
-    let wo = engine.query().unwrap();
-    assert!(
-        wo.candidates
-            .items
-            .iter()
-            .any(|c| c.kind == CandidateKind::English && c.text == "wo")
-    );
+        .with_english(words)
+        .with_learner(Box::new(learner));
+
+    // 原样回车是原始输入，不等于用户选择英文候选；不能写进个人英文表。
+    engine.set_input("xoxfpfdnBadm");
+    assert_eq!(engine.take_raw(), "xoxfpfdnBadm");
+    engine.set_input("xoxfpfdnBadm");
+    let query = engine.query().unwrap();
+    assert!(!query.candidates.items.iter().any(|c| c.text == "xoxfpfdnBadm"));
+
+    // 只有明确选择的英文候选才触发学习；生产学习器还会要求累计三次才显示个人补全。
+    for _ in 0..3 {
+        engine.set_input("hello");
+        let candidate = engine.query().unwrap().candidates.items.into_iter()
+            .find(|c| c.kind == CandidateKind::English && c.text == "hello").unwrap();
+        engine.commit(&candidate);
+    }
+    engine.set_input("hello");
+    assert_eq!(engine.query().unwrap().candidates.items[0].text, "hello");
 }
 
 #[test]
