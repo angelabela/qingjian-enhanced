@@ -492,19 +492,41 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val left = extraStart + slot * extraCell
             if (left + extraCell < scrollX || left > scrollX + contentViewWidth) return@forEachIndexed
             val rect = RectF(left + 2f * density, 8f * density, left + extraCell - 2f * density, barHeight - 8f * density)
-            // 补充候选不再铺独立色块，保持与主候选一致的透明文字层。
-            val value = candidates.getOrNull(index)?.text ?: return@forEachIndexed
-            val baseline = rect.centerY() - (extraText.ascent() + extraText.descent()) / 2f
-            val originalAlpha = extraText.alpha
+            val candidate = candidates.getOrNull(index) ?: return@forEachIndexed
+            // 没有 Rust hit 矩形的云端/补充候选也必须走同一套 Android 样式引擎，
+            // 不能再用 extraText 的 markColor + 粗体直接 drawText，否则会露出黑色粗体且丢失释义。
+            if (image.emoji.contains(index)) return@forEachIndexed
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
-            extraText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
-            canvas.drawText(value, rect.centerX(), baseline, extraText)
-            extraText.alpha = originalAlpha
+            val alpha = candidateRevealAlpha(index)
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else CandidateTextStyleEngine.Role.CANDIDATE
+            val senses = candidate.senses.firstOrNull()
+            val wordBottom = if (senses == null) rect.bottom else rect.top + rect.height() * 0.62f
+            val wordRect = RectF(rect.left, rect.top, rect.right, wordBottom)
+            textStyles.drawReplacing(
+                canvas, candidate.text, wordRect, role,
+                eraseUnderlay = false,
+                alphaMultiplier = alpha,
+                maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
+            )
+            if (senses != null) {
+                val gloss = buildString {
+                    senses.pos?.takeIf { it.isNotBlank() }?.let { append(it).append(' ') }
+                    append(senses.text)
+                }
+                val glossRect = RectF(rect.left, wordBottom, rect.right, rect.bottom)
+                textStyles.drawReplacing(
+                    canvas, gloss, glossRect, CandidateTextStyleEngine.Role.GLOSS,
+                    eraseUnderlay = false,
+                    alphaMultiplier = alpha,
+                    maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
+                )
+            }
             canvas.restoreToCount(revealSave)
         }
         for (index in image.emoji) {
-            val word = image.wordRect(index) ?: continue
+            val word = wordRect(index) ?: continue
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) continue
             val text = candidates.getOrNull(index)?.text ?: continue
             val baseline = word.centerY() + shift - (emojiPaint.ascent() + emojiPaint.descent()) / 2
