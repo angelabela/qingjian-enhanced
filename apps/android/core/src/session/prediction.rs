@@ -102,9 +102,9 @@ impl Session {
             .into_candidate();
 
             let pos = at.min(self.candidates.items.len());
+            self.sentence_text = Some(candidate.text.clone());
             self.candidates.items.insert(pos, candidate);
             self.sentence_at = Some(pos);
-            self.sentence_text = Some(candidate.text.clone());
             at = pos + 1;
         } else if let Some(s) = self.sentence_at {
             // 已有云端整句：新词放在它后面，避免挤乱 sentence_at
