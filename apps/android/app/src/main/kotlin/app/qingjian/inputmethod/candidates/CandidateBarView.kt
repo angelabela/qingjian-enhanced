@@ -77,6 +77,8 @@ class CandidateBarView(
 
     private val density = resources.displayMetrics.density
     private val fontScale = resources.displayMetrics.scaledDensity / density
+    private val candidateSelectionEffect = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
 
     private val accessibilityManager =
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
@@ -667,26 +669,69 @@ class CandidateBarView(
         canvas.clipRect(scrollX.toFloat(), 0f, (scrollX + stripWidth).toFloat(), height.toFloat())
         val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
         val accent = palette.brand
-        firstCandidateGlow.shader = android.graphics.LinearGradient(
-            glow.left, glow.top, glow.right, glow.bottom,
-            intArrayOf((accent and 0x00FFFFFF) or 0x26303030, (accent and 0x00FFFFFF) or 0x50303030, (accent and 0x00FFFFFF) or 0x20303030),
-            floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
-        )
-        firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
-        canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
-        firstCandidateGlow.shader = null
         val outline = android.graphics.RectF(rect).apply { inset(-1.2f * density, -1f * density) }
-        firstCandidateRing.color = accent
-        firstCandidateRing.alpha = (135f + breath * 105f).toInt()
-        canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
-        firstCandidateSheen.shader = android.graphics.LinearGradient(
-            rect.left, rect.top, rect.right, rect.top,
-            intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
-            floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
-        )
-        val shineY = rect.top + 2f * density
-        canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
-        firstCandidateSheen.shader = null
+        when (candidateSelectionEffect) {
+            0 -> {
+                firstCandidateGlow.shader = android.graphics.LinearGradient(
+                    glow.left, glow.top, glow.right, glow.bottom,
+                    intArrayOf((accent and 0x00FFFFFF) or 0x26303030, (accent and 0x00FFFFFF) or 0x50303030, (accent and 0x00FFFFFF) or 0x20303030),
+                    floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
+                )
+                firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
+                canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateGlow.shader = null
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = (135f + breath * 105f).toInt()
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateSheen.shader = android.graphics.LinearGradient(
+                    rect.left, rect.top, rect.right, rect.top,
+                    intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
+                    floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
+                )
+                val shineY = rect.top + 2f * density
+                canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
+                firstCandidateSheen.shader = null
+            }
+            1 -> {
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or ((0x20 + breath * 0x20).toInt() shl 24)
+                canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = (175f + breath * 80f).toInt()
+                firstCandidateRing.setShadowLayer(4f * density, 0f, 0f, accent)
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateRing.clearShadowLayer()
+            }
+            2 -> {
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x26303030
+                canvas.drawRoundRect(glow, 10f * density, 10f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 220
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                val sweep = (phase * (rect.width() + 24f * density)) - 12f * density
+                firstCandidateSheen.shader = android.graphics.LinearGradient(
+                    rect.left + sweep - 16f * density, rect.top,
+                    rect.left + sweep + 16f * density, rect.bottom,
+                    intArrayOf(0x00FFFFFF, 0xDFFFFFFF.toInt(), 0x00FFFFFF),
+                    null, android.graphics.Shader.TileMode.CLAMP,
+                )
+                canvas.drawLine(rect.left + 5f * density, rect.centerY(), rect.right - 5f * density, rect.centerY(), firstCandidateSheen)
+                firstCandidateSheen.shader = null
+            }
+            3 -> {
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x55303030
+                canvas.drawRoundRect(rect, 8f * density, 8f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 240
+                canvas.drawRoundRect(outline, 8f * density, 8f * density, firstCandidateRing)
+            }
+            else -> {
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 230
+                firstCandidateRing.strokeWidth = 1.1f * density
+                canvas.drawRoundRect(outline, 7f * density, 7f * density, firstCandidateRing)
+                firstCandidateRing.strokeWidth = 1.5f * density
+            }
+        }
 
         // 选中框也套用候选文字相同的左右渐隐遮罩，滑到边缘时不会留下完整发光框。
         val leftEdge = scrollX + strip.leftInsetPx(stripWidth)
