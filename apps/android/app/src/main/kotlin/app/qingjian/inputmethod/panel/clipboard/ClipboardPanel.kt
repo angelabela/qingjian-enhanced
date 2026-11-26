@@ -361,8 +361,10 @@ class ClipboardPanel(
         var popupCurrentX = 0
         var popupCurrentY = 0
         var clearPressedKey: (() -> Unit)? = null
+        var downDeleteControl = false
+        var downCloseControl = false
         val beginDrag = Runnable {
-            if (isAttachedToWindow && !downDelete && !downClose) {
+            if (isAttachedToWindow && !downDeleteControl && !downCloseControl) {
                 val topIndex = downKeyForLongPress?.let(rows.first()::indexOf) ?: -1
                 val digit = topRowDigits.getOrNull(topIndex)
                 val alternate = digit ?: downKeyForLongPress?.let(::alternateForKey)
@@ -476,6 +478,8 @@ class ClipboardPanel(
                         parent?.requestDisallowInterceptTouchEvent(true)
                         downDelete = deleteRect.contains(event.x, event.y)
                         downClose = closeRect.contains(event.x, event.y)
+                        downDeleteControl = downDelete
+                        downCloseControl = downClose
                         headerPressed = event.y < headerHeight && !downDelete && !downClose
                         downKey = if (downDelete || downClose || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                         downKeyForLongPress = downKey
@@ -542,6 +546,8 @@ class ClipboardPanel(
                         downKey = null
                         downDelete = false
                         downClose = false
+                        downDeleteControl = false
+                        downCloseControl = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
