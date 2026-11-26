@@ -4,7 +4,7 @@ use super::commit::LastCommit;
 use super::input_log::{INPUT_LOG_VERSION, InputLogEntry, InputLogger, InputSource};
 use super::learning::Learner;
 use super::mode_keys::QUESTION_PREFIX;
-use super::{Engine, RECENT_COMMITS, is_raw, segment_longest_prefix};
+use super::{Engine, RECENT_COMMITS, is_raw, looks_like_english_word, segment_longest_prefix};
 use crate::composition::Composition;
 use crate::shortcut;
 use std::time::Instant;
@@ -423,9 +423,12 @@ impl Engine {
             return held;
         }
         self.log_commit(&raw, &raw, InputSource::Raw);
-        // 原样上屏只是放弃当前候选，不代表用户明确选择了英文词。
-        // 个人英文词只由 commit() 中明确选择 CandidateKind::English 的路径学习。
-        self.meter_commit(&raw, InputSource::Raw, false);
+        // 原样上屏不学习个人英文词，但输入统计仍识别用户直通的英文词。
+        // 只有 commit() 中明确选择 CandidateKind::English 的路径才会调用 learn_english。
+        let english_word = looks_like_english_word(&raw, self.english_mode)
+            && (self.english_mode || self.decode(&raw).is_none_or(|d| !d.is_complete()))
+            && (self.english_mode || self.split_english_tail(&raw).is_none());
+        self.meter_commit(&raw, InputSource::Raw, english_word);
         // 补的空格要在组句清空前判（还没上屏过时靠组句开始时的应用前文），并先于这次上屏记下
         let lead = self.auto_space_before(&raw);
         self.composition.clear();
