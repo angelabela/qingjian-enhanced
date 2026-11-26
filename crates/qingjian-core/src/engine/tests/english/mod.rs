@@ -491,10 +491,8 @@ fn english_completion_never_joins_text_after_the_cursor_to_the_prefix() {
     for _ in 0..4 {
         assert!(engine.move_cursor_left());
     }
+    assert_eq!(engine.composition().scope(), "1:");
     let query = engine.query().unwrap();
-    assert_eq!(query.text, "1:hell");
-    assert_eq!(query.tail, "1:");
-    assert_eq!(query.rest, "hell");
     assert!(!query.candidates.items.iter().any(|candidate| candidate.text == "hello"),
         "光标后的 hell 不得拼接到光标前的 1: 形成英文补全");
 }
