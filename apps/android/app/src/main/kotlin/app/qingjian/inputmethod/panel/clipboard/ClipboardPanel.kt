@@ -127,6 +127,8 @@ class ClipboardPanel(
 
     private fun rebuildClipSearchIndex() {
         clipSearchEntries = buildClipSearchEntries(clips)
+        lastCompletedSearchQuery = ""
+        lastCompletedSearchResults = clipSearchEntries
         scheduleClipSearch(searchQuery)
     }
 
@@ -155,10 +157,12 @@ class ClipboardPanel(
                 else if (position > 0) rest += entry.sourceIndex
             }
             val result = head + rest
+            val resultSet = result.toHashSet()
+            val completedEntries = base.filter { it.sourceIndex in resultSet }
             post {
                 if (generation != searchGeneration || !isAttachedToWindow) return@post
                 lastCompletedSearchQuery = query
-                lastCompletedSearchResults = base.filter { it.sourceIndex in result }
+                lastCompletedSearchResults = completedEntries
                 visibleClipIndices = result
                 layouts.clear()
                 arrange()
