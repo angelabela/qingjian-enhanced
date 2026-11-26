@@ -125,7 +125,13 @@ pub fn rank(
             continue;
         }
         let mut same_pinyin: Vec<_> = positions.iter().map(|&index| keyed[index]).collect();
-        same_pinyin.sort_unstable_by(|a, b| a.0.5.cmp(&b.0.5).then_with(|| a.0.cmp(&b.0)));
+        same_pinyin.sort_unstable_by(|a, b| {
+            // 同拼音槽位内仍先保留注音声调代价；否则这里按词频二次排序会覆盖上面的声调排序。
+            a.0.4
+                .cmp(&b.0.4)
+                .then_with(|| a.0.5.cmp(&b.0.5))
+                .then_with(|| a.0.cmp(&b.0))
+        });
         for (&position, candidate) in positions.iter().zip(same_pinyin) {
             keyed[position] = candidate;
         }
