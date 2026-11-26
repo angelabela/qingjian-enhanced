@@ -139,7 +139,6 @@ impl StripPainter {
         let width = snapshot.width.ceil().max(0.0) as u32;
         let height = snapshot.height.ceil().max(0.0) as u32;
         if width == 0 || height == 0 {
-            self.last = None;
             return Ok(StripMeta {
                 frame_id: self.frame_id,
                 width: 0,
