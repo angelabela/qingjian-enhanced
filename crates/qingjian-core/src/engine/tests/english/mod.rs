@@ -418,9 +418,6 @@ fn english_mode_suggests_from_the_word_list_and_keeps_the_typed_text() {
 
 #[test]
 fn raw_committed_english_words_are_not_learned_but_explicit_choices_are() {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     #[derive(Default)]
     struct EnglishLearner {
         words: Vec<String>,
@@ -431,35 +428,28 @@ fn raw_committed_english_words_are_not_learned_but_explicit_choices_are() {
         fn weight(&self, _text: &str) -> u32 { 0 }
         fn learn_english(&mut self, word: &str) {
             self.words.push(word.to_owned());
-            let tsv: String = self.words.iter().map(|w| format!("{w}\\t{w}\\t1\\n")).collect();
+            let tsv: String = self.words.iter().map(|w| format!("{w}\t{w}\t1\n")).collect();
             self.list = WordList::parse(&tsv).ok();
         }
         fn user_english(&self) -> Option<&WordList> { self.list.as_ref() }
     }
 
-    let _ = Rc::new(RefCell::new(()));
-    let words = WordList::parse("gist\\tgist\\t4500\\nhello\\thello\\t4720\\n").unwrap();
-    let learner = EnglishLearner::default();
+    let words = WordList::parse("hello\thello\t4720\n").unwrap();
     let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
         .with_english(words)
-        .with_learner(Box::new(learner));
+        .with_learner(Box::new(EnglishLearner::default()));
 
-    // 原样回车是原始输入，不等于用户选择英文候选；不能写进个人英文表。
+    // 原样回车只上屏，不得写入个人英文词表；原始输入本身仍可原样显示。
     engine.set_input("xoxfpfdnBadm");
     assert_eq!(engine.take_raw(), "xoxfpfdnBadm");
-    engine.set_input("xoxfpfdnBadm");
-    let query = engine.query().unwrap();
-    assert!(!query.candidates.items.iter().any(|c| c.text == "xoxfpfdnBadm"));
+    assert!(engine.learner().user_english().is_none());
 
-    // 只有明确选择的英文候选才触发学习；生产学习器还会要求累计三次才显示个人补全。
-    for _ in 0..3 {
-        engine.set_input("hello");
-        let candidate = engine.query().unwrap().candidates.items.into_iter()
-            .find(|c| c.kind == CandidateKind::English && c.text == "hello").unwrap();
-        engine.commit(&candidate);
-    }
+    // 只有明确点击英文候选才触发个人英文学习。
     engine.set_input("hello");
-    assert_eq!(engine.query().unwrap().candidates.items[0].text, "hello");
+    let candidate = engine.query().unwrap().candidates.items.into_iter()
+        .find(|c| c.kind == CandidateKind::English && c.text == "hello").unwrap();
+    engine.commit(&candidate);
+    assert_eq!(engine.learner().user_english().unwrap().get("hello"), Some("hello"));
 }
 
 #[test]
