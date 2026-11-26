@@ -73,6 +73,7 @@ fn question_mode_asks_the_cloud_and_shows_answers_unvalidated() {
 
     // 答案的拼音与敲的字母对不上，但问字模式不校验；复述问题的「答案」剔掉
     let prediction = engine.poll_prediction().unwrap();
+    assert_eq!(prediction.kind, PredictionKind::Question);
     assert_eq!(prediction.words.len(), 1);
     assert_eq!(prediction.words[0].text, "森");
     let answer = prediction
@@ -237,6 +238,7 @@ fn stale_predictions_are_dropped_and_accept_clears_composition() {
     engine.request_prediction(None, &[]);
     let prediction = engine.poll_prediction().unwrap();
     assert_eq!(prediction.sequence, 2);
+    assert_eq!(prediction.kind, PredictionKind::Compose);
     assert_eq!(prediction.sentence.as_deref(), Some("开发输入法"));
     // 开花 的拼音对不上 kaifa，被过滤
     assert_eq!(prediction.words, [cloud("凯发", &["kai", "fa"])]);

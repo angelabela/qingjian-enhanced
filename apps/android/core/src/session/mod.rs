@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use qingjian_core::{
-    CandidateList, Engine, NoTranscriber, Prediction, PredictionKind, RomajiComposer, ShapeDecoder, SurroundingText,
+    CandidateList, Engine, NoTranscriber, Prediction, RomajiComposer, ShapeDecoder, SurroundingText,
     SwipeDecoder, SwipeLexicon, TraditionalVariant, Transcriber,
 };
 

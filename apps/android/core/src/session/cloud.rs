@@ -10,6 +10,8 @@ impl Session {
     /// 接上或断开云端（快捷翻译用）：`None`、或配置起不来（没填密钥）都退回不联网。返回接没接上。
     /// 不记接口用量：用量文件靠文件锁合并，安卓上不支持（`lock() not supported`）。
     pub fn set_cloud(&mut self, settings: Option<&CloudSettings>) -> bool {
+        // 切换提供方时，不能把旧 Provider 已排队的结果交给新会话状态。
+        self.pending_predictions.clear();
         let predictor = settings.map(|settings| CloudPredictor::new(&settings.predict_config()));
         match predictor {
             Some(Ok(predictor)) => {
