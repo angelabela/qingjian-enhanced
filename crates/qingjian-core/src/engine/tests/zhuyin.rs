@@ -40,7 +40,12 @@ fn zhuyin_ranks_candidates_by_typed_tone() {
     let mut engine = tone_engine();
     engine.set_zhuyin_mode(true);
     // a: ㄇ, 8: ㄚ, 空格：一声，3: ˇ，7: ˙；s: ㄋ, u: ㄧ
-    assert_eq!(first_candidate(&mut engine, "a8 "), "妈");
+    engine.set_input("a8 ");
+    assert_eq!(engine.composition().text(), "a8 ");
+    assert_eq!(crate::zhuyin::decode(engine.composition().scope()).tones(), [Some(1)]);
+    let first = engine.query().unwrap();
+    assert!(first.decoded_keys);
+    assert_eq!(first.candidates.items[0].text, "妈", "{:?}", first.candidates.items);
     assert_eq!(first_candidate(&mut engine, "a83"), "马");
     assert_eq!(first_candidate(&mut engine, "a87"), "吗");
     assert_eq!(first_candidate(&mut engine, "su3"), "你");
