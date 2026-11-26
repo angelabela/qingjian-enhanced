@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use converting::trim_sentence_alternates;
 
-use crate::engine::{Learner, is_raw};
+use crate::engine::{Learner, MIN_COMPLETION_LETTERS, is_raw};
 use crate::ranking::{self, Scored};
 use crate::{Candidate, CandidateKind, Engine, ParseError};
 
@@ -72,6 +72,8 @@ impl Engine {
         if self.composition.single_chars() {
             ranking::keep_only_single_chars(&mut query.candidates.items);
         }
+        // 个人英文前缀补全只能作兜底：即使当前排序策略倾向英文，也不能压过拼音候选。
+        self.demote_personal_english_completions(&mut query.candidates.items);
         // 整句截完、重排完才数得准第一页上排了什么（截之前可能还有十几条整句）；只有拼音输入有切分。
         // 辅码筛词时顺序按码的匹配程度排过，不再挪
         let several = self.aux_filter().is_none()
@@ -120,6 +122,38 @@ impl Engine {
         // 放在输入日志摘要之后，日志与学习数据一律记简体
         self.traditional.apply(&mut query.candidates);
         Ok(query)
+    }
+
+    /// 个人英文词只在明确选择三次后出现；作为前缀补全时始终排在中文 / 拼音候选之后。
+    /// 精确输入的英文词仍保留原有位置，不影响用户主动直输一个完整英文词。
+    fn demote_personal_english_completions(&self, items: &mut Vec<Candidate>) {
+        let Some(personal) = self.learner.user_english() else {
+            return;
+        };
+        let prefix = self.composition.scope();
+        if prefix.len() < MIN_COMPLETION_LETTERS
+            || !prefix.bytes().all(|byte| byte.is_ascii_lowercase())
+        {
+            return;
+        }
+        let mut completions = Vec::new();
+        items.retain(|candidate| {
+            if candidate.kind != CandidateKind::English
+                || candidate.text.eq_ignore_ascii_case(prefix)
+            {
+                return true;
+            }
+            let key = candidate.text.to_ascii_lowercase();
+            let is_personal_completion = key.starts_with(prefix)
+                && personal.get(&key).is_some();
+            if is_personal_completion {
+                completions.push(candidate.clone());
+                false
+            } else {
+                true
+            }
+        });
+        items.extend(completions);
     }
 
     pub(super) fn query_inner(&self) -> Result<Query, ParseError> {
