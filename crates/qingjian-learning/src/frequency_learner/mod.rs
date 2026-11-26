@@ -116,7 +116,7 @@ pub struct FrequencyLearner {
     /// 按输入串记的选择自上次保存后是否有变化。
     choices_dirty: bool,
 
-    /// 个人英文词：小写编码 → (最近一次敲的写法, 带衰减的次数)。回车原样上屏的英文词、选过的英文候选。
+    /// 个人英文词：小写编码 → (最近一次选择的写法, 带衰减的次数)。只记录明确选择的英文候选。
     english: BTreeMap<String, (String, Decay)>,
 
     /// 个人英文词组成的词表，随 `english` 重建。
