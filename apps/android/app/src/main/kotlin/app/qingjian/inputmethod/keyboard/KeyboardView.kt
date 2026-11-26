@@ -236,7 +236,7 @@ class KeyboardView(
             if (virtualViewId == SIDE_ACCESSIBILITY_SCROLL_ID) {
                 when (action) {
                     AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
-                        if (!accessibilityManager.isEnabled || accessibilityFocusedSideScroll) return false
+                        if (!side.accessibilityScrollable || !accessibilityManager.isEnabled || accessibilityFocusedSideScroll) return false
                         if (accessibilityFocusedKey >= 0) {
                             sendVirtualAccessibilityEvent(accessibilityFocusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
                             accessibilityFocusedKey = -1
@@ -258,6 +258,7 @@ class KeyboardView(
                     AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
                         val direction = if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1
                         if (!side.accessibilityScroll(direction)) return false
+                        clearUnavailableSideAccessibilityTargets()
                         sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SCROLLED)
                         sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                         invalidate()
@@ -268,7 +269,7 @@ class KeyboardView(
             }
             if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
                 val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
-                if (side.items.getOrNull(index) == null) return false
+                if (side.items.getOrNull(index) == null || side.accessibilityBounds(index) == null) return false
                 when (action) {
                     AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
                         if (!accessibilityManager.isEnabled || accessibilityFocusedSideItem == index) return false

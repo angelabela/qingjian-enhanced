@@ -118,7 +118,8 @@ class CandidateBarView(
         }
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
-            val candidate = strip.candidates.getOrNull(virtualViewId) ?: return false
+            if (strip.candidates.getOrNull(virtualViewId) == null ||
+                candidateAccessibilityBounds(virtualViewId) == null) return false
             when (action) {
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
                     if (!accessibilityManager.isEnabled || accessibilityFocusedCandidate == virtualViewId) return false
@@ -252,6 +253,19 @@ class CandidateBarView(
         return bounds.takeIf { it.intersect(0, 0, stripWidth, height) && it.width() > 0 && it.height() > 0 }
     }
 
+    private fun clearReplacedAccessibilityTargets(nextCandidates: List<Candidate>) {
+        val focused = accessibilityFocusedCandidate
+        if (focused >= 0 && strip.candidates.getOrNull(focused) != nextCandidates.getOrNull(focused)) {
+            accessibilityFocusedCandidate = -1
+            sendCandidateAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityCandidate
+        if (hovered >= 0 && strip.candidates.getOrNull(hovered) != nextCandidates.getOrNull(hovered)) {
+            hoveredAccessibilityCandidate = -1
+            sendCandidateAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+    }
+
     private fun sendCandidateAccessibilityEvent(virtualViewId: Int, eventType: Int) {
         val candidate = strip.candidates.getOrNull(virtualViewId) ?: return
         val event = AccessibilityEvent.obtain(eventType)
@@ -260,7 +274,8 @@ class CandidateBarView(
         event.setSource(this, virtualViewId)
         event.text.add(candidate.text)
         event.isEnabled = isEnabled
-        parent?.requestSendAccessibilityEvent(this, event) ?: event.recycle()
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
     }
 
     private fun notifyAccessibilityContentChanged() {
@@ -466,6 +481,8 @@ class CandidateBarView(
         closePopup()
         // 只有用户真正开始组合输入时才清除提示；空 preedit 状态下的候选帧刷新不能吞掉提示。
         if (preedit.isNotEmpty()) clearNotice.run()
+        // Clear focus/hover before replacing position-based virtual IDs with different candidates.
+        clearReplacedAccessibilityTargets(candidates)
         strip.show(preedit, candidates, animateCandidates)
         scroller.forceFinished(true)
         if (!preserveScroll) scrollTo(0, 0)
@@ -855,8 +872,18 @@ class CandidateBarView(
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
+        val focused = accessibilityFocusedCandidate
+        accessibilityFocusedCandidate = -1
+        if (focused >= 0) {
+            sendCandidateAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityCandidate
+        hoveredAccessibilityCandidate = -1
+        if (hovered >= 0) {
+            sendCandidateAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
         closePopup()
+        super.onDetachedFromWindow()
     }
 
     // 内容绘制从左内边距开始，因此最大滚动量也要补偿这段内边距。
