@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 //! 云联想与整句补全：组句时按停键发请求，结果插在本地首选之后（先整句补全，再云端词），选中整句走 `accept_prediction`。
 //! 光标前后文由壳在每段组句开始时交一次（[`Session::set_surrounding`]）；工具框（快捷翻译、常用语编辑）开着时不发。
 
@@ -41,42 +42,64 @@ impl Session {
         if self.tools_open || !self.engine.prediction_enabled() {
             return None;
         }
+
         let prediction = self.engine.poll_prediction()?;
+
+        // 状态已变化，这份预测视为过期，直接丢弃
         if self.engine.composition().is_empty() || self.kana.is_some() {
             return None;
         }
+
         let local = &self.candidates.items;
-        let fresh = |text: &str| !local.iter().any(|candidate| candidate.text == text);
-        let sentence = prediction
-            .sentence
-            .filter(|text| !text.is_empty() && fresh(text) && self.sentence_at.is_none());
+        let fresh = |text: &str| !local.iter().any(|c| c.text == text);
+
+        // 整句：只在尚未插入过云端整句时接受
+        let sentence = prediction.sentence.filter(|text| {
+            !text.is_empty() && self.sentence_at.is_none() && fresh(text)
+        });
+
+        // 词：与本地候选、整句、以及云端词自身去重
+        let mut seen = HashSet::new();
         let mut words = CandidateList {
             items: prediction
                 .words
                 .into_iter()
-                .filter(|word| fresh(&word.text) && sentence.as_deref() != Some(&word.text))
+                .filter(|word| {
+                    fresh(&word.text)
+                        && sentence.as_deref() != Some(word.text.as_str())
+                        && seen.insert(word.text.clone())
+                })
                 .map(CloudWord::into_candidate)
                 .collect(),
         };
+
         if sentence.is_none() && words.items.is_empty() {
             return None;
         }
+
         self.engine.annotate(&mut words);
+
         let mut at = usize::from(!self.candidates.items.is_empty());
+
         if let Some(text) = sentence {
             let candidate = CloudWord {
                 text,
                 ..CloudWord::default()
             }
             .into_candidate();
-            self.candidates.items.insert(at, candidate);
-            self.sentence_at = Some(at);
-            at += 1;
+
+            let pos = at.min(self.candidates.items.len());
+            self.candidates.items.insert(pos, candidate);
+            self.sentence_at = Some(pos);
+            at = pos + 1;
+        } else if let Some(s) = self.sentence_at {
+            // 已有云端整句：新词放在它后面，避免挤乱 sentence_at
+            at = at.max(s + 1);
         }
-        for word in words.items {
-            self.candidates.items.insert(at, word);
-            at += 1;
-        }
+
+        let at = at.min(self.candidates.items.len());
+        self.candidates.items.splice(at..at, words.items);
+
         Some(self.frame(String::new()))
     }
 
