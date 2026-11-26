@@ -27,11 +27,17 @@ impl StripHit {
             HitTarget::Translation { candidate, sense } => (candidate, Some(sense)),
             HitTarget::MenuItem(_) | HitTarget::Page(_) | HitTarget::Panel(_) => return None,
         };
+        let x = region.x + offset.0 as f32;
+        let y = region.y + offset.1 as f32;
+        if !x.is_finite() || !y.is_finite() || !region.width.is_finite() || !region.height.is_finite()
+            || region.width <= 0.0 || region.height <= 0.0 {
+            return None;
+        }
         Some(Self {
             candidate,
             sense,
-            x: region.x + offset.0 as f32,
-            y: region.y + offset.1 as f32,
+            x,
+            y,
             width: region.width,
             height: region.height,
         })

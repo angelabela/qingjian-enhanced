@@ -102,16 +102,20 @@ impl StripPainter {
     pub fn show(&mut self, frame: &Frame) {
         self.frame_id = self.frame_id.saturating_add(1);
         let mut signature = DefaultHasher::new();
+        // Hash sequence boundaries explicitly: candidate/sense field sequences must not
+        // become ambiguous when adjacent variable-length collections change shape.
         frame.preedit.hash(&mut signature);
         frame.preedit_cursor.hash(&mut signature);
         frame.preedit_pinned.hash(&mut signature);
         frame.notice.hash(&mut signature);
+        frame.candidates.len().hash(&mut signature);
         for candidate in &frame.candidates {
             candidate.text.hash(&mut signature);
             candidate.forgettable.hash(&mut signature);
             candidate.cloud.hash(&mut signature);
             candidate.contact.hash(&mut signature);
             candidate.custom_phrase.hash(&mut signature);
+            candidate.senses.len().hash(&mut signature);
             for sense in &candidate.senses {
                 sense.pos.hash(&mut signature);
                 sense.text.hash(&mut signature);
@@ -232,12 +236,21 @@ impl StripPainter {
                 .hits
                 .iter()
                 .filter_map(|region| StripHit::new(region, (0, 0)))
-                .map(|mut hit| {
-                    // renderer 回报过滤后连续的显示下标；壳的选择、emoji 与长按仍使用原始候选下标。
-                    if let Some(&original) = self.candidate_indices.get(hit.candidate) {
-                        hit.candidate = original;
+                .filter_map(|mut hit| {
+                    // Renderer 使用过滤后连续的显示下标；越界下标或无效矩形违反布局协议，
+                    // 必须丢弃，绝不能把显示下标误当成原始候选下标传给 Android。
+                    let original = *self.candidate_indices.get(hit.candidate)?;
+                    if !hit.x.is_finite()
+                        || !hit.y.is_finite()
+                        || !hit.width.is_finite()
+                        || !hit.height.is_finite()
+                        || hit.width <= 0.0
+                        || hit.height <= 0.0
+                    {
+                        return None;
                     }
-                    hit
+                    hit.candidate = original;
+                    Some(hit)
                 })
                 .collect(),
             preedit_edges: snapshot.preedit.as_ref().map_or_else(Vec::new, |hit| hit.edges.clone()),
