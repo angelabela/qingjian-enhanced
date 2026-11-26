@@ -498,7 +498,7 @@ class KeyPainter(
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
         // 每次绘制主字都强制以键位中心为锚点，避免上一次绘制状态污染标点键对齐。
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * scaledDensity * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp) * rowFitScale(sp)
         ink.color = color
         ink.shader = null
         ink.style = Paint.Style.FILL
@@ -555,9 +555,16 @@ class KeyPainter(
     /** 同 [text]，放不下 [maxWidth] 就缩小字号（双拼韵母一个键可能有两三个）。 */
     private fun fitted(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float, maxWidth: Float) {
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * scaledDensity * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp) * rowFitScale(sp)
         val width = ink.measureText(value)
         text(canvas, value, if (width > maxWidth) sp * maxWidth / width else sp, color, cx, cy)
+    }
+
+    /** Reduce oversized key labels only when the actual row is too short (landscape, split-screen or 5-row layouts). */
+    private fun rowFitScale(sp: Float): Float {
+        val available = (metrics.effectiveRowHeight - 6f * density).coerceAtLeast(1f)
+        val requested = (sp * scaledDensity * scaleOf(sp)).coerceAtLeast(1f)
+        return (available / requested).coerceIn(0.35f, 1f)
     }
 
     /** 带角标的键上主字的纵向位置（占键高的比例）：字放大时往下让一点，不顶到角标。 */

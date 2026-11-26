@@ -93,8 +93,8 @@ object ScanContent {
         if (raw.isBlank()) return null
         parseWifi(raw)?.let { return ClipboardAction.Wifi(it) }
         extractSmsCode(raw)?.let { return ClipboardAction.SmsCode(it) }
-        extractPhone(raw)?.let { return ClipboardAction.Phone(it) }
         findWebUrl(raw)?.let { return ClipboardAction.Url(it) }
+        extractPhone(raw)?.let { return ClipboardAction.Phone(it) }
         return null
     }
 

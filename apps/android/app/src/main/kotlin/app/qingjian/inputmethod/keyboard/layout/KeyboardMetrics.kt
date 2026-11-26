@@ -12,12 +12,16 @@ class KeyboardMetrics(
     private val layoutScale = fontScale.coerceAtLeast(1f) * keyTextScale.coerceAtLeast(1f)
     private var requestedRowHeight = rowHeightFor(heightPercent)
     private var availableHeight: Float? = null
+    private var visibleRowCount = ROWS
     val rowHeight: Float
         get() {
             val available = availableHeight ?: return requestedRowHeight
             val maxRowHeight = (available - topPadding - gapY).coerceAtLeast(1f) / ROWS
             return minOf(requestedRowHeight, maxRowHeight)
         }
+
+    /** Actual drawable row height after landscape/split-screen constraints and multi-row layouts. */
+    val effectiveRowHeight: Float get() = rowHeight * ROWS / maxOf(ROWS, visibleRowCount)
 
     val gapX = 2.5f * density
     val gapY = 4f * density
@@ -47,7 +51,8 @@ class KeyboardMetrics(
     fun layout(rows: List<List<Key>>, side: Boolean, width: Int): List<KeySlot> {
         if (width == 0) return emptyList()
         val unit = unit(width)
-        val rowHeight = rowHeight * ROWS / maxOf(ROWS, rows.size)
+        visibleRowCount = maxOf(ROWS, rows.size)
+        val rowHeight = rowHeight * ROWS / visibleRowCount
         return rows.flatMapIndexed { row, keys ->
             val total = keys.sumOf { it.weight.toDouble() }.toFloat()
             var x = edge + unit * if (side && row < KeyboardLayout.SIDE_ROWS) {
