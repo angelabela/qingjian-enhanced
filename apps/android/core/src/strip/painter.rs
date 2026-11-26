@@ -1,6 +1,6 @@
 //! 候选条的画笔：记住最新一帧要显示的内容，壳要画时按宽度倍数与深浅色出一张位图。
 
-use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, TextSizes, Theme};
+use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Renderer, TextSizes, Theme};
 
 use super::{StripHit, StripMeta, has_emoji, preedit, rows, visible_indices};
 use crate::appearance;
@@ -32,8 +32,6 @@ pub struct StripPainter {
     /// 原始候选中有 emoji 的下标。
     emoji: Vec<usize>,
 
-    /// 上次画的位图，等壳来拷。
-    last: Option<Rendered>,
 }
 
 impl StripPainter {
@@ -50,7 +48,6 @@ impl StripPainter {
             frame_id: 0,
             candidate_indices: Vec::new(),
             emoji: Vec::new(),
-            last: None,
         })
     }
 
@@ -117,7 +114,6 @@ impl StripPainter {
             && self.content.preedit.is_none()
             && self.content.status.is_none()
         {
-            self.last = None;
             return Ok(StripMeta {
                 frame_id: self.frame_id,
                 width: 0,
@@ -139,11 +135,9 @@ impl StripPainter {
                 .position(|&index| index == original)
         });
         let theme = if dark { &self.dark } else { &self.light };
-        let rendered = self
-            .renderer
-            .render(&self.content, Layout::Strip, theme, scale)?;
-        let width = rendered.pixmap.width();
-        let height = rendered.pixmap.height();
+        let snapshot = self.renderer.layout_only(&self.content, Layout::Strip, theme, scale)?;
+        let width = snapshot.width.ceil().max(0.0) as u32;
+        let height = snapshot.height.ceil().max(0.0) as u32;
         if width == 0 || height == 0 {
             self.last = None;
             return Ok(StripMeta {
@@ -159,18 +153,17 @@ impl StripPainter {
                 emoji: Vec::new(),
             });
         }
-        let offset = (rendered.content_x, rendered.content_y);
         let background = theme.variable("surface").map_or(0, appearance::argb);
         let meta = StripMeta {
             frame_id: self.frame_id,
             width,
             height,
-            candidates_top: rendered.candidates_top(),
+            candidates_top: snapshot.candidates_top().ceil().max(0.0) as u32,
             background,
-            hits: rendered
+            hits: snapshot
                 .hits
                 .iter()
-                .filter_map(|region| StripHit::new(region, offset))
+                .filter_map(|region| StripHit::new(region, (0, 0)))
                 .map(|mut hit| {
                     // renderer 回报过滤后连续的显示下标；壳的选择、emoji 与长按仍使用原始候选下标。
                     if let Some(&original) = self.candidate_indices.get(hit.candidate) {
@@ -179,35 +172,14 @@ impl StripPainter {
                     hit
                 })
                 .collect(),
-            preedit_edges: rendered.preedit.as_ref().map_or_else(Vec::new, |hit| {
-                hit.edges.iter().map(|x| x + offset.0 as f32).collect()
-            }),
-            preedit_top: rendered
-                .preedit
-                .as_ref()
-                .map_or(0.0, |hit| hit.y + offset.1 as f32),
-            preedit_bottom: rendered
-                .preedit
-                .as_ref()
-                .map_or(0.0, |hit| hit.y + hit.height + offset.1 as f32),
+            preedit_edges: snapshot.preedit.as_ref().map_or_else(Vec::new, |hit| hit.edges.clone()),
+            preedit_top: snapshot.preedit.as_ref().map_or(0.0, |hit| hit.y),
+            preedit_bottom: snapshot.preedit.as_ref().map_or(0.0, |hit| hit.y + hit.height),
             emoji: self.emoji.clone(),
         };
-        self.last = Some(rendered);
         Ok(meta)
     }
 
-    /// 把上次画的像素拷进 `out`；没画过或 `out` 不够大返回 `false`。
-    pub fn copy_pixels(&self, out: &mut [u8]) -> bool {
-        let Some(rendered) = &self.last else {
-            return false;
-        };
-        let data = rendered.pixmap.data();
-        match out.get_mut(..data.len()) {
-            Some(target) => {
-                target.copy_from_slice(data);
-                true
-            }
-            None => false,
-        }
-    }
+    /// 兼容旧 JNI 符号；布局快照不生成可复制的位图像素。
+    pub fn copy_pixels(&self, _out: &mut [u8]) -> bool { false }
 }
