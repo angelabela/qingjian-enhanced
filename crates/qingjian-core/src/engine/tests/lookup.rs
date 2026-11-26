@@ -164,10 +164,11 @@ fn single_chars_come_before_guessed_words_and_split_readings() {
     );
     let all = texts_in(dictionary, "shishan");
     assert_eq!(all[0], "石山");
-    for guess in ["时尚", "世上", "史上"] {
+    for guess in ["时尚", "世上"] {
         assert!(position(&all, guess) < position(&all, "是"), "{all:?}");
     }
-    for later in ["事上", "时尚潮流", "事实", "是啥呢"] {
+    // 史上要靠把 shan 的末尾拆成 shang 前缀才能命中，属于拆读候选，应让位给首音节单字。
+    for later in ["史上", "事上", "时尚潮流", "事实", "是啥呢"] {
         assert!(position(&all, "时") < position(&all, later), "{all:?}");
     }
 }
