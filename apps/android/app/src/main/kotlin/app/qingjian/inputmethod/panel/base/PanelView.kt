@@ -61,6 +61,8 @@ abstract class PanelView(
         /** Optional non-touch alternatives for drag-only operations, exposed as named TalkBack actions. */
         val onMoveUp: (() -> Unit)? = null,
         val onMoveDown: (() -> Unit)? = null,
+        /** Override the default widget role for checkable Canvas controls such as toggle/radio buttons. */
+        val role: String? = null,
     )
 
     protected open fun accessibilityElements(): List<AccessibilityElement> = emptyList()
@@ -254,6 +256,7 @@ abstract class PanelView(
             node.className = when {
                 isTabScroll && tab?.accessibilityScrollLabel?.contains("横向") == true -> "android.widget.HorizontalScrollView"
                 isTabScroll -> "android.widget.ScrollView"
+                isElement && element!!.role != null -> element!!.role!!
                 isElement && element!!.onScroll != null -> "android.widget.ScrollView"
                 isElement && element!!.rangeMin != null -> "android.widget.SeekBar"
                 isElement && element!!.checked != null -> "android.widget.Switch"

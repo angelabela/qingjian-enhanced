@@ -37,6 +37,8 @@ class FunctionPanel(
         val icon: Icon,
         val label: String,
         val on: Boolean = false,
+        /** Non-null only when this grid item directly toggles a persistent boolean setting. */
+        val checked: Boolean? = null,
         val run: PanelActions.() -> Unit,
     )
 
@@ -96,6 +98,8 @@ class FunctionPanel(
     private val features: List<Feature>
         get() {
             val smsEnabled = smsMonitoringEnabled()
+            val mascotEnabled = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+                .getBoolean(FloatingMascotService.KEY_ENABLED, false)
             return listOf(
                 Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
                 Feature(Icon.CAMERA, "扫码") {
@@ -104,8 +108,8 @@ class FunctionPanel(
                 Feature(
                     Icon.WAVEFORM,
                     "悬浮小精灵",
-                    on = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
-                        .getBoolean(FloatingMascotService.KEY_ENABLED, false),
+                    on = mascotEnabled,
+                    checked = mascotEnabled,
                 ) {
                     val prefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
                     val enabled = prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false)
@@ -149,11 +153,12 @@ class FunctionPanel(
                 Feature(Icon.PALETTE, "背景特效") { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
-                Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
+                Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional, checked = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
                 },
                 // 两套键位排法之间切，见 Settings.Arrangement
-                Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
+                Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
+                    checked = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
                     val next = if (settings.arrangement == Settings.Arrangement.LEFT_THUMB) Settings.Arrangement.STANDARD else Settings.Arrangement.LEFT_THUMB
                     setChoice(Settings.KEY_ARRANGEMENT, next.name)
                 },
@@ -169,7 +174,7 @@ class FunctionPanel(
                 Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
                 Feature(Icon.SETTINGS, "设置") { openSettings() },
             ) + listOfNotNull(
-                actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on) { toggleGameKeyboard() } },
+                actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on, checked = on) { toggleGameKeyboard() } },
             )
         }
 
@@ -414,7 +419,9 @@ class FunctionPanel(
                         card.left + cellWidth() * (column + 1),
                         top + cellHeight() * (row + 1),
                     ),
-                    selected = feature.on,
+                    selected = feature.on && feature.checked == null,
+                    checked = feature.checked,
+                    role = if (feature.checked != null) "android.widget.ToggleButton" else null,
                     virtualId = 60000 + index,
                 )
             }
