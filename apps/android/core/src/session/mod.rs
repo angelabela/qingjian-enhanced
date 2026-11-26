@@ -68,6 +68,9 @@ pub struct Session {
     /// 插进候选的整句补全在第几个；选它走 `accept_prediction`。
     sentence_at: Option<usize>,
 
+    /// 云端整句的文本快照，防止候选列表重排后误把普通候选当作整句。
+    sentence_text: Option<String>,
+
     /// 上屏通讯录里的名字后给不给这个人的电话、邮箱（键盘设置里的开关）。
     contact_details: bool,
 
@@ -120,6 +123,7 @@ impl Session {
             dictionaries: Vec::new(),
             surrounding: None,
             sentence_at: None,
+            sentence_text: None,
             tools_open: false,
             contact_details: false,
             after_contact: None,
@@ -151,6 +155,7 @@ impl Session {
         self.pinyin_choices.clear();
         self.surrounding = None;
         self.sentence_at = None;
+        self.sentence_text = None;
         self.completions.clear();
         self.after_contact = None;
         self.after_commit = None;
