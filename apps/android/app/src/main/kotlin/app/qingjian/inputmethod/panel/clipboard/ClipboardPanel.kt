@@ -1346,6 +1346,7 @@ class ClipboardPanel(
         clearAccessibilityElementFocusForContentReplacement()
         ClipboardStore.remove(context, sourceIndex, actions.clipboardLimit)
         clips = ClipboardStore.list(context, actions.clipboardLimit)
+        rebuildClipSearchIndex()
         app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
         // 删除当前卡片后保留列表滚动量，下一条内容自然补位，不跳回第一条。
         collapse(resetScroll = false)
