@@ -24,6 +24,7 @@ impl Session {
     /// 没开自动联想（或工具框开着）时直接返回，不取消在飞请求。
     pub(super) fn request_prediction(&mut self) {
         self.sentence_at = None;
+        self.sentence_text = None;
         if self.tools_open
             || !self.engine.prediction_enabled()
             || !self.engine.prediction_policy().automatic
