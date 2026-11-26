@@ -21,7 +21,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.PopupWindow
-import android.icu.text.Transliterator
+import com.github.promeg.pinyinhelper.Pinyin
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -115,9 +115,8 @@ class ClipboardPanel(
                 when {
                     ch.isWhitespace() -> Unit
                     ch in '\\u4e00'..'\\u9fff' -> {
-                        val reading = HAN_TO_LATIN.transliterate(ch.toString()).lowercase()
-                        val initial = reading.firstOrNull { it in 'a'..'z' }
-                        alternatives += (initial?.toString() ?: ch.toString())
+                        val initials = Pinyin.toPinyin(ch).lowercase().filter { it in 'a'..'z' }
+                        alternatives += initials.distinct().joinToString("").ifEmpty { ch.toString() }
                     }
                     else -> alternatives += ch.lowercaseChar().toString()
                 }
@@ -1533,7 +1532,6 @@ class ClipboardPanel(
     }
 
     companion object {
-        private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
         private val CLIPBOARD_SEARCH_EXECUTOR = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "qingjian-clipboard-search").apply { isDaemon = true }
         }
