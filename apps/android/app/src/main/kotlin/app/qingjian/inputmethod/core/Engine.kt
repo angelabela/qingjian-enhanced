@@ -1,7 +1,6 @@
 package app.qingjian.inputmethod.core
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import app.qingjian.inputmethod.cloud.CloudConfig
@@ -9,7 +8,6 @@ import app.qingjian.inputmethod.core.frame.Frame
 import app.qingjian.inputmethod.core.strip.StripImage
 import app.qingjian.inputmethod.voice.VoiceConfig
 import java.io.File
-import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -37,9 +35,6 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     /** 第几次装配；卸下或重装时加一，晚到的旧装配结果直接销毁。 */
     private var generation = 0
 
-    /** 候选条的像素中转与位图，只增不减地复用：每次敲键都画一帧，不能每次新开几 MB。 */
-    private var stripBuffer: ByteBuffer? = null
-    private var stripBitmap: Bitmap? = null
 
     /** 候选条的主题与字号档；引擎（重新）装好时照这份交过去。 */
     private var appearance: Triple<String, Float, Int>? = null
@@ -334,29 +329,14 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     /** 光标前最后一个字是 [c] 时可能是一道算式的结尾（数字、右括号、等号），才值得 [complete]。 */
     fun mayEndCalculation(c: Char): Boolean = Native.mayEndCalculation(c)
 
-    /**
-     * 画最新一帧的候选条。返回的位图下次调用时会被改写（复用），只在这一帧里用；没装好或画不出来为 null。
-     */
+    /** Get the latest candidate layout snapshot; Rust does not rasterize candidate glyphs. */
     fun renderStrip(highlighted: Int, dark: Boolean, visibleWidth: Int): StripImage? {
         if (!ready) return null
         val meta = Native.renderStrip(handle, highlighted, density, dark, visibleWidth)?.let(::JSONObject) ?: return null
-        val width = meta.getInt("width")
-        val height = meta.getInt("height")
-        if (width <= 0 || height <= 0) return null
-        // JNI 尺寸来自 Rust 渲染器；用 Long 计算并限制异常分配，防止整数溢出或 OOM。
-        val byteCount = width.toLong() * height.toLong() * 4L
-        if (byteCount <= 0L || byteCount > 64L * 1024L * 1024L) return null
-        val bytes = byteCount.toInt()
-        val buffer = stripBuffer?.takeIf { it.capacity() >= bytes }
-            ?: ByteBuffer.allocateDirect(bytes).also { stripBuffer = it }
-        if (!Native.copyStrip(handle, buffer)) return null
-        buffer.position(0).limit(bytes)
-        val bitmap = stripBitmap?.takeIf { it.allocationByteCount >= bytes }
-            ?.apply { if (this.width != width || this.height != height) reconfigure(width, height, Bitmap.Config.ARGB_8888) }
-            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { stripBitmap = it }
-        bitmap.copyPixelsFromBuffer(buffer)
-        buffer.clear()
-        return StripImage.parse(meta, bitmap)
+        val width = meta.optInt("width", 0)
+        val height = meta.optInt("height", 0)
+        if (width <= 0 || height <= 0 || width > 16384 || height > 4096) return null
+        return runCatching { StripImage.parse(meta) }.getOrNull()
     }
 
     /** 候选条换主题与字号档（[textScale] 是候选字与译文一起的倍数）；没装好时记着，装好再交。 */
