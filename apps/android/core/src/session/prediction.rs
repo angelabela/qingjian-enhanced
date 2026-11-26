@@ -3,9 +3,9 @@
 
 use std::collections::HashSet;
 
-use qingjian_core::{CandidateList, CloudWord, SurroundingText};
+use qingjian_core::{CandidateList, CloudWord, Prediction, PredictionKind, SurroundingText};
 
-use super::Session;
+use super::{QueuedPrediction, Session};
 use crate::frame::Frame;
 
 impl Session {
@@ -27,7 +27,6 @@ impl Session {
         self.sentence_text = None;
         if self.tools_open
             || !self.engine.prediction_enabled()
-            || !self.engine.prediction_policy().automatic
         {
             return;
         }
@@ -50,6 +49,49 @@ impl Session {
         self.sentence_text = None;
     }
 
+    /// 从共用 Provider 中按来源取结果；其他来源先暂存，交给对应轮询入口，不能串进候选栏。
+    pub(super) fn poll_prediction_kind(
+        &mut self,
+        accepts: impl Fn(PredictionKind) -> bool,
+    ) -> Option<Prediction> {
+        let current_scope = self.engine.composition().scope().to_owned();
+        let mut index = 0;
+        while index < self.pending_predictions.len() {
+            let queued = &self.pending_predictions[index];
+            let stale = queued.composition_scope.as_ref().is_some_and(|scope| scope != &current_scope);
+            if stale {
+                self.pending_predictions.remove(index);
+                continue;
+            }
+            if accepts(queued.prediction.kind) {
+                return self.pending_predictions.remove(index).map(|queued| queued.prediction);
+            }
+            index += 1;
+        }
+
+        while let Some(prediction) = self.engine.poll_prediction() {
+            let composition_scope = matches!(
+                prediction.kind,
+                PredictionKind::Compose | PredictionKind::Question
+            )
+            .then(|| current_scope.clone());
+            if accepts(prediction.kind) {
+                return Some(prediction);
+            }
+            self.pending_predictions.push_back(QueuedPrediction {
+                prediction,
+                composition_scope,
+            });
+        }
+        None
+    }
+
+    /// 取回独立的候选译文结果；不参与组句候选，也不调用 accept_prediction。
+    pub fn poll_candidate_translation(&mut self) -> Option<(u64, String)> {
+        let prediction = self.poll_prediction_kind(|kind| kind == PredictionKind::CandidateTranslation)?;
+        Some((prediction.sequence, prediction.sentence.unwrap_or_default()))
+    }
+
     /// 取回云联想的结果插进候选：整句补全在本地首选之后，云端词再其后，与本地重复的不要。
     /// 没有新结果、已不在组句或结果为空返回 `None`，壳不用重画。
     pub fn poll_prediction(&mut self) -> Option<Frame> {
@@ -57,7 +99,9 @@ impl Session {
             return None;
         }
 
-        let prediction = self.engine.poll_prediction()?;
+        let prediction = self.poll_prediction_kind(|kind| {
+            matches!(kind, PredictionKind::Compose | PredictionKind::Question)
+        })?;
 
         // 状态已变化，这份预测视为过期，直接丢弃
         if self.engine.composition().is_empty() || self.kana.is_some() {

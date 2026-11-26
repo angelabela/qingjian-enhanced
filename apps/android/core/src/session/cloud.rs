@@ -1,6 +1,6 @@
 //! 云端：快捷翻译（接上 / 断开、发请求、取译文，工具框开着时不计输入统计）与释义兜底。
 
-use qingjian_core::{NoGlossFiller, NoPredictor};
+use qingjian_core::{NoGlossFiller, NoPredictor, PredictionKind};
 use qingjian_predict::{CloudGlossFiller, CloudPredictor};
 
 use super::Session;
@@ -36,8 +36,7 @@ impl Session {
 
     /// 取回译文：没到返回 `None`，模型没给出内容返回空串（壳停止等待）。
     pub fn poll_translation(&mut self) -> Option<String> {
-        self.engine
-            .poll_prediction()
+        self.poll_prediction_kind(|kind| kind == PredictionKind::Translate)
             .map(|prediction| prediction.sentence.unwrap_or_default())
     }
 

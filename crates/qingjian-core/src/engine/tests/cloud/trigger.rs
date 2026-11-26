@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use qingjian_dictionary::Dictionary;
 
 use crate::engine::tests::SAMPLE;
-use crate::engine::{Engine, Prediction, PredictionPolicy, PredictionRequest, Predictor};
+use crate::engine::{Engine, Prediction, PredictionKind, PredictionPolicy, PredictionRequest, Predictor};
 
 #[derive(Default)]
 struct Requests {
@@ -45,7 +45,7 @@ fn manual_mode_cancels_automatic_requests_and_allows_explicit_requests() {
     engine.set_input("kaifa");
     let before = requests.lock().unwrap().cancellations;
     assert_eq!(engine.request_prediction(None, &[]), None);
-    assert_eq!(requests.lock().unwrap().cancellations, before + 1);
+    assert_eq!(requests.lock().unwrap().cancellations, before, "只作废组句 pending，不取消共享 Provider 的翻译请求");
     assert!(requests.lock().unwrap().submitted.is_empty());
     assert!(engine.request_manual_prediction(None, &[]).is_some());
     assert!(requests.lock().unwrap().submitted[0].manual);
@@ -80,6 +80,23 @@ impl Predictor for AutomaticPredictor {
     fn poll(&mut self) -> Option<Prediction> {
         None
     }
+}
+
+
+#[test]
+fn manual_mode_invalidates_composition_but_preserves_pending_translation() {
+    let requests = Arc::new(Mutex::new(Requests::default()));
+    let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
+        .with_predictor(Box::new(ManualPredictor(requests)));
+    engine.set_translation_predictor(Some(Box::new(TranslationReplies {
+        replies: std::collections::VecDeque::new(),
+    })));
+    engine.set_input("kaifa");
+    assert!(engine.request_translation("待保留的译文").is_some());
+    assert_eq!(engine.request_prediction(None, &[]), None);
+    let result = engine.poll_prediction().expect("非自动模式不应清掉翻译 pending");
+    assert_eq!(result.kind, PredictionKind::Translate);
+    assert_eq!(result.sentence.as_deref(), Some("待保留的译文"));
 }
 
 #[test]
@@ -168,6 +185,7 @@ impl Predictor for TranslationReplies {
     }
     fn submit(&mut self, request: PredictionRequest) {
         self.replies.push_back(Prediction {
+            kind: Default::default(),
             sequence: request.sequence,
             words: Vec::new(),
             sentence: Some(request.text),

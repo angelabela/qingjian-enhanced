@@ -70,7 +70,8 @@ impl Engine {
         candidates: &[Candidate],
     ) -> Option<u64> {
         if !self.predictor.policy().automatic {
-            self.cancel_prediction();
+            // 只作废组句联想；翻译（尤其候选译文）不依赖当前拼音，不能一起取消。
+            self.cancel_composition_prediction();
             return None;
         }
         self.submit_prediction(surrounding, candidates, false)
@@ -402,6 +403,8 @@ impl Engine {
             .or_else(|| self.predictor.poll())
         {
             if let Some(pending) = self.pending_predictions.remove(&prediction.sequence) {
+                // 以 Engine 记录的请求来源为准，不信任 Predictor 返回值。
+                prediction.kind = pending.kind;
                 if self.answer_panel_translation(prediction.sequence, &prediction.sentence) {
                     continue;
                 }

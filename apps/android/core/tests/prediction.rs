@@ -83,6 +83,58 @@ fn cloud_results_follow_the_first_local_candidate() {
     assert!(frame.preedit.is_empty());
 }
 
+
+struct FakeTranslation {
+    sequence: Arc<AtomicU64>,
+}
+
+impl Predictor for FakeTranslation {
+    fn policy(&self) -> PredictionPolicy {
+        PredictionPolicy::default()
+    }
+
+    fn submit(&mut self, request: PredictionRequest) {
+        self.sequence.store(request.sequence, Ordering::SeqCst);
+    }
+
+    fn poll(&mut self) -> Option<Prediction> {
+        let sequence = self.sequence.swap(0, Ordering::SeqCst);
+        (sequence != 0).then_some(Prediction {
+            kind: Default::default(),
+            sequence,
+            words: Vec::new(),
+            sentence: Some("translated result".to_owned()),
+        })
+    }
+}
+
+#[test]
+fn translation_poll_cannot_steal_or_insert_a_translation_as_a_cloud_sentence() {
+    let sequence = Arc::new(AtomicU64::new(0));
+    let mut engine = Engine::new(Dictionary::from_path(sample("dict.tsv")).unwrap());
+    engine.set_predictor(Box::new(FakeTranslation { sequence }));
+    let user_dir = std::env::temp_dir().join(format!("qingjian-translation-route-{}", std::process::id()));
+    let mut session = Session::new(engine, sample("wubi86.tsv"), sample(""), user_dir);
+
+    assert!(session.translate("source text"));
+    assert!(session.poll_prediction().is_none(), "翻译不得插入键盘候选");
+    assert_eq!(session.poll_translation().as_deref(), Some("translated result"));
+    assert!(session.poll_prediction().is_none());
+}
+
+#[test]
+fn translation_poll_preserves_a_ready_composition_prediction() {
+    let last = Arc::new(AtomicU64::new(0));
+    let mut session = session(Arc::clone(&last));
+    for c in "nihao".chars() {
+        session.push(c);
+    }
+    assert!(session.poll_translation().is_none(), "组句结果不能被翻译轮询吞掉");
+    let frame = session.poll_prediction().expect("组句结果仍可由候选轮询领取");
+    assert_eq!(frame.candidates[1].text, "你好世界");
+}
+
+
 #[test]
 fn tool_editors_pause_cloud_prediction() {
     let last = Arc::new(AtomicU64::new(0));
