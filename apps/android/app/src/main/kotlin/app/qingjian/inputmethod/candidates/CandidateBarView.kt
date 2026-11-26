@@ -77,7 +77,7 @@ class CandidateBarView(
 
     private val density = resources.displayMetrics.density
     private val fontScale = resources.displayMetrics.scaledDensity / density
-    private val candidateSelectionEffect = Settings.preferences(context)
+    private var candidateSelectionEffect = Settings.preferences(context)
         .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
 
     private val accessibilityManager =
@@ -646,6 +646,8 @@ class CandidateBarView(
 
     /** 首选或当前选中词及其释义共用同一套呼吸高亮。 */
     private fun drawCandidatePulse(canvas: Canvas, index: Int) {
+        candidateSelectionEffect = Settings.preferences(context)
+            .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, candidateSelectionEffect).coerceIn(0, 4)
         if (index !in strip.candidates.indices) return
         val now = android.os.SystemClock.uptimeMillis()
         // 高亮框的动画状态绑定当前候选下标；空格手势滑到下一个词时，特效框立即跟随。
