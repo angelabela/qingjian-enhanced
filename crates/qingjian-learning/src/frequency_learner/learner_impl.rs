@@ -45,7 +45,7 @@ fn lookup_choice(choices: &HashMap<String, HashMap<String, u32>>, key: &str, tex
 
 /// 个人英文词只收稳定的字母词；拒绝原始按键串、数字/标点混入和异常大小写。
 pub(super) fn valid_personal_english(word: &str) -> bool {
-    if !(3..=32).contains(&word.len())
+    if !(2..=32).contains(&word.len())
         || !word.is_ascii()
         || !word.bytes().all(|b| b.is_ascii_alphabetic())
     {
@@ -55,7 +55,7 @@ pub(super) fn valid_personal_english(word: &str) -> bool {
     let upper = word.bytes().all(|b| b.is_ascii_uppercase());
     let title = word.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
         && word.as_bytes()[1..].iter().all(u8::is_ascii_lowercase);
-    lower || upper || title
+    (word.len() >= 3 && (lower || upper || title)) || (word.len() == 2 && upper)
 }
 
 impl Learner for FrequencyLearner {
