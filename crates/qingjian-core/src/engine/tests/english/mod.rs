@@ -489,14 +489,16 @@ fn english_completion_never_joins_text_after_the_cursor_to_the_prefix() {
     let personal = WordList::parse("hello\thello\t3\n").unwrap();
     let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
         .with_learner(Box::new(PersonalEnglish(personal)));
-    engine.set_input("nihell");
-    for _ in 0..4 {
+    engine.set_input("helhello");
+    for _ in 0..5 {
         assert!(engine.move_cursor_left());
     }
-    assert_eq!(engine.composition().scope(), "ni");
+    assert_eq!(engine.composition().scope(), "hel");
+    assert_eq!(engine.composition().rest(), "hello");
     let query = engine.query().unwrap();
-    assert!(!query.candidates.items.iter().any(|candidate| candidate.text == "hello"),
-        "光标后的 hell 不得拼接到光标前的 ni 形成英文补全");
+    assert!(query.candidates.items.iter().any(|candidate| {
+        candidate.kind == CandidateKind::English && candidate.text == "hello"
+    }), "应按光标前的 hel 补全 hello，而不是把光标后的 hello 拼进查询");
 }
 
 #[test]
