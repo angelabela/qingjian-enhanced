@@ -21,16 +21,23 @@ impl FrequencyLearner {
                 count.trim().parse::<u32>().ok().map(|count| (word, count))
             });
             match parsed {
-                Some((word, count)) => {
-                    if count > 0 {
-                        self.english.insert(
-                            word.to_ascii_lowercase(),
-                            (word.to_owned(), Decay::from_parts(count, fallback_day)),
-                        );
-                    }
+                Some((word, count))
+                    if count >= 3
+                        && super::learner_impl::valid_personal_english(word) =>
+                {
+                    self.english.insert(
+                        word.to_ascii_lowercase(),
+                        (word.to_owned(), Decay::from_parts(count, fallback_day)),
+                    );
                 }
-                None => skipped += 1,
+                // 旧版本会把原样上屏的按键串写进个人英文词表。无法从旧 TSV
+                // 判断来源，因此只迁移形态正常且至少累计三次的词。
+                _ => skipped += 1,
             }
+        }
+        if skipped > 0 {
+            // 下次 flush 原子重写旧表，确保脏词不只是从本次内存候选中隐藏。
+            self.english_dirty = true;
         }
         self.rebuild_english();
         skipped
