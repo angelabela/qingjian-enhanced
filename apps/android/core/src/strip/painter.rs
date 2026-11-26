@@ -73,11 +73,13 @@ impl StripPainter {
     /// 记下一帧要显示的拼音、提示与候选。
     pub fn show(&mut self, frame: &Frame) {
         self.candidate_indices = visible_indices(&frame.candidates);
+        // Emoji 下标覆盖所有候选，包括被独立追加到 Kotlin 侧的云候选；
+        // Kotlin 用自己的 wordRect 取得补充候选区域，再统一绘制彩色 Emoji。
         self.emoji = frame
             .candidates
             .iter()
             .enumerate()
-            .filter(|(_, candidate)| !candidate.cloud && has_emoji(&candidate.text))
+            .filter(|(_, candidate)| has_emoji(&candidate.text))
             .map(|(i, _)| i)
             .collect();
         self.content = RenderFrame {
