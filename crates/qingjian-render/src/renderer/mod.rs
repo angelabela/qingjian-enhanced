@@ -28,7 +28,7 @@ use crate::theme::file::MaterialAppearance;
 use build::Builder;
 
 pub use hit::{HitRegion, HitTarget, PanelHit, PreeditHit};
-pub use rendered::Rendered;
+pub use rendered::{LayoutSnapshot, Rendered};
 pub use status::{RenderedStatus, StatusCell};
 
 /// 光学字号（点）：20 pt 以下 CoreText 给系统字体用的就是这一档。
@@ -90,6 +90,58 @@ impl Renderer {
                 self.text().load_fonts(&family_files(&family));
             }
         }
+    }
+
+    /// 只计算候选窗口的布局与命中区域，不调用 Stage::present，不生成任何位图或文字像素。
+    /// Android 候选条使用此接口，由原生 Canvas 统一绘制候选、释义与拼音。
+    pub fn layout_only(
+        &mut self,
+        frame: &Frame,
+        layout: Layout,
+        theme: &Theme,
+        scale: f32,
+    ) -> Result<LayoutSnapshot, RenderError> {
+        self.text().use_families(theme.families());
+        let mut scene = Scene::new();
+        let mut builder = Builder {
+            scene: &mut scene,
+            theme,
+            scale,
+            text: self.stage.text(),
+            cell_nodes: Vec::new(),
+            candidate_nodes: Vec::new(),
+            sense_nodes: Vec::new(),
+            action_nodes: Vec::new(),
+            preedit_node: None,
+            material_root: None,
+            root_radius: 0.0,
+        };
+        let root = builder.window(frame, layout)?;
+        let nodes = HitNodes {
+            candidates: builder.candidate_nodes,
+            senses: builder.sense_nodes,
+            actions: builder.action_nodes,
+        };
+        let preedit_node = builder.preedit_node;
+        let (width, height) = scene.layout(root, self.stage.text())?;
+        self.hits = hit_regions(&scene, root, &nodes, scale)?;
+        self.preedit = match preedit_node {
+            Some((node, edges)) => {
+                let (x, y, _, height) = scene.rect_in(node, root)?;
+                Some(PreeditHit {
+                    y,
+                    height,
+                    edges: edges.into_iter().map(|edge| x + edge).collect(),
+                })
+            }
+            None => None,
+        };
+        Ok(LayoutSnapshot {
+            width,
+            height,
+            hits: self.hits.clone(),
+            preedit: self.preedit.clone(),
+        })
     }
 
     /// 画一帧。`scale` 是点 → 像素的倍数（Retina 为 2）；位图按画出范围开（投影、伸出的装饰），根节点的盒子是内容区。
