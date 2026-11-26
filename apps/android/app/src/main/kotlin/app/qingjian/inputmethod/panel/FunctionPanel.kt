@@ -1294,6 +1294,8 @@ class FunctionPanel(
 
             else -> toggles.getOrNull(((y - card.top) / rowHeight()).toInt())?.let {
                 actions.setToggle(it.key, !it.on)
+                // Settings 是键盘创建时的快照；立即重建输入视图，确保开关状态与实际绘制同步。
+                actions.refreshKeyboardSettings()
             }
         }
     }
