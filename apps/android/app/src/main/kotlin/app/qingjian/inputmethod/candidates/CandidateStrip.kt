@@ -35,15 +35,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         isFakeBoldText = fontWeight.weight >= 600
         isSubpixelText = true
     }
-    private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = markColor
-        textSize = 20f * scaledDensity * textScale
-        textAlign = Paint.Align.CENTER
-        typeface = fontWeight.typeface
-        isFakeBoldText = fontWeight.weight >= 600
-    }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
-    private val fallbackText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor; textSize = 19f * scaledDensity * textScale; textAlign = Paint.Align.CENTER; typeface = fontWeight.typeface; isFakeBoldText = fontWeight.weight >= 600 }
     private val fallbackRects = ArrayList<RectF>()
     private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
@@ -81,8 +73,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // 用户手动指定的文字颜色优先于视频/光效背景的自动黑白对比色。
         val effectiveColor = customTextColor ?: color
         textStyles.setAdaptiveTextColor(effectiveColor)
-        extraText.color = effectiveColor ?: candidateText.color
-        fallbackText.color = effectiveColor ?: candidateText.color
     }
 
     private var textFadeStartedAt = 0L
@@ -475,29 +465,59 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         fallbackRects.clear()
         val start = if (preedit.isNotEmpty()) 52f * density else 8f * density
         if (preedit.isNotEmpty()) {
-            fallbackText.textAlign = Paint.Align.LEFT
-            fallbackText.textSize = 13f * scaledDensity
-            canvas.drawText(preedit, 8f * density - scrollX, barHeight * 0.28f, fallbackText)
+            val preeditRect = RectF(8f * density, 4f * density, start - 4f * density, barHeight * 0.52f)
+            if (preeditRect.right >= scrollX && preeditRect.left <= scrollX + viewWidth) {
+                textStyles.drawReplacing(
+                    canvas, preedit, preeditRect,
+                    CandidateTextStyleEngine.Role.PREEDIT,
+                    eraseUnderlay = false,
+                )
+            }
         }
-        fallbackText.textAlign = Paint.Align.CENTER
-        fallbackText.textSize = 19f * scaledDensity
         val cell = 56f * density
         candidates.forEachIndexed { index, candidate ->
             val left = start + index * cell
             val rect = RectF(left + density, 4f * density, left + cell - density, barHeight - 4f * density)
             fallbackRects += rect
             if (rect.right < scrollX || rect.left > scrollX + viewWidth) return@forEachIndexed
-            val baseline = rect.centerY() - (fallbackText.ascent() + fallbackText.descent()) / 2f
-            val originalAlpha = fallbackText.alpha
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
-            fallbackText.alpha = originalAlpha * candidateRevealAlpha(index) / 255
-            val displayText = TextUtils.ellipsize(
-                candidate.text, fallbackText, (rect.width() - 4f * density).coerceAtLeast(1f), TextUtils.TruncateAt.END,
-            ).toString()
-            canvas.drawText(displayText, rect.centerX() - scrollX, baseline, fallbackText)
-            fallbackText.alpha = originalAlpha
+            val alpha = candidateRevealAlpha(index)
+            val role = when {
+                candidate.text.codePoints().anyMatch { Character.getType(it) == Character.OTHER_SYMBOL.toInt() } ->
+                    CandidateTextStyleEngine.Role.EMOJI
+                index == 0 -> CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else -> CandidateTextStyleEngine.Role.CANDIDATE
+            }
+            val senses = candidate.senses.firstOrNull()
+            val wordBottom = if (senses == null) rect.bottom else rect.top + rect.height() * 0.62f
+            textStyles.drawReplacing(
+                canvas, candidate.text, RectF(rect.left, rect.top, rect.right, wordBottom),
+                role, eraseUnderlay = false, alphaMultiplier = alpha,
+                maxTextWidth = minOf(viewWidth / 3f, 180f * density),
+            )
+            if (senses != null) {
+                val gloss = buildString {
+                    senses.pos?.takeIf { it.isNotBlank() }?.let { append(it).append(' ') }
+                    append(senses.text)
+                }
+                textStyles.drawReplacing(
+                    canvas, gloss, RectF(rect.left, wordBottom, rect.right, rect.bottom),
+                    CandidateTextStyleEngine.Role.GLOSS,
+                    eraseUnderlay = false, alphaMultiplier = alpha,
+                )
+            }
             canvas.restoreToCount(revealSave)
+        }
+        // 布局暂缺时也保留通讯录标记；使用与触摸命中相同的回退候选矩形。
+        val markerSize = CONTACT_MARK_DP * density
+        candidates.forEachIndexed { index, candidate ->
+            if (!candidate.contact) return@forEachIndexed
+            val word = fallbackRects.getOrNull(index) ?: return@forEachIndexed
+            if (word.right < scrollX || word.left > scrollX + viewWidth) return@forEachIndexed
+            val cx = word.right - markerSize * 0.75f
+            val cy = word.top + markerSize * 0.85f
+            PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx - scrollX, cy, markerSize, markPaint)
         }
         canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
     }
