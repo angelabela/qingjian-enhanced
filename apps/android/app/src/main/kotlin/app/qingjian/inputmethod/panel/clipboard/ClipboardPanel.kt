@@ -823,7 +823,7 @@ class ClipboardPanel(
         } else {
             restoreClipScrollPending = false
         }
-        val trailStrength = 0f\n        canvas.save()
+        canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
             ink.text(
