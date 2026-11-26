@@ -378,15 +378,18 @@ class ClipboardPanel(
             private val keys = ArrayList<Pair<Char, RectF>>()
             private val gap = ink.dp(4f)
             private val deleteRect = RectF()
+            private val closeRect = RectF()
             private var pressedKey: Char? = null
             private var downKey: Char? = null
             private var downDelete = false
+            private var downClose = false
             private var headerPressed = false
             init { clearPressedKey = { pressedKey = null; headerPressed = false; invalidate() } }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
                 deleteRect.set((w - ink.dp(78f)).toFloat(), ink.dp(5f).toFloat(), (w - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat())
+                closeRect.set(ink.dp(7f).toFloat(), ink.dp(5f).toFloat(), ink.dp(48f).toFloat(), (headerHeight - ink.dp(5f)).toFloat())
                 rows.forEachIndexed { row, letters ->
                     val usable = w - ink.dp(20f)
                     val kw = (usable - gap * (letters.length - 1)) / letters.length
@@ -408,7 +411,17 @@ class ClipboardPanel(
                 paint.textSize = ink.sp(12f)
                 paint.textAlign = Paint.Align.CENTER
                 canvas.drawText("移动键盘：按住任意位置拖动 · 长按数字/符号输入", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
-                paint.color = palette.brand
+                paint.color = if (downClose) palette.brand else palette.surface
+                canvas.drawRoundRect(closeRect, ink.dp(8f), ink.dp(8f), paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = ink.dp(1f)
+                paint.color = if (downClose) palette.onBrand else palette.brand
+                canvas.drawRoundRect(closeRect, ink.dp(8f), ink.dp(8f), paint)
+                paint.style = Paint.Style.FILL
+                paint.textAlign = Paint.Align.CENTER
+                paint.textSize = ink.sp(18f)
+                canvas.drawText("×", closeRect.centerX(), closeRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
+                paint.color = if (downDelete) palette.gloss else palette.brand
                 canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
                 paint.color = palette.onBrand
                 paint.textSize = ink.sp(21f)
@@ -457,8 +470,9 @@ class ClipboardPanel(
                         longPressDigitValue = null
                         parent?.requestDisallowInterceptTouchEvent(true)
                         downDelete = deleteRect.contains(event.x, event.y)
-                        headerPressed = event.y < headerHeight && !downDelete
-                        downKey = if (downDelete || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                        downClose = closeRect.contains(event.x, event.y)
+                        headerPressed = event.y < headerHeight && !downDelete && !downClose
+                        downKey = if (downDelete || downClose || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                         downKeyForLongPress = downKey
                         pressedKey = downKey
                         invalidate()
@@ -502,6 +516,10 @@ class ClipboardPanel(
                                     updateSearchQuery(searchQuery + longPressDigitValue)
                                     Haptics.tap(context)
                                 }
+                                !longPressTriggered && downClose && closeRect.contains(event.x, event.y) -> {
+                                    Haptics.tap(context)
+                                    popupWindow?.dismiss()
+                                }
                                 !longPressTriggered && downDelete && deleteRect.contains(event.x, event.y) -> {
                                     if (searchQuery.isNotEmpty()) updateSearchQuery(searchQuery.dropLast(1))
                                     Haptics.tap(context)
@@ -518,6 +536,7 @@ class ClipboardPanel(
                         pressedKey = null
                         downKey = null
                         downDelete = false
+                        downClose = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
@@ -532,6 +551,7 @@ class ClipboardPanel(
                         pressedKey = null
                         downKey = null
                         downDelete = false
+                        downClose = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
