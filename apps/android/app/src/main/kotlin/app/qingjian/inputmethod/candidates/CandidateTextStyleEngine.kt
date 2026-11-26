@@ -198,7 +198,7 @@ class CandidateTextStyleEngine(
         // 不再用 CLEAR 擦背景，避免把高亮底色擦出透明洞。
         if (eraseUnderlay) {
             clearPaint.textSize = when (role) {
-                Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
+                Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED, Role.EMOJI -> baseTextSize * 0.95f
                 // Rust strip_top 使用 annotation 字号（12dp × 1.25），约为基础候选字号的 0.75。
                 Role.PREEDIT -> baseTextSize * 1.12f
                 Role.GLOSS -> baseTextSize * 0.575f
