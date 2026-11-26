@@ -21,7 +21,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.PopupWindow
-import com.github.promeg.pinyinhelper.Pinyin
+import net.sourceforge.pinyin4j.PinyinHelper
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -115,8 +115,10 @@ class ClipboardPanel(
                 when {
                     ch.isWhitespace() -> Unit
                     ch in '\\u4e00'..'\\u9fff' -> {
-                        val initials = Pinyin.toPinyin(ch).lowercase().filter { it in 'a'..'z' }
-                        alternatives += initials.distinct().joinToString("").ifEmpty { ch.toString() }
+                        val initials = PinyinHelper.toHanyuPinyinStringArray(ch).orEmpty()
+                            .mapNotNull { it.firstOrNull()?.lowercaseChar()?.takeIf { letter -> letter in 'a'..'z' } }
+                            .distinct().joinToString("")
+                        alternatives += initials.ifEmpty { ch.toString() }
                     }
                     else -> alternatives += ch.lowercaseChar().toString()
                 }
