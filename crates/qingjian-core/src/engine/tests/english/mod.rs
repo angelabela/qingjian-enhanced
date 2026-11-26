@@ -452,6 +452,53 @@ fn raw_committed_english_words_are_not_learned_but_explicit_choices_are() {
     assert_eq!(engine.learner().user_english().unwrap().get("hello"), Some("hello"));
 }
 
+
+#[test]
+fn personal_english_completion_yields_to_chinese_candidates() {
+    struct PersonalEnglish(WordList);
+    impl Learner for PersonalEnglish {
+        fn record(&mut self, _candidate: &Candidate) {}
+        fn weight(&self, _text: &str) -> u32 { 0 }
+        fn user_english(&self) -> Option<&WordList> { Some(&self.0) }
+    }
+
+    let personal = WordList::parse("hello\thello\t3\nhelp\thelp\t3\n").unwrap();
+    let dictionary = Dictionary::parse("何\the\t9000\n").unwrap();
+    let mut engine = Engine::new(dictionary)
+        .with_learner(Box::new(PersonalEnglish(personal)));
+    engine.set_chinese_first(true);
+    engine.set_input("hell");
+    let query = engine.query().unwrap();
+    assert_eq!(query.candidates.items[0].kind, CandidateKind::Chinese);
+    assert!(query.candidates.items.iter().any(|candidate| {
+        candidate.kind == CandidateKind::English && candidate.text == "hello"
+    }), "{:?}", query.candidates.items);
+}
+
+#[test]
+fn english_completion_never_joins_text_after_the_cursor_to_the_prefix() {
+    struct PersonalEnglish(WordList);
+    impl Learner for PersonalEnglish {
+        fn record(&mut self, _candidate: &Candidate) {}
+        fn weight(&self, _text: &str) -> u32 { 0 }
+        fn user_english(&self) -> Option<&WordList> { Some(&self.0) }
+    }
+
+    let personal = WordList::parse("hello\thello\t3\n").unwrap();
+    let mut engine = Engine::new(Dictionary::parse(SAMPLE).unwrap())
+        .with_learner(Box::new(PersonalEnglish(personal)));
+    engine.set_input("1:hell");
+    for _ in 0..4 {
+        assert!(engine.move_cursor_left());
+    }
+    let query = engine.query().unwrap();
+    assert_eq!(query.text, "1:hell");
+    assert_eq!(query.tail, "1:");
+    assert_eq!(query.rest, "hell");
+    assert!(!query.candidates.items.iter().any(|candidate| candidate.text == "hello"),
+        "光标后的 hell 不得拼接到光标前的 1: 形成英文补全");
+}
+
 #[test]
 fn english_word_is_not_buried_by_reading_key_choices() {
     // `wenti` 下选的 问题（读音键记了一份）不能隔着 `went` 把英文词顶下去：
