@@ -423,17 +423,9 @@ impl Engine {
             return held;
         }
         self.log_commit(&raw, &raw, InputSource::Raw);
-        // 原样上屏的是个英文词（`gist`）：记进个人英文词表，下次直接出候选。
-        // 双拼下全部键都能解成完整音节的（`nihc`）不是英文，是用户要原样打出双拼键。
-        // 整段能读成「拼音头 + 英文尾」的（`woxiangxuexirust`）不学：那是我们没给对候选、用户放弃了，
-        // 把整串学成英文词会反过来堵掉混输那条路
-        let english_word = looks_like_english_word(&raw, self.english_mode)
-            && (self.english_mode || self.decode(&raw).is_none_or(|d| !d.is_complete()))
-            && (self.english_mode || self.split_english_tail(&raw).is_none());
-        if english_word {
-            self.learner.learn_english(&raw);
-        }
-        self.meter_commit(&raw, InputSource::Raw, english_word);
+        // 原样上屏只是放弃当前候选，不代表用户明确选择了英文词。
+        // 个人英文词只由 commit() 中明确选择 CandidateKind::English 的路径学习。
+        self.meter_commit(&raw, InputSource::Raw, false);
         // 补的空格要在组句清空前判（还没上屏过时靠组句开始时的应用前文），并先于这次上屏记下
         let lead = self.auto_space_before(&raw);
         self.composition.clear();
