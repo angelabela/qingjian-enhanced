@@ -142,6 +142,8 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     // 拍照识图：中文与英文文字在本机识别，不上传照片。
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // 剪贴板搜索：预生成逐字拼音首字母，支持多音字。
+    implementation("com.belerweb:pinyin4j:2.5.1")
     // 剪贴板文字二维码生成（本机处理，不上传内容）。
     implementation("com.google.zxing:core:3.5.3")
     // Binary Eye 同源的 ZXing-C++ Android 官方绑定（Apache-2.0）。
