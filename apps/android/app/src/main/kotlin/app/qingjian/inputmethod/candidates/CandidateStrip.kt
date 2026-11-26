@@ -1,9 +1,7 @@
 package app.qingjian.inputmethod.candidates
 
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.text.TextUtils
 import kotlin.math.roundToInt
@@ -35,10 +33,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val leftFadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
     }
-    /** 清除旧拼音整行字形；只清字形区域，保留透明背景/主题底色。 */
-    private val clearPreeditPaint = Paint().apply {
-        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-    }
     /** 正常候选文字由 Android 原生字体重新绘制；字号、字重与键盘文字设置保持一致。 */
     private val candidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = candidateTextColor
@@ -47,26 +41,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         typeface = fontWeight.typeface
         isFakeBoldText = fontWeight.weight >= 600
         isSubpixelText = true
-    }
-    /** 用稍粗的 CLEAR 字形擦掉 Rust 位图中的旧字形，不动候选格底色、分隔线和译文。 */
-    private val eraseCandidateText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.TRANSPARENT
-        textSize = 20f * scaledDensity * textScale
-        textAlign = Paint.Align.CENTER
-        typeface = fontWeight.typeface
-        isFakeBoldText = fontWeight.weight >= 600
-        style = Paint.Style.STROKE
-        strokeWidth = 3.5f * density
-        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-    }
-    private val eraseCandidateFill = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.TRANSPARENT
-        textSize = 20f * scaledDensity * textScale
-        textAlign = Paint.Align.CENTER
-        typeface = fontWeight.typeface
-        isFakeBoldText = fontWeight.weight >= 600
-        style = Paint.Style.FILL
-        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
     }
     private val extraText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
@@ -83,13 +57,9 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         strokeWidth = 1.6f * density
         strokeCap = Paint.Cap.ROUND
     }
-    private val src = Rect()
-    private val dst = Rect()
 
     private var preedit = ""
     private var image: StripImage? = null
-    /** 背景特效模式下使用独立的透明位图，避免修改 Rust 渲染器持有的原始帧。 */
-    private var renderedBitmap: Bitmap? = null
 
     /** 当前一帧的候选，长按气泡要它们的译文。 */
     var candidates: List<Candidate> = emptyList()
@@ -108,8 +78,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         get() {
             val frame = image ?: return fallbackWidth()
             val extra = extraCandidates()
-            if (extra.isEmpty()) return frame.bitmap.width.toFloat()
-            return frame.bitmap.width + 12f * density + extra.size * 38f * density
+            if (extra.isEmpty()) return frame.width.toFloat()
+            return frame.width + 12f * density + extra.size * 38f * density
         }
 
     fun setAdaptiveTextColor(color: Int?) {
@@ -172,91 +142,28 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         return true
     }
 
-    /** 换上新画的一帧；画不出来（null）时只铺底色。 */
+    /** Replace the current layout snapshot and reject stale asynchronous frames. */
     fun paint(image: StripImage?) {
-        // JNI/渲染线程可能异步回传旧帧；帧序号较小的布局和位图不能覆盖新帧。
         if (image != null && this.image != null && image.frameId < this.image!!.frameId) return
-        // 释放上一帧透明背景副本，避免候选频繁变化时 Bitmap 持续堆积。
-        renderedBitmap?.let { if (!it.isRecycled) it.recycle() }
-        renderedBitmap = null
-        // Rust 在空内容或尺寸异常时可能返回 0×N 元数据；禁止把无效位图交给 Canvas。
-        if (image == null || image.bitmap.isRecycled ||
-            image.bitmap.width <= 0 || image.bitmap.height <= 0
-        ) {
+        if (image == null || image.width <= 0 || image.height <= 0) {
             this.image = null
             return
         }
         this.image = image
         cachedExtraCandidates = null
         cachedExtraCandidatePositions = null
-        renderedBitmap = if (transparentBackground) {
-            // 不假设 Rust 返回的 Bitmap 可变；复制后再清理底色，避免污染渲染器缓存。
-            val source = image.bitmap
-            val bitmap = source.copy(Bitmap.Config.ARGB_8888, true) ?: run {
-                this.image = null
-                return
-            }
-            val pixels = IntArray(bitmap.width * bitmap.height)
-            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            val bg = image.background
-            val br = (bg shr 16) and 0xFF
-            val bgc = (bg shr 8) and 0xFF
-            val bb = bg and 0xFF
-            for (index in pixels.indices) {
-                val pixel = pixels[index]
-                val alpha = pixel ushr 24
-                if (alpha == 0) continue
-                val dr = kotlin.math.abs(((pixel shr 16) and 0xFF) - br)
-                val dg = kotlin.math.abs(((pixel shr 8) and 0xFF) - bgc)
-                val db = kotlin.math.abs((pixel and 0xFF) - bb)
-                // 去除纯底色，同时对抗锯齿边缘做反底色（un-matte）还原。
-                // 旧算法只降低 alpha 却保留混入底色的 RGB，叠到动态背景后会出现
-                // 灰白描边/重影；这里先估算覆盖率，再反算前景色。
-                val distance = maxOf(dr, dg, db)
-                if (distance <= 5) {
-                    pixels[index] = 0
-                } else if (distance <= 58) {
-                    val bgMax = maxOf(br, bgc, bb)
-                    val bgMin = minOf(br, bgc, bb)
-                    val coverage = if (bgMax >= 128) {
-                        maxOf(
-                            (br - ((pixel shr 16) and 0xFF)).coerceAtLeast(0) * 255 / br.coerceAtLeast(1),
-                            (bgc - ((pixel shr 8) and 0xFF)).coerceAtLeast(0) * 255 / bgc.coerceAtLeast(1),
-                            (bb - (pixel and 0xFF)).coerceAtLeast(0) * 255 / bb.coerceAtLeast(1),
-                        )
-                    } else {
-                        maxOf(
-                            (((pixel shr 16) and 0xFF) - br).coerceAtLeast(0) * 255 / (255 - br).coerceAtLeast(1),
-                            (((pixel shr 8) and 0xFF) - bgc).coerceAtLeast(0) * 255 / (255 - bgc).coerceAtLeast(1),
-                            ((pixel and 0xFF) - bb).coerceAtLeast(0) * 255 / (255 - bb).coerceAtLeast(1),
-                        )
-                    }.coerceIn(1, 255)
-                    val inverse = 255 - coverage
-                    val r = ((((pixel shr 16) and 0xFF) * 255 - br * inverse) / coverage).coerceIn(0, 255)
-                    val g = ((((pixel shr 8) and 0xFF) * 255 - bgc * inverse) / coverage).coerceIn(0, 255)
-                    val b = (((pixel and 0xFF) * 255 - bb * inverse) / coverage).coerceIn(0, 255)
-                    pixels[index] = ((alpha * coverage / 255) shl 24) or (r shl 16) or (g shl 8) or b
-                }
-            }
-            // 保留 Rust 主题渲染器输出的释义颜色；动态背景只处理背景透明像素，
-            // 不再强制改成白色，避免候选文字脱离当前 App 主题。
-            bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            bitmap
-        } else null
     }
 
-    /** 背景模式切换时重新处理当前帧，避免旧的实底位图遮住视频或主题底色。 */
+    /** Transparent backgrounds are handled by the parent surface. */
     fun setTransparentBackground(enabled: Boolean) {
-        if (transparentBackground == enabled) return
         transparentBackground = enabled
-        image?.let { paint(it) }
     }
 
     fun indexAt(contentX: Float): Int {
         val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()
-        val start = frame.bitmap.width + 12f * density
+        val start = frame.width + 12f * density
         if (contentX < start) return -1
         return extras.getOrNull(((contentX - start) / (38f * density)).toInt()) ?: -1
     }
@@ -280,7 +187,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val rect = frame.wordRect(index)
         if (rect != null) {
             if (frame.candidatesTop == 0) {
-                rect.offset(0f, ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f))
+                rect.offset(0f, ((barHeight - frame.height) / 2).coerceAtLeast(0f))
             }
             return rect
         }
@@ -288,7 +195,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val extras = extraCandidates()
         val extraIndex = cachedExtraCandidatePositions?.get(index) ?: extras.indexOf(index)
         if (extraIndex < 0) return null
-        val left = frame.bitmap.width + 12f * density + extraIndex * 38f * density
+        val left = frame.width + 12f * density + extraIndex * 38f * density
         return RectF(
             left + 2f * density,
             8f * density,
@@ -303,7 +210,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val result = wordRect(index) ?: return null
         val wordBounds = RectF(result)
         val shift = if (frame.candidatesTop == 0) {
-            ((barHeight - frame.bitmap.height) / 2).coerceAtLeast(0f)
+            ((barHeight - frame.height) / 2).coerceAtLeast(0f)
         } else 0f
         val candidate = candidates.getOrNull(index)
         // 常用语文字超过候选区 1/3 时，按实际显示（省略后）的宽度计算中文部分。
@@ -385,27 +292,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             canvas.restoreToCount(layer)
             return
         }
-        val bitmap = renderedBitmap ?: image.bitmap
-        val top = image.candidatesTop.coerceIn(0, bitmap.height)
+        val top = image.candidatesTop.coerceIn(0, image.height)
         if (!transparentBackground) {
             fill.color = image.background
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
         }
-        // 没有拼音行（补全）时候选行在条里上下居中，不贴着顶
-        val shift = if (top == 0) ((barHeight - bitmap.height) / 2).toInt().coerceAtLeast(0) else 0
-        val right = minOf(scrollX + contentViewWidth, bitmap.width)
-        if (right > scrollX && top < bitmap.height) {
-            src.set(scrollX, top, right, bitmap.height)
-            dst.set(src)
-            dst.offset(0, shift)
-            canvas.drawBitmap(bitmap, src, dst, null)
-        }
-        // 没有正在编辑的拼音时，不绘制 Rust 位图上一次留下的字母行。
-        if (top > 0 && preedit.isNotEmpty()) {
-            src.set(0, 0, minOf(contentViewWidth, bitmap.width), top)
-            dst.set(scrollX, 0, scrollX + src.width(), top)
-            canvas.drawBitmap(bitmap, src, dst, null)
-        }
+        val shift = if (top == 0) ((barHeight - image.height) / 2).coerceAtLeast(0f) else 0f
         // 选中/首选高亮统一由 CandidateBarView 绘制，确保同一时刻只有一个高亮层。
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
         candidates.forEachIndexed { index, candidate ->
@@ -432,17 +324,6 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // 再按当前 preeditEdges 重绘，避免旧字母/拼音残影留在新字符之间。
         val codePoints = preedit.codePoints().toArray()
         val edges = image.preeditEdges
-        if (top > 0 && preedit.isNotEmpty()) {
-            val clearTop = image.preeditTop.coerceIn(0f, top.toFloat())
-            val clearBottom = image.preeditBottom.coerceIn(clearTop, top.toFloat())
-            if (clearBottom > clearTop) {
-                canvas.drawRect(scrollX.toFloat(), clearTop, (scrollX + contentViewWidth).toFloat(), clearBottom, clearPreeditPaint)
-                if (!transparentBackground) {
-                    fill.color = image.background
-                    canvas.drawRect(scrollX.toFloat(), clearTop, (scrollX + contentViewWidth).toFloat(), clearBottom, fill)
-                }
-            }
-        }
         // 拼音作为一整行按自然字距绘制，避免逐字符塞进过窄的字格导致缩小、挤叠和笔画发虚。
         // Rust 提供的 preeditEdges 仍保留给光标命中与拖动，不改变任何触摸区域。
         if (codePoints.isNotEmpty() && edges.size >= codePoints.size + 1) {
@@ -488,7 +369,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
         // Kotlin 侧补充的语义标点没有 Rust 位图格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
-        val extraStart = bitmap.width + 12f * density
+        val extraStart = image.width + 12f * density
         val extraCell = 38f * density
         extras.forEachIndexed { slot, index ->
             val left = extraStart + slot * extraCell
