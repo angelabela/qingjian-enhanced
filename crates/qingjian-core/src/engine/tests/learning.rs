@@ -354,7 +354,7 @@ fn input_log_records_commits_with_their_context_and_retractions() {
 #[test]
 fn word_ranking_follows_the_previous_committed_word() {
     let dictionary =
-        Dictionary::parse("把\tba\t3000000\n吧\tba\t2000000\n做了\tzuo le\t5000\n").unwrap();
+        Dictionary::parse("把\tba\t3000000\n吧\tba\t3000000\n做了\tzuo le\t5000\n").unwrap();
     let mut engine = Engine::new(dictionary).with_language_model(Box::new(BaModel));
     let first = |engine: &mut Engine| engine.query().unwrap().candidates.items[0].text.clone();
     // 句首：模型说 把
