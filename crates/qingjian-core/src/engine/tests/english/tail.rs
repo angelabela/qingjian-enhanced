@@ -280,10 +280,9 @@ fn a_long_raw_commit_with_english_in_the_middle_is_not_learned() {
     engine.set_input("kubectl");
     assert_eq!(engine.take_raw(), "kubectl");
 
-    assert_eq!(
-        *learned.lock().unwrap(),
-        vec!["kubectl".to_owned()],
-        "只有真正像一个词的才该进个人英文词表"
+    assert!(
+        learned.lock().unwrap().is_empty(),
+        "原样上屏即使看起来像英文词也不得写入个人英文词表"
     );
 }
 
