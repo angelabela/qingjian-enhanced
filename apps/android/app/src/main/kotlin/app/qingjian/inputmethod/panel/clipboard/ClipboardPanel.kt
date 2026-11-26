@@ -85,16 +85,90 @@ class ClipboardPanel(
 
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var searchQuery = ""
-    private val pinyinInitialsCache = HashMap<String, String>()
-    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index ->
-        searchQuery.isBlank() ||
-            clips[index].text.contains(searchQuery, ignoreCase = true) ||
-            pinyinInitials(clips[index].text).contains(searchQuery, ignoreCase = true)
+    private data class ClipSearchEntry(val sourceIndex: Int, val text: String, val alternatives: Array<String>) {
+        fun find(query: String): Int {
+            if (query.isEmpty()) return 0
+            val last = alternatives.size - query.length
+            if (last < 0) return -1
+            for (start in 0..last) {
+                var matched = true
+                for (offset in query.indices) {
+                    if (query[offset] !in alternatives[start + offset]) {
+                        matched = false
+                        break
+                    }
+                }
+                if (matched) return start
+            }
+            return -1
+        }
     }
-    private fun pinyinInitials(text: String): String = pinyinInitialsCache.getOrPut(text) {
-        HAN_TO_LATIN.transliterate(text).lowercase()
-            .split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
+    private var clipSearchEntries: List<ClipSearchEntry> = buildClipSearchEntries(clips)
+    @Volatile private var visibleClipIndices: List<Int> = clips.indices.toList()
+    private var searchGeneration = 0
+    private var pendingSearch: java.util.concurrent.Future<*>? = null
+
+    private fun buildClipSearchEntries(items: List<ClipItem>): List<ClipSearchEntry> =
+        items.mapIndexed { index, item ->
+            val alternatives = ArrayList<String>(item.text.length)
+            item.text.forEach { ch ->
+                when {
+                    ch.isWhitespace() -> Unit
+                    ch in '\\u4e00'..'\\u9fff' -> {
+                        val reading = HAN_TO_LATIN.transliterate(ch.toString()).lowercase()
+                        val initial = reading.firstOrNull { it in 'a'..'z' }
+                        alternatives += (initial?.toString() ?: ch.toString())
+                    }
+                    else -> alternatives += ch.lowercaseChar().toString()
+                }
+            }
+            ClipSearchEntry(index, item.text, alternatives.toTypedArray())
+        }
+
+    private fun rebuildClipSearchIndex() {
+        clipSearchEntries = buildClipSearchEntries(clips)
+        scheduleClipSearch(searchQuery)
     }
+
+    private fun scheduleClipSearch(raw: String) {
+        val query = raw.lowercase().filterNot(Char::isWhitespace)
+        val generation = ++searchGeneration
+        pendingSearch?.cancel(true)
+        if (query.isEmpty()) {
+            visibleClipIndices = clips.indices.toList()
+            layouts.clear()
+            arrange()
+            invalidate()
+            return
+        }
+        val allEntries = clipSearchEntries
+        val previousQuery = lastCompletedSearchQuery
+        val previousResults = lastCompletedSearchResults
+        val base = if (query.startsWith(previousQuery)) previousResults else allEntries
+        pendingSearch = CLIPBOARD_SEARCH_EXECUTOR.submit {
+            val head = ArrayList<Int>()
+            val rest = ArrayList<Int>()
+            for (entry in base) {
+                if (Thread.currentThread().isInterrupted) return@submit
+                val position = entry.find(query)
+                if (position == 0) head += entry.sourceIndex
+                else if (position > 0) rest += entry.sourceIndex
+            }
+            val result = head + rest
+            post {
+                if (generation != searchGeneration || !isAttachedToWindow) return@post
+                lastCompletedSearchQuery = query
+                lastCompletedSearchResults = base.filter { it.sourceIndex in result }
+                visibleClipIndices = result
+                layouts.clear()
+                arrange()
+                invalidate()
+            }
+        }
+    }
+
+    private var lastCompletedSearchQuery = ""
+    private var lastCompletedSearchResults: List<ClipSearchEntry> = clipSearchEntries
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchEditing = false
@@ -176,10 +250,6 @@ class ClipboardPanel(
     private val thumbnails = HashMap<String, Bitmap?>()
     private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val scrollTrailPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
@@ -207,11 +277,6 @@ class ClipboardPanel(
     private var swipeOffsetX = 0f
     private var swipeClipIndex = -1
     private var deleteRepeatStarted = false
-
-    // 纵向滚动采用轻量液态拖尾；卡片本身保持稳定绘制，避免每帧逐卡片离屏合成。
-    private var lastDrawnScrollOffset = 0f
-    private var scrollVelocity = 0f
-    private var lastScrollFrameAt = 0L
 
     private val activateSwipeRunnable = Runnable {
         if (swipeTracking && swipeClipIndex >= 0 && !showingPhrases) {
@@ -518,11 +583,11 @@ class ClipboardPanel(
     private fun updateSearchQuery(value: String) {
         searchQuery = value
         expanded = -1
-        layouts.clear()
         listScroll.reset()
         searchCursorVisible = true
         removeCallbacks(searchCursorBlink)
         if (searchEditing) postDelayed(searchCursorBlink, 520L)
+        scheduleClipSearch(value)
         invalidate()
     }
 
@@ -725,23 +790,7 @@ class ClipboardPanel(
         } else {
             restoreClipScrollPending = false
         }
-        val now = SystemClock.uptimeMillis()
-        val frameDelta = (now - lastScrollFrameAt).coerceIn(1L, 48L)
-        val scrollDelta = listScroll.offset - lastDrawnScrollOffset
-        if (kotlin.math.abs(scrollDelta) > 0.25f) {
-            val instantaneousVelocity = (scrollDelta / frameDelta).coerceIn(-3.2f, 3.2f)
-            scrollVelocity = (scrollVelocity * 0.58f + instantaneousVelocity * 0.42f).coerceIn(-3.2f, 3.2f)
-        }
-        lastDrawnScrollOffset = listScroll.offset
-        lastScrollFrameAt = now
-        val trailStrength = (kotlin.math.abs(scrollVelocity) / 3.2f).coerceIn(0f, 1f)
-        if (trailStrength > 0.018f) {
-            scrollVelocity *= kotlin.math.exp(-frameDelta / 190f)
-            postInvalidateOnAnimation()
-        } else {
-            scrollVelocity = 0f
-        }
-        canvas.save()
+        val trailStrength = 0f\n        canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
             ink.text(
@@ -759,26 +808,6 @@ class ClipboardPanel(
             }
             drawCard(canvas, i, top, bottom)
             canvas.restore()
-        }
-        // 单条边缘流光取代逐卡片缩放/透明离屏层，减少快速滑动时的绘制开销。
-        if (trailStrength > 0.025f) {
-            val trailHeight = list.height() * (0.12f + trailStrength * 0.20f)
-            val trailCenter = if (scrollVelocity > 0f) {
-                list.top + trailHeight * 0.52f
-            } else {
-                list.bottom - trailHeight * 0.52f
-            }
-            val alpha = (0x72 * trailStrength).toInt().coerceIn(0, 0x72)
-            scrollTrailPaint.shader = LinearGradient(
-                0f, trailCenter - trailHeight / 2f, 0f, trailCenter + trailHeight / 2f,
-                intArrayOf(Color.TRANSPARENT, (palette.brand and 0x00FFFFFF) or (alpha shl 24), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.5f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            val trailRect = RectF(width - ink.dp(3f), trailCenter - trailHeight / 2f,
-                width - ink.dp(1f), trailCenter + trailHeight / 2f)
-            canvas.drawRoundRect(trailRect, ink.dp(1f), ink.dp(1f), scrollTrailPaint)
-            scrollTrailPaint.shader = null
         }
         canvas.restore()
         if (showingPhrases) {
@@ -1367,9 +1396,6 @@ class ClipboardPanel(
         if (resetScroll) {
             listScroll.reset()
             lastClipScrollOffset = 0f
-            lastDrawnScrollOffset = 0f
-            scrollVelocity = 0f
-            lastScrollFrameAt = 0L
             restoreClipScrollPending = false
         } else if (!showingPhrases) {
             lastClipScrollOffset = listScroll.offset
@@ -1384,6 +1410,7 @@ class ClipboardPanel(
             if (clearArmed) {
                 clearAccessibilityElementFocusForContentReplacement()
                 clips = ClipboardStore.clear(context, actions.clipboardLimit)
+                rebuildClipSearchIndex()
                 app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
                 clearArmed = false
                 collapse()
@@ -1483,6 +1510,9 @@ class ClipboardPanel(
 
     companion object {
         private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
+        private val CLIPBOARD_SEARCH_EXECUTOR = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "qingjian-clipboard-search").apply { isDaemon = true }
+        }
         private val IMAGE_DECODER = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "qingjian-clipboard-image").apply { isDaemon = true }
         }
