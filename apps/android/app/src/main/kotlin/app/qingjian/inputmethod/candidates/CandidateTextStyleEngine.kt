@@ -23,7 +23,7 @@ class CandidateTextStyleEngine(
     private val defaultWeight: Settings.FontWeight,
     val config: Config = Config.defaults(defaultColor, defaultWeight),
 ) {
-    enum class Role { FIRST_CANDIDATE, CANDIDATE, PREEDIT, GLOSS, SELECTED }
+    enum class Role { FIRST_CANDIDATE, CANDIDATE, PREEDIT, GLOSS, SELECTED, EMOJI }
 
     data class Style(
         val color: Int,
@@ -53,6 +53,7 @@ class CandidateTextStyleEngine(
             Role.PREEDIT -> preedit
             Role.GLOSS -> gloss
             Role.SELECTED -> selected
+            Role.EMOJI -> candidate
         }
 
         companion object {
@@ -164,7 +165,7 @@ class CandidateTextStyleEngine(
         )
         val availableHeight = (rect.height() - 2f * density + if (role == Role.PREEDIT) 6f * density else 0f).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
-        val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED
+        val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED || role == Role.EMOJI
         // 常用语/整句补全过长时保留正常字号并在候选格内省略，避免整段文字被压缩成极小字号。
         val displayText = if (isCandidateRole && measuredWidth > availableWidth) {
             TextUtils.ellipsize(text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
