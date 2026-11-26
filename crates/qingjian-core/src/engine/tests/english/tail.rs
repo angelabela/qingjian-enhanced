@@ -246,13 +246,11 @@ fn a_raw_committed_mixed_input_does_not_block_the_english_tail() {
     assert_eq!(engine.query().unwrap().candidates.items[0].text, "开发rust");
 }
 
-/// 英文夹在中间的整串（`kaifarustdaima`）原样上屏也不学成英文词。
+/// 原样上屏无论长短、是否含有英文尾段，都不写入个人英文词表。
 ///
-/// 上一个测试那条守卫靠 `split_english_tail`，只看得见句尾的英文；英文在中间时它返回 `None`，
-/// 于是整串照学不误——用户表里 `yongdockerbushuhenfangbian` 就是这么来的，学完还会顶到候选第一位。
-/// 这里靠的是长度上限（[`MAX_ENGLISH_WORD_LETTERS`]）。
+/// 个人英文词只由明确选择英文候选的 commit 路径学习，不再尝试猜测原样串是否像英文词。
 #[test]
-fn a_long_raw_commit_with_english_in_the_middle_is_not_learned() {
+fn raw_commits_never_learn_personal_english() {
     struct Recorder(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
 
     impl Learner for Recorder {
@@ -273,10 +271,10 @@ fn a_long_raw_commit_with_english_in_the_middle_is_not_learned() {
         .with_english(words)
         .with_learner(Box::new(Recorder(learned.clone())));
 
-    // 英文夹在中间：`split_english_tail` 看不见 rust，只有长度上限拦得住
+    // 长串中夹着英文，仍不学习
     engine.set_input("yongdockerbushuhenfangbian");
     assert_eq!(engine.take_raw(), "yongdockerbushuhenfangbian");
-    // 短的英文词照学不误
+    // 短英文词原样上屏也不学习
     engine.set_input("kubectl");
     assert_eq!(engine.take_raw(), "kubectl");
 
