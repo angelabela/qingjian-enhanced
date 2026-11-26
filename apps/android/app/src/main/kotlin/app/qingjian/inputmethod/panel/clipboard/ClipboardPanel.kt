@@ -362,7 +362,7 @@ class ClipboardPanel(
         var popupCurrentY = 0
         var clearPressedKey: (() -> Unit)? = null
         val beginDrag = Runnable {
-            if (isAttachedToWindow) {
+            if (isAttachedToWindow && !downDelete && !downClose) {
                 val topIndex = downKeyForLongPress?.let(rows.first()::indexOf) ?: -1
                 val digit = topRowDigits.getOrNull(topIndex)
                 val alternate = digit ?: downKeyForLongPress?.let(::alternateForKey)
