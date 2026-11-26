@@ -146,6 +146,7 @@ impl StripPainter {
                 height: 0,
                 candidates_top: 0,
                 background: 0,
+                candidate_indices: self.candidate_indices.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
