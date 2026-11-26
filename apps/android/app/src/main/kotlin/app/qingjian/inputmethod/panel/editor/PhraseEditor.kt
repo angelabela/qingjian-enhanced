@@ -50,7 +50,7 @@ class PhraseEditor(
     /** 要改的剪贴板文字；null 是常用语。 */
     private val clip: String? = null,
 ) : View(context), FloatingEditor {
-    private val ink = Ink(palette, resources.displayMetrics.density)
+    private val ink = Ink(palette, resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
     private val text = SpannableStringBuilder(clip ?: phrase?.text.orEmpty()).also { Selection.setSelection(it, it.length) }
 
     /** 正文下面的输入码与目录那一行有多高；改剪贴板没有这一行。 */
@@ -95,7 +95,7 @@ class PhraseEditor(
     private fun chosenGroup(): String =
         if (creatingGroup && newGroup.isNotBlank()) newGroup.toString().trim() else groups.getOrElse(groupIndex) { "" }
 
-    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = ink.dp(15.5f); color = palette.text }
+    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 15.5f * ink.scaledDensity; color = palette.text }
     private val box = RectF()
     private val rect = RectF()
 

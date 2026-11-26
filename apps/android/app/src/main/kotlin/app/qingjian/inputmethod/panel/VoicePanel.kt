@@ -49,7 +49,7 @@ class VoicePanel(
 
     enum class Target { NONE, CANCEL, ACTION }
 
-    private val ink = Ink(palette, resources.displayMetrics.density)
+    private val ink = Ink(palette, resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
     private val backdrop = ImageView(context)
     private val scrim = View(context)
     private val overlay = PhysicsWaveView(context).apply {
