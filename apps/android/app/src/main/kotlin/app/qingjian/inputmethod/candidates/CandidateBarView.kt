@@ -704,20 +704,31 @@ class CandidateBarView(
                 firstCandidateRing.clearShadowLayer()
             }
             2 -> {
-                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x26303030
+                // 不再让一条白色光带横穿候选文字；彩色光谱沿圆角边框持续旋转流动。
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x18303030
                 canvas.drawRoundRect(glow, 10f * density, 10f * density, firstCandidateGlow)
                 firstCandidateRing.color = accent
-                firstCandidateRing.alpha = 220
+                firstCandidateRing.alpha = 85
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
-                val sweep = (phase * (rect.width() + 24f * density)) - 12f * density
-                firstCandidateSheen.shader = android.graphics.LinearGradient(
-                    rect.left + sweep - 16f * density, rect.top,
-                    rect.left + sweep + 16f * density, rect.bottom,
-                    intArrayOf(0x00FFFFFF, 0xDFFFFFFF.toInt(), 0x00FFFFFF),
-                    null, android.graphics.Shader.TileMode.CLAMP,
+                val flow = android.graphics.SweepGradient(
+                    rect.centerX(), rect.centerY(),
+                    intArrayOf(
+                        0xFF42E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF5CA8.toInt(),
+                        0xFFFFD166.toInt(), 0xFF42E5FF.toInt(),
+                    ),
+                    floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f),
                 )
-                canvas.drawLine(rect.left + 5f * density, rect.centerY(), rect.right - 5f * density, rect.centerY(), firstCandidateSheen)
+                val rotation = android.graphics.Matrix().apply {
+                    setRotate(phase * 360f, rect.centerX(), rect.centerY())
+                }
+                flow.setLocalMatrix(rotation)
+                firstCandidateSheen.shader = flow
+                firstCandidateSheen.strokeWidth = 2.2f * density
+                firstCandidateSheen.alpha = (205f + breath * 50f).toInt()
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateSheen)
                 firstCandidateSheen.shader = null
+                firstCandidateSheen.strokeWidth = 1.8f * density
+                firstCandidateSheen.alpha = 255
             }
             3 -> {
                 firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x55303030

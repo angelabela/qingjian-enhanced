@@ -22,6 +22,8 @@ class CandidateTextStyleEngine(
     private val defaultColor: Int,
     private val defaultWeight: Settings.FontWeight,
     val config: Config = Config.defaults(defaultColor, defaultWeight),
+    /** 拼音字号独立于候选字号；候选字号滑块和输入长度变化都不能改变它。 */
+    private val preeditBaseTextSize: Float = baseTextSize,
 ) {
     enum class Role { FIRST_CANDIDATE, CANDIDATE, PREEDIT, GLOSS, SELECTED, EMOJI }
 
@@ -101,19 +103,20 @@ class CandidateTextStyleEngine(
         transitionAlpha = alpha.coerceIn(0, 255)
     }
     private val paints = Role.entries.associateWith { role ->
-        TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(this, config.style(role)) }
+        TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(role, this, config.style(role)) }
     }
     private val clearPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.TRANSPARENT
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     }
 
-    private fun applyStyle(paint: TextPaint, style: Style) {
+    private fun applyStyle(role: Role, paint: TextPaint, style: Style) {
         paint.color = style.color
         // 绘制坐标统一使用候选格中心；测量与绘制必须共享同一对齐方式。
         paint.textAlign = Paint.Align.CENTER
         paint.alpha = style.alpha.coerceIn(0, 255)
-        paint.textSize = baseTextSize * style.sizeScale.coerceIn(0.5f, 2.5f)
+        val roleBaseSize = if (role == Role.PREEDIT) preeditBaseTextSize else baseTextSize
+        paint.textSize = roleBaseSize * style.sizeScale.coerceIn(0.5f, 2.5f)
         paint.typeface = android.graphics.Typeface.create(style.typefaceFamily, if (style.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         paint.isFakeBoldText = style.weight >= 600
         paint.style = Paint.Style.FILL
@@ -173,13 +176,8 @@ class CandidateTextStyleEngine(
         val displayWidth = paint.measureText(displayText)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
         val fitScale = if (role == Role.PREEDIT) {
-            // 拼音逐字定位时，字符边界可能很窄；必须同时按宽、高 fit。
-            // 旧逻辑只按高度放大，并把裁剪框扩到相邻字母区域，容易造成字母重叠。
-            minOf(
-                1.12f,
-                availableWidth / displayWidth.coerceAtLeast(1f),
-                availableHeight / measuredHeight,
-            )
+            // 拼音行使用固定字号；输入字符增加只扩展整行可用宽度，不再逐帧放大字母。
+            1f
         } else minOf(
             1f,
             availableWidth / displayWidth.coerceAtLeast(1f),

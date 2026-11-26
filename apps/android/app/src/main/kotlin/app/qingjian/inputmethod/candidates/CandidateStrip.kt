@@ -19,7 +19,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     private val fallbackBackgroundColor: Int = markColor,
     private val scaledDensity: Float = density) {
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
-    private val textStyles = CandidateTextStyleEngine(density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig)
+    private val textStyles = CandidateTextStyleEngine(
+        density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig,
+        preeditBaseTextSize = 18f * scaledDensity,
+    )
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
     private val fill = Paint()

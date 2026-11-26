@@ -55,6 +55,8 @@ class FunctionPanel(
     )
     private var selectedCandidateFontSize = Settings.preferences(context)
         .getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+    private var selectedCandidateSelectionEffect = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
     private var selectedFontWeight = Settings.FontWeight.of(
         Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null))
     private var adjustingCandidateFontSize = false
@@ -74,6 +76,7 @@ class FunctionPanel(
             prefs.getInt(Settings.KEY_KEY_FONT_SIZE, 20) != 20 ||
             prefs.getInt(Settings.KEY_CANDIDATE_TEXT_COLOR, 0) != 0 ||
             prefs.getInt(Settings.KEY_KEYBOARD_TEXT_COLOR, 0) != 0 ||
+            prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0) != 0 ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_CANDIDATE_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_KEYBOARD_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL
     }
@@ -137,6 +140,7 @@ class FunctionPanel(
                     selectedTextPreset = Settings.TextEffectPreset.of(
                         textPrefs.getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
                     selectedCandidateFontSize = textPrefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+                    selectedCandidateSelectionEffect = textPrefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
                     selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
                     voiceEffectPage = false
@@ -186,6 +190,7 @@ class FunctionPanel(
         selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
         selectedCandidateFontSize = prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+        selectedCandidateSelectionEffect = prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
         selectedFontWeight = Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null))
         invalidate()
     }
@@ -198,6 +203,7 @@ class FunctionPanel(
             Toggle(Settings.KEY_FULLSCREEN, "全面屏适配", "手势条那一截不留白，两个角各放一个键", settings.fullscreenAdapt),
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
             Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
+            Toggle(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, "键盘区域滑动选词", "在键盘按键区域左右滑动预选候选词", settings.keyboardCandidateSwipe),
         )
 
     private val tabs = Tabs(ink, scrollable(true) { x, y -> y < headerHeight && x > ink.dp(BACK_WIDTH_DP) }, Tabs.Style.UNDERLINE)
@@ -398,6 +404,17 @@ class FunctionPanel(
                 result += AccessibilityElement("文字效果，" + preset.label + if (selectedTextPreset == preset) "，已选中" else "",
                     RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
                     selected = selectedTextPreset == preset, virtualId = 51000 + index)
+            }
+            val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
+            CANDIDATE_SELECTION_LABELS.forEachIndexed { index, label ->
+                val gap = ink.dp(4f)
+                val itemWidth = (card.width() - ink.dp(24f) - gap * 4f) / 5f
+                val itemLeft = card.left + ink.dp(12f) + index * (itemWidth + gap)
+                result += AccessibilityElement(
+                    "候选栏选中效果，$label" + if (selectedCandidateSelectionEffect == index) "，已选中" else "",
+                    RectF(itemLeft, selectionTop + ink.dp(22f), itemLeft + itemWidth, selectionTop + ink.dp(60f)),
+                    selected = selectedCandidateSelectionEffect == index, virtualId = 52000 + index,
+                )
             }
             val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
             accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 1000003)?.let(result::add)
@@ -753,7 +770,8 @@ class FunctionPanel(
         val targetTopForScroll = card.top + ink.dp(8f + 28f)
         val presetRowTop = targetTopForScroll + ink.dp(218f)
         val rowStepForScroll = ink.dp(82f)
-        val contentBottom = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll
+        val selectionTopForScroll = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll + ink.dp(8f)
+        val contentBottom = selectionTopForScroll + ink.dp(64f)
         effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
@@ -911,6 +929,24 @@ class FunctionPanel(
                 ink.fill.color = palette.brand
                 canvas.drawCircle(bounds.right - ink.dp(8f), bounds.top + ink.dp(8f), ink.dp(3f), ink.fill)
             }
+        }
+        val selectionTop = rowTop + ((labels.size + 1) / 2) * rowStep + ink.dp(8f)
+        ink.textStart(canvas, "候选栏选中效果", 11.5f, palette.text,
+            card.left + ink.dp(14f), selectionTop + ink.dp(13f), card.right - ink.dp(14f))
+        val selectionGap = ink.dp(4f)
+        val selectionWidth = (card.width() - ink.dp(24f) - selectionGap * 4f) / 5f
+        CANDIDATE_SELECTION_LABELS.forEachIndexed { index, label ->
+            val left = card.left + ink.dp(12f) + index * (selectionWidth + selectionGap)
+            val bounds = RectF(left, selectionTop + ink.dp(22f), left + selectionWidth, selectionTop + ink.dp(60f))
+            val selected = selectedCandidateSelectionEffect == index
+            ink.round(canvas, bounds, 8f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.25f else 0.6f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(8f), ink.dp(8f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            ink.text(canvas, label, 8.5f, if (selected) palette.brand else palette.text, bounds.centerX(), bounds.centerY(),
+                maxWidth = selectionWidth - ink.dp(3f))
         }
         canvas.restore()
     }
@@ -1253,6 +1289,22 @@ class FunctionPanel(
                     selectedTextPreset = preset
                     setTextChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
                     invalidate()
+                    return
+                }
+                val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
+                if (contentY in (selectionTop + ink.dp(18f))..(selectionTop + ink.dp(64f)) &&
+                    x in (card.left + ink.dp(10f))..(card.right - ink.dp(10f))) {
+                    val gap = ink.dp(4f)
+                    val itemWidth = (card.width() - ink.dp(24f) - gap * 4f) / 5f
+                    val index = ((x - (card.left + ink.dp(12f))) / (itemWidth + gap)).toInt()
+                    if (index in CANDIDATE_SELECTION_LABELS.indices) {
+                        selectedCandidateSelectionEffect = index
+                        Settings.preferences(context).edit()
+                            .putInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, index).apply()
+                        actions.refreshKeyboardSettings()
+                        invalidate()
+                    }
+                    return
                 }
             }
             tabs.selected == 0 && voiceEffectPage -> {
@@ -1326,6 +1378,7 @@ class FunctionPanel(
 
     private companion object {
         /** 文字颜色滑块下方的固定预设色。 */
+        val CANDIDATE_SELECTION_LABELS = listOf("柔光呼吸", "霓虹描边", "边缘流彩", "实心强调", "简洁边框")
         val TEXT_PRESET_COLORS = intArrayOf(
             0xFFD4042D.toInt(), 0xFF9D1F2F.toInt(), 0xFFEB6127.toInt(),
             0xFFDB7A0E.toInt(), 0xFF5A92E5.toInt(), 0xFF5E8034.toInt(),
