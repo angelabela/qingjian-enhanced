@@ -1,7 +1,6 @@
 package app.qingjian.inputmethod.panel.clipboard
 
 import android.animation.ValueAnimator
-import android.app.AlertDialog
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -45,6 +44,7 @@ import app.qingjian.inputmethod.core.store.PhrasePage
 import app.qingjian.inputmethod.core.store.PhraseRules
 import app.qingjian.inputmethod.scan.ScanContent
 import app.qingjian.inputmethod.scan.WifiJoinActivity
+import app.qingjian.inputmethod.service.SmartActionActivity
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.keyboard.layout.Key
 import java.lang.ref.WeakReference
@@ -1479,37 +1479,14 @@ class ClipboardPanel(
         }
     }
 
-    /** 先选号码（多号码时），再由用户明确选择拨号或短信；拨号只打开系统拨号界面。 */
+    /** 交给自有 Activity 展示号码选择与拨号/短信操作，避免在输入法 Service 上直接弹 Dialog。 */
     private fun showPhoneActions(numbers: List<String>) {
         val validNumbers = numbers.distinct().filter { ScanContent.extractPhones(it).singleOrNull() == it }
         if (validNumbers.isEmpty()) return
-
-        fun showActions(number: String) {
-            AlertDialog.Builder(context)
-                .setTitle(number)
-                .setItems(arrayOf("拨打电话", "发送短信")) { _, selected ->
-                    val intent = if (selected == 0) {
-                        Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
-                    } else {
-                        Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", number, null))
-                    }
-                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-                .setNegativeButton("取消", null)
-                .show()
-        }
-
-        if (validNumbers.size == 1) {
-            showActions(validNumbers.single())
-        } else {
-            AlertDialog.Builder(context)
-                .setTitle("选择电话号码")
-                .setItems(validNumbers.toTypedArray()) { _, selected ->
-                    validNumbers.getOrNull(selected)?.let(::showActions)
-                }
-                .setNegativeButton("取消", null)
-                .show()
-        }
+        context.startActivity(Intent(context, SmartActionActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putStringArrayListExtra(SmartActionActivity.EXTRA_NUMBERS, ArrayList(validNumbers))
+        })
     }
 
     private fun onAction(i: Int, action: Int) {
