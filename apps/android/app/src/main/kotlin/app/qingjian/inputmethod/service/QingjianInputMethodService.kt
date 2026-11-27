@@ -381,6 +381,15 @@ class QingjianInputMethodService :
             .apply()
     }
 
+    private fun openPhoneActions(numbers: List<String>) {
+        val valid = numbers.distinct().filter { ScanContent.extractPhones(it).singleOrNull() == it }
+        if (valid.isEmpty()) return
+        startActivity(Intent(this, SmartActionActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putStringArrayListExtra(SmartActionActivity.EXTRA_NUMBERS, ArrayList(valid))
+        })
+    }
+
     /** 短信验证码开关变化时只刷新常用功能图标，不重建输入法窗口。 */
     private val smsStateListener = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
