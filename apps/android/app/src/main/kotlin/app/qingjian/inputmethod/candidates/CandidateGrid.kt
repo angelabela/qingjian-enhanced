@@ -5,8 +5,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.text.TextUtils
 import app.qingjian.inputmethod.background.DynamicBackgroundActivity
 import app.qingjian.inputmethod.core.frame.Candidate
+import app.qingjian.inputmethod.candidates.CandidateTextStyleEngine
 import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.core.frame.Sense
 import app.qingjian.inputmethod.keyboard.layout.Key
@@ -28,6 +30,8 @@ class CandidateGrid(
     headerHeight: Float,
     /** 候选字号档的倍数（[app.qingjian.inputmethod.theme.TextSize]），词、译文、云朵与行高一起缩放。 */
     private val textScale: Float,
+    /** 与候选栏共用同一个样式引擎，动态对比色和文字效果不再各画各的。 */
+    private val candidateStyles: CandidateTextStyleEngine? = null,
 ) : PanelView(context, palette, actions, headerHeight) {
     override val hasHeader = false
 
@@ -163,25 +167,66 @@ class CandidateGrid(
             val candidate = candidates[index]
             val gloss = candidate.senses.firstOrNull()
             val maxWidth = cell.width() - ink.dp(PAD_DP)
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else CandidateTextStyleEngine.Role.CANDIDATE
             val wordColor = when {
                 index == 0 -> palette.brand
                 candidate.cloud -> palette.cloud
                 else -> palette.text
             }
             val wordY = if (gloss == null) cell.centerY() else cell.centerY() - ink.dp(8f * textScale)
-            // 云端候选：词前带小云朵，词与云朵一起居中
+            // 云端候选：词前带小云朵，词与云朵一起居中。
             val cloudWidth = if (candidate.cloud) ink.dp(cloudDp + CLOUD_GAP_DP) else 0f
             val wordX = cell.centerX() + cloudWidth / 2
-            ink.text(canvas, candidate.text, wordSp, wordColor, wordX, wordY, maxWidth = maxWidth - cloudWidth)
-            if (candidate.cloud) {
-                val shown = minOf(ink.measure(candidate.text, wordSp), maxWidth - cloudWidth)
-                ink.icon(canvas, Icon.CLOUD, wordX - shown / 2 - cloudWidth + ink.dp(cloudDp) / 2, wordY, cloudDp, palette.cloud)
-            }
-            if (gloss != null) {
-                ink.text(
-                    canvas, glossText(gloss), glossSp, if (gloss.fresh) palette.fresh else palette.gloss,
-                    cell.centerX(), cell.centerY() + ink.dp(13f * textScale), maxWidth = maxWidth,
+            val styles = candidateStyles
+            if (styles != null) {
+                // 文字直接走候选栏正在使用的样式引擎，包含自适应颜色、首选色、字重和描边/阴影预设。
+                val wordPaint = styles.paint(role)
+                val wordMaxWidth = (maxWidth - cloudWidth).coerceAtLeast(1f)
+                val shownWord = TextUtils.ellipsize(
+                    candidate.text, wordPaint, wordMaxWidth, TextUtils.TruncateAt.END,
+                ).toString()
+                val wordHeight = (wordPaint.descent() - wordPaint.ascent() + ink.dp(4f))
+                    .coerceAtMost(cell.height())
+                val wordRect = RectF(
+                    cell.left, wordY - wordHeight / 2f,
+                    cell.right - cloudWidth, wordY + wordHeight / 2f,
                 )
+                styles.drawReplacing(
+                    canvas, candidate.text, wordRect, role,
+                    eraseUnderlay = false, maxTextWidth = wordMaxWidth,
+                )
+                if (candidate.cloud) {
+                    val shown = wordPaint.measureText(shownWord).coerceAtMost(wordMaxWidth)
+                    ink.icon(canvas, Icon.CLOUD,
+                        wordX - shown / 2 - cloudWidth + ink.dp(cloudDp) / 2,
+                        wordY, cloudDp, palette.cloud)
+                }
+                if (gloss != null) {
+                    val glossText = glossText(gloss)
+                    val glossPaint = styles.paint(CandidateTextStyleEngine.Role.GLOSS)
+                    val glossHeight = (glossPaint.descent() - glossPaint.ascent() + ink.dp(3f))
+                        .coerceAtMost(cell.height() / 2f)
+                    val glossY = cell.centerY() + ink.dp(13f * textScale)
+                    styles.drawReplacing(
+                        canvas, glossText,
+                        RectF(cell.left, glossY - glossHeight / 2f, cell.right, glossY + glossHeight / 2f),
+                        CandidateTextStyleEngine.Role.GLOSS,
+                        eraseUnderlay = false, maxTextWidth = maxWidth,
+                    )
+                }
+            } else {
+                ink.text(canvas, candidate.text, wordSp, wordColor, wordX, wordY, maxWidth = maxWidth - cloudWidth)
+                if (candidate.cloud) {
+                    val shown = minOf(ink.measure(candidate.text, wordSp), maxWidth - cloudWidth)
+                    ink.icon(canvas, Icon.CLOUD, wordX - shown / 2 - cloudWidth + ink.dp(cloudDp) / 2, wordY, cloudDp, palette.cloud)
+                }
+                if (gloss != null) {
+                    ink.text(
+                        canvas, glossText(gloss), glossSp, if (gloss.fresh) palette.fresh else palette.gloss,
+                        cell.centerX(), cell.centerY() + ink.dp(13f * textScale), maxWidth = maxWidth,
+                    )
+                }
             }
             if (cell.right < body.width() - 1) {
                 ink.line(canvas, cell.right, cell.top + ink.dp(14f), cell.right, cell.bottom - ink.dp(14f), palette.faint)
