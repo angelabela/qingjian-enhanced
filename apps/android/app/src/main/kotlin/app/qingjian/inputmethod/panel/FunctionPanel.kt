@@ -11,6 +11,7 @@ import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.RectF
 import android.view.MotionEvent
 import kotlin.math.roundToInt
