@@ -27,7 +27,7 @@ class CandidateStrip(
     private val scaledDensity: Float = density) {
     private val emojiAnimations = NotoEmojiAnimations(context, animationCallback)
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
-    private val textStyles = CandidateTextStyleEngine(
+    val textStyles = CandidateTextStyleEngine(
         density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig,
         preeditBaseTextSize = 18f * scaledDensity,
     )
@@ -326,6 +326,35 @@ class CandidateStrip(
                         hit.rect.centerX() + measured / 2f, hit.rect.bottom + shift))
                 }
             }
+        // Kotlin 追加候选（常见为「？。！」）没有 Rust 的文字格，wordRect 会覆盖整条候选栏。
+        // 选中框必须按真正绘制后的字形尺寸收紧，否则会变成整栏高的长框，并在底边形成黑线。
+        if (frame.wordRect(index) == null && candidate != null) {
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else CandidateTextStyleEngine.Role.CANDIDATE
+            val paint = textStyles.paint(role)
+            val originalSize = paint.textSize
+            val availableWidth = minOf(
+                (wordBounds.width() - 2f * density).coerceAtLeast(1f),
+                maxTextWidth?.takeIf { it > 0f } ?: Float.MAX_VALUE,
+            )
+            val display = TextUtils.ellipsize(candidate.text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
+            val measuredWidth = paint.measureText(display).coerceAtLeast(1f)
+            val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
+            val availableHeight = (wordBounds.height() - 2f * density).coerceAtLeast(1f)
+            val fitScale = minOf(1f, availableWidth / measuredWidth, availableHeight / measuredHeight)
+            paint.textSize = originalSize * fitScale
+            val glyphWidth = paint.measureText(display)
+            val metrics = paint.fontMetrics
+            val glyphHeight = metrics.descent - metrics.ascent
+            val padding = 3f * density
+            result.set(
+                wordBounds.centerX() - glyphWidth / 2f - padding,
+                wordBounds.centerY() - glyphHeight / 2f - padding,
+                wordBounds.centerX() + glyphWidth / 2f + padding,
+                wordBounds.centerY() + glyphHeight / 2f + padding,
+            )
+            paint.textSize = originalSize
+        }
         return result
     }
 
