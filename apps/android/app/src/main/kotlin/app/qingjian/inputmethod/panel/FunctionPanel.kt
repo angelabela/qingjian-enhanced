@@ -607,6 +607,19 @@ class FunctionPanel(
             ink.fill.alpha = 255
             return
         }
+        if (index == 15) {
+            val heights = floatArrayOf(2f, 4f, 7f, 11f, 15f, 11f, 7f, 4f, 2f)
+            heights.forEachIndexed { i, height ->
+                val x = cx + (i - 4) * ink.dp(3.1f)
+                ink.fill.color = accent
+                ink.fill.alpha = 65
+                canvas.drawRoundRect(x - ink.dp(1.3f), cy - ink.dp(height + 2f), x + ink.dp(1.3f), cy + ink.dp(height + 2f), ink.dp(1.3f), ink.dp(1.3f), ink.fill)
+                ink.fill.color = if (i in 3..5) Color.rgb(250, 175, 90) else Color.rgb(235, 120, 40)
+                ink.fill.alpha = 255
+                canvas.drawRoundRect(x - ink.dp(0.8f), cy - ink.dp(height), x + ink.dp(0.8f), cy + ink.dp(height), ink.dp(0.8f), ink.dp(0.8f), ink.fill)
+            }
+            return
+        }
         if (index == 13) {
             // 阶梯频谱
             val heights = intArrayOf(2, 4, 6, 5, 3)
