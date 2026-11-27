@@ -69,11 +69,17 @@ class SpectrumView @JvmOverloads constructor(
     fun feedBands(bands: FloatArray) {
         recording = null
         val half = BARS / 2
+        // 输入频带按低频到高频排列：中心取最低频，向左右两端线性铺开高频。
+        // 先插值到 33 个独立频点，再严格镜像，避免直接取样造成频带跳跃。
         for (d in 0..half) {
-            val index = (d * bands.size / (half + 1)).coerceIn(0, bands.lastIndex.coerceAtLeast(0))
-            val value = bands.getOrElse(index) { 0f }.coerceIn(0f, 1f)
-            raw[half + d] = value
-            raw[half - d] = value
+            val position = d.toFloat() / half * (bands.size - 1).coerceAtLeast(0)
+            val lower = position.toInt().coerceIn(0, bands.lastIndex.coerceAtLeast(0))
+            val upper = (lower + 1).coerceAtMost(bands.lastIndex.coerceAtLeast(0))
+            val fraction = position - lower
+            val lowToHigh = if (bands.isEmpty()) 0f else
+                (bands[lower] + (bands[upper] - bands[lower]) * fraction).coerceIn(0f, 1f)
+            raw[half + d] = lowToHigh
+            raw[half - d] = lowToHigh
         }
         for (i in 0 until BARS) {
             val a = raw[max(0, i - 1)]
@@ -137,7 +143,8 @@ class SpectrumView @JvmOverloads constructor(
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        setMeasuredDimension(width, resolveSize((REF_H * width / REF_W).toInt(), h))
+        val desiredHeight = (REF_H * width / REF_W).roundToInt()
+        setMeasuredDimension(width, resolveSize(desiredHeight, h))
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
@@ -271,11 +278,11 @@ class SpectrumView @JvmOverloads constructor(
     companion object {
         const val BARS = 65
         private const val REF_W = 720f     // 录屏宽度
-        private const val REF_H = 200f     // 频谱区域高度（含光晕）
-        private const val SPAN = 327f      // 首尾两根条的中心距
-        private const val BAR_W = 2f
+        private const val REF_H = 260f     // 频谱区域高度（含光晕）
+        private const val SPAN = 576f      // 首尾两根条的中心距
+        private const val BAR_W = 3f
         private const val REST_H = 2f
-        private const val MAX_H = 76f
+        private const val MAX_H = 108f
         private const val CURSOR_H = 26f
         private const val TICK_MS = 33L
         private const val FFT_N = 1024
