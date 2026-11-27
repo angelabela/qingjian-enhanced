@@ -56,6 +56,7 @@ on:
       - fix/723-wubi-text-effects-space-gesture
       - design/impeccable-native-audit-781
       - rebuild/1044-voice-spectrum-65
+      - rebuild/1050-cursor-glow-phone
       - fix/a11y-scroll-actions-832
       - fix/workflow-421-key-feedback-pinyin-candidates
       - feature/android-optional-trigram-model
