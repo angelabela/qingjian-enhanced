@@ -16,8 +16,13 @@ class StripImage(
         return preeditEdges.indices.minBy { abs(preeditEdges[it] - x) }
     }
     fun caretNear(x: Float): Int = if (preeditEdges.isEmpty()) -1 else preeditEdges.indices.minBy { abs(preeditEdges[it] - x) }
-    fun candidateAt(x: Float): Int = hits.firstOrNull { it.sense == null && x >= it.rect.left && x < it.rect.right }?.candidate ?: -1
+    // candidate_indices 是本帧真正参与 Rust 主布局的候选白名单。
+    // 忽略额外/过期 hit，防止隐藏候选的残留矩形拦截相邻候选点击。
+    fun candidateAt(x: Float): Int = hits.firstOrNull {
+        it.sense == null && it.candidate in candidateIndices && x >= it.rect.left && x < it.rect.right
+    }?.candidate ?: -1
     fun wordRect(index: Int): RectF? {
+        if (index !in candidateIndices) return null
         val cell = hits.firstOrNull { it.candidate == index && it.sense == null }?.rect ?: return null
         val noteTop = hits.filter { it.candidate == index && it.sense != null }.minOfOrNull { it.rect.top }
         return RectF(cell.left, cell.top, cell.right, noteTop ?: cell.bottom)
