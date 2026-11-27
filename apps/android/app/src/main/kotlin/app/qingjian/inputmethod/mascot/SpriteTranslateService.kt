@@ -3,6 +3,9 @@ package app.qingjian.inputmethod.mascot
 import android.accessibilityservice.AccessibilityService
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
@@ -33,7 +36,14 @@ import kotlin.math.*
 class SpriteTranslateService : AccessibilityService() {
 
     // ───────── 尺寸（dp）与参数 ─────────
-    private companion object {
+    companion object {
+        const val ACTION_MASCOT_DRAG_START = "app.qingjian.inputmethod.action.MASCOT_TRANSLATE_DRAG_START"
+        const val ACTION_MASCOT_DRAG_MOVE = "app.qingjian.inputmethod.action.MASCOT_TRANSLATE_DRAG_MOVE"
+        const val ACTION_MASCOT_DRAG_STOP = "app.qingjian.inputmethod.action.MASCOT_TRANSLATE_DRAG_STOP"
+        const val EXTRA_MASCOT_X = "mascot_x"
+        const val EXTRA_MASCOT_Y = "mascot_y"
+        const val EXTRA_MASCOT_WIDTH = "mascot_width"
+        const val EXTRA_MASCOT_HEIGHT = "mascot_height"
         const val SPRITE = 56f        // 小精灵
         const val CROSS = 88f         // 准星本身
         const val DIST = 84f          // 准星中心到小精灵中心的距离
@@ -50,10 +60,8 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private lateinit var wm: WindowManager
-    private lateinit var spriteView: ImageView
     private lateinit var crossView: CrosshairView
     private lateinit var bubble: TextView
-    private lateinit var spriteLp: WindowManager.LayoutParams
     private lateinit var crossLp: WindowManager.LayoutParams
     private lateinit var bubbleLp: WindowManager.LayoutParams
 
@@ -69,6 +77,24 @@ class SpriteTranslateService : AccessibilityService() {
     private var density = 1f
     private var screenW = 0
     private var screenH = 0
+    private var mascotX = 0
+    private var mascotY = 0
+    private var mascotWidth = 0
+    private var mascotHeight = 0
+    private var receiverRegistered = false
+    private val mascotDragReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            mascotX = intent.getIntExtra(EXTRA_MASCOT_X, mascotX)
+            mascotY = intent.getIntExtra(EXTRA_MASCOT_Y, mascotY)
+            mascotWidth = intent.getIntExtra(EXTRA_MASCOT_WIDTH, mascotWidth)
+            mascotHeight = intent.getIntExtra(EXTRA_MASCOT_HEIGHT, mascotHeight)
+            when (intent.action) {
+                ACTION_MASCOT_DRAG_START -> { placeAll(); chooseOffset(); showCross() }
+                ACTION_MASCOT_DRAG_MOVE -> onMascotMoved()
+                ACTION_MASCOT_DRAG_STOP -> onMascotStopped()
+            }
+        }
+    }
     private var crossShown = false
     private var lastQueryAt = 0L
     private var lastText: String? = null
@@ -101,23 +127,19 @@ class SpriteTranslateService : AccessibilityService() {
         }
         bubbleLp = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchable = false)
 
-        spriteView = ImageView(this).apply {
-            setImageResource(R.drawable.ic_sprite)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }
-        spriteLp = lp(dp(SPRITE), dp(SPRITE), touchable = true).apply {
-            x = screenW - dp(SPRITE) - dp(12f); y = screenH / 3
-        }
-
-        // 先加准星和气泡，小精灵最后加，保证在最上面接收触摸
+        // 小精灵本体由 FloatingMascotService 统一绘制和接收触摸；本服务只负责准星与译文气泡。
         wm.addView(crossView, crossLp)
         wm.addView(bubble, bubbleLp)
-        wm.addView(spriteView, spriteLp)
-
+        val filter = IntentFilter().apply {
+            addAction(ACTION_MASCOT_DRAG_START)
+            addAction(ACTION_MASCOT_DRAG_MOVE)
+            addAction(ACTION_MASCOT_DRAG_STOP)
+        }
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(mascotDragReceiver, filter, RECEIVER_NOT_EXPORTED)
+        else registerReceiver(mascotDragReceiver, filter)
+        receiverRegistered = true
         targetOff = PointF(0f, -dp(DIST).toFloat())
         crossView.offX = targetOff.x; crossView.offY = targetOff.y
-        placeAll()
-        attachTouch()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -126,53 +148,35 @@ class SpriteTranslateService : AccessibilityService() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         readScreen()
-        spriteLp.x = spriteLp.x.coerceIn(0, max(0, screenW - spriteLp.width))
-        spriteLp.y = spriteLp.y.coerceIn(0, max(0, screenH - spriteLp.height))
+        mascotX = mascotX.coerceIn(0, max(0, screenW - mascotWidth))
+        mascotY = mascotY.coerceIn(0, max(0, screenH - mascotHeight))
         placeAll(); chooseOffset()
     }
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
-        runCatching { wm.removeView(spriteView); wm.removeView(crossView); wm.removeView(bubble) }
+        if (receiverRegistered) runCatching { unregisterReceiver(mascotDragReceiver) }
+        receiverRegistered = false
+        runCatching { wm.removeView(crossView); wm.removeView(bubble) }
         worker.quitSafely(); translator?.close(); translator = null
         super.onDestroy()
     }
 
     // ───────── 拖动 ─────────
 
-    private fun attachTouch() {
-        val slop = ViewConfiguration.get(this).scaledTouchSlop
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
-        spriteView.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = e.rawX; downY = e.rawY; startX = spriteLp.x; startY = spriteLp.y; dragging = false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!dragging && hypot(dx, dy) > slop) dragging = true
-                    if (dragging) {
-                        spriteLp.x = (startX + dx).toInt().coerceIn(0, max(0, screenW - spriteLp.width))
-                        spriteLp.y = (startY + dy).toInt().coerceIn(0, max(0, screenH - spriteLp.height))
-                        wm.updateViewLayout(spriteView, spriteLp)
-                        onSpriteMoved()
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) onSpriteStopped()
-                }
-            }
-            true
-        }
-    }
-
-    private fun onSpriteMoved() {
+    private fun onMascotMoved() {
         placeAll()
         chooseOffset()
         if (!crossShown) showCross()
         ui.removeCallbacks(hideBubbleRun)
-        ui.removeCallbacks(idleRun); ui.postDelayed(idleRun, IDLE_MS)   // 手指停住就收起
+        ui.removeCallbacks(idleRun); ui.postDelayed(idleRun, IDLE_MS)
         requestHit()
+    }
+
+    private fun onMascotStopped() {
+        ui.removeCallbacks(idleRun)
+        hideCross()
+        ui.removeCallbacks(hideBubbleRun); ui.postDelayed(hideBubbleRun, BUBBLE_HOLD_MS)
     }
 
     private fun onSpriteStopped() {
@@ -185,8 +189,8 @@ class SpriteTranslateService : AccessibilityService() {
 
     /** 准星窗口以小精灵中心为中心，跟着小精灵走。 */
     private fun placeAll() {
-        val cx = spriteLp.x + spriteLp.width / 2
-        val cy = spriteLp.y + spriteLp.height / 2
+        val cx = mascotX + mascotWidth / 2
+        val cy = mascotY + mascotHeight / 2
         crossLp.x = cx - crossLp.width / 2
         crossLp.y = cy - crossLp.height / 2
         wm.updateViewLayout(crossView, crossLp)
@@ -194,8 +198,8 @@ class SpriteTranslateService : AccessibilityService() {
 
     /** 当前方位还在屏幕内就不动（避免来回跳）；否则按优先级换到另一侧，并带动画过渡。 */
     private fun chooseOffset() {
-        val cx = spriteLp.x + spriteLp.width / 2f
-        val cy = spriteLp.y + spriteLp.height / 2f
+        val cx = mascotX + mascotWidth / 2f
+        val cy = mascotY + mascotHeight / 2f
         val m = dp(CROSS / 2 + 6f).toFloat()
         val top = m + dp(24f)
         fun valid(o: PointF) = (cx + o.x) in m..(screenW - m) && (cy + o.y) in top..(screenH - m)
@@ -241,10 +245,8 @@ class SpriteTranslateService : AccessibilityService() {
 
     /** 准星中心的屏幕坐标（用控件实际位置，免得算状态栏偏移）。 */
     private fun targetPoint(): Point {
-        val loc = IntArray(2)
-        spriteView.getLocationOnScreen(loc)
-        val cx = loc[0] + spriteView.width / 2
-        val cy = loc[1] + spriteView.height / 2
+        val cx = mascotX + mascotWidth / 2
+        val cy = mascotY + mascotHeight / 2
         return Point(cx + crossView.offX.roundToInt(), cy + crossView.offY.roundToInt())
     }
 
