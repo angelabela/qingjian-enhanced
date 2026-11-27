@@ -65,6 +65,14 @@
 
         <activity android:name=".background.DynamicBackgroundActivity" android:exported="false" />
         <activity android:name=".mascot.MascotPermissionActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
+        <service
+            android:name=".mascot.SpriteTranslateService"
+            android:label="青简小精灵翻译"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/sprite_service" />
+        </service>
         <service android:name=".mascot.MascotTextAccessibilityService" android:label="青简小精灵智能辅助" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/mascot_accessibility_service" />
