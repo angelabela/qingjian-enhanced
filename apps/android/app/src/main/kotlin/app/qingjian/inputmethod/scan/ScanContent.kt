@@ -86,6 +86,7 @@ object ScanContent {
         data class Url(val url: String) : ClipboardAction
         data class SmsCode(val code: String) : ClipboardAction
         data class Phone(val number: String) : ClipboardAction
+        data class Phones(val numbers: List<String>) : ClipboardAction
     }
 
     /** Detect one actionable item from clipboard text; Wi-Fi credentials take precedence and stay hidden. */
@@ -94,7 +95,9 @@ object ScanContent {
         parseWifi(raw)?.let { return ClipboardAction.Wifi(it) }
         extractSmsCode(raw)?.let { return ClipboardAction.SmsCode(it) }
         findWebUrl(raw)?.let { return ClipboardAction.Url(it) }
-        extractPhone(raw)?.let { return ClipboardAction.Phone(it) }
+        val phones = extractPhones(raw)
+        if (phones.size == 1) return ClipboardAction.Phone(phones.first())
+        if (phones.size > 1) return ClipboardAction.Phones(phones)
         return null
     }
 
@@ -137,20 +140,37 @@ object ScanContent {
             ?: candidates.filterNot { it.afterKeyword }.minByOrNull { it.distance }?.code
     }
 
-    /** Find a mainland mobile number in mixed text; accept a plain international number only when it is the whole clip. */
-    fun extractPhone(raw: String): String? {
-        val match = MAINLAND_PHONE.find(raw)
-        if (match != null) {
+    /**
+     * 严格提取号码：大陆手机号必须完整符合 1[3-9]xxxxxxxxx 的 11 位结构，
+     * 不允许从更长数字串中截取；纯国际号码只在剪贴板内容整体就是号码时接受。
+     */
+    fun extractPhones(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        val found = linkedSetOf<String>()
+        MAINLAND_PHONE.findAll(raw).forEach { match ->
+            val before = raw.substring(0, match.range.first).trimEnd(' ', '\\t', '-')
+            val after = raw.substring(match.range.last + 1).trimStart(' ', '\\t', '-')
+            // 避免从带分隔符的长编号中截取 11 位，也拒绝明显的分机尾号。
+            if (before.lastOrNull()?.isDigit() == true || after.firstOrNull()?.isDigit() == true) return@forEach
+            if (Regex("^(?:转|分机|ext\\.?)\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(after)) return@forEach
             val digits = match.groupValues[2].filter(Char::isDigit)
-            val prefix = match.groupValues[1]
-            return if (prefix.isNotBlank()) "+86$digits" else digits
+            if (digits.length != 11 || digits[0] != '1' || digits[1] !in '3'..'9') return@forEach
+            found += if (match.groupValues[1].isNotBlank()) "+86$digits" else digits
         }
+        if (found.isNotEmpty()) return found.toList()
+
         val value = raw.trim()
-        if (value.length !in 7..40 || !PLAIN_PHONE.matches(value)) return null
+        if (!PLAIN_PHONE.matches(value)) return emptyList()
         val digits = value.filter(Char::isDigit)
-        if (digits.length !in 7..15) return null
-        return if (value.startsWith("+")) "+$digits" else digits
+        if (digits.length !in 7..15) return emptyList()
+        if (value.count { it == '(' } != value.count { it == ')' }) return emptyList()
+        if (value.indexOf('+') > 0 || value.count { it == '+' } > 1) return emptyList()
+        if (value.contains("++") || value.contains("--") || value.contains("  ")) return emptyList()
+        return listOf(if (value.startsWith("+")) "+$digits" else digits)
     }
+
+    /** 兼容单号码调用；有多个号码时返回 null，避免静默选中第一个。 */
+    fun extractPhone(raw: String): String? = extractPhones(raw).singleOrNull()
 
     private fun findWebUrl(raw: String): String? =
         URL_IN_TEXT.findAll(raw).mapNotNull { match ->
@@ -160,8 +180,8 @@ object ScanContent {
 
     private val DOMAIN_PATTERN = Regex("^(?:www\\.)?(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/[^\\s]*)?(?:\\?[^\\s]*)?(?:#[^\\s]*)?$")
 
-    private val MAINLAND_PHONE = Regex("(?<!\\d)(\\+?86[\\s-]?)?(1[3-9](?:[\\s-]?\\d){9})(?!\\d)")
-    private val PLAIN_PHONE = Regex("[+0-9()\\-\\s]+")
+    private val MAINLAND_PHONE = Regex("(?<![A-Za-z0-9])(\\+?86[ \\t-]?)?(1[3-9](?:[ \\t-]?\\d){9})(?![A-Za-z0-9])")
+    private val PLAIN_PHONE = Regex("^\\+?[0-9][0-9() .-]{5,25}[0-9]$")
     private val URL_IN_TEXT = Regex("""(?i)(?:https?://|www\.)[^\s<>"]+|(?<![\w@])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:/[^\s<>"]*)?(?:\?[^\s<>"]*)?(?:#[^\s<>"]*)?""")
 
 }
