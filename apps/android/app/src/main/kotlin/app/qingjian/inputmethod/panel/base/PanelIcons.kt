@@ -7,7 +7,7 @@ import android.graphics.RectF
 
 /** 工具栏、面板与 App 页面的线条图标，画在 24×24 的格子里再按尺寸缩放；与 [app.qingjian.inputmethod.keyboard.paint.KeyIcons] 同一种画法。 */
 object PanelIcons {
-    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, SCAN_SQUARE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE, BACKSPACE, ENTER, NEXT_CELL, SEARCH }
+    enum class Icon { BACK, CHEVRON, EXPAND, COLLAPSE, HIDE, EMOJI, KEYBOARD, SYMBOLS, RESIZE, MIC, CLIPBOARD, TRANSLATE, CLEAR, PLUS, TRASH, PEN, TOP, SPLIT, COPY, SETTINGS, GLOBE, LOCK, UNLOCK, CHECK, INFO, HOME, BOOK, USER, CHART, CLOUD, PALETTE, PHRASES, TUNE, MINUS, TRADITIONAL, LEFT_HAND, GAMEPAD, CAMERA, PHONE, QR_SCAN, SCAN_RECTANGLE, SCAN_WIDE, SCAN_SQUARE, FLASHLIGHT, FLASHLIGHT_ON, DRAG, WAVEFORM, CLOSE, BACKSPACE, ENTER, NEXT_CELL, SEARCH }
 
     private val path = Path()
     private val oval = RectF()
@@ -53,6 +53,7 @@ object PanelIcons {
             Icon.LEFT_HAND -> leftHand()
             Icon.GAMEPAD -> gamepad()
             Icon.CAMERA -> camera()
+            Icon.PHONE -> phone()
             Icon.QR_SCAN -> qrScan()
             Icon.SCAN_RECTANGLE -> scanRectangle(false)
             Icon.SCAN_WIDE -> scanRectangle(true)
@@ -193,6 +194,25 @@ object PanelIcons {
         path.arcTo(oval, 0f, 180f, true)
         polyline(12f, 17.5f, 12f, 21f)
         polyline(8.5f, 21f, 15.5f, 21f)
+    }
+
+    /** 电话听筒。 */
+    private fun phone() {
+        path.moveTo(7f, 3.5f)
+        path.cubicTo(5.8f, 3.5f, 4.7f, 4.4f, 4.8f, 5.7f)
+        path.cubicTo(5.8f, 13.5f, 10.5f, 18.2f, 18.3f, 19.2f)
+        path.cubicTo(19.6f, 19.4f, 20.5f, 18.3f, 20.5f, 17.1f)
+        path.lineTo(20.5f, 14.2f)
+        path.cubicTo(20.5f, 13.5f, 20f, 13f, 19.3f, 12.8f)
+        path.lineTo(15.9f, 12f)
+        path.cubicTo(15.2f, 11.8f, 14.6f, 12.1f, 14.2f, 12.7f)
+        path.lineTo(12.9f, 14.2f)
+        path.cubicTo(10.8f, 13.1f, 9.1f, 11.4f, 8f, 9.3f)
+        path.lineTo(9.5f, 8f)
+        path.cubicTo(10.1f, 7.5f, 10.4f, 6.8f, 10.2f, 6.1f)
+        path.lineTo(9.4f, 4.2f)
+        path.cubicTo(9.2f, 3.8f, 8.7f, 3.5f, 8.2f, 3.5f)
+        path.close()
     }
 
     /** 六边形螺母加中间一个圈，和系统设置的齿轮区分开。 */
