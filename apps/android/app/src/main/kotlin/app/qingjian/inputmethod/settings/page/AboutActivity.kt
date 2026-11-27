@@ -34,11 +34,13 @@ class AboutActivity : PageActivity() {
             ),
             ui.group(
                 "动画 Emoji 署名",
-                ui.text(
-                    "Google Noto Emoji animations。来源：https://googlefonts.github.io/noto-emoji-animation/\n" +
-                        "许可：Creative Commons Attribution 4.0 International（CC BY 4.0）。\n" +
-                        "https://creativecommons.org/licenses/by/4.0/",
-                    12f, ui.colors.secondary,
+                listOf(
+                    ui.text(
+                        "Google Noto Emoji animations。来源：https://googlefonts.github.io/noto-emoji-animation/\n" +
+                            "许可：Creative Commons Attribution 4.0 International（CC BY 4.0）。\n" +
+                            "https://creativecommons.org/licenses/by/4.0/",
+                        12f, ui.colors.secondary,
+                    ),
                 ),
             ),
         )
