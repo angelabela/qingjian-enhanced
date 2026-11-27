@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">青简</string>
-    <string name="sprite_service_desc">与悬浮小精灵共用同一只精灵；拖动它指向屏幕文字，调用青简翻译引擎翻译</string>
+    <string name="sprite_service_desc">授权后，小精灵通过准星定位屏幕文字，提供翻译、复制以及电话号码、网址和验证码识别。</string>
     <string name="subtype_pinyin">拼音</string>
     <string name="tagline">打字的时候，顺便学一门语言</string>
 

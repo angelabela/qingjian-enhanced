@@ -1,5 +1,6 @@
 package app.qingjian.inputmethod.mascot
 
+import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -19,38 +20,46 @@ class MascotAssistActivity : PageActivity() {
     override fun content(): List<View> {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         val enabled = prefs.getBoolean(KEY_ENABLED, false)
-        val granted = MascotTextAccessibilityService.isEnabled(this)
+        val granted = SpriteTranslateService.isEnabled(this)
+        val smsPrefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val smsPreview = smsPrefs.getBoolean(SmsCodeReceiver.KEY_MASCOT_PREVIEW, false)
         return listOf(
             ui.group(
                 "悬浮小精灵",
                 listOf(
                     ui.toggle(
                         "启用小精灵智能辅助",
-                        "识别当前应用场景；翻译服务关闭时，可拖动小精灵到文字上停留 1 秒尝试复制。默认关闭。",
+                        "开启后屏幕显示一只动态小精灵。点击切换翻译/复制；拖动时准星指向文字，翻译模式实时翻译，复制模式松手复制。",
                         enabled,
                         null,
                     ) { checked ->
                         prefs.edit().putBoolean(KEY_ENABLED, checked).apply()
-                        if (checked && !MascotTextAccessibilityService.isEnabled(this)) {
-                            Toast.makeText(this, "请在系统无障碍设置中手动开启「青简小精灵智能辅助」", Toast.LENGTH_LONG).show()
+                        if (checked && !SpriteTranslateService.isEnabled(this)) {
+                            Toast.makeText(this, "请在系统无障碍设置中开启「青简悬浮小精灵智能辅助」", Toast.LENGTH_LONG).show()
                             runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                         }
                         rebuild()
                     },
                     ui.link(
-                        "无障碍权限",
+                        "无障碍权限（翻译与复制共用）",
                         if (granted) "已授权 · 点击查看系统设置" else "尚未授权 · 点击前往系统设置",
                     ) {
                         runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
-                    ui.link(
-                        "翻译功能权限",
-                        if (SpriteTranslateService.isEnabled(this)) "已授权 · 拖动同一只悬浮小精灵即可翻译" else "尚未授权 · 点击前往系统设置",
-                    ) {
-                        runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                    ui.toggle(
+                        "显示短信摘要",
+                        "仅在短信验证码监测已开启并获得短信权限后显示；默认关闭，摘要只在本机处理。",
+                        smsPreview,
+                        null,
+                    ) { checked ->
+                        smsPrefs.edit().putBoolean(SmsCodeReceiver.KEY_MASCOT_PREVIEW, checked).apply()
+                        if (checked && !smsPrefs.getBoolean(SmsCodeReceiver.KEY_ENABLED, false)) {
+                            Toast.makeText(this, "请先开启短信验证码监测并授予短信权限", Toast.LENGTH_LONG).show()
+                        }
+                        rebuild()
                     },
                 ),
-                footer = "智能辅助和翻译共用同一只悬浮小精灵，不再额外显示第二只精灵。拖动小精灵时显示准星，停留在普通文字上可调用青简翻译；智能复制仅在翻译服务未启用时保留。密码框和敏感节点会跳过。翻译只发送准星命中的文字片段到你配置的翻译服务。",
+                footer = "只使用一只悬浮小精灵。点击图标切换模式：青绿色为翻译，橙色为复制。拖动时准星会自动避开屏幕边缘；停止拖动后准星收起。密码框、可编辑输入框和系统敏感节点会跳过；翻译只发送准星命中的单段文字到你配置的翻译服务。",
             ),
             ui.group(
                 "输入光标辉光",
@@ -73,10 +82,11 @@ class MascotAssistActivity : PageActivity() {
                 footer = "通过编辑器提供的光标坐标定位，不修改其他应用本身的光标。部分不提供光标坐标的应用可能无法显示。",
             ),
             ui.group(
-                "拖动复制说明",
+                "小精灵操作",
                 listOf(
-                    ui.row("使用方法", "翻译服务未开启时，开启本页开关并授权后，拖动小精灵到文字上停留超过 1 秒可尝试复制。翻译服务开启时，拖动同一只小精灵会优先显示准星并翻译命中的文字。"),
-                    ui.row("隐私保护", "跳过密码输入框、敏感内容和青简自身窗口。不读取整页内容，也不会将识别到的文字发送给云端。"),
+                    ui.row("翻译模式", "点击小精灵切换到青绿色翻译模式，拖动时准星指向哪段文字，就翻译哪段文字。"),
+                    ui.row("复制模式", "点击小精灵切换到橙色复制模式，拖动准星到文字后松手复制。"),
+                    ui.row("智能识别", "识别到电话号码可点按拨号，网址可点按打开，验证码可点按复制；开启短信摘要后可在小精灵气泡中查看短信摘要。"),
                 ),
             ),
         )

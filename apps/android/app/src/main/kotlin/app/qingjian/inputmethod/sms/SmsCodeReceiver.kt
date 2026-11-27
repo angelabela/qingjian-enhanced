@@ -19,8 +19,10 @@ class SmsCodeReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         AppLog.info("[SMS_CODE_DIAG] SMS broadcast received")
-        if (!prefs.getBoolean(KEY_ENABLED, false)) {
-            AppLog.debug("[SMS_CODE_DIAG] ignored: monitor disabled")
+        val codeMonitorEnabled = prefs.getBoolean(KEY_ENABLED, false)
+        val mascotPreviewEnabled = prefs.getBoolean(KEY_MASCOT_PREVIEW, false)
+        if (!codeMonitorEnabled && !mascotPreviewEnabled) {
+            AppLog.debug("[SMS_CODE_DIAG] ignored: monitor and mascot preview disabled")
             return
         }
 
@@ -28,45 +30,53 @@ class SmsCodeReceiver : BroadcastReceiver() {
             Telephony.Sms.Intents.getMessagesFromIntent(intent).toList()
         }.getOrDefault(emptyList())
         val body = messages.joinToString("") { it.messageBody.orEmpty() }
-        val code = ScanContent.extractSmsCode(body)
-        if (code == null) {
+        val sender = messages.firstOrNull()?.originatingAddress.orEmpty()
+        val detectedCode = ScanContent.extractSmsCode(body)
+        val code = detectedCode.takeIf { codeMonitorEnabled }
+        if (code == null && codeMonitorEnabled) {
             AppLog.info("[SMS_CODE_DIAG] no code extracted messageCount=${messages.size}")
-            return
         }
-        AppLog.info("[SMS_CODE_DIAG] code extracted length=${code.length} messageCount=${messages.size}")
-
-        // 先持久化验证码，再写系统剪贴板，确保监听器触发时能识别验证码。
-        prefs.edit().putString(KEY_LATEST, code).putLong(KEY_LATEST_AT, System.currentTimeMillis()).apply()
-        // 自动复制；提示展示一次后不再重复弹出，后续由用户在剪贴板面板手动粘贴。
-        runCatching {
-            context.getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("短信验证码", code))
-        }.onSuccess {
-            AppLog.info("[SMS_CODE_DIAG] clipboard updated codeLength=${code.length}")
-        }.onFailure {
-            AppLog.warn("[SMS_CODE_DIAG] clipboard update failed: ${it.javaClass.simpleName}")
+        if (code != null) {
+            AppLog.info("[SMS_CODE_DIAG] code extracted length=${code.length} messageCount=${messages.size}")
+            prefs.edit().putString(KEY_LATEST, code).putLong(KEY_LATEST_AT, System.currentTimeMillis()).apply()
+            runCatching {
+                context.getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("短信验证码", code))
+            }.onSuccess {
+                AppLog.info("[SMS_CODE_DIAG] clipboard updated codeLength=${code.length}")
+            }.onFailure {
+                AppLog.warn("[SMS_CODE_DIAG] clipboard update failed: ${it.javaClass.simpleName}")
+            }
+            context.sendBroadcast(
+                Intent(ACTION_CODE_READY).setPackage(context.packageName).putExtra(EXTRA_CODE, code),
+            )
+            AppLog.info("[SMS_CODE_DIAG] code-ready broadcast sent")
         }
-        context.sendBroadcast(
-            Intent(ACTION_CODE_READY).setPackage(context.packageName).putExtra(EXTRA_CODE, code),
-        )
-        AppLog.info("[SMS_CODE_DIAG] code-ready broadcast sent")
         val mascotPrefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
         if (mascotPrefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) &&
-            android.provider.Settings.canDrawOverlays(context)
+            android.provider.Settings.canDrawOverlays(context) &&
+            (code != null || mascotPreviewEnabled)
         ) {
+            val excerpt = body.replace(Regex("\\s+"), " ").take(92)
+            val preview = if (mascotPreviewEnabled) {
+                "短信来自：${sender.ifBlank { "未知号码" }}\n${excerpt.ifBlank { "（短信内容为空）" }}" +
+                    if (detectedCode != null) "\n验证码：$detectedCode" else ""
+            } else "收到短信验证码：$code，已经帮你复制好啦！"
             val mascotIntent = Intent(context, FloatingMascotService::class.java)
                 .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
-                .putExtra(FloatingMascotService.EXTRA_MESSAGE, "收到短信验证码：$code，已经帮你复制好啦！")
+                .putExtra(FloatingMascotService.EXTRA_MESSAGE, preview)
+                .putExtra(FloatingMascotService.EXTRA_ANIMATION, "wave")
             runCatching {
                 if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(mascotIntent)
                 else context.startService(mascotIntent)
-            }.onFailure { android.util.Log.w("QingjianMascot", "Unable to show SMS code in mascot", it) }
+            }.onFailure { android.util.Log.w("QingjianMascot", "Unable to show SMS in mascot", it) }
         }
-        Toast.makeText(context, "验证码 $code 已复制", Toast.LENGTH_SHORT).show()
+        if (code != null) Toast.makeText(context, "验证码 $code 已复制", Toast.LENGTH_SHORT).show()
     }
 
     companion object {
         const val KEY_ENABLED = "sms_code_enabled"
+        const val KEY_MASCOT_PREVIEW = "mascot_sms_preview"
         const val KEY_LATEST = "sms_code_latest"
         const val KEY_LATEST_AT = "sms_code_latest_at"
         const val ACTION_CODE_READY = "app.qingjian.inputmethod.SMS_CODE_READY"

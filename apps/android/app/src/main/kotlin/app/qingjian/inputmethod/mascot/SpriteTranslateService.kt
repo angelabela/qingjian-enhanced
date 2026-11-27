@@ -3,10 +3,13 @@ package app.qingjian.inputmethod.mascot
 import android.accessibilityservice.AccessibilityService
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.net.Uri
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.os.*
@@ -44,6 +47,7 @@ class SpriteTranslateService : AccessibilityService() {
         const val EXTRA_MASCOT_Y = "mascot_y"
         const val EXTRA_MASCOT_WIDTH = "mascot_width"
         const val EXTRA_MASCOT_HEIGHT = "mascot_height"
+        const val EXTRA_MASCOT_MODE = "mascot_mode"
         const val SPRITE = 56f        // 小精灵
         const val CROSS = 88f         // 准星本身
         const val DIST = 84f          // 准星中心到小精灵中心的距离
@@ -89,6 +93,9 @@ class SpriteTranslateService : AccessibilityService() {
     private var mascotY = 0
     private var mascotWidth = 0
     private var mascotHeight = 0
+    private var mascotMode = FloatingMascotService.MODE_TRANSLATE
+    private var currentSmartMatch: SmartMatch? = null
+    private var hitRequestSeq = 0
     private var receiverRegistered = false
     private val mascotDragReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -96,8 +103,17 @@ class SpriteTranslateService : AccessibilityService() {
             mascotY = intent.getIntExtra(EXTRA_MASCOT_Y, mascotY)
             mascotWidth = intent.getIntExtra(EXTRA_MASCOT_WIDTH, mascotWidth)
             mascotHeight = intent.getIntExtra(EXTRA_MASCOT_HEIGHT, mascotHeight)
+            mascotMode = intent.getStringExtra(EXTRA_MASCOT_MODE) ?: mascotMode
+            crossView.setMode(mascotMode)
             when (intent.action) {
-                ACTION_MASCOT_DRAG_START -> { placeAll(); chooseOffset(); showCross() }
+                ACTION_MASCOT_DRAG_START -> {
+                    lastText = null
+                    currentSmartMatch = null
+                    ++translateGen
+                    ++hitRequestSeq
+                    ui.removeCallbacks(debounceRun)
+                    placeAll(); chooseOffset(); showCross()
+                }
                 ACTION_MASCOT_DRAG_MOVE -> onMascotMoved()
                 ACTION_MASCOT_DRAG_STOP -> onMascotStopped()
             }
@@ -112,7 +128,11 @@ class SpriteTranslateService : AccessibilityService() {
     private var offsetAnim: ValueAnimator? = null
 
     private val idleRun = Runnable { hideCross() }
-    private val hideBubbleRun = Runnable { bubble.animate().alpha(0f).setDuration(150).start(); lastText = null }
+    private val hideBubbleRun = Runnable {
+        bubble.animate().alpha(0f).setDuration(150).start()
+        lastText = null
+        currentSmartMatch = null
+    }
 
     // ───────── 生命周期 ─────────
 
@@ -133,9 +153,10 @@ class SpriteTranslateService : AccessibilityService() {
             background = GradientDrawable().apply { cornerRadius = dp(12f).toFloat(); setColor(0xE6202124.toInt()) }
             alpha = 0f
         }
-        bubbleLp = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchable = false)
+        bubbleLp = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchable = true)
+        bubble.setOnClickListener { performSmartAction() }
 
-        // 小精灵本体由 FloatingMascotService 统一绘制和接收触摸；本服务只负责准星与译文气泡。
+        // 小精灵本体由 FloatingMascotService 统一绘制和接收触摸；本服务只负责准星、复制/翻译和识别结果。
         wm.addView(crossView, crossLp)
         wm.addView(bubble, bubbleLp)
         val filter = IntentFilter().apply {
@@ -183,8 +204,31 @@ class SpriteTranslateService : AccessibilityService() {
 
     private fun onMascotStopped() {
         ui.removeCallbacks(idleRun)
+        ++hitRequestSeq
         hideCross()
+        if (mascotMode == FloatingMascotService.MODE_COPY) copyAtFinalTarget()
         ui.removeCallbacks(hideBubbleRun); ui.postDelayed(hideBubbleRun, BUBBLE_HOLD_MS)
+    }
+
+    /** 松手时再按最终准星坐标取一次文字，避免异步命中结果落后一帧。 */
+    private fun copyAtFinalTarget() {
+        val point = targetPoint()
+        bg.post {
+            val finalText = findTextAt(point.x, point.y)?.text?.trim().orEmpty()
+            ui.post {
+                if (finalText.isBlank()) {
+                    showBubble("准星没有指向可复制的文字")
+                    return@post
+                }
+                lastText = finalText
+                val copied = runCatching {
+                    getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText("青简小精灵", finalText))
+                }.isSuccess
+                currentSmartMatch = null
+                showBubble(if (copied) "已复制：${finalText.take(72)}" else "复制失败，请检查剪贴板权限")
+            }
+        }
     }
 
     // ───────── 准星：位置、展开/收起 ─────────
@@ -244,6 +288,7 @@ class SpriteTranslateService : AccessibilityService() {
     // ───────── 取字：准星指到的文字 ─────────
 
     private data class Hit(val text: String)
+    private data class SmartMatch(val kind: String, val value: String, val label: String)
 
     /** 准星中心的屏幕坐标（用控件实际位置，免得算状态栏偏移）。 */
     private fun targetPoint(): Point {
@@ -253,13 +298,14 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun requestHit() {
+        val sequence = ++hitRequestSeq
         val now = SystemClock.uptimeMillis()
         if (now - lastQueryAt < QUERY_GAP_MS) return
         lastQueryAt = now
         val p = targetPoint()
         bg.post {                                   // 遍历控件树有跨进程调用，放后台线程
             val hit = findTextAt(p.x, p.y)
-            ui.post { onHit(hit) }
+            ui.post { if (sequence == hitRequestSeq) onHit(hit) }
         }
     }
 
@@ -280,7 +326,10 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun deepest(n: AccessibilityNodeInfo, x: Int, y: Int, depth: Int): Hit? {
-        if (depth > 40 || !n.isVisibleToUser || n.isPassword || n.packageName?.toString() == packageName) return null   // 不读密码框
+        if (depth > 40 || !n.isVisibleToUser || n.isPassword || n.isEditable ||
+            (Build.VERSION.SDK_INT >= 34 && n.isAccessibilityDataSensitive) ||
+            n.packageName?.toString() == packageName
+        ) return null   // 跳过密码、可编辑框和系统标记的敏感节点
         val b = Rect(); n.getBoundsInScreen(b)
         if (!b.contains(x, y)) return null
         for (i in n.childCount - 1 downTo 0) {      // 后面的子控件画在上面，倒着找
@@ -294,15 +343,64 @@ class SpriteTranslateService : AccessibilityService() {
     // ───────── 翻译与气泡 ─────────
 
     private fun onHit(hit: Hit?) {
-        if (hit == null) { lastText = null; ++translateGen; fadeBubble(); return }
-        if (hit.text == lastText) { positionBubble(); return }   // 还在同一段文字上，只跟随位置
+        if (hit == null) {
+            lastText = null
+            currentSmartMatch = null
+            ++translateGen
+            ui.removeCallbacks(debounceRun)
+            fadeBubble()
+            return
+        }
+        if (hit.text == lastText) { positionBubble(); return }
         lastText = hit.text
         val gen = ++translateGen
         ui.removeCallbacks(debounceRun)
+        if (mascotMode == FloatingMascotService.MODE_COPY) {
+            currentSmartMatch = null
+            showBubble("复制目标：${hit.text.take(88)}")
+            return
+        }
+        detectSmartMatch(hit.text)?.let { match ->
+            currentSmartMatch = match
+            showBubble(match.label)
+            return
+        }
+        currentSmartMatch = null
         cache.get(hit.text)?.let { showBubble(it); return }
-        showBubble("…")
+        showBubble("正在翻译…")
         pendingText = hit.text; pendingGen = gen
         ui.postDelayed(debounceRun, DEBOUNCE_MS)
+    }
+
+    private fun detectSmartMatch(text: String): SmartMatch? {
+        val phone = Regex("(?<!\\d)(?:\\+?86[-\\s]?)?1[3-9]\\d{9}(?!\\d)").find(text)?.value
+        if (!phone.isNullOrBlank()) return SmartMatch("phone", phone, "识别到电话号码：$phone\n点按这里拨号")
+        val url = Regex("(?i)(?:https?://|www\\.)[^\\s<>]+|\\b(?:[a-z0-9-]+\\.)+(?:com|cn|net|org|io|co|me|app|dev)(?:/[^\\s<>]*)?").find(text)?.value?.trimEnd('.', ',', ';', ')', ']', '，', '。')
+        if (!url.isNullOrBlank()) return SmartMatch("url", url, "识别到网址：$url\n点按这里打开")
+        val code = Regex("(?:验证码|校验码|动态码|短信码|verification\\s*code|otp)[^0-9]{0,12}([0-9]{4,8})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.getOrNull(1)
+        if (!code.isNullOrBlank()) return SmartMatch("code", code, "识别到验证码：$code\n点按这里复制")
+        return null
+    }
+
+    private fun performSmartAction() {
+        val match = currentSmartMatch ?: return
+        when (match.kind) {
+            "phone" -> runCatching {
+                startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", match.value, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { showBubble("无法打开拨号器") }
+            "url" -> {
+                val value = if (match.value.startsWith("http", true)) match.value else "https://${match.value}"
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(value)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { showBubble("无法打开这个网址") }
+            }
+            "code" -> {
+                val copied = runCatching {
+                    getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("验证码", match.value))
+                }.isSuccess
+                showBubble(if (copied) "验证码 ${match.value} 已复制" else "验证码复制失败")
+            }
+        }
+        currentSmartMatch = null
     }
 
     private var pendingText = ""
@@ -398,6 +496,13 @@ class SpriteTranslateService : AccessibilityService() {
 
 /** 十字准星：reveal 0→1 从小精灵中心"长出来"，1→0 缩回小精灵中心。 */
 private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
+    fun setMode(mode: String) {
+        val color = if (mode == FloatingMascotService.MODE_COPY) 0xFFFFA34F.toInt() else 0xFF2EE6A8.toInt()
+        line.color = color
+        link.color = color
+        invalidate()
+    }
+
     var offX = 0f      // 准星中心相对小精灵中心的偏移（像素）
     var offY = 0f
     var reveal = 0f

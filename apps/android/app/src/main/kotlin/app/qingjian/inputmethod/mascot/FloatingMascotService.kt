@@ -94,9 +94,7 @@ class FloatingMascotService : Service() {
     private var expandedHeightPx = 0
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == MascotTextAccessibilityService.ACTION_APP_CONTEXT) {
-                mascotView?.setContextLabel(intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_HINT).orEmpty().ifBlank { intent.getStringExtra(MascotTextAccessibilityService.EXTRA_APP_LABEL).orEmpty() })
-            } else mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
+            mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
         }
     }
 
@@ -132,6 +130,7 @@ class FloatingMascotService : Service() {
         }
         mascotView = MascotView(this).also { view ->
             view.onDialogueVisibilityChanged = { expanded -> resizeMascotWindow(expanded) }
+            view.onModeChanged = { mode -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_MODE, mode).apply() }
             view.setOnTouchListener(createTouchListener(view))
             try { windowManager.addView(view, windowParams) }
             catch (error: RuntimeException) {
@@ -139,7 +138,7 @@ class FloatingMascotService : Service() {
                 stopSelf(); return
             }
         }
-        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT); addAction(MascotTextAccessibilityService.ACTION_APP_CONTEXT) }
+        val filter = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenReceiver, filter)
         receiverRegistered = true
@@ -222,14 +221,14 @@ class FloatingMascotService : Service() {
     /** 把同一只悬浮小精灵的拖动轨迹交给翻译无障碍服务；不再创建第二只可拖动精灵。 */
     private fun dispatchMascotTranslationDrag(action: String) {
         val pet = mascotView ?: return
-        val density = resources.displayMetrics.density
         val x = windowParams.x + pet.mascotOffsetPx
         val y = windowParams.y
         sendBroadcast(Intent(action).setPackage(packageName)
             .putExtra(SpriteTranslateService.EXTRA_MASCOT_X, x)
             .putExtra(SpriteTranslateService.EXTRA_MASCOT_Y, y)
             .putExtra(SpriteTranslateService.EXTRA_MASCOT_WIDTH, collapsedWidthPx)
-            .putExtra(SpriteTranslateService.EXTRA_MASCOT_HEIGHT, collapsedHeightPx))
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_HEIGHT, collapsedHeightPx)
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_MODE, pet.mode))
     }
 
     private fun createTouchListener(view: View) = View.OnTouchListener { _, event ->
@@ -252,39 +251,22 @@ class FloatingMascotService : Service() {
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
-                    val translating = SpriteTranslateService.isEnabled(this)
-                    if (translating) {
+                    if (SpriteTranslateService.isEnabled(this)) {
                         if (state[5] == 0f) {
                             dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_START)
                             state[5] = 1f
                         }
                         dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE)
+                    } else if (state[5] == 0f) {
+                        state[5] = 2f
+                        (view as? MascotView)?.setMessage("请先授权小精灵无障碍服务，再使用翻译和复制")
                     }
-                    pendingCopy?.let(dragHandler::removeCallbacks)
-                    if (!translating) pendingCopy = Runnable {
-                        if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) {
-                            val currentView = mascotView
-                            val corner = currentView?.dragMarkerCorner ?: -1
-                            val density = resources.displayMetrics.density
-                            val petLeft = currentView?.mascotOffsetPx ?: 0
-                            val targetX = windowParams.x + petLeft + ((if ((corner and 1) == 1) 59f else 5f) * density).toInt()
-                            val targetY = windowParams.y + ((if (corner >= 2) 61f else 5f) * density).toInt()
-                            val bounds = MascotTextAccessibilityService.requestCopyAt(targetX, targetY)
-                            currentView?.setDragMarker(-1)
-                            if (bounds != null) {
-                                showSelectionHighlight(bounds)
-                                currentView?.setMessage("已圈选文字并复制到剪贴板啦！")
-                            } else {
-                                currentView?.setMessage("这个位置没有可复制的文字，换个角落试试吧～")
-                            }
-                        }
-                    }.also { dragHandler.postDelayed(it, 1_000L) }
                 }
                 true
             }
             MotionEvent.ACTION_UP -> {
                 val state = view.getTag() as? FloatArray
-                if (state != null && state[5] > 0f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
+                if (state != null && state[5] == 1f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
                 pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
                 (view as? MascotView)?.setDragMarker(-1)
                 if (state != null && state[4] == 0f) {
@@ -296,7 +278,7 @@ class FloatingMascotService : Service() {
             }
             MotionEvent.ACTION_CANCEL -> {
                 val state = view.getTag() as? FloatArray
-                if (state != null && state[5] > 0f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
+                if (state != null && state[5] == 1f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
                 pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
                 (view as? MascotView)?.setDragMarker(-1); true
             }
@@ -359,6 +341,9 @@ class FloatingMascotService : Service() {
             invalidate()
         }
         var onDialogueVisibilityChanged: ((Boolean) -> Unit)? = null
+        var onModeChanged: ((String) -> Unit)? = null
+        var mode: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MODE, MODE_TRANSLATE) ?: MODE_TRANSLATE
+            private set
         private var bubbleWidthDp = 112f
         private var bubbleHeightDp = 32f
         private var dialogueLineCount = 1
@@ -526,8 +511,10 @@ class FloatingMascotService : Service() {
         private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB97842.toInt(); style = Paint.Style.STROKE; strokeWidth = 1.6f * density }
         private val ear = Path()
         fun onPetTapped() {
-            mood = (mood + 1) % 4
-            setMessage(when (mood) { 1 -> "嘿嘿，今天也要开心呀！"; 2 -> "加油哦，我陪着你！"; 3 -> "收到啦，交给我吧！"; else -> "你好呀，很高兴见到你！" }, 2_600L)
+            mode = if (mode == MODE_TRANSLATE) MODE_COPY else MODE_TRANSLATE
+            onModeChanged?.invoke(mode)
+            mood = if (mode == MODE_TRANSLATE) 2 else 1
+            setMessage(if (mode == MODE_TRANSLATE) "翻译模式已开启\n拖动我，让准星指向文字" else "复制模式已开启\n拖动我，松开即可复制准星文字", 3_200L, if (mode == MODE_TRANSLATE) "cheer" else "wave")
             performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         }
         fun setMessage(value: String, duration: Long = 12_000L, animation: String = "idle") {
@@ -574,12 +561,20 @@ class FloatingMascotService : Service() {
             val bounce = if (active && animationType == "happy") -abs(sin(elapsed / 105f)).toFloat() * 7f else 0f
             val nod = if (active && animationType == "thanks") abs(sin(elapsed / 125f)).toFloat() * 2.8f else 0f
             canvas.translate(mascotLeftDp, sin(now / 560.0).toFloat() * 1.5f + bounce + nod)
-            paint.color = 0x55202A45; canvas.drawCircle(32f, 34f, 29f, paint)
+            val breathe = sin(now / 760.0).toFloat()
+            val bob = sin(now / 510.0).toFloat() * 1.7f + breathe * 0.7f
+            canvas.translate(0f, bob)
+            paint.color = 0x55202A45; canvas.drawCircle(32f, 34f, 29f + breathe * 0.8f, paint)
             ear.reset(); ear.moveTo(12f,18f); ear.lineTo(14f,2f); ear.lineTo(26f,13f); ear.close()
             canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
             ear.reset(); ear.moveTo(38f,13f); ear.lineTo(51f,2f); ear.lineTo(52f,20f); ear.close()
             canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
             canvas.drawCircle(32f,34f,25f,face); canvas.drawCircle(32f,34f,25f,outline)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.2f
+            paint.color = if (mode == MODE_TRANSLATE) 0xFF39C9B4.toInt() else 0xFFFFA34F.toInt()
+            canvas.drawCircle(32f, 34f, 27.8f + sin(now / 430.0).toFloat() * 0.6f, paint)
+            paint.style = Paint.Style.FILL
             if (active) {
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 3.1f
@@ -611,7 +606,8 @@ class FloatingMascotService : Service() {
                 }
                 paint.style = Paint.Style.FILL
             }
-            if ((now % 3400L) < 150L) {
+            val blinkPhase = now % 4100L
+            if (blinkPhase < 170L || blinkPhase in 2350L..2460L) {
                 paint.color = 0xFF473A50.toInt(); paint.strokeWidth = 2.4f; paint.strokeCap = Paint.Cap.ROUND
                 canvas.drawLine(20f,29f,25f,29f,paint); canvas.drawLine(39f,29f,44f,29f,paint)
             } else {
@@ -640,12 +636,15 @@ class FloatingMascotService : Service() {
             }
             canvas.restore()
             drawDialogueBubble(canvas, now)
-            if (visibility == View.VISIBLE && isAttachedToWindow) postInvalidateDelayed(50L)
+            if (visibility == View.VISIBLE && isAttachedToWindow) postInvalidateDelayed(32L)
         }
     }
     companion object {
         const val PREFS = "floating_mascot"
         const val KEY_ENABLED = "enabled"
+        const val KEY_MODE = "interaction_mode"
+        const val MODE_TRANSLATE = "translate"
+        const val MODE_COPY = "copy"
         private const val KEY_X = "x"
         private const val KEY_Y = "y"
         const val ACTION_STOP = "app.qingjian.inputmethod.action.STOP_FLOATING_MASCOT"
