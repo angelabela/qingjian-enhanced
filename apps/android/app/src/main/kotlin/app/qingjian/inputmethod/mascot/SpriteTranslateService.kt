@@ -85,8 +85,6 @@ class SpriteTranslateService : AccessibilityService() {
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         readScreen()
         translator = TranslationEngine(this) { loaded -> translatorReady = loaded }
-        if (!getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(KEY_SPRITE_TRANSLATE_ENABLED, false)) return
-
         crossView = CrosshairView(this, dp(CROSS))
         crossLp = lp(dp(BOX), dp(BOX), touchable = false)
 
@@ -379,7 +377,6 @@ class SpriteTranslateService : AccessibilityService() {
         }
     }
     private companion object {
-        const val KEY_SPRITE_TRANSLATE_ENABLED = "sprite_translate_enabled"
         const val CORE_POLL_MS = 100L
         const val CORE_GIVE_UP_MS = 15_000L
     }
