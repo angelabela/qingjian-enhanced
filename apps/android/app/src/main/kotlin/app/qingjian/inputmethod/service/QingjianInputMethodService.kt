@@ -346,7 +346,8 @@ class QingjianInputMethodService :
             is ScanContent.ClipboardAction.Wifi -> "发现 Wi-Fi「" + smartAction.credentials.ssid + "」，点击连接"
             is ScanContent.ClipboardAction.Url -> "发现网址，点击打开"
             is ScanContent.ClipboardAction.SmsCode -> "发现短信验证码：" + smartAction.code + "，点击填入"
-            is ScanContent.ClipboardAction.Phone -> "发现电话号码：" + smartAction.number + "，点击拨号"
+            is ScanContent.ClipboardAction.Phone -> "发现电话号码：" + smartAction.number + "，点击选择拨号或短信"
+            is ScanContent.ClipboardAction.Phones -> "发现 " + smartAction.numbers.size + " 个电话号码，点击选择号码"
             null -> text
         }
         // 验证码与剪贴板提示持续显示，不再 5 秒自动收起。
@@ -367,11 +368,8 @@ class QingjianInputMethodService :
                     Toast.makeText(this, "无法打开此网址", Toast.LENGTH_SHORT).show()
                 }
                 is ScanContent.ClipboardAction.SmsCode -> commitText(action.code)
-                is ScanContent.ClipboardAction.Phone -> runCatching {
-                    startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + action.number)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure {
-                    Toast.makeText(this, "无法打开拨号界面", Toast.LENGTH_SHORT).show()
-                }
+                is ScanContent.ClipboardAction.Phone -> openPhoneActions(listOf(action.number))
+                is ScanContent.ClipboardAction.Phones -> openPhoneActions(action.numbers)
                 null -> commitText(text)
             }
         }
