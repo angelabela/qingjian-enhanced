@@ -1,3 +1,4 @@
+import java.net.URL
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -144,7 +145,7 @@ val downloadNotoEmojiLottie by tasks.registering {
             val destination = target.resolve("$codepoints.json")
             if (!destination.isFile) {
                 try {
-                    val url = java.net.URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$codepoints/lottie.json")
+                    val url = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$codepoints/lottie.json")
                     val connection = url.openConnection()
                     connection.connectTimeout = 8000
                     connection.readTimeout = 12000
