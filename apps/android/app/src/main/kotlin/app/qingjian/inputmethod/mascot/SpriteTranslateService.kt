@@ -362,6 +362,7 @@ class SpriteTranslateService : AccessibilityService() {
     private fun lp(w: Int, h: Int, touchable: Boolean) = WindowManager.LayoutParams(
         w, h, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             (if (touchable) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE),
