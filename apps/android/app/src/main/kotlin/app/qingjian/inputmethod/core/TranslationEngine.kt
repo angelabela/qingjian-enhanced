@@ -14,8 +14,8 @@ import kotlin.concurrent.thread
  */
 class TranslationEngine(
     context: Context,
-    private val onReady: (Boolean) -> Unit,
     languageOverride: String? = null,
+    private val onReady: (Boolean) -> Unit,
 ) {
     private var handle = 0L
     private var closed = false

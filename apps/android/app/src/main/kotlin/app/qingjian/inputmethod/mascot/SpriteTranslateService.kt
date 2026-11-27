@@ -140,10 +140,10 @@ class SpriteTranslateService : AccessibilityService() {
         density = resources.displayMetrics.density
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         readScreen()
-        translator = TranslationEngine(this, { loaded ->
+        translator = TranslationEngine(this, languageOverride = "en") { loaded ->
             translatorReady = loaded
             translatorLoadFailed = !loaded
-        }, languageOverride = "en")
+        }
         crossView = CrosshairView(this, dp(CROSS))
         crossLp = lp(dp(BOX), dp(BOX), touchable = false)
 
