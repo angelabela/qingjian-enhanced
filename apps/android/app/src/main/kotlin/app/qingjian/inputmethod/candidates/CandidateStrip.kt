@@ -48,10 +48,18 @@ class CandidateStrip(
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
     private val fallbackRects = ArrayList<RectF>()
+    // 三层叠绘形成柔和外发光，同时保留清晰、稳定的光标核心。
+    private val caretGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = markColor
+        alpha = 54
+    }
+    private val caretEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = markColor
+        alpha = 118
+    }
     private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
-        strokeWidth = 1.6f * density
-        strokeCap = Paint.Cap.ROUND
+        alpha = 245
     }
 
     private var preedit = ""
@@ -343,13 +351,23 @@ class CandidateStrip(
         val frame = image ?: return
         val x = frame.preeditEdges.getOrNull(index) ?: return
         if (frame.preeditBottom <= frame.preeditTop) return
-        val half = 1f * density
+        val centerX = leftInset + x
         val top = (frame.preeditTop - 2f * density).coerceAtLeast(0f)
         val bottom = (frame.preeditBottom + 2f * density).coerceAtMost(barHeight)
-        caretPaint.alpha = 230
+        val glowHalf = 4.2f * density
+        val edgeHalf = 2.1f * density
+        val coreHalf = 0.85f * density
         canvas.drawRoundRect(
-            RectF(leftInset + x - half, top, leftInset + x + half, bottom),
-            half, half, caretPaint,
+            RectF(centerX - glowHalf, top - density, centerX + glowHalf, bottom + density),
+            glowHalf, glowHalf, caretGlowPaint,
+        )
+        canvas.drawRoundRect(
+            RectF(centerX - edgeHalf, top, centerX + edgeHalf, bottom),
+            edgeHalf, edgeHalf, caretEdgePaint,
+        )
+        canvas.drawRoundRect(
+            RectF(centerX - coreHalf, top, centerX + coreHalf, bottom),
+            coreHalf, coreHalf, caretPaint,
         )
     }
 
