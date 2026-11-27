@@ -55,6 +55,7 @@ on:
       - fix/718-wubi-background-clouds-copy
       - fix/723-wubi-text-effects-space-gesture
       - design/impeccable-native-audit-781
+      - rebuild/1044-voice-spectrum-65
       - fix/a11y-scroll-actions-832
       - fix/workflow-421-key-feedback-pinyin-candidates
       - feature/android-optional-trigram-model
