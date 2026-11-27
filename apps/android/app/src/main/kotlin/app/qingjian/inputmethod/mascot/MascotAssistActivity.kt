@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.mascot
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import android.view.View
 import android.widget.Toast
@@ -58,6 +59,26 @@ class MascotAssistActivity : PageActivity() {
                 footer = "翻译使用「设置 → 云端大模型」中的现有接口与密钥，并遵循青简当前学习语言设置；不使用 ML Kit，也不额外下载翻译模型。",
             ),
             ui.group(
+                "输入光标辉光",
+                listOf(
+                    ui.toggle(
+                        "显示外部输入框光标光效",
+                        "在其他应用的文字光标旁显示柔和青蓝色辉光；密码和私密输入框会自动关闭。",
+                        prefs.getBoolean(KEY_CURSOR_GLOW_ENABLED, false),
+                        null,
+                    ) { checked ->
+                        prefs.edit().putBoolean(KEY_CURSOR_GLOW_ENABLED, checked).apply()
+                        if (checked && !Settings.canDrawOverlays(this)) {
+                            Toast.makeText(this, "需要允许青简显示在其他应用上层，才能绘制光标辉光", Toast.LENGTH_LONG).show()
+                            runCatching {
+                                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                            }
+                        }
+                    },
+                ),
+                footer = "通过编辑器提供的光标坐标定位，不修改其他应用本身的光标。部分不提供光标坐标的应用可能无法显示。",
+            ),
+            ui.group(
                 "拖动复制说明",
                 listOf(
                     ui.row("使用方法", "开启本页开关并在系统无障碍设置中授权后，拖动小精灵到要复制的文字上，停住超过 1 秒。青简会尝试复制该文本到系统剪贴板。"),
@@ -70,5 +91,6 @@ class MascotAssistActivity : PageActivity() {
     companion object {
         const val PREFS = "mascot_assist"
         const val KEY_ENABLED = "cross_app_enabled"
+        const val KEY_CURSOR_GLOW_ENABLED = "cursor_glow_enabled"
     }
 }
