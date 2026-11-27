@@ -143,7 +143,7 @@ val downloadNotoEmojiLottie by tasks.registering {
                 readTimeout = 30000
             }
         val manifest = manifestConnection.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val idPattern = Regex("""+""""\"name\"\\s*:\\s*\"emoji_u([0-9a-fA-F_]+)\""""+""")
+        val idPattern = Regex("\\"name\\"\\s*:\\s*\\"emoji_u([0-9a-fA-F_]+)\\"")
         val ids: List<String> = idPattern.findAll(manifest)
             .map { match -> match.groupValues[1].lowercase() }
             .distinct()
