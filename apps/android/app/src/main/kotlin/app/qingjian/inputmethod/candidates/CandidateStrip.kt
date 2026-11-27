@@ -432,11 +432,11 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         // Kotlin 侧补充的语义标点没有 Rust 主布局格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
         val extraStart = image.width + EXTRA_START_GAP_DP * density
-        val extraWidths = extraWidths()
-        val extraOffsets = extraOffsets()
+        val cellWidths = extraWidths()
+        val cellOffsets = extraOffsets()
         extras.forEachIndexed { slot, index ->
-            val cellWidth = extraWidths[slot]
-            val left = extraStart + extraOffsets[slot]
+            val cellWidth = cellWidths[slot]
+            val left = extraStart + cellOffsets[slot]
             if (left + cellWidth < scrollX || left > scrollX + contentViewWidth) return@forEachIndexed
             val rect = RectF(
                 left + EXTRA_SIDE_PADDING_DP * density,
