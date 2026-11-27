@@ -684,10 +684,10 @@ mod cloud_candidate_sanity_tests {
             _ => "",
         };
         assert!(candidate_readings_match("什么", &pinyin, |ch, syllable| {
-            actual_reading(ch) == syllable
+            actual_reading(ch) == syllable.as_str()
         }));
         assert!(!candidate_readings_match("功能", &pinyin, |ch, syllable| {
-            actual_reading(ch) == syllable
+            actual_reading(ch) == syllable.as_str()
         }));
     }
 }
