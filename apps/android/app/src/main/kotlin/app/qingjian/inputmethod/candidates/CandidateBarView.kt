@@ -293,6 +293,9 @@ class CandidateBarView(
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
         palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board, scaledDensity = resources.displayMetrics.scaledDensity,
     )
+    /** 扩展候选面板直接复用候选栏的样式引擎，保证颜色、字重、字号和特效配置完全一致。 */
+    val candidateTextStyleEngine: CandidateTextStyleEngine get() = strip.textStyles
+
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
         palette, density, barHeight,
