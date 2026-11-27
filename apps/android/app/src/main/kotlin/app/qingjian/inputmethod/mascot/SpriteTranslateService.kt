@@ -298,9 +298,9 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun requestHit() {
-        val sequence = ++hitRequestSeq
         val now = SystemClock.uptimeMillis()
         if (now - lastQueryAt < QUERY_GAP_MS) return
+        val sequence = ++hitRequestSeq
         lastQueryAt = now
         val p = targetPoint()
         bg.post {                                   // 遍历控件树有跨进程调用，放后台线程
