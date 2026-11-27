@@ -81,7 +81,7 @@
         <service android:name=".mascot.FloatingMascotService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-visible floating companion overlay" />
         </service>
-        <activity android:name=".service.SmartActionActivity" android:exported="false" />
+        <activity android:name=".service.SmartActionActivity" android:exported="false" android:theme="@style/Theme.Qingjian.Sheet" />
         <activity android:name=".scan.BarcodeScannerActivity" android:exported="false" />
         <activity android:name=".scan.WifiJoinActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
         <service
