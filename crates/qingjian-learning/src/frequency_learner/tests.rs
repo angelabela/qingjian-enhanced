@@ -208,15 +208,18 @@ fn broken_lines_are_skipped_instead_of_failing_the_load() {
     // 编码坏掉的字节也不能让整个文件读不了
     std::fs::write(dir.join(USER_ENGLISH_FILE), b"gist\t2\n\xff\xfe\t1\n").unwrap();
 
-    let learner = FrequencyLearner::from_path(&path).unwrap();
+    let mut learner = FrequencyLearner::from_path(&path).unwrap();
     assert_eq!(learner.weight("开发"), 3);
     assert_eq!(learner.weight("中文"), 1);
     assert_eq!(learner.user_ngram().unwrap().pair(Some("我"), "想"), 2);
     assert_eq!(learner.choice_weight("ba", "吧"), 2);
     assert_eq!(learner.typo_count("gan", "guan"), 1);
     assert_eq!(learner.word_count(), 1);
-    assert_eq!(learner.english_count(), 2);
+    assert_eq!(learner.english_count(), 0, "旧的两次记录和损坏行都必须迁移清理");
+    assert!(!learner.english_dirty, "启动加载时应立即完成迁移回写");
     assert!(learner.path.is_some());
+    let cleaned = std::fs::read_to_string(FrequencyLearner::english_path(&path)).unwrap();
+    assert!(!cleaned.contains("gist"), "{cleaned:?}");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -358,20 +361,64 @@ fn english_words_round_trip_through_tsv_and_form_a_word_list() {
     learner.learn_english("Gist");
     learner.learn_english("python");
     assert_eq!(learner.english_count(), 2);
-    // 次数合并，写法是最近一次敲的
-    assert_eq!(learner.user_english().unwrap().get("gist"), Some("Gist"));
+    assert!(learner.user_english().is_none(), "未满三次不得进入补全表");
+    // 第三次明确选择后才进入补全表，写法跟随最近一次选择
     learner.learn_english("gist");
     assert_eq!(learner.user_english().unwrap().get("gist"), Some("gist"));
-    assert_eq!(learner.user_english().unwrap().complete("g", 3), ["gist"]);
+    assert_eq!(learner.user_english().unwrap().complete("gis", 3), ["gist"]);
     learner.flush();
     let reloaded = FrequencyLearner::from_path(&path).unwrap();
-    assert_eq!(reloaded.english_count(), 2);
-    assert_eq!(
-        reloaded.user_english().unwrap().get("python"),
-        Some("python")
-    );
+    assert_eq!(reloaded.english_count(), 1, "未满三次的 python 不应迁移");
+    assert_eq!(reloaded.user_english().unwrap().get("gist"), Some("gist"));
     let saved = std::fs::read_to_string(FrequencyLearner::english_path(&path)).unwrap();
     assert!(saved.contains("gist\t3"));
+}
+
+#[test]
+fn legacy_personal_english_is_filtered_and_rewritten_on_first_flush() {
+    let dir = std::env::temp_dir().join(format!("qingjian-english-migration-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("user.tsv");
+    let english_path = FrequencyLearner::english_path(&path);
+    std::fs::write(
+        &english_path,
+        concat!(
+            "# old personal English table\n",
+            "hello\t3\n",
+            "OK\t3\n",
+            "hhw1\t20\n",
+            "hhgh.\t15\n",
+            "xoxfpfdnBadm\t12\n",
+            "two\t2\n",
+            "ab\t9\n",
+            "MixedCASE\t8\n",
+        ),
+    ).unwrap();
+    std::fs::write(
+        FrequencyLearner::english_days_path(&path),
+        "hello\t20000\nhhw1\t20000\n",
+    ).unwrap();
+
+    let mut learner = FrequencyLearner::from_path(&path).unwrap();
+    assert_eq!(learner.english_count(), 2);
+    let list = learner.user_english().unwrap();
+    assert_eq!(list.get("hello"), Some("hello"));
+    assert_eq!(list.get("ok"), Some("OK"));
+    for dirty in ["hhw1", "hhgh.", "xoxfpfdnBadm", "two", "ab", "MixedCASE"] {
+        assert_eq!(list.get(dirty), None, "{dirty}");
+    }
+    assert!(!learner.english_dirty, "from_path 应已立即完成迁移回写");
+
+    let saved = std::fs::read_to_string(&english_path).unwrap();
+    assert!(saved.contains("hello\t3"), "{saved:?}");
+    assert!(saved.contains("OK\t3"), "{saved:?}");
+    for dirty in ["hhw1", "hhgh.", "xoxfpfdnBadm", "two", "ab", "MixedCASE"] {
+        assert!(!saved.contains(dirty), "{saved:?}");
+    }
+    let reloaded = FrequencyLearner::from_path(&path).unwrap();
+    assert_eq!(reloaded.english_count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

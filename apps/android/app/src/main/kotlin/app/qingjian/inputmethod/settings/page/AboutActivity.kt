@@ -32,6 +32,17 @@ class AboutActivity : PageActivity() {
                 ui.row(R.string.about_local_title, R.string.about_local_note),
                 ui.row(R.string.about_license_title, R.string.about_license_note),
             ),
+            ui.group(
+                "动画 Emoji 署名",
+                listOf(
+                    ui.text(
+                        "Google Noto Emoji animations。来源：https://googlefonts.github.io/noto-emoji-animation/\n" +
+                            "许可：Creative Commons Attribution 4.0 International（CC BY 4.0）。\n" +
+                            "https://creativecommons.org/licenses/by/4.0/",
+                        12f, ui.colors.secondary,
+                    ),
+                ),
+            ),
         )
     }
 }

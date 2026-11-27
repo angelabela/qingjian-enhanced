@@ -21,7 +21,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.PopupWindow
-import android.icu.text.Transliterator
+import net.sourceforge.pinyin4j.PinyinHelper
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -58,6 +58,9 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -82,16 +85,95 @@ class ClipboardPanel(
 
     private var clips: List<ClipItem> = ClipboardStore.list(context, actions.clipboardLimit)
     private var searchQuery = ""
-    private val pinyinInitialsCache = HashMap<String, String>()
-    private val visibleClipIndices: List<Int> get() = clips.indices.filter { index ->
-        searchQuery.isBlank() ||
-            clips[index].text.contains(searchQuery, ignoreCase = true) ||
-            pinyinInitials(clips[index].text).contains(searchQuery, ignoreCase = true)
+    private data class ClipSearchEntry(val sourceIndex: Int, val text: String, val alternatives: Array<String>) {
+        fun find(query: String): Int {
+            if (query.isEmpty()) return 0
+            val last = alternatives.size - query.length
+            if (last < 0) return -1
+            for (start in 0..last) {
+                var matched = true
+                for (offset in query.indices) {
+                    if (query[offset] !in alternatives[start + offset]) {
+                        matched = false
+                        break
+                    }
+                }
+                if (matched) return start
+            }
+            return -1
+        }
     }
-    private fun pinyinInitials(text: String): String = pinyinInitialsCache.getOrPut(text) {
-        HAN_TO_LATIN.transliterate(text).lowercase()
-            .split(Regex("[^a-z0-9]+")).mapNotNull { it.firstOrNull() }.joinToString("")
+    private var clipSearchEntries: List<ClipSearchEntry> = buildClipSearchEntries(clips)
+    @Volatile private var visibleClipIndices: List<Int> = clips.indices.toList()
+    private var searchGeneration = 0
+    private var pendingSearch: java.util.concurrent.Future<*>? = null
+
+    private fun buildClipSearchEntries(items: List<ClipItem>): List<ClipSearchEntry> =
+        items.mapIndexed { index, item ->
+            val alternatives = ArrayList<String>(item.text.length)
+            item.text.forEach { ch ->
+                when {
+                    ch.isWhitespace() -> Unit
+                    ch in '\u4e00'..'\u9fff' -> {
+                        val initials = PinyinHelper.toHanyuPinyinStringArray(ch).orEmpty()
+                            .mapNotNull { it.firstOrNull()?.lowercaseChar()?.takeIf { letter -> letter in 'a'..'z' } }
+                            .distinct().joinToString("")
+                        alternatives += initials.ifEmpty { ch.toString() }
+                    }
+                    else -> alternatives += ch.lowercaseChar().toString()
+                }
+            }
+            ClipSearchEntry(index, item.text, alternatives.toTypedArray())
+        }
+
+    private fun rebuildClipSearchIndex() {
+        clipSearchEntries = buildClipSearchEntries(clips)
+        lastCompletedSearchQuery = ""
+        lastCompletedSearchResults = clipSearchEntries
+        scheduleClipSearch(searchQuery)
     }
+
+    private fun scheduleClipSearch(raw: String) {
+        val query = raw.lowercase().filterNot(Char::isWhitespace)
+        val generation = ++searchGeneration
+        pendingSearch?.cancel(true)
+        if (query.isEmpty()) {
+            visibleClipIndices = clips.indices.toList()
+            layouts.clear()
+            arrange()
+            invalidate()
+            return
+        }
+        val allEntries = clipSearchEntries
+        val previousQuery = lastCompletedSearchQuery
+        val previousResults = lastCompletedSearchResults
+        val base = if (query.startsWith(previousQuery)) previousResults else allEntries
+        pendingSearch = CLIPBOARD_SEARCH_EXECUTOR.submit {
+            val head = ArrayList<Int>()
+            val rest = ArrayList<Int>()
+            for (entry in base) {
+                if (Thread.currentThread().isInterrupted) return@submit
+                val position = entry.find(query)
+                if (position == 0) head += entry.sourceIndex
+                else if (position > 0) rest += entry.sourceIndex
+            }
+            val result = head + rest
+            val resultSet = result.toHashSet()
+            val completedEntries = base.filter { it.sourceIndex in resultSet }
+            post {
+                if (generation != searchGeneration || !isAttachedToWindow) return@post
+                lastCompletedSearchQuery = query
+                lastCompletedSearchResults = completedEntries
+                visibleClipIndices = result
+                layouts.clear()
+                arrange()
+                invalidate()
+            }
+        }
+    }
+
+    private var lastCompletedSearchQuery = ""
+    private var lastCompletedSearchResults: List<ClipSearchEntry> = clipSearchEntries
     private fun clipSourceIndex(index: Int): Int = visibleClipIndices.getOrNull(index) ?: -1
     private fun clipAt(index: Int): ClipItem? = clips.getOrNull(clipSourceIndex(index))
     private var searchEditing = false
@@ -162,15 +244,17 @@ class ClipboardPanel(
     }
 
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val clipTimestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    private val timestampPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = ink.sp(11.5f)
+        textAlign = Paint.Align.RIGHT
+        color = palette.gloss
+    }
     private val card = RectF()
     private val layouts = HashMap<String, StaticLayout>()
     private val thumbnails = HashMap<String, Bitmap?>()
     private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val scrollTrailPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
@@ -198,11 +282,6 @@ class ClipboardPanel(
     private var swipeOffsetX = 0f
     private var swipeClipIndex = -1
     private var deleteRepeatStarted = false
-
-    // 纵向滚动采用轻量液态拖尾；卡片本身保持稳定绘制，避免每帧逐卡片离屏合成。
-    private var lastDrawnScrollOffset = 0f
-    private var scrollVelocity = 0f
-    private var lastScrollFrameAt = 0L
 
     private val activateSwipeRunnable = Runnable {
         if (swipeTracking && swipeClipIndex >= 0 && !showingPhrases) {
@@ -282,8 +361,10 @@ class ClipboardPanel(
         var popupCurrentX = 0
         var popupCurrentY = 0
         var clearPressedKey: (() -> Unit)? = null
+        var downDeleteControl = false
+        var downCloseControl = false
         val beginDrag = Runnable {
-            if (isAttachedToWindow) {
+            if (isAttachedToWindow && !downDeleteControl && !downCloseControl) {
                 val topIndex = downKeyForLongPress?.let(rows.first()::indexOf) ?: -1
                 val digit = topRowDigits.getOrNull(topIndex)
                 val alternate = digit ?: downKeyForLongPress?.let(::alternateForKey)
@@ -304,15 +385,18 @@ class ClipboardPanel(
             private val keys = ArrayList<Pair<Char, RectF>>()
             private val gap = ink.dp(4f)
             private val deleteRect = RectF()
+            private val closeRect = RectF()
             private var pressedKey: Char? = null
             private var downKey: Char? = null
             private var downDelete = false
+            private var downClose = false
             private var headerPressed = false
             init { clearPressedKey = { pressedKey = null; headerPressed = false; invalidate() } }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 keys.clear()
                 deleteRect.set((w - ink.dp(78f)).toFloat(), ink.dp(5f).toFloat(), (w - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat())
+                closeRect.set(ink.dp(7f).toFloat(), ink.dp(5f).toFloat(), ink.dp(48f).toFloat(), (headerHeight - ink.dp(5f)).toFloat())
                 rows.forEachIndexed { row, letters ->
                     val usable = w - ink.dp(20f)
                     val kw = (usable - gap * (letters.length - 1)) / letters.length
@@ -331,13 +415,23 @@ class ClipboardPanel(
                 paint.color = if (headerPressed) palette.brand else palette.surface
                 canvas.drawRoundRect(RectF(ink.dp(7f).toFloat(), ink.dp(5f).toFloat(), (width - ink.dp(7f)).toFloat(), (headerHeight - ink.dp(5f)).toFloat()), ink.dp(9f).toFloat(), ink.dp(9f).toFloat(), paint)
                 paint.color = if (headerPressed) palette.onBrand else palette.gloss
-                paint.textSize = ink.dp(12f).toFloat()
+                paint.textSize = ink.sp(12f)
                 paint.textAlign = Paint.Align.CENTER
                 canvas.drawText("移动键盘：按住任意位置拖动 · 长按数字/符号输入", (width - ink.dp(82f)) / 2f, headerHeight / 2f - (paint.ascent() + paint.descent()) / 2f, paint)
-                paint.color = palette.brand
+                paint.color = if (downClose) palette.brand else palette.surface
+                canvas.drawRoundRect(closeRect, ink.dp(8f), ink.dp(8f), paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = ink.dp(1f)
+                paint.color = if (downClose) palette.onBrand else palette.brand
+                canvas.drawRoundRect(closeRect, ink.dp(8f), ink.dp(8f), paint)
+                paint.style = Paint.Style.FILL
+                paint.textAlign = Paint.Align.CENTER
+                paint.textSize = ink.sp(18f)
+                canvas.drawText("×", closeRect.centerX(), closeRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
+                paint.color = if (downDelete) palette.gloss else palette.brand
                 canvas.drawRoundRect(deleteRect, ink.dp(8f), ink.dp(8f), paint)
                 paint.color = palette.onBrand
-                paint.textSize = ink.dp(21f).toFloat()
+                paint.textSize = ink.sp(21f)
                 canvas.drawText("⌫", deleteRect.centerX(), deleteRect.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 keys.forEach { (ch, r) ->
                     val pressed = ch == pressedKey
@@ -360,14 +454,14 @@ class ClipboardPanel(
                     if (alternate != null) {
                         paint.color = if (pressed) palette.onBrand else palette.gloss
                         paint.textAlign = Paint.Align.CENTER
-                        paint.textSize = ink.dp(if (rowIndex == 0) 9f else 10f).toFloat()
+                        paint.textSize = ink.sp(if (rowIndex == 0) 9f else 10f)
                         // 数字和符号都在键帽上方横向居中，字母留在下方。
                         canvas.drawText(alternate.toString(), r.centerX(),
                             r.top + ink.dp(11f) - (paint.ascent() + paint.descent()) / 2f, paint)
                     }
                     paint.color = if (pressed) palette.onBrand else palette.text
                     paint.textAlign = Paint.Align.CENTER
-                    paint.textSize = ink.dp(18f).toFloat()
+                    paint.textSize = ink.sp(18f)
                     val letterCenterY = r.centerY() + if (alternate != null) ink.dp(4f) else 0f
                     canvas.drawText(ch.toString(), r.centerX(), letterCenterY - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
@@ -383,8 +477,11 @@ class ClipboardPanel(
                         longPressDigitValue = null
                         parent?.requestDisallowInterceptTouchEvent(true)
                         downDelete = deleteRect.contains(event.x, event.y)
-                        headerPressed = event.y < headerHeight && !downDelete
-                        downKey = if (downDelete || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
+                        downClose = closeRect.contains(event.x, event.y)
+                        downDeleteControl = downDelete
+                        downCloseControl = downClose
+                        headerPressed = event.y < headerHeight && !downDelete && !downClose
+                        downKey = if (downDelete || downClose || headerPressed) null else keys.firstOrNull { it.second.contains(event.x, event.y) }?.first
                         downKeyForLongPress = downKey
                         pressedKey = downKey
                         invalidate()
@@ -428,6 +525,10 @@ class ClipboardPanel(
                                     updateSearchQuery(searchQuery + longPressDigitValue)
                                     Haptics.tap(context)
                                 }
+                                !longPressTriggered && downClose && closeRect.contains(event.x, event.y) -> {
+                                    Haptics.tap(context)
+                                    popupWindow?.dismiss()
+                                }
                                 !longPressTriggered && downDelete && deleteRect.contains(event.x, event.y) -> {
                                     if (searchQuery.isNotEmpty()) updateSearchQuery(searchQuery.dropLast(1))
                                     Haptics.tap(context)
@@ -444,6 +545,9 @@ class ClipboardPanel(
                         pressedKey = null
                         downKey = null
                         downDelete = false
+                        downClose = false
+                        downDeleteControl = false
+                        downCloseControl = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
@@ -458,6 +562,9 @@ class ClipboardPanel(
                         pressedKey = null
                         downKey = null
                         downDelete = false
+                        downClose = false
+                        downDeleteControl = false
+                        downCloseControl = false
                         headerPressed = false
                         downKeyForLongPress = null
                         longPressDigitValue = null
@@ -509,11 +616,11 @@ class ClipboardPanel(
     private fun updateSearchQuery(value: String) {
         searchQuery = value
         expanded = -1
-        layouts.clear()
         listScroll.reset()
         searchCursorVisible = true
         removeCallbacks(searchCursorBlink)
         if (searchEditing) postDelayed(searchCursorBlink, 520L)
+        scheduleClipSearch(value)
         invalidate()
     }
 
@@ -563,6 +670,96 @@ class ClipboardPanel(
             .edit().putBoolean(SEARCH_EDITOR_ACTIVE, false).apply()
         if (activeInstance?.get() === this) activeInstance = null
         super.onDetachedFromWindow()
+    }
+
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (list.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        if (!showingPhrases) {
+    if (!searchRect.isEmpty) {
+        elements += AccessibilityElement(
+            if (searchQuery.isBlank()) "搜索剪贴板" else "搜索剪贴板，当前关键词$searchQuery",
+            RectF(searchRect),
+            virtualId = 1001,
+        )
+        elements += AccessibilityElement("删除一个字符", RectF(deleteBackwardRect), virtualId = 1002)
+        elements += AccessibilityElement(
+            "粘贴后${if (pasteEnter) "回车换行" else "不自动回车"}，点击切换",
+            RectF(pasteToggleRect),
+            selected = pasteEnter,
+            checked = pasteEnter,
+            virtualId = 1003,
+        )
+        elements += AccessibilityElement(
+            "粘贴后${if (pasteNextCell) "跳到下格" else "不跳到下格"}，点击切换",
+            RectF(pasteNextCellRect),
+            selected = pasteNextCell,
+            checked = pasteNextCell,
+            virtualId = 1004,
+        )
+    }
+        } else {
+    groups.labels.indices.forEach { index ->
+        groups.accessibilityBounds(index)?.let { bounds ->
+            elements += AccessibilityElement(
+                "常用语分组，${groups.labels[index]}" + if (index == groups.selected) "，已选中" else "",
+                bounds,
+                selected = index == groups.selected,
+                virtualId = 2000 + index,
+            )
+        }
+    }
+        }
+        for (i in 0 until count) {
+    if (i !in tops.indices || i !in bottoms.indices) continue
+    val top = list.top + tops[i] - listScroll.offset
+    val bottom = list.top + bottoms[i] - listScroll.offset
+    if (bottom <= list.top || top >= list.bottom) continue
+    val summary = textOf(i).replace('\n', ' ').take(48).ifBlank { "图片或空白剪贴板内容" }
+    val timeLabel = timestampOf(i)?.let { "，复制时间：$it" }.orEmpty()
+    val label = if (showingPhrases) "常用语：$summary" else "剪贴板：$summary$timeLabel"
+    elements += AccessibilityElement(
+        label + if (expanded == i) "，已展开" else "，点击上屏，右侧可展开操作",
+        RectF(list.left + ink.dp(CARD_MARGIN_DP), top, list.right - ink.dp(CARD_MARGIN_DP), bottom),
+        selected = expanded == i,
+        virtualId = 10000 + i,
+    )
+    val chevronLeft = width - ink.dp(CARD_MARGIN_DP + CHEVRON_DP + 8f)
+    elements += AccessibilityElement(
+        if (expanded == i) "收起这条记录的操作" else "展开这条记录的操作",
+        RectF(chevronLeft, top, list.right, minOf(bottom, top + ink.dp(CARD_PADDING_DP + 30f))),
+        selected = expanded == i,
+        virtualId = 20000 + i,
+    )
+    if (expanded == i && actionLabels().isNotEmpty() && expansionProgress > 0f) {
+        val labels = actionLabels()
+        val actionTop = bottom - ink.dp(ACTIONS_DP)
+        val each = actionWidth()
+        labels.forEachIndexed { actionIndex, action ->
+            val left = ink.dp(CARD_MARGIN_DP + CARD_PADDING_DP) + each * actionIndex
+            elements += AccessibilityElement(
+                action.second,
+                RectF(left, actionTop, left + each, bottom),
+                virtualId = 30000 + i * 10 + actionIndex,
+            )
+        }
+    }
+        }
+        accessibilityScrollElement("剪贴板和常用语列表，可滚动", RectF(list), listScroll)?.let(elements::add)
+        if (showingPhrases && groups.accessibilityScrollable) {
+            elements += AccessibilityElement(
+                groups.accessibilityScrollLabel,
+                RectF(groups.bounds),
+                virtualId = 1000001,
+                onScroll = groups::accessibilityScroll,
+            )
+        }
+        return elements.mapNotNull { element ->
+            if ((element.virtualId ?: -1) >= 10000 && element.virtualId != 1000001) {
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(list)) null else element.copy(bounds = visible)
+            } else element
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -626,22 +823,6 @@ class ClipboardPanel(
         } else {
             restoreClipScrollPending = false
         }
-        val now = SystemClock.uptimeMillis()
-        val frameDelta = (now - lastScrollFrameAt).coerceIn(1L, 48L)
-        val scrollDelta = listScroll.offset - lastDrawnScrollOffset
-        if (kotlin.math.abs(scrollDelta) > 0.25f) {
-            val instantaneousVelocity = (scrollDelta / frameDelta).coerceIn(-3.2f, 3.2f)
-            scrollVelocity = (scrollVelocity * 0.58f + instantaneousVelocity * 0.42f).coerceIn(-3.2f, 3.2f)
-        }
-        lastDrawnScrollOffset = listScroll.offset
-        lastScrollFrameAt = now
-        val trailStrength = (kotlin.math.abs(scrollVelocity) / 3.2f).coerceIn(0f, 1f)
-        if (trailStrength > 0.018f) {
-            scrollVelocity *= kotlin.math.exp(-frameDelta / 190f)
-            postInvalidateOnAnimation()
-        } else {
-            scrollVelocity = 0f
-        }
         canvas.save()
         canvas.clipRect(list)
         if (count == 0) {
@@ -660,26 +841,6 @@ class ClipboardPanel(
             }
             drawCard(canvas, i, top, bottom)
             canvas.restore()
-        }
-        // 单条边缘流光取代逐卡片缩放/透明离屏层，减少快速滑动时的绘制开销。
-        if (trailStrength > 0.025f) {
-            val trailHeight = list.height() * (0.12f + trailStrength * 0.20f)
-            val trailCenter = if (scrollVelocity > 0f) {
-                list.top + trailHeight * 0.52f
-            } else {
-                list.bottom - trailHeight * 0.52f
-            }
-            val alpha = (0x72 * trailStrength).toInt().coerceIn(0, 0x72)
-            scrollTrailPaint.shader = LinearGradient(
-                0f, trailCenter - trailHeight / 2f, 0f, trailCenter + trailHeight / 2f,
-                intArrayOf(Color.TRANSPARENT, (palette.brand and 0x00FFFFFF) or (alpha shl 24), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.5f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            val trailRect = RectF(width - ink.dp(3f), trailCenter - trailHeight / 2f,
-                width - ink.dp(1f), trailCenter + trailHeight / 2f)
-            canvas.drawRoundRect(trailRect, ink.dp(1f), ink.dp(1f), scrollTrailPaint)
-            scrollTrailPaint.shader = null
         }
         canvas.restore()
         if (showingPhrases) {
@@ -846,9 +1007,18 @@ class ClipboardPanel(
     private fun textWidth() = (width - ink.dp(CARD_MARGIN_DP) * 2 - ink.dp(CARD_PADDING_DP) * 2 - ink.dp(CHEVRON_DP)).toInt()
 
     private fun contentHeight(i: Int): Float {
-        if (!showingPhrases) clipAt(i)?.image?.let { return ink.dp(IMAGE_DP) }
-        return layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        if (showingPhrases) {
+            return layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        }
+        val clip = clipAt(i) ?: return 0f
+        val bodyHeight = if (clip.image != null) ink.dp(IMAGE_DP) else layout(i).height.toFloat()
+        val timestampHeight = if (clip.copiedAtSeconds > 0L) ink.dp(TIME_LINE_DP) else 0f
+        return bodyHeight + timestampHeight
     }
+
+    private fun timestampOf(i: Int): String? = if (showingPhrases) null else clipAt(i)?.copiedAtSeconds
+        ?.takeIf { it > 0L }
+        ?.let { clipTimestampFormat.format(Date(it * 1000L)) }
 
     /** 常用语的输入码（有才画一行）。 */
     private fun codeOf(i: Int): String? = if (showingPhrases) shownPhrases()[i].code.ifEmpty { null } else null
@@ -866,7 +1036,7 @@ class ClipboardPanel(
         return layouts.getOrPut(key) {
             val shown = text.take(if (open) 3000 else 600)
             val view = CodeView.of(shown)
-            textPaint.textSize = ink.dp(if (view.code) 13f else 15.5f)
+            textPaint.textSize = ink.sp(if (view.code) 13f else 15.5f)
             textPaint.typeface = if (view.code) Typeface.MONOSPACE else Typeface.DEFAULT
             textPaint.color = palette.text
             val styled: CharSequence = if (view.code && highlight) colored(shown, view) else shown
@@ -901,7 +1071,11 @@ class ClipboardPanel(
         val padding = ink.dp(CARD_PADDING_DP)
         card.set(margin, top, width - margin, bottom)
         ink.round(canvas, card, 12f, palette.surface)
-        val image = if (showingPhrases) null else clipAt(i)?.image
+        val clip = if (showingPhrases) null else clipAt(i)
+        val image = clip?.image
+        val bodyHeight = if (image != null) ink.dp(IMAGE_DP) else {
+            layout(i).height + (if (codeOf(i) != null) ink.dp(CODE_LINE_DP) else 0f)
+        }
         if (image != null) {
             thumbnail(image)?.let { bitmap ->
                 val h = ink.dp(IMAGE_DP)
@@ -918,6 +1092,12 @@ class ClipboardPanel(
                 val y = top + padding + layout(i).height + ink.dp(CODE_LINE_DP) / 2
                 ink.textStart(canvas, "输入码  $code", 12.5f, palette.gloss, margin + padding, y, width - margin)
             }
+        }
+        timestampOf(i)?.let { timestamp ->
+            timestampPaint.color = palette.gloss
+            val centerY = top + padding + bodyHeight + ink.dp(TIME_LINE_DP) / 2f
+            val baseline = centerY - (timestampPaint.ascent() + timestampPaint.descent()) / 2f
+            canvas.drawText(timestamp, width - margin - padding, baseline, timestampPaint)
         }
         val open = i == expanded
         ink.icon(canvas, if (open) Icon.COLLAPSE else Icon.EXPAND, width - margin - ink.dp(CHEVRON_DP) / 2, top + padding + ink.dp(11f), 20f, palette.gloss)
@@ -1171,11 +1351,14 @@ class ClipboardPanel(
     private fun deleteClipAt(index: Int) {
         val sourceIndex = clipSourceIndex(index)
         if (sourceIndex !in clips.indices) return
+        clearAccessibilityElementFocusForContentReplacement()
         ClipboardStore.remove(context, sourceIndex, actions.clipboardLimit)
         clips = ClipboardStore.list(context, actions.clipboardLimit)
+        rebuildClipSearchIndex()
         app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
         // 删除当前卡片后保留列表滚动量，下一条内容自然补位，不跳回第一条。
         collapse(resetScroll = false)
+        notifyAccessibilityContentChanged()
     }
 
     override fun onTap(x: Float, y: Float) {
@@ -1199,6 +1382,25 @@ class ClipboardPanel(
             return
         }
         when {
+            !showingPhrases && deleteBackwardRect.contains(x, y) -> actions.deleteBackward()
+            !showingPhrases && pasteToggleRect.contains(x, y) -> {
+                pasteEnter = !pasteEnter
+                if (pasteEnter) pasteNextCell = false
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter)
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, pasteNextCell)
+                    .apply()
+                invalidate()
+            }
+            !showingPhrases && pasteNextCellRect.contains(x, y) -> {
+                pasteNextCell = !pasteNextCell
+                if (pasteNextCell) pasteEnter = false
+                Settings.preferences(context).edit()
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_ENTER, pasteEnter)
+                    .putBoolean(Settings.KEY_CLIPBOARD_PASTE_NEXT_CELL, pasteNextCell)
+                    .apply()
+                invalidate()
+            }
             y < headerHeight && isRightIcon(x, y) -> onRightIcon()
             y < headerHeight -> tabs.indexAt(x)?.let(::switchTab)
             showingPhrases && y > groupTop() -> groups.indexAt(x)?.let { index ->
@@ -1228,9 +1430,6 @@ class ClipboardPanel(
         if (resetScroll) {
             listScroll.reset()
             lastClipScrollOffset = 0f
-            lastDrawnScrollOffset = 0f
-            scrollVelocity = 0f
-            lastScrollFrameAt = 0L
             restoreClipScrollPending = false
         } else if (!showingPhrases) {
             lastClipScrollOffset = listScroll.offset
@@ -1243,10 +1442,13 @@ class ClipboardPanel(
             actions.editPhrase(null, visiblePhraseGroups.getOrNull(groups.selected) ?: PhraseRules.defaultGroup)
         } else if (clips.isNotEmpty()) {
             if (clearArmed) {
+                clearAccessibilityElementFocusForContentReplacement()
                 clips = ClipboardStore.clear(context, actions.clipboardLimit)
+                rebuildClipSearchIndex()
                 app.qingjian.inputmethod.clipboard.sync.ClipboardSync.changed()
                 clearArmed = false
                 collapse()
+                notifyAccessibilityContentChanged()
             } else {
                 clearArmed = true
             }
@@ -1329,16 +1531,21 @@ class ClipboardPanel(
     }
 
     private fun reloadPhrases(page: PhrasePage) {
+        val replacingVisiblePhraseRows = showingPhrases
+        if (replacingVisiblePhraseRows) clearAccessibilityElementFocusForContentReplacement()
         this.page = page
         groups.labels = visiblePhraseGroups
         groups.selected = visiblePhraseGroups.indexOf(lastGroup).coerceAtLeast(0)
         actions.phrasesChanged()
         // 从剪贴板条目添加常用语时仍留在剪贴板页，不能把当前浏览位置重置到顶部。
         collapse(resetScroll = showingPhrases)
+        if (replacingVisiblePhraseRows) notifyAccessibilityContentChanged()
     }
 
     companion object {
-        private val HAN_TO_LATIN: Transliterator = Transliterator.getInstance("Han-Latin; Latin-ASCII")
+        private val CLIPBOARD_SEARCH_EXECUTOR = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "qingjian-clipboard-search").apply { isDaemon = true }
+        }
         private val IMAGE_DECODER = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "qingjian-clipboard-image").apply { isDaemon = true }
         }
@@ -1356,6 +1563,7 @@ class ClipboardPanel(
         private const val CHEVRON_DP = 32f
         private const val ACTIONS_DP = 40f
         private const val IMAGE_DP = 96f
+        private const val TIME_LINE_DP = 18f
         private const val CODE_LINE_DP = 24f
         private const val PREVIEW_BAR_DP = 60f
         private const val SWIPE_DELETE_DP = 64f

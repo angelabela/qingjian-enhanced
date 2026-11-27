@@ -92,6 +92,7 @@ fn items(history: &ClipboardHistory) -> Vec<ClipboardItem> {
             image: history
                 .image_path(entry)
                 .map(|path| path.to_string_lossy().into_owned()),
+            at: entry.at,
         })
         .collect()
 }
@@ -142,6 +143,19 @@ mod tests {
         // 空白不改
         let items = clipboard(&dir, edit(0, "b2", "  "), 1000);
         assert_eq!(items[0].text, "b2");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn clipboard_items_include_copy_timestamp() {
+        let dir = std::env::temp_dir().join(format!("qj-android-clip-time-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut history = ClipboardHistory::open(&dir);
+        history.add_at("timestamped", 1_764_000_123).unwrap();
+        let result = items(&history);
+        assert_eq!(result[0].at, 1_764_000_123);
+        let json = serde_json::to_value(&result[0]).unwrap();
+        assert_eq!(json["at"], 1_764_000_123);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

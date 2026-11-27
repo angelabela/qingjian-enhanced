@@ -21,6 +21,10 @@ data class Settings(
     /** 按键震动的轻重（#775）。 */
     val hapticStrength: HapticStrength,
     val keyPopup: Boolean,
+    /** 字母按键短按时显示放大 Tips；独立于功能键气泡开关。 */
+    val letterKeyTip: Boolean = true,
+    /** 字母键长按时是否弹出大小写字母与符号选择气泡。 */
+    val letterKeyPopup: Boolean = true,
     /** 键面字号档（#826），与候选字号分开。 */
     val keyTextSize: TextSize,
     /** 键面字号（sp），滑动范围 1–50；旧版分档设置仅用于首次迁移。 */
@@ -214,6 +218,8 @@ data class Settings(
         const val KEY_KEY_SOUND = "key_sound"
         const val KEY_KEY_SOUND_STYLE = "key_sound_style"
         const val KEY_POPUP = "key_popup"
+        const val KEY_LETTER_KEY_TIP = "letter_key_short_tip"
+        const val KEY_LETTER_KEY_POPUP = "letter_key_long_popup"
         const val KEY_KEY_TEXT_SIZE = "key_text_size"
         const val KEY_KEY_FONT_SIZE = "key_font_size"
         const val KEY_CANDIDATE_FONT_SIZE = "candidate_font_size"
@@ -286,6 +292,7 @@ data class Settings(
         const val KEY_BACKGROUND_STYLE = "keyboard_background_style"
         const val KEY_ADAPTIVE_TOOLBAR_ICONS = "adaptive_toolbar_icon_colors" // 697 legacy preference
         const val KEY_LIQUID_GLASS_ICONS = "liquid_glass_toolbar_icons"
+        const val KEY_CANDIDATE_SELECTION_EFFECT = "candidate_selection_effect"
         const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
         const val KEY_KEYBOARD_TEXT_PRESET = "keyboard_text_preset"
         const val KEY_AI_LOADING_EFFECT = "quick_ai_loading_effect"
@@ -324,6 +331,8 @@ data class Settings(
                 haptic = prefs.getBoolean(KEY_HAPTIC, true) && !keySoundEnabled,
                 hapticStrength = HapticStrength.of(prefs.getString(KEY_HAPTIC_STRENGTH, null)),
                 keyPopup = prefs.getBoolean(KEY_POPUP, true),
+                letterKeyTip = prefs.getBoolean(KEY_LETTER_KEY_TIP, prefs.getBoolean(KEY_POPUP, true)),
+                letterKeyPopup = prefs.getBoolean(KEY_LETTER_KEY_POPUP, true),
                 keyTextSize = legacyKeyTextSize,
                 keyFontSize = prefs.getInt(KEY_KEY_FONT_SIZE, (legacyKeyTextSize.scale * 20f).toInt()).coerceIn(1, 50),
                 keySkin = when (prefs.getString(KEY_KEY_SKIN, null)) {
@@ -340,7 +349,7 @@ data class Settings(
                 longPressUpper = prefs.getBoolean(KEY_LONG_PRESS_UPPER, false),
                 flickClear = prefs.getBoolean(KEY_FLICK_CLEAR, true),
                 spaceCursor = prefs.getBoolean(KEY_SPACE_CURSOR, true),
-                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, false),
+                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, true),
                 arrangement = Arrangement.entries.firstOrNull { it.name == prefs.getString(KEY_ARRANGEMENT, null) }
                     ?: Arrangement.STANDARD,
                 shuangpinScheme = prefs.getString(KEY_SHUANGPIN, null) ?: DEFAULT_SHUANGPIN,

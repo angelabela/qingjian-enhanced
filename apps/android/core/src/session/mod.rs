@@ -13,16 +13,23 @@ mod scheme;
 mod swipe;
 mod voice;
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use qingjian_core::{
-    CandidateList, Engine, NoTranscriber, RomajiComposer, ShapeDecoder, SurroundingText,
+    CandidateList, Engine, NoTranscriber, Prediction, RomajiComposer, ShapeDecoder, SurroundingText,
     SwipeDecoder, SwipeLexicon, TraditionalVariant, Transcriber,
 };
 
 use crate::frame::{Frame, FrameCandidate};
 use dictionaries::Mounted;
+
+/// 已完成但应由另一轮询入口领取的结果；组句结果带作用域快照，避免排队期间输入变化后误插入。
+struct QueuedPrediction {
+    prediction: Prediction,
+    composition_scope: Option<String>,
+}
 
 /// 软键盘的操作翻成 Engine 调用；每个操作返回操作之后的一帧。
 pub struct Session {
@@ -65,8 +72,14 @@ pub struct Session {
     /// 这段组句的光标前后文，发云联想时用；见 [`Self::set_surrounding`]。
     surrounding: Option<SurroundingText>,
 
+    /// 组句、普通翻译、候选译文共用 Engine 的 Provider；按 kind 暂存非当前轮询器的结果。
+    pending_predictions: VecDeque<QueuedPrediction>,
+
     /// 插进候选的整句补全在第几个；选它走 `accept_prediction`。
     sentence_at: Option<usize>,
+
+    /// 云端整句的文本快照，防止候选列表重排后误把普通候选当作整句。
+    sentence_text: Option<String>,
 
     /// 上屏通讯录里的名字后给不给这个人的电话、邮箱（键盘设置里的开关）。
     contact_details: bool,
@@ -119,7 +132,9 @@ impl Session {
             traditional_variant: TraditionalVariant::Taiwan,
             dictionaries: Vec::new(),
             surrounding: None,
+            pending_predictions: VecDeque::new(),
             sentence_at: None,
+            sentence_text: None,
             tools_open: false,
             contact_details: false,
             after_contact: None,
@@ -150,7 +165,9 @@ impl Session {
         self.preedit_cursor = 0;
         self.pinyin_choices.clear();
         self.surrounding = None;
+        self.pending_predictions.clear();
         self.sentence_at = None;
+        self.sentence_text = None;
         self.completions.clear();
         self.after_contact = None;
         self.after_commit = None;

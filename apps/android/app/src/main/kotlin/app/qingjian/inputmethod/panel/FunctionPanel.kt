@@ -11,6 +11,7 @@ import app.qingjian.inputmethod.scan.BarcodeScannerActivity
 import app.qingjian.inputmethod.sms.SmsCodeSettingsActivity
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.RectF
 import android.view.MotionEvent
 import kotlin.math.roundToInt
@@ -18,6 +19,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
+import app.qingjian.inputmethod.settings.page.AppearanceActivity
 import app.qingjian.inputmethod.theme.Palette
 
 /**
@@ -37,6 +39,8 @@ class FunctionPanel(
         val icon: Icon,
         val label: String,
         val on: Boolean = false,
+        /** Non-null only when this grid item directly toggles a persistent boolean setting. */
+        val checked: Boolean? = null,
         val run: PanelActions.() -> Unit,
     )
 
@@ -53,6 +57,8 @@ class FunctionPanel(
     )
     private var selectedCandidateFontSize = Settings.preferences(context)
         .getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+    private var selectedCandidateSelectionEffect = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
     private var selectedFontWeight = Settings.FontWeight.of(
         Settings.preferences(context).getString(Settings.KEY_FONT_WEIGHT, null))
     private var adjustingCandidateFontSize = false
@@ -72,6 +78,7 @@ class FunctionPanel(
             prefs.getInt(Settings.KEY_KEY_FONT_SIZE, 20) != 20 ||
             prefs.getInt(Settings.KEY_CANDIDATE_TEXT_COLOR, 0) != 0 ||
             prefs.getInt(Settings.KEY_KEYBOARD_TEXT_COLOR, 0) != 0 ||
+            prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0) != 0 ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_CANDIDATE_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_KEYBOARD_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL
     }
@@ -84,7 +91,9 @@ class FunctionPanel(
             prefs.getBoolean("keyboard_key_edge_glow", false) ||
             prefs.getBoolean("keyboard_key_3d", false) ||
             prefs.getInt("keyboard_key_border_index", 0) != 0 ||
-            prefs.getInt("keyboard_key_background_index", 0) != 0
+            prefs.getInt("keyboard_key_background_index", 0) != 0 ||
+            prefs.getInt("keyboard_key_border_color", 0) != 0 ||
+            prefs.getInt("keyboard_key_background_color", 0) != 0
     }
 
     private fun smsMonitoringEnabled(): Boolean =
@@ -94,6 +103,8 @@ class FunctionPanel(
     private val features: List<Feature>
         get() {
             val smsEnabled = smsMonitoringEnabled()
+            val mascotEnabled = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
+                .getBoolean(FloatingMascotService.KEY_ENABLED, false)
             return listOf(
                 Feature(Icon.TRANSLATE, "文字工具") { openPanel(PanelKind.CONTEXT_TOOLS) },
                 Feature(Icon.CAMERA, "扫码") {
@@ -102,8 +113,8 @@ class FunctionPanel(
                 Feature(
                     Icon.WAVEFORM,
                     "悬浮小精灵",
-                    on = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
-                        .getBoolean(FloatingMascotService.KEY_ENABLED, false),
+                    on = mascotEnabled,
+                    checked = mascotEnabled,
                 ) {
                     val prefs = context.getSharedPreferences(FloatingMascotService.PREFS, Context.MODE_PRIVATE)
                     val enabled = prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false)
@@ -125,12 +136,19 @@ class FunctionPanel(
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
+                Feature(Icon.PALETTE, "皮肤") {
+                    context.startActivity(
+                        Intent(context, AppearanceActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                },
                 Feature(Icon.PALETTE, "文字效果", on = textEffectsActive()) {
                     val textPrefs = Settings.preferences(context)
                     selectedTextTarget = 0
                     selectedTextPreset = Settings.TextEffectPreset.of(
                         textPrefs.getString(Settings.KEY_CANDIDATE_TEXT_PRESET, null))
                     selectedCandidateFontSize = textPrefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+                    selectedCandidateSelectionEffect = textPrefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
                     selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
                     voiceEffectPage = false
@@ -147,11 +165,12 @@ class FunctionPanel(
                 Feature(Icon.PALETTE, "背景特效") { openPanel(PanelKind.DYNAMIC_BACKGROUND) },
                 Feature(Icon.TUNE, "按键效果", on = keyEffectsActive()) { openPanel(PanelKind.KEY_EFFECTS) },
                 Feature(Icon.KEYBOARD, "切换键盘") { openPanel(PanelKind.KEYBOARDS) },
-                Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional) {
+                Feature(Icon.TRADITIONAL, "繁体", on = settings.traditional, checked = settings.traditional) {
                     setToggle(Settings.KEY_TRADITIONAL, !settings.traditional)
                 },
                 // 两套键位排法之间切，见 Settings.Arrangement
-                Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
+                Feature(Icon.LEFT_HAND, "左手布局", on = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
+                    checked = settings.arrangement == Settings.Arrangement.LEFT_THUMB) {
                     val next = if (settings.arrangement == Settings.Arrangement.LEFT_THUMB) Settings.Arrangement.STANDARD else Settings.Arrangement.LEFT_THUMB
                     setChoice(Settings.KEY_ARRANGEMENT, next.name)
                 },
@@ -167,7 +186,7 @@ class FunctionPanel(
                 Feature(Icon.GLOBE, "切换输入法") { switchInputMethod() },
                 Feature(Icon.SETTINGS, "设置") { openSettings() },
             ) + listOfNotNull(
-                actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on) { toggleGameKeyboard() } },
+                actions.gameKeyboard?.let { on -> Feature(Icon.GAMEPAD, "游戏键盘", on = on, checked = on) { toggleGameKeyboard() } },
             )
         }
 
@@ -179,6 +198,7 @@ class FunctionPanel(
         selectedVoiceSpectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
             .getInt(VoicePanel.PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
         selectedCandidateFontSize = prefs.getInt(Settings.KEY_CANDIDATE_FONT_SIZE, 20).coerceIn(1, 50)
+        selectedCandidateSelectionEffect = prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
         selectedFontWeight = Settings.FontWeight.of(prefs.getString(Settings.KEY_FONT_WEIGHT, null))
         invalidate()
     }
@@ -186,10 +206,12 @@ class FunctionPanel(
     private val toggles
         get() = listOf(
             Toggle(Settings.KEY_HAPTIC, "按键震动", "", settings.haptic),
-            Toggle(Settings.KEY_POPUP, "按键气泡", "按下字母时在上面放大显示", settings.keyPopup),
+            Toggle(Settings.KEY_POPUP, "功能键气泡", "控制非字母按键的放大提示", settings.keyPopup),
+            Toggle(Settings.KEY_LETTER_KEY_TIP, "字母按键短按弹出 Tips", "关闭后仅隐藏短按提示，长按和滑动不受影响", settings.letterKeyTip),
             Toggle(Settings.KEY_FULLSCREEN, "全面屏适配", "手势条那一截不留白，两个角各放一个键", settings.fullscreenAdapt),
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
             Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
+            Toggle(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, "键盘区域滑动选词", "在键盘按键区域左右滑动预选候选词", settings.keyboardCandidateSwipe),
         )
 
     private val tabs = Tabs(ink, scrollable(true) { x, y -> y < headerHeight && x > ink.dp(BACK_WIDTH_DP) }, Tabs.Style.UNDERLINE)
@@ -228,13 +250,227 @@ class FunctionPanel(
         } else drawToggles(canvas)
     }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (width <= 0 || height <= 0 || card.isEmpty) return emptyList()
+        if (voiceEffectPage) {
+            val result = mutableListOf<AccessibilityElement>()
+            val labels = VoicePanel.ANIMATION_STYLE_LABELS
+            val rowTop = card.top + ink.dp(42f)
+            val rowStep = ink.dp(64f)
+            val itemHeight = ink.dp(56f)
+            val gapX = ink.dp(7f)
+            val cardWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+            val viewportBottom = card.bottom - ink.dp(136f)
+            labels.forEachIndexed { index, label ->
+                val column = index % 2
+                val row = index / 2
+                val left = card.left + ink.dp(10f) + column * (cardWidth + gapX)
+                val top = rowTop + row * rowStep - effectScroll.offset
+                val bounds = RectF(left, top + (rowStep - itemHeight) / 2f,
+                    left + cardWidth, top + (rowStep + itemHeight) / 2f)
+                val viewport = RectF(card.left, rowTop, card.right, viewportBottom)
+                val visibleBounds = RectF(bounds)
+                if (visibleBounds.intersect(viewport)) {
+                    val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
+                    result += AccessibilityElement(label + if (selected) "，已选中" else "", visibleBounds, selected = selected, virtualId = 10000 + index)
+                }
+            }
+            val swatchLeft = card.left + ink.dp(12f)
+            val swatchGap = ink.dp(4f)
+            val swatchWidth = (card.width() - ink.dp(24f) - swatchGap * 5f) / 6f
+            val gradientLabels = listOf("默认", "海洋", "日落", "极光", "霓虹", "冰晶")
+            for (index in 0..5) {
+                val left = swatchLeft + index * (swatchWidth + swatchGap)
+                result += AccessibilityElement(
+                    "频谱渐变颜色，" + gradientLabels[index] + if (selectedVoiceSpectrumGradient == index) "，已选中" else "",
+                    RectF(left, card.bottom - ink.dp(119f), left + swatchWidth, card.bottom - ink.dp(84f)),
+                    selected = selectedVoiceSpectrumGradient == index,
+                    virtualId = 20000 + index,
+                )
+            }
+            val left = card.left + ink.dp(18f)
+            val right = card.right - ink.dp(18f)
+            result += AccessibilityElement(
+                "语音面板磨砂强度，" + voiceGlassStrength + "/50",
+                RectF(left, card.bottom - ink.dp(32f), right, card.bottom - ink.dp(12f)),
+                rangeMin = 1f,
+                rangeMax = 50f,
+                rangeCurrent = voiceGlassStrength.toFloat(),
+                onSetProgress = { value -> updateVoiceGlassStrength(left + (right - left) * ((value - 1f) / 49f)) },
+                virtualId = 30000,
+            )
+            accessibilityScrollElement(
+                "语音动效样式列表，可滚动",
+                RectF(card.left, rowTop, card.right, viewportBottom),
+                effectScroll,
+                virtualId = 1000001,
+            )?.let(result::add)
+            return result
+        }
+        if (aiLoadingEffectPage) {
+            val labels = listOf(
+                "345 流光渐变文字", "霓虹彩色发光文字", "彩虹渐变动态文字", "简约彩色光点 + 文字",
+                "渐变 + 光点 + 扫光组合", "单色呼吸文字", "银灰金属流光", "白色下划线扫光",
+                "单色光点脉冲", "打字机光标闪烁", "极光呼吸光带", "星尘流光点阵",
+                "液态霓虹脉冲", "全息扫描光束", "数字矩阵闪烁", "字符跳动弹跳文字",
+            )
+            val rowTop = card.top + ink.dp(38f)
+            val rowStep = ink.dp(68f)
+            val gapX = ink.dp(7f)
+            val itemWidth = (card.width() - ink.dp(20f) - gapX) / 2f
+            val result = labels.mapIndexed { index, label ->
+                val col = index % 2
+                val row = index / 2
+                val left = card.left + ink.dp(10f) + col * (itemWidth + gapX)
+                val top = rowTop + row * rowStep - effectScroll.offset
+                AccessibilityElement(
+                    label + if (selectedAiLoadingStyle == index) "，已选中" else "",
+                    RectF(left, top, left + itemWidth, top + ink.dp(60f)),
+                    selected = selectedAiLoadingStyle == index,
+                    virtualId = 40000 + index,
+                )
+            }.filter { RectF.intersects(it.bounds, RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f))) }
+                .mapNotNull { element ->
+                    val visible = RectF(element.bounds)
+                    if (!visible.intersect(RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)))) null
+                    else element.copy(bounds = visible)
+                }.toMutableList()
+            accessibilityScrollElement(
+                "文字动效样式列表，可滚动",
+                RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f)),
+                effectScroll,
+                virtualId = 1000002,
+            )?.let(result::add)
+            return result
+        }
+        if (textEffectPage) {
+            val result = mutableListOf<AccessibilityElement>()
+            val targetTop = card.top + ink.dp(36f) - effectScroll.offset
+            val targetWidth = (card.width() - ink.dp(36f)) / 2f
+            listOf("候选区", "键盘区").forEachIndexed { index, label ->
+                val left = card.left + ink.dp(14f) + index * (targetWidth + ink.dp(8f))
+                result += AccessibilityElement(label + if (selectedTextTarget == index) "，当前编辑区域" else "",
+                    RectF(left, targetTop, left + targetWidth, targetTop + ink.dp(36f)),
+                    selected = selectedTextTarget == index, virtualId = 50000 + index)
+            }
+            val controlsTop = card.top + ink.dp(84f) - effectScroll.offset
+            val left = card.left + ink.dp(14f)
+            val right = card.right - ink.dp(14f)
+            result += AccessibilityElement("恢复当前区域主题文字颜色",
+                RectF(card.right - ink.dp(98f), controlsTop + ink.dp(4f), card.right - ink.dp(10f), controlsTop + ink.dp(32f)), virtualId = 50010)
+            val colorY = controlsTop + ink.dp(49f)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(currentTextColor(), hsv)
+            result += AccessibilityElement("字体颜色色相，" + hsv[0].toInt() + "度",
+                RectF(left, colorY - ink.dp(12f), right, colorY + ink.dp(12f)),
+                rangeMin = 0f, rangeMax = 360f, rangeCurrent = hsv[0],
+                onSetProgress = { value -> updateTextSlider(left + (right - left) * (value / 360f), 0) }, virtualId = 50011)
+            val colorSwatchY = controlsTop + ink.dp(68f)
+            TEXT_PRESET_COLORS.forEachIndexed { index, color ->
+                val swatchLeft = left + index * (ink.dp(18f) + ink.dp(4f))
+                result += AccessibilityElement(
+                    "字体颜色预设 #" + Integer.toHexString(color and 0x00FFFFFF) +
+                        if (currentTextColor() == color) "，已选中" else "",
+                    RectF(swatchLeft, colorSwatchY - ink.dp(3f), swatchLeft + ink.dp(18f), colorSwatchY + ink.dp(15f)),
+                    selected = currentTextColor() == color, virtualId = 50100 + index,
+                )
+            }
+            val currentSize = currentTextSize().toFloat()
+            val weightIndex = Settings.FontWeight.entries.indexOf(currentTextWeight()).coerceAtLeast(0)
+            val fontTrackY = controlsTop + ink.dp(118f)
+            val mid = card.centerX()
+            val sizeLeft = left + ink.dp(4f)
+            val sizeRight = mid - ink.dp(8f)
+            val weightLeft = mid + ink.dp(8f)
+            val weightRight = right - ink.dp(4f)
+            result += AccessibilityElement("字体字号，" + currentSize.toInt() + "sp",
+                RectF(sizeLeft, fontTrackY - ink.dp(14f), sizeRight, fontTrackY + ink.dp(14f)),
+                rangeMin = 1f, rangeMax = 50f, rangeCurrent = currentSize,
+                onSetProgress = { value -> updateTextSlider(sizeLeft + (sizeRight - sizeLeft) * ((value - 1f) / 49f), 1) }, virtualId = 50012)
+            result += AccessibilityElement("字体粗细，" + currentTextWeight().label,
+                RectF(weightLeft, fontTrackY - ink.dp(14f), weightRight, fontTrackY + ink.dp(14f)),
+                rangeMin = 0f,
+                rangeMax = (Settings.FontWeight.entries.size - 1).coerceAtLeast(1).toFloat(),
+                rangeCurrent = weightIndex.toFloat(),
+                onSetProgress = { value ->
+                    val fraction = value / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1)
+                    updateTextSlider(weightLeft + (weightRight - weightLeft) * fraction, 2)
+                }, virtualId = 50013)
+            val syncY = controlsTop + ink.dp(151f)
+            result += AccessibilityElement("候选区与键盘区同步调节，" + if (syncTextEffectsEnabled()) "已开启" else "已关闭",
+                RectF(card.left + ink.dp(12f), syncY - ink.dp(16f), card.right - ink.dp(12f), syncY + ink.dp(16f)),
+                selected = syncTextEffectsEnabled(), checked = syncTextEffectsEnabled(), virtualId = 50014)
+            val rowTop = card.top + ink.dp(254f) - effectScroll.offset
+            val rowStep = ink.dp(82f)
+            val itemGap = ink.dp(8f)
+            val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
+            Settings.TextEffectPreset.entries.forEachIndexed { index, preset ->
+                val col = index % 2
+                val row = index / 2
+                val itemLeft = card.left + ink.dp(12f) + col * (itemWidth + itemGap)
+                val top = rowTop + row * rowStep
+                result += AccessibilityElement("文字效果，" + preset.label + if (selectedTextPreset == preset) "，已选中" else "",
+                    RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
+                    selected = selectedTextPreset == preset, virtualId = 51000 + index)
+            }
+            val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
+            CANDIDATE_SELECTION_LABELS.forEachIndexed { index, label ->
+                val gap = ink.dp(4f)
+                val itemWidth = (card.width() - ink.dp(24f) - gap * 4f) / 5f
+                val itemLeft = card.left + ink.dp(12f) + index * (itemWidth + gap)
+                result += AccessibilityElement(
+                    "候选栏选中效果，$label" + if (selectedCandidateSelectionEffect == index) "，已选中" else "",
+                    RectF(itemLeft, selectionTop + ink.dp(22f), itemLeft + itemWidth, selectionTop + ink.dp(60f)),
+                    selected = selectedCandidateSelectionEffect == index, virtualId = 52000 + index,
+                )
+            }
+            val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
+            accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 1000003)?.let(result::add)
+            return result.mapNotNull { element ->
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
+            }
+        }
+        return if (tabs.selected == 0) {
+            val top = card.top + ink.dp(8f)
+            features.mapIndexed { index, feature ->
+                val row = index / columns
+                val column = index % columns
+                AccessibilityElement(
+                    label = feature.label,
+                    bounds = RectF(
+                        card.left + cellWidth() * column,
+                        top + cellHeight() * row,
+                        card.left + cellWidth() * (column + 1),
+                        top + cellHeight() * (row + 1),
+                    ),
+                    selected = feature.on && feature.checked == null,
+                    checked = feature.checked,
+                    role = if (feature.checked != null) "android.widget.ToggleButton" else null,
+                    virtualId = 60000 + index,
+                )
+            }
+        } else {
+            toggles.mapIndexed { index, toggle ->
+                val top = card.top + rowHeight() * index
+                AccessibilityElement(
+                    label = toggle.label + if (toggle.on) "，已开启" else "，已关闭",
+                    bounds = RectF(card.left, top, card.right, top + rowHeight()),
+                    selected = toggle.on,
+                    checked = toggle.on,
+                    virtualId = 70000 + index,
+                )
+            }
+        }
+    }
+
     private fun cellWidth() = card.width() / columns
 
     private fun cellHeight() = minOf(ink.dp(86f), card.height() / maxOf(2, (features.size + columns - 1) / columns))
 
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
-        ink.textStart(canvas, "再次点击已选效果可关闭；关闭后语音面板不显示动效", 11f, palette.gloss,
+        ink.textStart(canvas, "所有语音动效统一为65根镜像频谱；再次点击已选项可关闭动效", 11f, palette.gloss,
             card.left + ink.dp(16f), top + ink.dp(22f), card.right - ink.dp(12f))
 
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
@@ -328,166 +564,29 @@ class FunctionPanel(
 
     /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
     private fun drawVoiceStylePreview(canvas: Canvas, bounds: RectF, index: Int, selected: Boolean) {
-        val cx = bounds.left + ink.dp(22f)
-        val cy = bounds.centerY()
+        // 所有预览与实际语音面板保持同一结构：65 根镜像柱，中心低频、两侧高频。
+        // 缩略图只展示其中 13 根代表柱，仍严格左右对称。
+        val centerX = bounds.left + ink.dp(22f)
+        val centerY = bounds.centerY()
         val accent = if (selected) palette.brand else palette.gloss
-        val secondary = if (selected) palette.accent else palette.faint
-        ink.fill.style = android.graphics.Paint.Style.FILL
-        if (index == 10) {
-            // 中心对称频谱
-            val heights = floatArrayOf(3f, 6f, 10f, 7f, 4f)
-            heights.forEachIndexed { i, height ->
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                val half = ink.dp(height)
-                ink.fill.color = if (i % 2 == 0) secondary else accent
-                canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
-                    ink.dp(1f), ink.dp(1f), ink.fill)
-            }
-            return
-        }
-        if (index == 11) {
-            // 双层交错频谱
-            val heights = floatArrayOf(5f, 9f, 13f, 8f, 5f)
-            heights.forEachIndexed { i, height ->
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                ink.fill.color = secondary
-                ink.fill.alpha = 70
-                canvas.drawRoundRect(x - ink.dp(1.6f), cy - ink.dp(height + 3f), x + ink.dp(1.6f), cy + ink.dp(height + 3f),
-                    ink.dp(1.5f), ink.dp(1.5f), ink.fill)
-                ink.fill.color = accent
-                ink.fill.alpha = 255
-                canvas.drawRoundRect(x - ink.dp(1f), cy - ink.dp(height), x + ink.dp(1f), cy + ink.dp(height),
-                    ink.dp(1f), ink.dp(1f), ink.fill)
-            }
-            return
-        }
-        if (index == 12) {
-            // 粒子矩阵
-            for (column in 0..6) for (row in 0..4) {
-                ink.fill.color = if ((column + row) % 3 == 0) accent else secondary
-                ink.fill.alpha = if (row <= (column % 4) + 1) 230 else 38
-                canvas.drawCircle(cx - ink.dp(10f) + column * ink.dp(3.2f),
-                    cy + ink.dp(8f) - row * ink.dp(4f), ink.dp(0.9f), ink.fill)
-            }
-            ink.fill.alpha = 255
-            return
-        }
-        if (index == 13) {
-            // 阶梯频谱
-            val heights = intArrayOf(2, 4, 6, 5, 3)
-            for (i in heights.indices) for (step in 0 until heights[i]) {
-                ink.fill.color = if (step % 2 == 0) accent else secondary
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                val y = cy + ink.dp(10f) - step * ink.dp(3f)
-                canvas.drawRoundRect(x - ink.dp(1f), y - ink.dp(2f), x + ink.dp(1f), y,
-                    ink.dp(0.8f), ink.dp(0.8f), ink.fill)
-            }
-            return
-        }
-        if (index == 14) {
-            // 透视空间隧道
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            for (i in 0..3) {
-                val inset = ink.dp(i * 3f)
-                ink.fill.color = if (i % 2 == 0) accent else secondary
-                ink.fill.alpha = 210 - i * 35
-                canvas.drawRoundRect(RectF(cx - ink.dp(12f) + inset, cy - ink.dp(11f) + inset,
-                    cx + ink.dp(12f) - inset, cy + ink.dp(11f) - inset),
-                    ink.dp(2f), ink.dp(2f), ink.fill)
-            }
-            ink.fill.alpha = 255
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        if (index == 1) {
-            ink.fill.color = accent
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeWidth = ink.dp(1.4f)
-            canvas.drawCircle(cx, cy, ink.dp(5.5f), ink.fill)
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            for (i in 0 until 8) {
-                val angle = Math.PI * 2.0 * i / 8.0
-                val x1 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(7f)
-                val y1 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(7f)
-                val x2 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(10f)
-                val y2 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(10f)
-                ink.fill.color = secondary
-                ink.fill.strokeWidth = ink.dp(1.1f)
-                canvas.drawLine(x1, y1, x2, y2, ink.fill)
-            }
-            return
-        }
-        if (index == 8 || index == 9) {
-            val wave = android.graphics.Path()
-            for (step in 0..24) {
-                val u = step / 24f
-                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
-                val cycles = if (index == 8) 2.5 else 3.2
-                val y = cy + kotlin.math.sin(u * Math.PI * cycles).toFloat() *
-                    ink.dp(if (index == 8) 5.5f else 3.8f)
-                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
-            }
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
-            ink.fill.strokeWidth = ink.dp(2.8f)
-            ink.fill.color = secondary
-            ink.fill.alpha = 80
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.strokeWidth = ink.dp(1.2f)
-            ink.fill.color = accent
-            ink.fill.alpha = 255
-            canvas.drawPath(wave, ink.fill)
-            if (index == 9) {
-                for (i in 0..4) {
-                    val x = cx - ink.dp(9f) + i * ink.dp(4.5f)
-                    val barH = ink.dp(floatArrayOf(3f, 7f, 11f, 6f, 4f)[i])
-                    ink.fill.strokeWidth = ink.dp(1.4f)
-                    canvas.drawLine(x, cy + ink.dp(12f) - barH, x, cy + ink.dp(12f) + barH, ink.fill)
-                }
-            }
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        if (index == 7) {
-            val wave = android.graphics.Path()
-            for (step in 0..28) {
-                val u = step / 28f
-                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
-                val y = cy + kotlin.math.sin(u * Math.PI * 3.0).toFloat() * ink.dp(5f) +
-                    kotlin.math.sin(u * Math.PI * 6.0 + 0.8).toFloat() * ink.dp(2.2f)
-                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
-            }
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
-            ink.fill.strokeWidth = ink.dp(3.2f)
-            ink.fill.color = secondary
-            ink.fill.alpha = 95
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.strokeWidth = ink.dp(1.3f)
-            ink.fill.color = accent
-            ink.fill.alpha = 255
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        val heights = when (index) {
-            0 -> floatArrayOf(5f, 9f, 13f, 8f, 5f)
-            2 -> floatArrayOf(4f, 10f, 14f, 9f, 4f)
-            3 -> floatArrayOf(3f, 7f, 11f, 7f, 3f)
-            4 -> floatArrayOf(7f, 12f, 9f, 12f, 7f)
-            5 -> floatArrayOf(5f, 10f, 13f, 10f, 5f)
-            6 -> floatArrayOf(4f, 8f, 11f, 8f, 4f)
-            else -> floatArrayOf(5f, 11f, 6f, 13f, 8f)
-        }
+        val glow = if (selected) palette.accent else palette.faint
+        val heights = floatArrayOf(3.0f, 4.2f, 5.8f, 7.6f, 9.2f, 11.0f, 13.0f,
+            11.0f, 9.2f, 7.6f, 5.8f, 4.2f, 3.0f)
+        val step = ink.dp(2.35f)
         for (i in heights.indices) {
-            val x = cx + (i - 2) * ink.dp(4.2f)
+            val x = centerX + (i - 6) * step
             val half = ink.dp(heights[i] * 0.5f)
-            ink.fill.color = if (i % 2 == 0) secondary else accent
-            canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
-                ink.dp(1f), ink.dp(1f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            ink.fill.color = glow
+            ink.fill.alpha = 58
+            canvas.drawRoundRect(x - ink.dp(1.05f), centerY - half - ink.dp(1.1f),
+                x + ink.dp(1.05f), centerY + half + ink.dp(1.1f), ink.dp(1.1f), ink.dp(1.1f), ink.fill)
+            ink.fill.color = accent
+            ink.fill.alpha = 255
+            canvas.drawRoundRect(x - ink.dp(0.72f), centerY - half,
+                x + ink.dp(0.72f), centerY + half, ink.dp(0.72f), ink.dp(0.72f), ink.fill)
         }
+        ink.fill.alpha = 255
     }
 
 
@@ -540,9 +639,10 @@ class FunctionPanel(
         val viewportTop = card.top + ink.dp(6f)
         val viewportBottom = card.bottom - ink.dp(6f)
         val targetTopForScroll = card.top + ink.dp(8f + 28f)
-        val presetRowTop = targetTopForScroll + ink.dp(254f)
+        val presetRowTop = targetTopForScroll + ink.dp(218f)
         val rowStepForScroll = ink.dp(82f)
-        val contentBottom = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll
+        val selectionTopForScroll = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll + ink.dp(8f)
+        val contentBottom = selectionTopForScroll + ink.dp(64f)
         effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
@@ -596,37 +696,58 @@ class FunctionPanel(
         ink.fill.color = textColor
         canvas.drawCircle(colorMarker, colorY, ink.dp(4.5f), ink.fill)
 
-        ink.textStart(canvas, "字体字号", 11.5f, palette.text,
-            card.left + ink.dp(14f), controlsTop + ink.dp(83f), card.right - ink.dp(64f))
-        ink.text(canvas, "${textSize}sp", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(83f))
-        val sizeY = controlsTop + ink.dp(101f)
+        // 11 种固定预设紧贴在字体颜色 RGB 色带下方。
+        val swatchY = controlsTop + ink.dp(68f)
+        val swatchWidth = ink.dp(18f)
+        val swatchHeight = ink.dp(12f)
+        val swatchGap = ink.dp(4f)
+        TEXT_PRESET_COLORS.forEachIndexed { index, color ->
+            val swatchLeft = left + index * (swatchWidth + swatchGap)
+            val bounds = RectF(swatchLeft, swatchY, swatchLeft + swatchWidth, swatchY + swatchHeight)
+            ink.fill.color = color
+            canvas.drawRoundRect(bounds, ink.dp(3f), ink.dp(3f), ink.fill)
+            if (textColor == color) {
+                ink.fill.style = android.graphics.Paint.Style.STROKE
+                ink.fill.strokeWidth = ink.dp(1.5f)
+                ink.fill.color = palette.text
+                canvas.drawRoundRect(RectF(bounds).apply { inset(-ink.dp(1.5f), -ink.dp(1.5f)) }, ink.dp(4f), ink.dp(4f), ink.fill)
+                ink.fill.style = android.graphics.Paint.Style.FILL
+            }
+        }
+
+        // 字号与字重并排，各占可用宽度的一半。
+        val mid = card.centerX()
+        val sizeLeft = left + ink.dp(4f)
+        val sizeRight = mid - ink.dp(8f)
+        val weightLeft = mid + ink.dp(8f)
+        val weightRight = right - ink.dp(4f)
+        val fontLabelY = controlsTop + ink.dp(100f)
+        val fontTrackY = controlsTop + ink.dp(118f)
+        ink.textStart(canvas, "字体字号", 11f, palette.text, sizeLeft, fontLabelY, sizeRight - sizeLeft - ink.dp(34f))
+        ink.text(canvas, "${textSize}sp", 10f, palette.brand, sizeRight - ink.dp(2f), fontLabelY)
+        ink.textStart(canvas, "字体粗细", 11f, palette.text, weightLeft, fontLabelY, weightRight - weightLeft - ink.dp(42f))
+        ink.text(canvas, weight.label, 10f, palette.brand, weightRight - ink.dp(2f), fontLabelY)
         ink.fill.color = palette.functionalKey
         ink.fill.strokeWidth = ink.dp(4f)
         ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-        canvas.drawLine(left, sizeY, right, sizeY, ink.fill)
-        val sizeX = left + (right - left) * ((textSize - 1) / 49f)
-        ink.fill.color = palette.brand
-        canvas.drawLine(left, sizeY, sizeX, sizeY, ink.fill)
-        canvas.drawCircle(sizeX, sizeY, ink.dp(5f), ink.fill)
-
-        ink.textStart(canvas, "字体粗细", 11.5f, palette.text,
-            card.left + ink.dp(14f), controlsTop + ink.dp(133f), card.right - ink.dp(64f))
-        ink.text(canvas, "${weight.label} · ${weight.weight}", 11f, palette.brand, card.right - ink.dp(28f), controlsTop + ink.dp(133f))
-        val weightY = controlsTop + ink.dp(151f)
-        canvas.drawLine(left, weightY, right, weightY, ink.fill.apply { color = palette.functionalKey; strokeWidth = ink.dp(4f); strokeCap = android.graphics.Paint.Cap.ROUND })
+        canvas.drawLine(sizeLeft, fontTrackY, sizeRight, fontTrackY, ink.fill)
+        canvas.drawLine(weightLeft, fontTrackY, weightRight, fontTrackY, ink.fill)
+        val sizeX = sizeLeft + (sizeRight - sizeLeft) * ((textSize - 1) / 49f)
         val weightIndex = Settings.FontWeight.entries.indexOf(weight).coerceAtLeast(0)
-        val weightX = left + (right - left) * (weightIndex.toFloat() / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1))
+        val weightX = weightLeft + (weightRight - weightLeft) * (weightIndex.toFloat() / (Settings.FontWeight.entries.size - 1).coerceAtLeast(1))
         ink.fill.color = palette.brand
-        canvas.drawLine(left, weightY, weightX, weightY, ink.fill)
-        canvas.drawCircle(weightX, weightY, ink.dp(5f), ink.fill)
+        canvas.drawLine(sizeLeft, fontTrackY, sizeX, fontTrackY, ink.fill)
+        canvas.drawLine(weightLeft, fontTrackY, weightX, fontTrackY, ink.fill)
+        canvas.drawCircle(sizeX, fontTrackY, ink.dp(5f), ink.fill)
+        canvas.drawCircle(weightX, fontTrackY, ink.dp(5f), ink.fill)
 
         val labels = Settings.TextEffectPreset.entries
-        val syncY = controlsTop + ink.dp(184f)
+        val syncY = controlsTop + ink.dp(151f)
         ink.textStart(canvas, "按键区与候选区同步调节", 11.5f, palette.text,
             card.left + ink.dp(14f), syncY + ink.dp(4f), card.right - ink.dp(70f))
         drawSwitch(canvas, card.right - ink.dp(38f), syncY, syncTextEffectsEnabled())
 
-        val rowTop = targetTop + ink.dp(254f)
+        val rowTop = targetTop + ink.dp(218f)
         val rowStep = ink.dp(82f)
         val itemGap = ink.dp(8f)
         val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
@@ -655,7 +776,7 @@ class FunctionPanel(
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
                 Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, textColor)
-                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(1f); sample.color = textColor }
+                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(0.65f); sample.color = android.graphics.Color.argb(190, android.graphics.Color.red(textColor), android.graphics.Color.green(textColor), android.graphics.Color.blue(textColor)) }
                 Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
                     sample.style = android.graphics.Paint.Style.STROKE
                     sample.strokeWidth = ink.dp(1.4f)
@@ -679,6 +800,24 @@ class FunctionPanel(
                 ink.fill.color = palette.brand
                 canvas.drawCircle(bounds.right - ink.dp(8f), bounds.top + ink.dp(8f), ink.dp(3f), ink.fill)
             }
+        }
+        val selectionTop = rowTop + ((labels.size + 1) / 2) * rowStep + ink.dp(8f)
+        ink.textStart(canvas, "候选栏选中效果", 11.5f, palette.text,
+            card.left + ink.dp(14f), selectionTop + ink.dp(13f), card.right - ink.dp(14f))
+        val selectionGap = ink.dp(4f)
+        val selectionWidth = (card.width() - ink.dp(24f) - selectionGap * 4f) / 5f
+        CANDIDATE_SELECTION_LABELS.forEachIndexed { index, label ->
+            val left = card.left + ink.dp(12f) + index * (selectionWidth + selectionGap)
+            val bounds = RectF(left, selectionTop + ink.dp(22f), left + selectionWidth, selectionTop + ink.dp(60f))
+            val selected = selectedCandidateSelectionEffect == index
+            ink.round(canvas, bounds, 8f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.25f else 0.6f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(8f), ink.dp(8f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            ink.text(canvas, label, 8.5f, if (selected) palette.brand else palette.text, bounds.centerX(), bounds.centerY(),
+                maxWidth = selectionWidth - ink.dp(3f))
         }
         canvas.restore()
     }
@@ -812,18 +951,25 @@ class FunctionPanel(
             val contentY = event.y + effectScroll.offset
             val slider = when {
                 contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
-                contentY in (controlsTop + ink.dp(87f))..(controlsTop + ink.dp(115f)) -> 1
-                contentY in (controlsTop + ink.dp(137f))..(controlsTop + ink.dp(165f)) -> 2
+                contentY in (controlsTop + ink.dp(104f))..(controlsTop + ink.dp(132f)) ->
+                    if (event.x < card.centerX()) 1 else 2
                 else -> -1
             }
             val sliderTrackY = when (slider) {
                 0 -> controlsTop + ink.dp(49f)
-                1 -> controlsTop + ink.dp(101f)
-                2 -> controlsTop + ink.dp(151f)
+                1, 2 -> controlsTop + ink.dp(118f)
                 else -> -1f
             }
-            val trackLeft = card.left + ink.dp(14f)
-            val trackRight = card.right - ink.dp(14f)
+            val trackLeft = when (slider) {
+                1 -> card.left + ink.dp(18f)
+                2 -> card.centerX() + ink.dp(8f)
+                else -> card.left + ink.dp(14f)
+            }
+            val trackRight = when (slider) {
+                1 -> card.centerX() - ink.dp(8f)
+                2 -> card.right - ink.dp(18f)
+                else -> card.right - ink.dp(14f)
+            }
             val nearTrack = slider >= 0 &&
                 kotlin.math.abs(event.y - (sliderTrackY - effectScroll.offset)) <= ink.dp(9f) &&
                 event.x in (trackLeft - ink.dp(4f))..(trackRight + ink.dp(4f))
@@ -869,8 +1015,11 @@ class FunctionPanel(
     }
 
     private fun updateTextSlider(x: Float, slider: Int) {
-        val left = card.left + ink.dp(14f)
-        val right = card.right - ink.dp(14f)
+        val (left, right) = when (slider) {
+            1 -> (card.left + ink.dp(18f)) to (card.centerX() - ink.dp(8f))
+            2 -> (card.centerX() + ink.dp(8f)) to (card.right - ink.dp(18f))
+            else -> (card.left + ink.dp(14f)) to (card.right - ink.dp(14f))
+        }
         val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
         when (slider) {
             0 -> {
@@ -957,17 +1106,28 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
+                val swatchY = controlsTop + ink.dp(68f)
+                if (contentY in (swatchY - ink.dp(3f))..(swatchY + ink.dp(17f))) {
+                    val swatchWidth = ink.dp(18f)
+                    val swatchGap = ink.dp(4f)
+                    val index = ((x - (card.left + ink.dp(14f))) / (swatchWidth + swatchGap)).toInt()
+                    if (index in TEXT_PRESET_COLORS.indices) {
+                        setTextInt(textColorKey(), TEXT_PRESET_COLORS[index])
+                        invalidate()
+                    }
+                    return
+                }
                 val slider = when {
                     contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
-                    contentY in (controlsTop + ink.dp(87f))..(controlsTop + ink.dp(115f)) -> 1
-                    contentY in (controlsTop + ink.dp(137f))..(controlsTop + ink.dp(165f)) -> 2
+                    contentY in (controlsTop + ink.dp(104f))..(controlsTop + ink.dp(132f)) ->
+                        if (x < card.centerX()) 1 else 2
                     else -> -1
                 }
                 if (slider >= 0) {
                     updateTextSlider(x, slider)
                     return
                 }
-                val syncY = controlsTop + ink.dp(184f)
+                val syncY = controlsTop + ink.dp(151f)
                 if (contentY in (syncY - ink.dp(16f))..(syncY + ink.dp(16f))) {
                     val enable = !syncTextEffectsEnabled()
                     Settings.preferences(context).edit().putBoolean("text_effect_sync_targets", enable).apply()
@@ -988,7 +1148,7 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
-                val rowTop = targetTop + ink.dp(254f)
+                val rowTop = targetTop + ink.dp(218f)
                 val rowStep = ink.dp(82f)
                 val row = ((contentY - rowTop) / rowStep).toInt()
                 val column = if (x < card.centerX()) 0 else 1
@@ -1000,6 +1160,22 @@ class FunctionPanel(
                     selectedTextPreset = preset
                     setTextChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
                     invalidate()
+                    return
+                }
+                val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
+                if (contentY in (selectionTop + ink.dp(18f))..(selectionTop + ink.dp(64f)) &&
+                    x in (card.left + ink.dp(10f))..(card.right - ink.dp(10f))) {
+                    val gap = ink.dp(4f)
+                    val itemWidth = (card.width() - ink.dp(24f) - gap * 4f) / 5f
+                    val index = ((x - (card.left + ink.dp(12f))) / (itemWidth + gap)).toInt()
+                    if (index in CANDIDATE_SELECTION_LABELS.indices) {
+                        selectedCandidateSelectionEffect = index
+                        Settings.preferences(context).edit()
+                            .putInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, index).apply()
+                        actions.refreshKeyboardSettings()
+                        invalidate()
+                    }
+                    return
                 }
             }
             tabs.selected == 0 && voiceEffectPage -> {
@@ -1048,6 +1224,8 @@ class FunctionPanel(
 
             else -> toggles.getOrNull(((y - card.top) / rowHeight()).toInt())?.let {
                 actions.setToggle(it.key, !it.on)
+                // Settings 是键盘创建时的快照；立即重建输入视图，确保开关状态与实际绘制同步。
+                actions.refreshKeyboardSettings()
             }
         }
     }
@@ -1070,6 +1248,14 @@ class FunctionPanel(
     }
 
     private companion object {
+        /** 文字颜色滑块下方的固定预设色。 */
+        val CANDIDATE_SELECTION_LABELS = listOf("柔光呼吸", "霓虹描边", "边缘流彩", "实心强调", "简洁边框")
+        val TEXT_PRESET_COLORS = intArrayOf(
+            0xFFD4042D.toInt(), 0xFF9D1F2F.toInt(), 0xFFEB6127.toInt(),
+            0xFFDB7A0E.toInt(), 0xFF5A92E5.toInt(), 0xFF5E8034.toInt(),
+            0xFF6FBA2C.toInt(), 0xFF41B5C2.toInt(), 0xFFFACA2E.toInt(),
+            0xFFEB6D98.toInt(), 0xFF722169.toInt(),
+        )
         /** 上次停在哪一页；改开关会重建键盘，回来时还在这页。 */
         var lastTab = 0
     }

@@ -62,6 +62,55 @@ class ToolbarPanel(
 
     private enum class Badge { REMOVE, ADD, PLACED }
 
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        val elements = mutableListOf<AccessibilityElement>()
+        elements += AccessibilityElement(
+            "恢复默认工具栏顺序",
+            RectF(width - ink.dp(RESET_WIDTH_DP), 0f, width.toFloat(), headerHeight),
+            virtualId = 1000,
+        )
+        val cellW = cellWidth()
+        fun addCells(tools: List<ToolbarTool>, sectionTop: Float, placedSection: Boolean) {
+            tools.forEachIndexed { index, tool ->
+                val row = index / columns
+                val col = index % columns
+                val left = card.left + col * cellW
+                val top = card.top + sectionTop + row * cellHeight - scroll.offset
+                val bounds = RectF(left, top, left + cellW, top + cellHeight)
+                if (!RectF.intersects(bounds, card)) return@forEachIndexed
+                val alreadyPlaced = tool in placed
+                val currentPlacedIndex = placed.indexOf(tool)
+                elements += AccessibilityElement(
+                    tool.label + when {
+                        placedSection -> "，工具栏第${index + 1}项，共${placed.size}项，可点击移除，也可使用上移或下移操作排序"
+                        alreadyPlaced -> "，已添加到工具栏，全部工具列表第${index + 1}项，共${ToolbarTool.entries.size}项，点击移除"
+                        else -> "，未添加，全部工具列表第${index + 1}项，共${ToolbarTool.entries.size}项，点击添加到工具栏"
+                    },
+                    bounds,
+                    selected = alreadyPlaced,
+                    // Keep the same tool's "placed" and "all tools" rows as distinct virtual nodes.
+                    virtualId = (if (placedSection) 10000 else 11000) + tool.ordinal,
+                    onMoveUp = if (placedSection && currentPlacedIndex > 0) {
+                        { movePlacedTool(tool, -1) }
+                    } else null,
+                    onMoveDown = if (placedSection && currentPlacedIndex in 0 until placed.lastIndex) {
+                        { movePlacedTool(tool, 1) }
+                    } else null,
+                )
+            }
+        }
+        addCells(placed, sectionTitle, true)
+        addCells(ToolbarTool.entries, allTop + sectionTitle, false)
+        accessibilityScrollElement("工具栏项目列表，可滚动", RectF(card), scroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            if (element.virtualId == 1000) element else {
+                val visible = RectF(element.bounds)
+                if (!visible.intersect(card)) null else element.copy(bounds = visible)
+            }
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         drawHeader(canvas, tabs, leftIcon = Icon.CHECK)
         ink.text(canvas, RESET, 14f, palette.brand, width - ink.dp(RESET_WIDTH_DP) / 2, headerHeight / 2)
@@ -179,6 +228,19 @@ class ToolbarPanel(
             })
             start()
         }
+    }
+
+    /** Reorder a placed tool without requiring a drag gesture (TalkBack / Switch Access). */
+    private fun movePlacedTool(tool: ToolbarTool, delta: Int) {
+        val from = placed.indexOf(tool)
+        if (from < 0) return
+        val target = (from + delta).coerceIn(0, placed.lastIndex)
+        if (target == from) return
+        val reordered = placed.toMutableList()
+        val moving = reordered.removeAt(from)
+        reordered.add(target, moving)
+        placed = reordered
+        invalidate()
     }
 
     override fun onBack() {

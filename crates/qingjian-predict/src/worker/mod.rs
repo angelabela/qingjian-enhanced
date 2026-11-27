@@ -79,7 +79,7 @@ impl Worker {
                 let key = PredictionCache::key(&request);
                 if let Some(reply) = self.cache.get(&key) {
                     tracing::debug!(sequence = request.sequence, kind = ?request.kind, "联想命中缓存");
-                    self.reply(request.sequence, reply.clone());
+                    self.reply(request.sequence, request.kind, reply.clone());
                 } else {
                     pending.push(request);
                 }
@@ -201,7 +201,7 @@ impl Worker {
                     self.cache
                         .insert(PredictionCache::key(request), reply.clone());
                 }
-                self.reply(request.sequence, reply);
+                self.reply(request.sequence, request.kind, reply);
             }
             Err(error) => {
                 if !self.suspension.record(&error, Instant::now(), "联想") {
@@ -218,13 +218,14 @@ impl Worker {
             request.kind,
             PredictionKind::Translate | PredictionKind::CandidateTranslation
         ) {
-            self.reply(request.sequence, Cached::default());
+            self.reply(request.sequence, request.kind, Cached::default());
         }
     }
 
-    fn reply(&self, sequence: u64, reply: Cached) {
+    fn reply(&self, sequence: u64, kind: PredictionKind, reply: Cached) {
         // 接收端没了说明 Predictor 已经被 drop，线程随后也会退出
         let _ = self.responses.send(Prediction {
+            kind,
             sequence,
             words: reply.words,
             sentence: reply.sentence,

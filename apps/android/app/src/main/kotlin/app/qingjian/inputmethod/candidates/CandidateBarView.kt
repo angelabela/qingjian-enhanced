@@ -7,6 +7,13 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
+import kotlin.math.roundToInt
 import android.view.View
 import android.widget.OverScroller
 import kotlin.math.sin
@@ -20,7 +27,7 @@ import app.qingjian.inputmethod.settings.Settings
 import app.qingjian.inputmethod.theme.Palette
 
 /**
- * 键盘上方那一条，三种样子：组句中是候选（[CandidateStrip]，位图来自 [source]，横向滑动、长按弹译词气泡），
+ * 键盘上方那一条，三种样子：组句中是候选（[CandidateStrip]，布局快照来自 [source]，横向滑动、长按弹译词气泡），
  * 平时是工具栏（[Toolbar]，中间那排可横滑），调高度时是拖动手柄（[ResizeHandle]）。
  */
 @SuppressLint("ViewConstructor")
@@ -69,12 +76,222 @@ class CandidateBarView(
     }
 
     private val density = resources.displayMetrics.density
+    private val fontScale = resources.displayMetrics.scaledDensity / density
+    private var candidateSelectionEffect = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
+
+    private val accessibilityManager =
+        context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    private var accessibilityFocusedCandidate = -1
+    private var hoveredAccessibilityCandidate = -1
+
+    /** 候选条同样是 Canvas 自绘；只把当前可见候选暴露为虚拟按钮，不改变滑动/长按逻辑。 */
+    private val candidateAccessibilityProvider = object : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            val candidate = strip.candidates.getOrNull(virtualViewId) ?: return null
+            val bounds = candidateAccessibilityBounds(virtualViewId) ?: return null
+            val info = AccessibilityNodeInfo.obtain()
+            info.setSource(this@CandidateBarView, virtualViewId)
+            info.setParent(this@CandidateBarView)
+            info.packageName = context.packageName
+            info.className = "android.widget.Button"
+            info.text = candidate.text
+            info.contentDescription = "候选词 ${virtualViewId + 1}，${candidate.text}"
+            info.isEnabled = this@CandidateBarView.isEnabled
+            info.isVisibleToUser = true
+            info.isFocusable = true
+            info.isClickable = true
+            info.isSelected = virtualViewId == gestureSelectionIndex ||
+                virtualViewId == popupIndex || (gestureSelectionIndex < 0 && popupIndex < 0 && virtualViewId == 0)
+            info.isAccessibilityFocused = accessibilityFocusedCandidate == virtualViewId
+            info.setBoundsInParent(bounds)
+            val screenBounds = Rect(bounds)
+            val screenLocation = IntArray(2)
+            getLocationOnScreen(screenLocation)
+            screenBounds.offset(screenLocation[0], screenLocation[1])
+            info.setBoundsInScreen(screenBounds)
+            info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (accessibilityFocusedCandidate == virtualViewId) {
+                info.addAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS)
+            } else {
+                info.addAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+            }
+            return info
+        }
+
+        override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            if (strip.candidates.getOrNull(virtualViewId) == null ||
+                candidateAccessibilityBounds(virtualViewId) == null) return false
+            when (action) {
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    if (!accessibilityManager.isEnabled || accessibilityFocusedCandidate == virtualViewId) return false
+                    if (accessibilityFocusedCandidate >= 0) {
+                        sendCandidateAccessibilityEvent(
+                            accessibilityFocusedCandidate,
+                            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                        )
+                    }
+                    accessibilityFocusedCandidate = virtualViewId
+                    sendCandidateAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                    if (accessibilityFocusedCandidate != virtualViewId) return false
+                    accessibilityFocusedCandidate = -1
+                    sendCandidateAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLICK -> {
+                    if (!isEnabled) return false
+                    Haptics.tap(context)
+                    listener.onSelect(virtualViewId)
+                    sendCandidateAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    return true
+                }
+            }
+            return false
+        }
+
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? =
+            if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
+                createAccessibilityNodeInfo(accessibilityFocusedCandidate)
+            } else null
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider = candidateAccessibilityProvider
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        visibleAccessibilityCandidates().forEach { info.addChild(this, it) }
+        val canScroll = !toolbarShown && maxScroll() > 0
+        info.isScrollable = canScroll
+        if (canScroll) {
+            info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+        }
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        if (!toolbarShown && !resizing) {
+            val page = (stripWidth * 0.8f).roundToInt().coerceAtLeast(1)
+            when (action) {
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> {
+                    val next = (scrollX + page).coerceAtMost(maxScroll())
+                    if (next == scrollX) return false
+                    scrollTo(next, 0)
+                    invalidate()
+                    notifyAccessibilityContentChanged()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
+                    val next = (scrollX - page).coerceAtLeast(0)
+                    if (next == scrollX) return false
+                    scrollTo(next, 0)
+                    invalidate()
+                    notifyAccessibilityContentChanged()
+                    return true
+                }
+            }
+        }
+        return super.performAccessibilityAction(action, arguments)
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (!accessibilityManager.isTouchExplorationEnabled) return super.onHoverEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val next = visibleAccessibilityCandidates().firstOrNull { id ->
+                    candidateAccessibilityBounds(id)?.contains(event.x.toInt(), event.y.toInt()) == true
+                } ?: -1
+                if (next != hoveredAccessibilityCandidate) {
+                    if (hoveredAccessibilityCandidate >= 0) {
+                        sendCandidateAccessibilityEvent(
+                            hoveredAccessibilityCandidate,
+                            AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                        )
+                    }
+                    hoveredAccessibilityCandidate = next
+                    if (next >= 0) {
+                        sendCandidateAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    }
+                }
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (hoveredAccessibilityCandidate >= 0) {
+                    sendCandidateAccessibilityEvent(
+                        hoveredAccessibilityCandidate,
+                        AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+                    )
+                    hoveredAccessibilityCandidate = -1
+                }
+            }
+        }
+        return true
+    }
+
+    private fun visibleAccessibilityCandidates(): List<Int> =
+        if (toolbarShown || resizing || strip.isEmpty) emptyList()
+        else strip.candidates.indices.filter { candidateAccessibilityBounds(it) != null }
+
+    private fun candidateAccessibilityBounds(index: Int): Rect? {
+        if (toolbarShown || resizing || strip.isEmpty) return null
+        val word = strip.wordRect(index) ?: return null
+        val inset = strip.leftInsetPx(stripWidth)
+        val bounds = Rect(
+            (word.left + inset - scrollX).roundToInt(),
+            word.top.roundToInt(),
+            (word.right + inset - scrollX).roundToInt(),
+            word.bottom.roundToInt(),
+        )
+        if (expandable) bounds.right = minOf(bounds.right, stripWidth)
+        return bounds.takeIf { it.intersect(0, 0, stripWidth, height) && it.width() > 0 && it.height() > 0 }
+    }
+
+    private fun clearReplacedAccessibilityTargets(nextCandidates: List<Candidate>) {
+        val focused = accessibilityFocusedCandidate
+        if (focused >= 0 && strip.candidates.getOrNull(focused) != nextCandidates.getOrNull(focused)) {
+            accessibilityFocusedCandidate = -1
+            sendCandidateAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityCandidate
+        if (hovered >= 0 && strip.candidates.getOrNull(hovered) != nextCandidates.getOrNull(hovered)) {
+            hoveredAccessibilityCandidate = -1
+            sendCandidateAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+    }
+
+    private fun sendCandidateAccessibilityEvent(virtualViewId: Int, eventType: Int) {
+        val candidate = strip.candidates.getOrNull(virtualViewId) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, virtualViewId)
+        event.text.add(candidate.text)
+        event.isEnabled = isEnabled
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
+    }
+
+    private fun notifyAccessibilityContentChanged() {
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+    }
     private var adaptiveVideoTextColor: Int? = null
-    // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免位图被候选栏裁切。
-    val barHeight = 66f * density * maxOf(1f, textScale)
+    // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免内容被候选栏裁切。
+    val barHeight = 66f * density * maxOf(1f, textScale * fontScale)
     private val strip = CandidateStrip(
+        context, this,
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
-        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board,
+        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board, scaledDensity = resources.displayMetrics.scaledDensity,
     )
     private val toolbar = Toolbar(context, palette, density, barHeight, tools)
     private val resizeHandle = ResizeHandle(
@@ -89,7 +306,7 @@ class CandidateBarView(
             invalidate()
         }
 
-    // 防止同一候选快照被上游重复回调时再次关闭弹层、重置滚动并触发位图重绘。
+    // 防止同一候选快照被上游重复回调时再次关闭弹层、重置滚动并触发重复布局。
     private var lastShownPreedit: String? = null
     private var lastShownCandidates: List<Candidate>? = null
 
@@ -108,7 +325,7 @@ class CandidateBarView(
     private val smartActionText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = palette.onBrand
         textAlign = Paint.Align.CENTER
-        textSize = 11f * density
+        textSize = 11f * resources.displayMetrics.scaledDensity
     }
     /** 拼音组句时强调首候选：低透明脉冲底光 + 细描边，不遮挡候选文字。 */
     private val firstCandidateGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -245,6 +462,7 @@ class CandidateBarView(
     })
 
     init {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.surface)
     }
 
@@ -266,14 +484,18 @@ class CandidateBarView(
         closePopup()
         // 只有用户真正开始组合输入时才清除提示；空 preedit 状态下的候选帧刷新不能吞掉提示。
         if (preedit.isNotEmpty()) clearNotice.run()
+        // Clear focus/hover before replacing position-based virtual IDs with different candidates.
+        clearReplacedAccessibilityTargets(candidates)
         strip.show(preedit, candidates, animateCandidates)
+        strip.onCandidatesChanged()
         scroller.forceFinished(true)
         if (!preserveScroll) scrollTo(0, 0)
         repaint()
         if (preserveScroll) scrollTo(previousScroll.coerceIn(0, maxScroll()), 0)
+        notifyAccessibilityContentChanged()
     }
 
-    /** 空格横滑预选候选；不重绘 Rust 位图，只更新独立选中层。 */
+    /** 空格横滑预选候选；不重新计算 Rust 布局，只更新独立选中层。 */
     fun setGestureSelection(index: Int) {
         val next = index.takeIf { it in strip.candidates.indices } ?: -1
         if (gestureSelectionIndex == next) return
@@ -330,7 +552,7 @@ class CandidateBarView(
         invalidate()
     }
 
-    /** 动态背景开关变化时同步更新候选条底色及 Rust 位图透明处理。 */
+    /** 动态背景开关变化时同步更新候选条底色及布局快照的透明背景处理。 */
     fun setTransparentBackground(enabled: Boolean, backgroundColor: Int) {
         if (transparentBackground != enabled) {
             transparentBackground = enabled
@@ -355,9 +577,9 @@ class CandidateBarView(
         resizing = true
     }
 
-    /** 按当前高亮重画位图：新的一帧到了、或长按气泡换了对着的候选。 */
+    /** 按当前高亮刷新候选条：新的一帧到了、或长按气泡换了对着的候选。 */
     private fun repaint() {
-        // 旧 Rust 选中底色会残留在位图里；选中态统一由上层液态玻璃绘制。
+        // 选中态统一由上层液态玻璃绘制，布局快照不再包含候选高亮像素。
         strip.paint(if (strip.isEmpty) null else source.render(-1, palette.dark, stripWidth))
         invalidate()
     }
@@ -426,6 +648,8 @@ class CandidateBarView(
 
     /** 首选或当前选中词及其释义共用同一套呼吸高亮。 */
     private fun drawCandidatePulse(canvas: Canvas, index: Int) {
+        candidateSelectionEffect = Settings.preferences(context)
+            .getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, candidateSelectionEffect).coerceIn(0, 4)
         if (index !in strip.candidates.indices) return
         val now = android.os.SystemClock.uptimeMillis()
         // 高亮框的动画状态绑定当前候选下标；空格手势滑到下一个词时，特效框立即跟随。
@@ -449,26 +673,81 @@ class CandidateBarView(
         canvas.clipRect(scrollX.toFloat(), 0f, (scrollX + stripWidth).toFloat(), height.toFloat())
         val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
         val accent = palette.brand
-        firstCandidateGlow.shader = android.graphics.LinearGradient(
-            glow.left, glow.top, glow.right, glow.bottom,
-            intArrayOf((accent and 0x00FFFFFF) or 0x26303030, (accent and 0x00FFFFFF) or 0x50303030, (accent and 0x00FFFFFF) or 0x20303030),
-            floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
-        )
-        firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
-        canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
-        firstCandidateGlow.shader = null
         val outline = android.graphics.RectF(rect).apply { inset(-1.2f * density, -1f * density) }
-        firstCandidateRing.color = accent
-        firstCandidateRing.alpha = (135f + breath * 105f).toInt()
-        canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
-        firstCandidateSheen.shader = android.graphics.LinearGradient(
-            rect.left, rect.top, rect.right, rect.top,
-            intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
-            floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
-        )
-        val shineY = rect.top + 2f * density
-        canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
-        firstCandidateSheen.shader = null
+        when (candidateSelectionEffect) {
+            0 -> {
+                firstCandidateGlow.shader = android.graphics.LinearGradient(
+                    glow.left, glow.top, glow.right, glow.bottom,
+                    intArrayOf((accent and 0x00FFFFFF) or 0x26303030, (accent and 0x00FFFFFF) or 0x50303030, (accent and 0x00FFFFFF) or 0x20303030),
+                    floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
+                )
+                firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
+                canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateGlow.shader = null
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = (135f + breath * 105f).toInt()
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateSheen.shader = android.graphics.LinearGradient(
+                    rect.left, rect.top, rect.right, rect.top,
+                    intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
+                    floatArrayOf(0f, (0.25f + 0.5f * breath).coerceIn(0f, 1f), 1f), android.graphics.Shader.TileMode.CLAMP,
+                )
+                val shineY = rect.top + 2f * density
+                canvas.drawLine(rect.left + 5f * density, shineY, rect.right - 5f * density, shineY, firstCandidateSheen)
+                firstCandidateSheen.shader = null
+            }
+            1 -> {
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or ((0x20 + breath * 0x20).toInt() shl 24)
+                canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = (175f + breath * 80f).toInt()
+                firstCandidateRing.setShadowLayer(4f * density, 0f, 0f, accent)
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateRing.clearShadowLayer()
+            }
+            2 -> {
+                // 不再让一条白色光带横穿候选文字；彩色光谱沿圆角边框持续旋转流动。
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x18303030
+                canvas.drawRoundRect(glow, 10f * density, 10f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 85
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                val flow = android.graphics.SweepGradient(
+                    rect.centerX(), rect.centerY(),
+                    intArrayOf(
+                        0xFF42E5FF.toInt(), 0xFF8B5CFF.toInt(), 0xFFFF5CA8.toInt(),
+                        0xFFFFD166.toInt(), 0xFF42E5FF.toInt(),
+                    ),
+                    floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f),
+                )
+                val flowPhase = (elapsed % EDGE_FLOW_PERIOD_MS).toFloat() / EDGE_FLOW_PERIOD_MS
+                val rotation = android.graphics.Matrix().apply {
+                    setRotate(flowPhase * 360f, rect.centerX(), rect.centerY())
+                }
+                flow.setLocalMatrix(rotation)
+                firstCandidateSheen.shader = flow
+                firstCandidateSheen.strokeWidth = 2.2f * density
+                firstCandidateSheen.alpha = (205f + breath * 50f).toInt()
+                canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateSheen)
+                firstCandidateSheen.shader = null
+                firstCandidateSheen.strokeWidth = 1.8f * density
+                firstCandidateSheen.alpha = 255
+            }
+            3 -> {
+                firstCandidateGlow.color = (accent and 0x00FFFFFF) or 0x55303030
+                canvas.drawRoundRect(rect, 8f * density, 8f * density, firstCandidateGlow)
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 240
+                canvas.drawRoundRect(outline, 8f * density, 8f * density, firstCandidateRing)
+            }
+            else -> {
+                firstCandidateRing.color = accent
+                firstCandidateRing.alpha = 230
+                firstCandidateRing.strokeWidth = 1.1f * density
+                canvas.drawRoundRect(outline, 7f * density, 7f * density, firstCandidateRing)
+                firstCandidateRing.strokeWidth = 1.5f * density
+            }
+        }
 
         // 选中框也套用候选文字相同的左右渐隐遮罩，滑到边缘时不会留下完整发光框。
         val leftEdge = scrollX + strip.leftInsetPx(stripWidth)
@@ -654,8 +933,30 @@ class CandidateBarView(
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
+        val focused = accessibilityFocusedCandidate
+        accessibilityFocusedCandidate = -1
+        if (focused >= 0) {
+            sendCandidateAccessibilityEvent(focused, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+        val hovered = hoveredAccessibilityCandidate
+        hoveredAccessibilityCandidate = -1
+        if (hovered >= 0) {
+            sendCandidateAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
         closePopup()
+        strip.pauseAll()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (windowVisibility == View.VISIBLE) strip.resumeAll()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == View.VISIBLE && isAttachedToWindow) strip.resumeAll()
+        else strip.pauseAll()
     }
 
     // 内容绘制从左内边距开始，因此最大滚动量也要补偿这段内边距。
@@ -665,5 +966,7 @@ class CandidateBarView(
     private companion object {
         const val NOTICE_MS = 5000L
         const val FIRST_CANDIDATE_PULSE_PERIOD_MS = 620L
+        // 边缘流影单独使用 2.5 倍周期：速度降为原来的 40%，呼吸节奏不变。
+        const val EDGE_FLOW_PERIOD_MS = 1550L
     }
 }

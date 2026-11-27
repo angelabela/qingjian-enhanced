@@ -43,6 +43,21 @@ fn lookup_choice(choices: &HashMap<String, HashMap<String, u32>>, key: &str, tex
         .unwrap_or(0)
 }
 
+/// 个人英文词只收稳定的字母词；拒绝原始按键串、数字/标点混入和异常大小写。
+pub(super) fn valid_personal_english(word: &str) -> bool {
+    if !(2..=32).contains(&word.len())
+        || !word.is_ascii()
+        || !word.bytes().all(|b| b.is_ascii_alphabetic())
+    {
+        return false;
+    }
+    let lower = word.bytes().all(|b| b.is_ascii_lowercase());
+    let upper = word.bytes().all(|b| b.is_ascii_uppercase());
+    let title = word.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+        && word.as_bytes()[1..].iter().all(u8::is_ascii_lowercase);
+    (word.len() >= 3 && (lower || upper || title)) || (word.len() == 2 && upper)
+}
+
 impl Learner for FrequencyLearner {
     fn record(&mut self, candidate: &Candidate) {
         self.tick();
@@ -156,7 +171,10 @@ impl Learner for FrequencyLearner {
     }
 
     fn learn_english(&mut self, word: &str) {
-        if word.is_empty() {
+        // 只允许稳定的纯字母词进入个人表；误触串（hhghd: / hhw1 / xoxfpfdnBadm）
+        // 不得因一次原样上屏就变成高优先级英文补全。
+        if !valid_personal_english(word) {
+            tracing::debug!(word, "拒绝学习非词形英文串");
             return;
         }
         self.tick();
@@ -165,12 +183,15 @@ impl Learner for FrequencyLearner {
             .english
             .entry(word.to_ascii_lowercase())
             .or_insert_with(|| (word.to_owned(), Decay::from_parts(0, now)));
-        // 写法跟着最近一次敲的走：句首敲过一次 `Hello`，之后敲回 `hello` 就改回来
+        // 写法跟着最近一次明确选择的词走。
         word.clone_into(&mut entry.0);
         entry.1.record(1, now);
         let count = entry.1.count;
         self.english_dirty = true;
-        self.rebuild_english();
+        // 新词至少被明确选择三次才进入补全候选；已有词继续正常累计。
+        if count >= 3 {
+            self.rebuild_english();
+        }
         tracing::debug!(word, count, "记录个人英文词");
     }
 

@@ -5,6 +5,34 @@ use bamboo_slip::{Painted, Pixmap};
 use super::{HitRegion, HitTarget, PreeditHit};
 use crate::MaterialBacking;
 
+/// 仅布局结果：不包含位图，适用于由宿主平台负责全部文字绘制的候选条。
+#[derive(Debug, Clone)]
+pub struct LayoutSnapshot {
+    /// 根节点布局宽高，单位像素。
+    pub width: f32,
+    pub height: f32,
+    /// 候选词、释义与其他交互区域，均为根节点坐标。
+    pub hits: Vec<HitRegion>,
+    /// 拼音行插入位置；没有拼音行时为 None。
+    pub preedit: Option<PreeditHit>,
+}
+
+impl LayoutSnapshot {
+    /// 候选行最上沿；没有候选时回退到布局高度。
+    pub fn candidates_top(&self) -> f32 {
+        self.hits.iter()
+            .filter(|hit| matches!(hit.target, HitTarget::Candidate(_)))
+            .map(|hit| hit.y)
+            .fold(f32::INFINITY, f32::min)
+            .is_finite()
+            .then(|| self.hits.iter()
+                .filter(|hit| matches!(hit.target, HitTarget::Candidate(_)))
+                .map(|hit| hit.y)
+                .fold(f32::INFINITY, f32::min))
+            .unwrap_or(self.height)
+    }
+}
+
 /// 不透明度低于它（约 5%）的投影外圈在浅色底上也几乎看不出，避让时不算。
 const VISIBLE_ALPHA: u8 = 12;
 

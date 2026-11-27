@@ -22,8 +22,10 @@ class CandidateTextStyleEngine(
     private val defaultColor: Int,
     private val defaultWeight: Settings.FontWeight,
     val config: Config = Config.defaults(defaultColor, defaultWeight),
+    /** 拼音字号独立于候选字号；候选字号滑块和输入长度变化都不能改变它。 */
+    private val preeditBaseTextSize: Float = baseTextSize,
 ) {
-    enum class Role { FIRST_CANDIDATE, CANDIDATE, PREEDIT, GLOSS, SELECTED }
+    enum class Role { FIRST_CANDIDATE, CANDIDATE, PREEDIT, GLOSS, SELECTED, EMOJI }
 
     data class Style(
         val color: Int,
@@ -53,13 +55,14 @@ class CandidateTextStyleEngine(
             Role.PREEDIT -> preedit
             Role.GLOSS -> gloss
             Role.SELECTED -> selected
+            Role.EMOJI -> candidate
         }
 
         companion object {
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.92f, maxOf(600, weight.weight), typefaceFamily = "sans-serif-medium"),
+                preedit = Style(color, 0.92f, 400, typefaceFamily = "sans-serif"),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
@@ -73,11 +76,12 @@ class CandidateTextStyleEngine(
                         shadowColor = 0x66000000, shadowRadiusDp = 1.2f, shadowDyDp = 1f,
                     )
                     Settings.TextEffectPreset.SOFT_GLOW -> style.copy(
-                        shadowColor = color, shadowRadiusDp = 5f, shadowDxDp = 0f, shadowDyDp = 0f,
+                        shadowColor = (color and 0x00FFFFFF) or (0x99 shl 24),
+                        shadowRadiusDp = 3.5f, shadowDxDp = 0f, shadowDyDp = 0f,
                     )
                     Settings.TextEffectPreset.NEON_OUTLINE -> style.copy(
-                        strokeColor = color, strokeWidthDp = 1.15f,
-                        shadowColor = color, shadowRadiusDp = 3f,
+                        strokeColor = color, strokeWidthDp = 0.85f,
+                        shadowColor = (color and 0x00FFFFFF) or (0x99 shl 24), shadowRadiusDp = 2f,
                     )
                     Settings.TextEffectPreset.CONTRAST_OUTLINE -> style.copy(
                         strokeColor = android.graphics.Color.WHITE,
@@ -85,7 +89,9 @@ class CandidateTextStyleEngine(
                     )
                     Settings.TextEffectPreset.COLOR_GRADIENT -> style
                 }
-                return Config(styled(base.firstCandidate), styled(base.candidate), styled(base.preedit),
+                return Config(styled(base.firstCandidate), styled(base.candidate),
+                    // 拼音保持常规字重，不跟随候选字的粗体预设一起加粗。
+                    styled(base.preedit).copy(weight = 400, typefaceFamily = "sans-serif"),
                     styled(base.gloss), styled(base.selected), preset)
             }
         }
@@ -99,19 +105,20 @@ class CandidateTextStyleEngine(
         transitionAlpha = alpha.coerceIn(0, 255)
     }
     private val paints = Role.entries.associateWith { role ->
-        TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(this, config.style(role)) }
+        TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { applyStyle(role, this, config.style(role)) }
     }
     private val clearPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.TRANSPARENT
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     }
 
-    private fun applyStyle(paint: TextPaint, style: Style) {
+    private fun applyStyle(role: Role, paint: TextPaint, style: Style) {
         paint.color = style.color
         // 绘制坐标统一使用候选格中心；测量与绘制必须共享同一对齐方式。
         paint.textAlign = Paint.Align.CENTER
         paint.alpha = style.alpha.coerceIn(0, 255)
-        paint.textSize = baseTextSize * style.sizeScale.coerceIn(0.5f, 2.5f)
+        val roleBaseSize = if (role == Role.PREEDIT) preeditBaseTextSize else baseTextSize
+        paint.textSize = roleBaseSize * style.sizeScale.coerceIn(0.5f, 2.5f)
         paint.typeface = android.graphics.Typeface.create(style.typefaceFamily, if (style.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         paint.isFakeBoldText = style.weight >= 600
         paint.style = Paint.Style.FILL
@@ -163,7 +170,7 @@ class CandidateTextStyleEngine(
         )
         val availableHeight = (rect.height() - 2f * density + if (role == Role.PREEDIT) 6f * density else 0f).coerceAtLeast(1f)
         val measuredWidth = paint.measureText(text)
-        val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED
+        val isCandidateRole = role == Role.FIRST_CANDIDATE || role == Role.CANDIDATE || role == Role.SELECTED || role == Role.EMOJI
         // 常用语/整句补全过长时保留正常字号并在候选格内省略，避免整段文字被压缩成极小字号。
         val displayText = if (isCandidateRole && measuredWidth > availableWidth) {
             TextUtils.ellipsize(text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
@@ -171,13 +178,8 @@ class CandidateTextStyleEngine(
         val displayWidth = paint.measureText(displayText)
         val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
         val fitScale = if (role == Role.PREEDIT) {
-            // 拼音逐字定位时，字符边界可能很窄；必须同时按宽、高 fit。
-            // 旧逻辑只按高度放大，并把裁剪框扩到相邻字母区域，容易造成字母重叠。
-            minOf(
-                1.12f,
-                availableWidth / displayWidth.coerceAtLeast(1f),
-                availableHeight / measuredHeight,
-            )
+            // 拼音行使用固定字号；输入字符增加只扩展整行可用宽度，不再逐帧放大字母。
+            1f
         } else minOf(
             1f,
             availableWidth / displayWidth.coerceAtLeast(1f),
@@ -196,7 +198,7 @@ class CandidateTextStyleEngine(
         // 不再用 CLEAR 擦背景，避免把高亮底色擦出透明洞。
         if (eraseUnderlay) {
             clearPaint.textSize = when (role) {
-                Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED -> baseTextSize * 0.95f
+                Role.FIRST_CANDIDATE, Role.CANDIDATE, Role.SELECTED, Role.EMOJI -> baseTextSize * 0.95f
                 // Rust strip_top 使用 annotation 字号（12dp × 1.25），约为基础候选字号的 0.75。
                 Role.PREEDIT -> baseTextSize * 1.12f
                 Role.GLOSS -> baseTextSize * 0.575f

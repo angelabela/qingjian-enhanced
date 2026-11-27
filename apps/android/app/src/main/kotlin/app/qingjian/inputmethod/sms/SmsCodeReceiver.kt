@@ -11,6 +11,7 @@ import android.widget.Toast
 import android.os.Build
 import app.qingjian.inputmethod.mascot.FloatingMascotService
 import app.qingjian.inputmethod.core.AppLog
+import app.qingjian.inputmethod.scan.ScanContent
 
 /** 仅在用户开启验证码监测后处理短信；只在本机提取验证码，不上传短信正文。 */
 class SmsCodeReceiver : BroadcastReceiver() {
@@ -27,7 +28,7 @@ class SmsCodeReceiver : BroadcastReceiver() {
             Telephony.Sms.Intents.getMessagesFromIntent(intent).toList()
         }.getOrDefault(emptyList())
         val body = messages.joinToString("") { it.messageBody.orEmpty() }
-        val code = extractCode(body)
+        val code = ScanContent.extractSmsCode(body)
         if (code == null) {
             AppLog.info("[SMS_CODE_DIAG] no code extracted messageCount=${messages.size}")
             return
@@ -62,18 +63,6 @@ class SmsCodeReceiver : BroadcastReceiver() {
             }.onFailure { android.util.Log.w("QingjianMascot", "Unable to show SMS code in mascot", it) }
         }
         Toast.makeText(context, "验证码 $code 已复制", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun extractCode(text: String): String? {
-        if (text.isBlank()) return null
-        val context = Regex(
-            "(验证码|校验码|动态码|短信码|verification\\s*code|one[- ]time\\s+password|\\bOTP\\b)",
-            RegexOption.IGNORE_CASE,
-        )
-        val match = context.find(text) ?: return null
-        val tail = text.substring(match.range.last + 1).take(36)
-        val digits = Regex("(?<!\\d)(\\d{4,6})(?!\\d)")
-        return digits.find(tail)?.groupValues?.getOrNull(1)
     }
 
     companion object {

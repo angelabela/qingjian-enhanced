@@ -27,6 +27,35 @@ class SideColumn(private val density: Float, private val onItem: (String) -> Uni
     private val itemHeight get() = bounds.height() / VISIBLE_ITEMS
     private val maxScroll get() = (items.size * itemHeight - bounds.height()).coerceAtLeast(0f)
 
+    /** TalkBack 可通过滚动动作浏览超出可视区域的拼音/标点项目。 */
+    val accessibilityScrollable: Boolean
+        get() = enabled && maxScroll > 0f
+
+    fun accessibilityScroll(direction: Int): Boolean {
+        if (!accessibilityScrollable) return false
+        val previous = scroll
+        val page = (bounds.height() * 0.8f).coerceAtLeast(itemHeight)
+        scroll = (scroll + page * direction.coerceIn(-1, 1)).coerceIn(0f, maxScroll)
+        return scroll != previous
+    }
+
+    /** TalkBack 虚拟节点使用的可见项目区域。 */
+    fun accessibilityBounds(index: Int): RectF? {
+        if (!enabled || index !in items.indices || itemHeight <= 0f) return null
+        val top = bounds.top + itemHeight * index - scroll
+        val rect = RectF(bounds.left, top, bounds.right, top + itemHeight)
+        if (!RectF.intersects(rect, bounds)) return null
+        return RectF(rect.left.coerceAtLeast(bounds.left), rect.top.coerceAtLeast(bounds.top),
+            rect.right.coerceAtMost(bounds.right), rect.bottom.coerceAtMost(bounds.bottom))
+    }
+
+    fun clickAccessibilityItem(index: Int): Boolean {
+        val item = items.getOrNull(index) ?: return false
+        if (!enabled) return false
+        onItem(item)
+        return true
+    }
+
     /** 逐个给出看得见的项目和它的中线 y。 */
     fun visibleItems(draw: (String, Float) -> Unit) {
         items.forEachIndexed { index, item ->

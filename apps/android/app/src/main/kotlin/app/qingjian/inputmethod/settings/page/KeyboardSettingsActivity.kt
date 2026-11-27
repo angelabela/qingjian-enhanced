@@ -62,6 +62,9 @@ class KeyboardSettingsActivity : PageActivity() {
                     ui.toggle(R.string.popup_title, R.string.popup_note, settings.keyPopup) {
                         prefs.edit().putBoolean(Settings.KEY_POPUP, it).apply()
                     },
+                    ui.toggle(R.string.letter_key_popup_title, R.string.letter_key_popup_note, settings.letterKeyPopup) {
+                        prefs.edit().putBoolean(Settings.KEY_LETTER_KEY_POPUP, it).apply()
+                    },
                     arrangementPicker(settings),
                 ),
                 footer = getString(R.string.arrangement_note),

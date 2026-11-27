@@ -1,15 +1,30 @@
-## 0.3.21-dev 修复轮次（2026-11-23，基于 551 号实机反馈）
+## 2026-11-25：Impeccable 审查与第二阶段无障碍优化
 
-- 开发基线：分支 `feature/workflow-444-model-coordination`，父提交 `f368db25ae747a08ab2a06023514e73fba6b6d50`；只修改青简输入法仓库，不触碰 main 或其他项目。
-- 551 号实测仍存在三类问题：候选栏/拼音区静态底色不融合、视频背景未完整覆盖到底部功能区、最新剪贴板内容没有恢复到验证码显示区；扫码 Wi-Fi/网址提示仍在 5 秒后消失。
-- 候选栏与拼音位图改为始终透明，由面板唯一背景层绘制主题底色或视频，避免 Rust 位图背景与面板 board 色形成双层。
-- 视频模式同步更新底部功能栏透明状态；视频仍复用原有 TextureView/Surface，不因普通设置刷新重启播放器。
-- 剪贴板提示只在相同内容仍显示时去重；输入组合结束后重新读取系统 primaryClip，避免提示被输入动作清除后无法恢复。
-- 扫码网址/Wi-Fi 提示移除 5 秒自动关闭与临时抑制，保持可见直到点击或新内容替换。
-- APP 版本：0.3.21-dev；按 Gradle 公式 versionCode=321。
-- 最终应用源码提交：`5a2103dbcb8b85052d22156d73e48d73136db96e`；此前 #552–#554 对应中间提交，不作为最终测试包。
-- 最终固定签名工作流：#555 / run ID `45100691585`，当前构建中；运行页：https://github.com/angelabela/qingjian-enhanced/actions/runs/45100691585。
-- APP 版本：0.3.21-dev / versionCode 321。构建与签名验证尚未完成；完成后仍需用户实机验收。
+- 已安装测试的基线：781 号工作流，APP 版本 0.3.58-dev / versionCode 358。
+- 首轮候选版本：784 号工作流构建成功，APP 版本 0.3.59-dev / versionCode 359；签名验证及产物上传均成功，artifact ID 14986527586。
+- 当前候选版本：0.3.60-dev / versionCode 360；开发分支 design/impeccable-native-audit-781。
+- Impeccable 固定上游提交：b49177d32788f2dc585c42831d845dacf1ebed2c。
+- 本轮新增：KeyboardView 按键虚拟无障碍节点、CandidateBarView 候选词虚拟节点与候选横向辅助滚动；保留现有触摸、手势和动画实现。
+- 784 号已完成；本轮最新代码提交后触发下一轮固定签名构建，编号以 Actions 实际记录为准。
+- PanelView 功能面板虚拟节点、TalkBack 焦点顺序、字体缩放、横竖屏/分屏、动态效果性能与全部自定义项仍待继续处理/真机验收。
 
 ---
 
+## 2026-11-25：PanelView 触摸探索命中修复
+
+- 当前分支：`design/impeccable-native-audit-781`。
+- 869 号工作流（run ID `45608206745`）已完成：Release APK 构建、签名验证、Artifact 上传均成功；对应 APP `0.3.73-dev` / versionCode `30073`。
+- 源码修复：`PanelView.accessibilityNodeIdAt` 先检查具体子控件，再检查滚动容器。此前滚动视口覆盖整个内容区且在命中顺序中优先，触摸探索可能把网格单元、开关和滑块误命中为滚动容器。
+- 本轮提交：`b59b48c19d521aa3e39d8f2b50bf379d553622fe`。
+- APP patch 版本递增至 `0.3.74-dev` / versionCode `30074`；版本提交：`e1e1baafffc405ffe0874d279ca1736a1afb4874`。
+- 本轮新版本尚未构建；待 Release 编译、签名验证与产物上传。TalkBack 触摸探索、线性焦点导航、Switch Access 仍需真机验证。
+- A 阶段继续开放：SideColumn 源码已有逐项虚拟节点、点击/焦点/辅助滚动实现，现需真机验收；各 Canvas 面板仍需逐项核对节点覆盖与操作语义，工具栏排序仍缺少明确的非拖拽辅助操作；B/C/D 及真机回归未完成。
+
+## 2026-11-25：功能面板开关语义补齐
+
+- `FunctionPanel` 的键盘设置开关与“候选区/键盘区同步调节”开关增加 `checked`，由现有 `PanelView` provider 暴露为 Switch/checkable 节点。
+- 保留现有选中状态、持久化值、点击路径、视觉样式与布局；不修改其他功能开关行为。
+- 源码提交：`a3f3fd06f8032565eff9e63453665ebdfa7122b9`。
+- APP patch 版本递增至 `0.3.75-dev` / versionCode `30075`；版本提交：`e53f3e0af16b652f9b074646c97b6bd248172dc2`。
+- 此提交触发新一轮签名 Release 构建；之前 #871 可能因同分支后续提交被并发策略取消，以最新 run 为准。
+- 待 CI 编译/签名/产物检查与 TalkBack 真机验收。

@@ -162,7 +162,9 @@ fn segment_chunk(chunk: &str, allow_partial: bool) -> Vec<Segmentation> {
         // (长度, 是否完整音节)
         let mut tokens: Vec<(usize, bool)> = matches.lengths().map(|len| (len, true)).collect();
         for len in initial_lengths(rest) {
-            if !tokens.contains(&(len, true)) {
+            // 某些零声母首字母（a / e / o）本身也是完整音节：
+            // 必须同时保留「完整音节」与「简拼声母」两种解释，不能因长度相同互相吞掉。
+            if !tokens.contains(&(len, false)) {
                 tokens.push((len, false));
             }
         }

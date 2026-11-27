@@ -1,3 +1,8 @@
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -124,8 +129,118 @@ val stageData by tasks.registering(Sync::class) {
     }
 }
 
+// 构建期同步 Google 官方目录中当前已发布的全部 Noto 动画 Emoji；运行时只读 APK assets。
+val downloadNotoEmojiLottie by tasks.registering {
+    group = "qingjian"
+    description = "Download the complete currently published Google Noto Emoji animation catalog"
+    val outputDir = bundledAssets.map { it.dir("noto-emoji") }
+    outputs.dir(outputDir)
+    doLast {
+        val target = outputDir.get().asFile
+        target.mkdirs()
+
+        val manifestConnection = URL("https://googlefonts.github.io/noto-emoji-animation/data/api.json").openConnection() as HttpURLConnection
+        manifestConnection.connectTimeout = 15000
+        manifestConnection.readTimeout = 30000
+        val manifest = manifestConnection.inputStream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
+        val idPattern = Regex("emoji_u([0-9a-fA-F_]+)")
+        val ids: List<String> = idPattern.findAll(manifest)
+            .map { match -> match.groupValues[1].lowercase() }
+            .distinct()
+            .toList()
+        if (ids.size < 500) {
+            throw GradleException("Noto Emoji manifest looks incomplete: only ${ids.size} animation IDs found")
+        }
+
+        // 删除旧的手工精选集，避免旧命名与完整目录产生重复或错误映射。
+        target.listFiles()?.filter { it.extension == "json" && it.nameWithoutExtension !in ids }
+            ?.forEach { it.delete() }
+
+        val pool = Executors.newFixedThreadPool(8)
+        try {
+            val downloads = ids.map { id ->
+                pool.submit(Callable<String?> {
+                    val destination = target.resolve("$id.json")
+                    if (destination.isFile && destination.length() > 100) return@Callable id
+                    var lastError: Exception? = null
+                    repeat(3) { attempt ->
+                        val temporary = target.resolve("$id.json.part")
+                        var connection: HttpURLConnection? = null
+                        try {
+                            connection = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json").openConnection() as HttpURLConnection
+                            connection.connectTimeout = 15000
+                            connection.readTimeout = 30000
+                            val status = connection.responseCode
+                            if (status == HttpURLConnection.HTTP_NOT_FOUND) {
+                                temporary.delete()
+                                logger.lifecycle("Noto Emoji upstream asset unavailable (HTTP 404): $id")
+                                return@Callable null
+                            }
+                            if (status !in 200..299) {
+                                throw IOException("HTTP " + status + " for Noto Emoji " + id)
+                            }
+                            connection.inputStream.use { input ->
+                                temporary.outputStream().buffered().use { output -> input.copyTo(output) }
+                            }
+                            if (temporary.length() < 100) throw GradleException("Empty Lottie JSON for $id")
+                            if (!temporary.renameTo(destination)) {
+                                destination.delete()
+                                if (!temporary.renameTo(destination)) throw GradleException("Cannot install Lottie asset $id")
+                            }
+                            return@Callable id
+                        } catch (error: Exception) {
+                            lastError = error
+                            temporary.delete()
+                            if (attempt < 2) Thread.sleep(500L * (attempt + 1))
+                        } finally {
+                            connection?.disconnect()
+                        }
+                    }
+                    throw GradleException("Failed to download Noto Emoji " + id + " after retries: " +
+                        (lastError?.javaClass?.simpleName ?: "Unknown") + ": " + (lastError?.message ?: "no details"), lastError)
+                })
+            }
+            val available = mutableListOf<String>()
+            val unavailable = mutableListOf<String>()
+            val failures = mutableListOf<String>()
+            downloads.forEachIndexed { index, future ->
+                try {
+                    val result = future.get()
+                    if (result == null) unavailable += ids[index] else available += result
+                } catch (error: Exception) {
+                    failures += ids[index]
+                    val cause = error.cause ?: error
+                    logger.warn("Noto Emoji download failed: " + ids[index] + ": " +
+                        cause.javaClass.simpleName + ": " + (cause.message ?: "no details"))
+                }
+            }
+            target.resolve("catalog-ids.txt").writeText(available.joinToString("\n") + "\n")
+            target.resolve("catalog-unavailable.txt").writeText(unavailable.joinToString("\n") + "\n")
+            target.resolve("catalog-count.txt").writeText(available.size.toString())
+            if (failures.isNotEmpty()) {
+                throw GradleException("Noto Emoji download errors: " + available.size + "/" + ids.size +
+                    " available; " + unavailable.size + " upstream 404; failed: " + failures.take(20))
+            }
+            logger.lifecycle("Bundled " + available.size + "/" + ids.size +
+                " available Google Noto Emoji animations; " + unavailable.size +
+                " upstream assets returned HTTP 404 (offline at runtime)")
+        } finally {
+            pool.shutdownNow()
+        }
+
+        target.resolve("LICENSE.txt").writeText(
+            "Google Noto Emoji animations\n" +
+            "Official catalog: https://googlefonts.github.io/noto-emoji-animation/\n" +
+            "Manifest: https://googlefonts.github.io/noto-emoji-animation/data/api.json\n" +
+            "Lottie files: https://fonts.gstatic.com/s/e/notoemoji/latest/<codepoints>/lottie.json\n" +
+            "License: Creative Commons Attribution 4.0 International (CC BY 4.0)\n" +
+            "https://creativecommons.org/licenses/by/4.0/\n"
+        )
+    }
+}
+
 tasks.named("preBuild") {
-    dependsOn(cargoNdk, stageData)
+    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie)
 }
 
 
@@ -142,7 +257,10 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     // 拍照识图：中文与英文文字在本机识别，不上传照片。
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // 剪贴板搜索：预生成逐字拼音首字母，支持多音字。
+    implementation("com.belerweb:pinyin4j:2.5.1")
     // 剪贴板文字二维码生成（本机处理，不上传内容）。
+    implementation("com.airbnb.android:lottie:6.6.7")
     implementation("com.google.zxing:core:3.5.3")
     // Binary Eye 同源的 ZXing-C++ Android 官方绑定（Apache-2.0）。
     implementation("io.github.zxing-cpp:android:3.1.1")

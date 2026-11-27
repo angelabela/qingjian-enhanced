@@ -1017,7 +1017,7 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     /** 输入框换了或键盘收起：组句不带走。 */
-    fun abandon() {
+    fun abandon(preservePage: Boolean = false) {
         handler.removeCallbacks(requestChoiceRescore)
         handler.removeCallbacks(pollChoiceRescore)
         choiceRescorePolls = 0
@@ -1040,7 +1040,7 @@ class Composer(private val engine: Engine, private val host: Host) {
         host.showSideItems(pinyinChoices)
         host.showComposition("", emptyList())
         if (page != Page.LETTERS) {
-            page = Page.LETTERS
+            if (!preservePage) page = Page.LETTERS
             host.showKeyboard()
         }
     }

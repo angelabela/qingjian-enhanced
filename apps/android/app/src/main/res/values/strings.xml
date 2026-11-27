@@ -220,6 +220,8 @@
     <string name="key_skin_title">按键主题</string>
     <string name="popup_title">按键气泡</string>
     <string name="popup_note">按下字母时在上面放大显示</string>
+    <string name="letter_key_popup_title">字母键长按选择气泡</string>
+    <string name="letter_key_popup_note">开启后长按字母键可选择大写、小写字母和符号；关闭后字母键长按不再弹出选择气泡，其他按键长按功能不受影响</string>
     <string name="keep_chinese_title">换语言时保留中文</string>
     <string name="keep_chinese_note">长按中英键换语言；开着时总在中文和选的语言之间切</string>
     <string name="voice_hold_space_title">长按空格说话</string>

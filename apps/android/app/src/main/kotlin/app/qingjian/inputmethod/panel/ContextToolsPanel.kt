@@ -57,6 +57,7 @@ class ContextToolsPanel(
         setTextColor(palette.brand)
         setPadding(dp(10), dp(8), dp(10), dp(8))
         isClickable = true
+        isFocusable = true
         visibility = View.GONE
         setOnClickListener {
             val value = result.text?.toString().orEmpty()
@@ -79,6 +80,8 @@ class ContextToolsPanel(
             background = rounded(palette.surface, 14)
             addView(TextView(context).apply {
                 text = "‹"
+                contentDescription = "返回输入界面"
+                isFocusable = true
                 textSize = 32f
                 gravity = Gravity.CENTER
                 setTextColor(palette.text)
@@ -268,6 +271,7 @@ class ContextToolsPanel(
             setPadding(dp(13), dp(11), dp(13), dp(11))
             background = rounded(palette.surface, 10)
             isClickable = true
+            isFocusable = true
             setOnClickListener { run() }
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = dp(6)

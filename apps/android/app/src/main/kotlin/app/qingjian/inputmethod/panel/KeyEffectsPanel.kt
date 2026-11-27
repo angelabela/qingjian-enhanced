@@ -17,14 +17,16 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private val prefs = context.getSharedPreferences(DynamicBackgroundActivity.PREFS, Context.MODE_PRIVATE)
     private val card = RectF()
     private val scroll = scrollable(false) { x, y -> card.contains(x, y) }
-    private var sliderTracking = false
+    private var activeSlider = -1
     private val alpha get() = prefs.getInt(KEY_ALPHA, 100).coerceIn(0, 100)
     private val frosted get() = prefs.getBoolean(KEY_FROSTED, false)
     private val marquee get() = prefs.getBoolean(DynamicBackgroundActivity.KEY_KEYBOARD_MARQUEE, false)
     private val edgeGlow get() = prefs.getBoolean(KEY_EDGE_GLOW, false)
     private val threeDimensional get() = prefs.getBoolean(KEY_3D, false)
-    private val borderIndex get() = prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)
-    private val backgroundIndex get() = prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)
+    private val borderColor get() = prefs.getInt(KEY_BORDER_COLOR, 0).takeIf { it != 0 }
+        ?: BORDER_COLORS[prefs.getInt(KEY_BORDER_INDEX, 0).coerceIn(0, BORDER_COLORS.lastIndex)]
+    private val backgroundColor get() = prefs.getInt(KEY_BACKGROUND_COLOR, 0).takeIf { it != 0 }
+        ?: BACKGROUND_COLORS[prefs.getInt(KEY_BACKGROUND_INDEX, 0).coerceIn(0, BACKGROUND_COLORS.lastIndex)]
     private fun top() = card.top + ink.dp(12f)
     private fun alphaTop() = top() + ink.dp(4f)
     private fun alphaTrackY() = alphaTop() + ink.dp(40f)
@@ -33,12 +35,88 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
     private fun edgeGlowTop() = marqueeTop() + ink.dp(48f)
     private fun threeDimensionalTop() = edgeGlowTop() + ink.dp(48f)
     private fun borderTop() = threeDimensionalTop() + ink.dp(48f)
-    private fun backgroundTop() = borderTop() + ink.dp(56f)
-    private fun contentBottom() = backgroundTop() + ink.dp(56f)
+    private fun borderTrackY() = borderTop() + ink.dp(36f)
+    private fun backgroundTop() = borderTop() + ink.dp(82f)
+    private fun backgroundTrackY() = backgroundTop() + ink.dp(36f)
+    private fun restoreTop() = backgroundTop() + ink.dp(82f)
+    private fun contentBottom() = restoreTop() + ink.dp(48f)
 
     private fun notifyChanged() {
         context.sendBroadcast(Intent(DynamicBackgroundActivity.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
         invalidate()
+    }
+
+    override fun accessibilityElements(): List<AccessibilityElement> {
+        if (card.isEmpty) return emptyList()
+        val offset = scroll.offset
+        val left = card.left + ink.dp(8f)
+        val right = card.right - ink.dp(8f)
+        val elements = mutableListOf<AccessibilityElement>()
+        val trackLeft = card.left + ink.dp(18f)
+        val trackRight = card.right - ink.dp(18f)
+        val trackY = alphaTrackY() - offset
+        elements += AccessibilityElement(
+            label = "按键透明度，$alpha%",
+            bounds = RectF(trackLeft, trackY - ink.dp(14f), trackRight, trackY + ink.dp(14f)),
+            rangeMin = 0f,
+            rangeMax = 100f,
+            rangeCurrent = alpha.toFloat(),
+            onSetProgress = { value ->
+                prefs.edit().putInt(KEY_ALPHA, value.toInt().coerceIn(0, 100)).apply()
+                notifyChanged()
+            },
+        )
+        listOf(
+            Triple(frostedTop(), "按键磨砂效果", frosted),
+            Triple(marqueeTop(), "字母按键跑马灯", marquee),
+            Triple(edgeGlowTop(), "边缘发光效果", edgeGlow),
+            Triple(threeDimensionalTop(), "立体按键效果", threeDimensional),
+        ).forEach { (rowTop, label, enabled) ->
+            elements += AccessibilityElement(
+                "$label，${if (enabled) "已开启" else "已关闭"}",
+                RectF(left, rowTop - offset, right, rowTop + ink.dp(46f) - offset),
+                selected = enabled,
+                checked = enabled,
+            )
+        }
+        fun addColors(rowTop: Float, label: String, colors: IntArray, selected: Int) {
+            val size = ink.dp(19f)
+            val gap = ink.dp(5f)
+            val startX = card.left + ink.dp(14f)
+            val y = rowTop + ink.dp(52f) - offset
+            colors.forEachIndexed { index, _ ->
+                val x = startX + index * (size + gap)
+                elements += AccessibilityElement(
+                    "$label，第${index + 1}种${if (index == selected) "，已选中" else ""}",
+                    RectF(x, y - ink.dp(3f), x + size, y + size + ink.dp(3f)),
+                    selected = index == selected,
+                )
+            }
+        }
+        elements += AccessibilityElement(
+            "按键边框 RGB 色相，${hueOf(borderColor).toInt()}度",
+            RectF(trackLeft, borderTrackY() - offset - ink.dp(12f), trackRight, borderTrackY() - offset + ink.dp(12f)),
+            rangeMin = 0f, rangeMax = 360f, rangeCurrent = hueOf(borderColor),
+            onSetProgress = { setColorHue(1, it) },
+        )
+        elements += AccessibilityElement(
+            "按键背景 RGB 色相，${hueOf(backgroundColor).toInt()}度",
+            RectF(trackLeft, backgroundTrackY() - offset - ink.dp(12f), trackRight, backgroundTrackY() - offset + ink.dp(12f)),
+            rangeMin = 0f, rangeMax = 360f, rangeCurrent = hueOf(backgroundColor),
+            onSetProgress = { setColorHue(2, it) },
+        )
+        addColors(borderTop(), "按键边框效果", PRESET_COLORS, PRESET_COLORS.indexOf(borderColor))
+        addColors(backgroundTop(), "按键背景效果", PRESET_COLORS, PRESET_COLORS.indexOf(backgroundColor and 0x00FFFFFF or 0xFF000000.toInt()))
+        elements += AccessibilityElement(
+            "恢复按键边框和背景默认主题色",
+            RectF(card.left + ink.dp(14f), restoreTop() - offset + ink.dp(4f), card.right - ink.dp(14f), restoreTop() - offset + ink.dp(40f)),
+        )
+        val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
+        accessibilityScrollElement("按键效果设置列表，可滚动", viewport, scroll)?.let(elements::add)
+        return elements.mapNotNull { element ->
+            val visible = RectF(element.bounds)
+            if (!visible.intersect(viewport)) null else element.copy(bounds = visible)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -68,30 +146,52 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         drawToggle(canvas, marqueeTop(), "字母按键跑马灯", marquee, "A-Z 依次流动，带彩虹渐变光尾")
         drawToggle(canvas, edgeGlowTop(), "边缘发光效果", edgeGlow, "按键轮廓增加柔和外扩光晕")
         drawToggle(canvas, threeDimensionalTop(), "立体按键效果", threeDimensional, "增加底部厚度阴影与顶部高光")
-        drawColorChoice(canvas, borderTop(), "按键边框效果", BORDER_COLORS, borderIndex)
-        drawColorChoice(canvas, backgroundTop(), "按键背景效果", BACKGROUND_COLORS, backgroundIndex)
+        drawColorChoice(canvas, borderTop(), "按键边框效果 RGB", borderColor, isBackground = false)
+        drawColorChoice(canvas, backgroundTop(), "按键背景效果 RGB", backgroundColor, isBackground = true)
+        val restoreBounds = RectF(card.left + ink.dp(14f), restoreTop() + ink.dp(4f), card.right - ink.dp(14f), restoreTop() + ink.dp(40f))
+        ink.round(canvas, restoreBounds, 10f, palette.functionalKey)
+        ink.text(canvas, "恢复默认主题色", 12f, palette.text, restoreBounds.centerX(), restoreBounds.centerY())
         canvas.restore()
         if (marquee && isShown) postInvalidateDelayed(32L)
     }
 
-    private fun drawColorChoice(canvas: Canvas, rowTop: Float, label: String, colors: IntArray, selected: Int) {
-        ink.textStart(canvas, label, 13f, palette.text, card.left + ink.dp(14f), rowTop + ink.dp(18f), card.right - ink.dp(12f))
-        val swatchSize = ink.dp(19f)
-        val gap = ink.dp(9f)
-        val total = colors.size * swatchSize + (colors.size - 1) * gap
+    private fun drawColorChoice(canvas: Canvas, rowTop: Float, label: String, selectedColor: Int, isBackground: Boolean) {
+        ink.textStart(canvas, label, 12.5f, palette.text, card.left + ink.dp(14f), rowTop + ink.dp(17f), card.right - ink.dp(12f))
+        val left = card.left + ink.dp(18f)
+        val right = card.right - ink.dp(18f)
+        val trackY = rowTop + ink.dp(36f)
+        val track = RectF(left, trackY - ink.dp(4f), right, trackY + ink.dp(4f))
+        val rainbow = intArrayOf(
+            0xFFFF3030.toInt(), 0xFFFFD430.toInt(), 0xFF55E85A.toInt(),
+            0xFF25DDE8.toInt(), 0xFF397BFF.toInt(), 0xFFB34DFF.toInt(), 0xFFFF3030.toInt(),
+        )
+        ink.fill.shader = android.graphics.LinearGradient(track.left, 0f, track.right, 0f, rainbow, null, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(track, ink.dp(4f), ink.dp(4f), ink.fill)
+        ink.fill.shader = null
+        val markerX = left + (right - left) * (hueOf(selectedColor) / 360f)
+        ink.fill.color = palette.surface
+        canvas.drawCircle(markerX, trackY, ink.dp(6f), ink.fill)
+        ink.fill.color = selectedColor
+        canvas.drawCircle(markerX, trackY, ink.dp(4f), ink.fill)
+
+        val swatchWidth = ink.dp(19f)
+        val swatchHeight = ink.dp(12f)
+        val gap = ink.dp(5f)
         var x = card.left + ink.dp(14f)
-        val y = rowTop + ink.dp(28f)
-        colors.forEachIndexed { index, color ->
-            ink.fill.color = color
-            canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f, ink.fill)
-            if (index == selected) {
+        val y = rowTop + ink.dp(52f)
+        PRESET_COLORS.forEach { color ->
+            val bounds = RectF(x, y, x + swatchWidth, y + swatchHeight)
+            ink.fill.color = if (isBackground) (color and 0x00FFFFFF) or 0x55000000 else color
+            canvas.drawRoundRect(bounds, ink.dp(3f), ink.dp(3f), ink.fill)
+            val selected = (selectedColor and 0x00FFFFFF) == (color and 0x00FFFFFF)
+            if (selected) {
                 ink.fill.style = Paint.Style.STROKE
-                ink.fill.strokeWidth = ink.dp(2f)
+                ink.fill.strokeWidth = ink.dp(1.5f)
                 ink.fill.color = palette.text
-                canvas.drawCircle(x + swatchSize / 2f, y + swatchSize / 2f, swatchSize / 2f + ink.dp(2f), ink.fill)
+                canvas.drawRoundRect(RectF(bounds).apply { inset(-ink.dp(1.5f), -ink.dp(1.5f)) }, ink.dp(4f), ink.dp(4f), ink.fill)
                 ink.fill.style = Paint.Style.FILL
             }
-            x += swatchSize + gap
+            x += swatchWidth + gap
         }
     }
 
@@ -123,44 +223,87 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             prefs.edit().putBoolean(KEY_3D, !threeDimensional).apply()
             notifyChanged()
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
-            selectColorAt(x, contentY, borderTop(), KEY_BORDER_INDEX, BORDER_COLORS)
-        } else if (contentY >= backgroundTop() && contentY < contentBottom()) {
-            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_INDEX, BACKGROUND_COLORS)
+            selectColorAt(x, contentY, borderTop(), KEY_BORDER_COLOR, isBackground = false)
+        } else if (contentY >= backgroundTop() && contentY < restoreTop()) {
+            selectColorAt(x, contentY, backgroundTop(), KEY_BACKGROUND_COLOR, isBackground = true)
+        } else if (contentY >= restoreTop() && contentY < contentBottom()) {
+            restoreThemeColors()
         }
     }
 
-    /** 按实际色块坐标命中，允许直接选择颜色。 */
-    private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String, colors: IntArray) {
-        val swatchSize = ink.dp(19f)
-        val gap = ink.dp(9f)
+    /** 恢复边框与背景色的主题默认值；不改透明度、磨砂和其他按键效果。 */
+    private fun restoreThemeColors() {
+        prefs.edit()
+            .remove(KEY_BORDER_COLOR)
+            .remove(KEY_BACKGROUND_COLOR)
+            .putInt(KEY_BORDER_INDEX, 0)
+            .putInt(KEY_BACKGROUND_INDEX, 0)
+            .apply()
+        notifyChanged()
+    }
+
+    /** 点击 11 个固定预设色，背景色保留半透明以透出主题/视频背景。 */
+    private fun selectColorAt(x: Float, contentY: Float, rowTop: Float, key: String, isBackground: Boolean) {
+        val swatchWidth = ink.dp(19f)
+        val swatchHeight = ink.dp(12f)
+        val gap = ink.dp(5f)
         val startX = card.left + ink.dp(14f)
-        val centerY = rowTop + ink.dp(28f) + swatchSize / 2f
-        if (kotlin.math.abs(contentY - centerY) > ink.dp(22f)) return
-        val index = colors.indices.minByOrNull { i ->
-            kotlin.math.abs(x - (startX + i * (swatchSize + gap) + swatchSize / 2f))
+        val topY = rowTop + ink.dp(52f)
+        val centerY = topY + swatchHeight / 2f
+        if (kotlin.math.abs(contentY - centerY) > ink.dp(12f)) return
+        val index = PRESET_COLORS.indices.minByOrNull { i ->
+            kotlin.math.abs(x - (startX + i * (swatchWidth + gap) + swatchWidth / 2f))
         } ?: return
-        val centerX = startX + index * (swatchSize + gap) + swatchSize / 2f
-        if (kotlin.math.abs(x - centerX) > swatchSize * 0.9f) return
-        prefs.edit().putInt(key, index).apply()
+        val centerX = startX + index * (swatchWidth + gap) + swatchWidth / 2f
+        if (kotlin.math.abs(x - centerX) > swatchWidth * 0.65f) return
+        val color = PRESET_COLORS[index]
+        val stored = if (isBackground) (color and 0x00FFFFFF) or 0x55000000 else color
+        prefs.edit().putInt(key, stored)
+            .putInt(if (isBackground) KEY_BACKGROUND_INDEX else KEY_BORDER_INDEX, 0)
+            .apply()
+        notifyChanged()
+    }
+
+    private fun hueOf(color: Int): Float {
+        if (color == 0) return 210f
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(color, hsv)
+        return hsv[0]
+    }
+
+    private fun setColorHue(slider: Int, hue: Float) {
+        val color = android.graphics.Color.HSVToColor(floatArrayOf(hue.coerceIn(0f, 360f), 0.86f, 1f))
+        val key = if (slider == 1) KEY_BORDER_COLOR else KEY_BACKGROUND_COLOR
+        val stored = if (slider == 2) (color and 0x00FFFFFF) or 0x55000000 else color
+        prefs.edit().putInt(key, stored)
+            .putInt(if (slider == 1) KEY_BORDER_INDEX else KEY_BACKGROUND_INDEX, 0)
+            .apply()
         notifyChanged()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
-            kotlin.math.abs(event.y + scroll.offset - alphaTrackY()) <= ink.dp(15f)) {
-            sliderTracking = true
-            parent?.requestDisallowInterceptTouchEvent(true)
-            setAlphaFromX(event.x)
-            invalidate()
-            return true
+        val contentY = event.y + scroll.offset
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y)) {
+            activeSlider = when {
+                kotlin.math.abs(contentY - alphaTrackY()) <= ink.dp(15f) -> 0
+                kotlin.math.abs(contentY - borderTrackY()) <= ink.dp(12f) -> 1
+                kotlin.math.abs(contentY - backgroundTrackY()) <= ink.dp(12f) -> 2
+                else -> -1
+            }
+            if (activeSlider >= 0) {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                updateSliderFromX(event.x, activeSlider)
+                invalidate()
+                return true
+            }
         }
-        if (sliderTracking) {
+        if (activeSlider >= 0) {
             when (event.actionMasked) {
-                MotionEvent.ACTION_MOVE -> { setAlphaFromX(event.x); invalidate() }
+                MotionEvent.ACTION_MOVE -> { updateSliderFromX(event.x, activeSlider); invalidate() }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    setAlphaFromX(event.x)
-                    sliderTracking = false
+                    updateSliderFromX(event.x, activeSlider)
+                    activeSlider = -1
                     parent?.requestDisallowInterceptTouchEvent(false)
                     notifyChanged()
                 }
@@ -168,6 +311,15 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             return true
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun updateSliderFromX(x: Float, slider: Int) {
+        if (slider == 0) setAlphaFromX(x) else {
+            val left = card.left + ink.dp(18f)
+            val right = card.right - ink.dp(18f)
+            val fraction = ((x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+            setColorHue(slider, fraction * 360f)
+        }
     }
 
     private fun setAlphaFromX(x: Float) {
@@ -185,6 +337,14 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         const val KEY_3D = "keyboard_key_3d"
         const val KEY_BORDER_INDEX = "keyboard_key_border_index"
         const val KEY_BACKGROUND_INDEX = "keyboard_key_background_index"
+        const val KEY_BORDER_COLOR = "keyboard_key_border_color"
+        const val KEY_BACKGROUND_COLOR = "keyboard_key_background_color"
+        val PRESET_COLORS = intArrayOf(
+            0xFFD4042D.toInt(), 0xFF9D1F2F.toInt(), 0xFFEB6127.toInt(),
+            0xFFDB7A0E.toInt(), 0xFF5A92E5.toInt(), 0xFF5E8034.toInt(),
+            0xFF6FBA2C.toInt(), 0xFF41B5C2.toInt(), 0xFFFACA2E.toInt(),
+            0xFFEB6D98.toInt(), 0xFF722169.toInt(),
+        )
         val BORDER_COLORS = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
         val BACKGROUND_COLORS = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
     }

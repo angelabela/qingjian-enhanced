@@ -99,6 +99,8 @@ fn context_score_orders_within_the_same_structure() {
     assert_eq!(items[0].hit.text, "把");
     for item in &mut items {
         item.weight = 3;
+        // 让静态词频相同，单独验证模糊音代价能否打破平手。
+        item.hit.frequency = 2_000_000;
         item.penalty = if item.hit.text == "把" {
             FUZZY_PENALTY
         } else {

@@ -1,6 +1,6 @@
 //! 云端：快捷翻译（接上 / 断开、发请求、取译文，工具框开着时不计输入统计）与释义兜底。
 
-use qingjian_core::{NoGlossFiller, NoPredictor};
+use qingjian_core::{NoGlossFiller, NoPredictor, PredictionKind};
 use qingjian_predict::{CloudGlossFiller, CloudPredictor};
 
 use super::Session;
@@ -10,6 +10,8 @@ impl Session {
     /// 接上或断开云端（快捷翻译用）：`None`、或配置起不来（没填密钥）都退回不联网。返回接没接上。
     /// 不记接口用量：用量文件靠文件锁合并，安卓上不支持（`lock() not supported`）。
     pub fn set_cloud(&mut self, settings: Option<&CloudSettings>) -> bool {
+        // 切换提供方时，不能把旧 Provider 已排队的结果交给新会话状态。
+        self.pending_predictions.clear();
         let predictor = settings.map(|settings| CloudPredictor::new(&settings.predict_config()));
         match predictor {
             Some(Ok(predictor)) => {
@@ -36,8 +38,7 @@ impl Session {
 
     /// 取回译文：没到返回 `None`，模型没给出内容返回空串（壳停止等待）。
     pub fn poll_translation(&mut self) -> Option<String> {
-        self.engine
-            .poll_prediction()
+        self.poll_prediction_kind(|kind| kind == PredictionKind::Translate)
             .map(|prediction| prediction.sentence.unwrap_or_default())
     }
 

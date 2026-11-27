@@ -6,6 +6,12 @@ import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
 import android.view.View
 import app.qingjian.inputmethod.R
 import app.qingjian.inputmethod.keyboard.layout.Key
@@ -84,16 +90,26 @@ class KeyboardView(
         fun onClearBeforeCursor()
     }
 
-    private val metrics = KeyboardMetrics(resources.displayMetrics.density, settings.heightPercent)
+    private val metrics = KeyboardMetrics(
+        resources.displayMetrics.density,
+        settings.heightPercent,
+        resources.displayMetrics.scaledDensity / resources.displayMetrics.density,
+        settings.keyFontSize / 20f,
+    )
     private val keyEffectPrefs = context.getSharedPreferences("dynamic_background", Context.MODE_PRIVATE)
     private val borderColors = intArrayOf(0, 0xFF5B8CFF.toInt(), 0xFF28D7C5.toInt(), 0xFFFFB45B.toInt(), 0xFFFF6B9A.toInt())
     private val backgroundColors = intArrayOf(0, 0x403B82F6, 0x4030CDB8, 0x40FFB45B, 0x40A78BFA)
+    private val borderColor = keyEffectPrefs.getInt("keyboard_key_border_color", 0).takeIf { it != 0 }
+        ?: borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
+    private val backgroundColor = keyEffectPrefs.getInt("keyboard_key_background_color", 0).takeIf { it != 0 }
+        ?: backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
     private val painter = KeyPainter(
         palette, metrics, settings.keyFontSize / 20f, settings.keySkin, settings.keyboardFontWeight,
         keyBackgroundAlpha, keyBackgroundFrosted, settings.keyboardTextPreset,
-        borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)],
-        backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)],
+        borderColor,
+        backgroundColor,
         settings.keyboardTextColor,
+        scaledDensity = resources.displayMetrics.scaledDensity,
     )
     private var marqueeEnabled = keyMarqueeEnabled
     private val side = SideColumn(metrics.density) { item ->
@@ -122,6 +138,328 @@ class KeyboardView(
     /** 气泡是哪个键弹的：中英键选的是语言，不上屏。 */
     private var choiceKey: Key? = null
     private val screenLocation = IntArray(2)
+
+    private val accessibilityManager =
+        context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    private var accessibilityFocusedKey = -1
+    private var accessibilityFocusedSideItem = -1
+    private var accessibilityFocusedSideScroll = false
+    private var hoveredAccessibilityKey = -1
+
+    /**
+     * 键盘是 Canvas 自绘，必须显式暴露每个键的虚拟节点；不改动原有触摸/滑动分发。
+     * TalkBack 点击虚拟键时只执行普通点按，不伪造长按或方向手势。
+     */
+    private val keyboardAccessibilityProvider = object : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
+            if (virtualViewId == SIDE_ACCESSIBILITY_SCROLL_ID) {
+                if (!side.accessibilityScrollable) return null
+                val info = AccessibilityNodeInfo.obtain()
+                info.setSource(this@KeyboardView, virtualViewId)
+                info.setParent(this@KeyboardView)
+                info.packageName = context.packageName
+                info.className = "android.widget.ScrollView"
+                info.text = "拼音或标点列表"
+                info.contentDescription = "拼音或标点列表，可纵向滚动"
+                info.isEnabled = this@KeyboardView.isEnabled
+                info.isVisibleToUser = isShown
+                info.isFocusable = true
+                info.isScrollable = true
+                info.isAccessibilityFocused = accessibilityFocusedSideScroll
+                val bounds = Rect(side.bounds.left.toInt(), side.bounds.top.toInt(), side.bounds.right.toInt(), side.bounds.bottom.toInt())
+                info.setBoundsInParent(bounds)
+                val screenBounds = Rect(bounds)
+                getLocationOnScreen(screenLocation)
+                screenBounds.offset(screenLocation[0], screenLocation[1])
+                info.setBoundsInScreen(screenBounds)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                info.addAction(if (accessibilityFocusedSideScroll) AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+                return info
+            }
+            if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
+                val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
+                val label = side.items.getOrNull(index) ?: return null
+                val itemBounds = side.accessibilityBounds(index) ?: return null
+                val info = AccessibilityNodeInfo.obtain()
+                info.setSource(this@KeyboardView, virtualViewId)
+                info.setParent(this@KeyboardView)
+                info.packageName = context.packageName
+                info.className = "android.widget.Button"
+                info.text = label
+                info.contentDescription = "拼音或标点候选，第" + (index + 1) + "项，" + label
+                info.isEnabled = this@KeyboardView.isEnabled
+                info.isVisibleToUser = isShown
+                info.isFocusable = true
+                info.isClickable = true
+                info.isAccessibilityFocused = accessibilityFocusedSideItem == index
+                val bounds = Rect(itemBounds.left.toInt(), itemBounds.top.toInt(), itemBounds.right.toInt(), itemBounds.bottom.toInt())
+                info.setBoundsInParent(bounds)
+                val screenBounds = Rect(bounds)
+                getLocationOnScreen(screenLocation)
+                screenBounds.offset(screenLocation[0], screenLocation[1])
+                info.setBoundsInScreen(screenBounds)
+                info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+                info.addAction(if (accessibilityFocusedSideItem == index) AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS else AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+                return info
+            }
+            val slot = slots.getOrNull(virtualViewId) ?: return null
+            val info = AccessibilityNodeInfo.obtain()
+            info.setSource(this@KeyboardView, virtualViewId)
+            info.setParent(this@KeyboardView)
+            info.packageName = context.packageName
+            info.className = "android.widget.Button"
+            info.text = accessibilityLabel(slot.key)
+            info.contentDescription = accessibilityLabel(slot.key)
+            info.isEnabled = this@KeyboardView.isEnabled
+            info.isVisibleToUser = isShown
+            info.isFocusable = true
+            info.isClickable = true
+            info.isAccessibilityFocused = accessibilityFocusedKey == virtualViewId
+            val bounds = Rect()
+            slot.bounds.roundOut(bounds)
+            info.setBoundsInParent(bounds)
+            val screenBounds = Rect(bounds)
+            getLocationOnScreen(screenLocation)
+            screenBounds.offset(screenLocation[0], screenLocation[1])
+            info.setBoundsInScreen(screenBounds)
+            info.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (accessibilityFocusedKey == virtualViewId) {
+                info.addAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS)
+            } else {
+                info.addAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+            }
+            return info
+        }
+
+        override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            if (virtualViewId == SIDE_ACCESSIBILITY_SCROLL_ID) {
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                        if (!side.accessibilityScrollable || !accessibilityManager.isEnabled || accessibilityFocusedSideScroll) return false
+                        if (accessibilityFocusedKey >= 0) {
+                            sendVirtualAccessibilityEvent(accessibilityFocusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedKey = -1
+                        }
+                        if (accessibilityFocusedSideItem >= 0) {
+                            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedSideItem = -1
+                        }
+                        accessibilityFocusedSideScroll = true
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                        if (!accessibilityFocusedSideScroll) return false
+                        accessibilityFocusedSideScroll = false
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> {
+                        val direction = if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1
+                        if (!side.accessibilityScroll(direction)) return false
+                        clearUnavailableSideAccessibilityTargets()
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SCROLLED)
+                        sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                        invalidate()
+                        return true
+                    }
+                }
+                return false
+            }
+            if (virtualViewId >= SIDE_ACCESSIBILITY_BASE) {
+                val index = virtualViewId - SIDE_ACCESSIBILITY_BASE
+                if (side.items.getOrNull(index) == null || side.accessibilityBounds(index) == null) return false
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                        if (!accessibilityManager.isEnabled || accessibilityFocusedSideItem == index) return false
+                        if (accessibilityFocusedKey >= 0) {
+                            sendVirtualAccessibilityEvent(accessibilityFocusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                            accessibilityFocusedKey = -1
+                        }
+                        if (accessibilityFocusedSideItem >= 0) {
+                            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        }
+                        if (accessibilityFocusedSideScroll) {
+                            accessibilityFocusedSideScroll = false
+                            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        }
+                        accessibilityFocusedSideItem = index
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+                        invalidate()
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                        if (accessibilityFocusedSideItem != index) return false
+                        accessibilityFocusedSideItem = -1
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        invalidate()
+                        return true
+                    }
+                    AccessibilityNodeInfo.ACTION_CLICK -> {
+                        if (!isEnabled || !side.clickAccessibilityItem(index)) return false
+                        sendSideAccessibilityEvent(index, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                        return true
+                    }
+                }
+                return false
+            }
+            val slot = slots.getOrNull(virtualViewId) ?: return false
+            when (action) {
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
+                    if (!accessibilityManager.isEnabled || accessibilityFocusedKey == virtualViewId) return false
+                    if (accessibilityFocusedKey >= 0) {
+                        sendVirtualAccessibilityEvent(
+                            accessibilityFocusedKey,
+                            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                        )
+                    }
+                    if (accessibilityFocusedSideItem >= 0) {
+                        sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                        accessibilityFocusedSideItem = -1
+                    }
+                    if (accessibilityFocusedSideScroll) {
+                        accessibilityFocusedSideScroll = false
+                        sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+                    }
+                    accessibilityFocusedKey = virtualViewId
+                    sendVirtualAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
+                    if (accessibilityFocusedKey != virtualViewId) return false
+                    accessibilityFocusedKey = -1
+                    sendVirtualAccessibilityEvent(
+                        virtualViewId,
+                        AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                    )
+                    invalidate()
+                    return true
+                }
+                AccessibilityNodeInfo.ACTION_CLICK -> {
+                    if (!isEnabled) return false
+                    tapFeedback()
+                    listener.onKey(slot.key)
+                    sendVirtualAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    return true
+                }
+            }
+            return false
+        }
+
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? =
+            if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
+                when {
+                    accessibilityFocusedSideScroll -> createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_SCROLL_ID)
+                    accessibilityFocusedSideItem >= 0 -> createAccessibilityNodeInfo(SIDE_ACCESSIBILITY_BASE + accessibilityFocusedSideItem)
+                    else -> createAccessibilityNodeInfo(accessibilityFocusedKey)
+                }
+            } else null
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider = keyboardAccessibilityProvider
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        if (side.accessibilityScrollable) info.addChild(this, SIDE_ACCESSIBILITY_SCROLL_ID)
+        side.items.indices.forEach { index ->
+            if (side.accessibilityBounds(index) != null) info.addChild(this, SIDE_ACCESSIBILITY_BASE + index)
+        }
+        slots.indices.forEach { info.addChild(this, it) }
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (!accessibilityManager.isTouchExplorationEnabled) return super.onHoverEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val sideIndex = side.items.indices.firstOrNull {
+                    side.accessibilityBounds(it)?.contains(event.x, event.y) == true
+                }
+                val next = sideIndex?.let { SIDE_ACCESSIBILITY_BASE + it }
+                    ?: slots.indexOfFirst { it.bounds.contains(event.x, event.y) }
+                if (next != hoveredAccessibilityKey) {
+                    if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE) {
+                        sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                    } else if (hoveredAccessibilityKey >= 0) {
+                        sendVirtualAccessibilityEvent(hoveredAccessibilityKey, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                    }
+                    hoveredAccessibilityKey = next
+                    if (next >= SIDE_ACCESSIBILITY_BASE) {
+                        sendSideAccessibilityEvent(next - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    } else if (next >= 0) {
+                        sendVirtualAccessibilityEvent(next, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)
+                    }
+                }
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE) {
+                    sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                } else if (hoveredAccessibilityKey >= 0) {
+                    sendVirtualAccessibilityEvent(hoveredAccessibilityKey, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+                }
+                hoveredAccessibilityKey = -1
+            }
+        }
+        return true
+    }
+
+    private fun sendSideScrollAccessibilityEvent(eventType: Int) {
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.ScrollView"
+        event.setSource(this, SIDE_ACCESSIBILITY_SCROLL_ID)
+        event.text.add("拼音或标点列表，可纵向滚动")
+        event.isEnabled = isEnabled
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
+    }
+
+    private fun sendSideAccessibilityEvent(index: Int, eventType: Int) {
+        val label = side.items.getOrNull(index) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, SIDE_ACCESSIBILITY_BASE + index)
+        event.text.add(label)
+        event.isEnabled = isEnabled
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
+    }
+
+    private fun sendVirtualAccessibilityEvent(virtualViewId: Int, eventType: Int) {
+        val slot = slots.getOrNull(virtualViewId) ?: return
+        val event = AccessibilityEvent.obtain(eventType)
+        event.packageName = context.packageName
+        event.className = "android.widget.Button"
+        event.setSource(this, virtualViewId)
+        event.text.add(accessibilityLabel(slot.key))
+        event.isEnabled = isEnabled
+        val accepted = parent?.requestSendAccessibilityEvent(this, event) == true
+        if (!accepted) event.recycle()
+    }
+
+    private fun accessibilityLabel(key: Key): String = when (key) {
+        is Key.Letter -> key.char.uppercase()
+        is Key.Digit -> "${key.letters}，数字${key.digit}"
+        is Key.Zhuyin -> key.label
+        is Key.Text -> key.text
+        is Key.Space -> "空格"
+        is Key.Enter -> "回车"
+        Key.Backspace -> "删除"
+        Key.Shift -> "大小写切换"
+        Key.Language -> "中英文切换"
+        Key.Tab, Key.TabWide -> "跳到下一格"
+        Key.TabPrevious -> "跳到上一格"
+        Key.Clear -> "清空输入"
+        is Key.Symbols -> key.label.ifBlank { "符号" }
+        is Key.SymbolPage -> key.label.ifBlank { "符号页" }
+        is Key.NumberPage -> key.label.ifBlank { "数字页" }
+        is Key.Letters -> key.label.ifBlank { "字母页" }
+    }
 
     /** 在等长按的那根手指；气泡弹出后它的移动只用来选项。 */
     private var longPressPointer = -1
@@ -229,6 +567,7 @@ class KeyboardView(
     val baseHeight: Float get() = metrics.baseHeight
 
     init {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         painter.setMarqueeEnabled(keyMarqueeEnabled)
         refreshKeyEffects()
         setBackgroundColor(if (transparentBackground) android.graphics.Color.TRANSPARENT else palette.board)
@@ -256,8 +595,10 @@ class KeyboardView(
 
     /** 设置面板广播变更后立即读取颜色/开关并更新同一个 Painter，不需要重建输入法面板。 */
     fun refreshKeyEffects() {
-        val border = borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
-        val background = backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
+        val border = keyEffectPrefs.getInt("keyboard_key_border_color", 0).takeIf { it != 0 }
+            ?: borderColors[keyEffectPrefs.getInt("keyboard_key_border_index", 0).coerceIn(0, borderColors.lastIndex)]
+        val background = keyEffectPrefs.getInt("keyboard_key_background_color", 0).takeIf { it != 0 }
+            ?: backgroundColors[keyEffectPrefs.getInt("keyboard_key_background_index", 0).coerceIn(0, backgroundColors.lastIndex)]
         painter.setCustomKeyColors(border, background)
         painter.setKeyStyleEffects(
             edgeGlow = keyEffectPrefs.getBoolean("keyboard_key_edge_glow", false),
@@ -273,9 +614,36 @@ class KeyboardView(
         relayout()
     }
 
+    private fun clearUnavailableSideAccessibilityTargets() {
+        if (accessibilityFocusedSideItem >= 0 && side.accessibilityBounds(accessibilityFocusedSideItem) == null) {
+            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+            accessibilityFocusedSideItem = -1
+        }
+        if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE && side.accessibilityBounds(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE) == null) {
+            sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+            hoveredAccessibilityKey = -1
+        }
+        if (accessibilityFocusedSideScroll && !side.accessibilityScrollable) {
+            accessibilityFocusedSideScroll = false
+            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+    }
+
     fun setSideItems(items: List<String>) {
+        if (accessibilityFocusedSideItem >= 0 && side.items.getOrNull(accessibilityFocusedSideItem) != items.getOrNull(accessibilityFocusedSideItem)) {
+            sendSideAccessibilityEvent(accessibilityFocusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+            accessibilityFocusedSideItem = -1
+        }
+        if (hoveredAccessibilityKey >= SIDE_ACCESSIBILITY_BASE && side.items.getOrNull(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE) != items.getOrNull(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE)) {
+            sendSideAccessibilityEvent(hoveredAccessibilityKey - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+            hoveredAccessibilityKey = -1
+        }
         side.items = items
+        clearUnavailableSideAccessibilityTargets()
         invalidate()
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
     }
 
     /** 拖动调高度时逐帧调：键跟着拉伸，不重建视图（重建会断掉正在进行的拖动）。 */
@@ -286,6 +654,11 @@ class KeyboardView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val mode = MeasureSpec.getMode(heightMeasureSpec)
+        val available = if (mode == MeasureSpec.AT_MOST || mode == MeasureSpec.EXACTLY) {
+            MeasureSpec.getSize(heightMeasureSpec)
+        } else null
+        metrics.setAvailableHeight(available)
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), metrics.height)
     }
 
@@ -298,7 +671,11 @@ class KeyboardView(
     private fun relayout() {
         slots = metrics.layout(rows, side.enabled, width)
         side.bounds = metrics.sideBounds(width)
+        clearUnavailableSideAccessibilityTargets()
         invalidate()
+        if (isAttachedToWindow && accessibilityManager.isEnabled) {
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -320,13 +697,21 @@ class KeyboardView(
             if (flicking.key != Key.Backspace) {
                 flicking.key.flick?.let { painter.drawBubble(canvas, flicking, width, it) }
             }
-        } else if (settings.keyPopup) {
-            pressed.values.filter { it.key.poppable && !choicePopup.showing }.forEach { painter.drawBubble(canvas, it, width) }
+        } else {
+            pressed.values.filter { slot ->
+                slot.key.poppable && !choicePopup.showing && when (slot.key) {
+                    is Key.Letter -> settings.letterKeyTip && !trail.swiping && !surfaceCandidateMode
+                    else -> settings.keyPopup
+                }
+            }.forEach { painter.drawBubble(canvas, it, width) }
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // ACTION_DOWN starts a fresh gesture; clear any shortcut state left by an interrupted
+        // pointer sequence before the side column or a new key can consume this event.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) endEditShortcut()
         if (side.onTouch(event, ::invalidate)) return true
         val index = event.actionIndex
         val pointer = event.getPointerId(index)
@@ -387,7 +772,9 @@ class KeyboardView(
                         timer.postDelayed(spaceHold, if (settings.voiceHoldSpace) VOICE_HOLD_MS else LONG_PRESS_MS)
                     }
 
-                    choicesOf(slot.key).isNotEmpty() && !choicePopup.showing -> {
+                    choicesOf(slot.key).isNotEmpty() &&
+                        (slot.key !is Key.Letter || settings.letterKeyPopup) &&
+                        !choicePopup.showing -> {
                         timer.removeCallbacks(longPress)
                         longPressPointer = pointer
                         longPressX = event.getX(index)
@@ -414,6 +801,7 @@ class KeyboardView(
                     val wasGesture = surfaceCandidateMode || surfaceCandidateCancelled
                     clearSurfaceCandidateSwipe()
                     if (wasGesture) {
+                        if (pointer == editPointer) endEditShortcut()
                         pressed.remove(pointer)
                         if (pointer == trail.pointer) trail.clear()
                         if (pointer == flickPointer) endFlick()
@@ -432,10 +820,7 @@ class KeyboardView(
                             timer.removeCallbacks(longPress)
                             longPressPointer = -1
                         }
-                        if (choicePopup.showing) choicePopup.finish()
-                        choiceKey = null
-                        choiceItems = emptyList()
-                        choiceTracking = false
+                        clearChoiceState()
                         listener.onEditShortcut(action)
                         invalidate()
                         return true
@@ -446,6 +831,7 @@ class KeyboardView(
                     val direction = flickDirection
                     endFlick()
                     if (flicked != null) {
+                        if (pointer == editPointer) endEditShortcut()
                         if (pointer == trail.pointer) trail.clear()
                         if (flicked.key == Key.Backspace) {
                             timer.removeCallbacks(repeatBackspace)
@@ -466,10 +852,21 @@ class KeyboardView(
                     }
                 }
                 if (pointer == trail.pointer) {
-                    val swiped = trail.swiping
+                    if (trail.swiping && choicePopup.showing && longPressPointer == pointer) {
+                        val pointerIndex = event.findPointerIndex(pointer)
+                        if (pointerIndex >= 0) {
+                            getLocationOnScreen(screenLocation)
+                            val fingerX = screenLocation[0] + event.getX(pointerIndex)
+                            if (!choicePopup.containsX(fingerX)) clearChoiceState()
+                        }
+                    }
+                    // 手指仍在长按气泡范围内时，抬手应提交气泡选项；滑出气泡后才提交整键盘滑行。
+                    val choosingLongPress = choicePopup.showing && longPressPointer == pointer
+                    val swiped = trail.swiping && !choosingLongPress
                     if (swiped) listener.onSwipe(trail.toJson(slots))
                     trail.clear()
                     if (swiped) {
+                        if (pointer == editPointer) endEditShortcut()
                         pressed.remove(pointer)
                         invalidate()
                         return true
@@ -502,8 +899,15 @@ class KeyboardView(
                     longPressPointer = -1
                 }
                 when {
-                    choosing -> choicePopup.finish()?.let { chosen ->
-                        if (choiceKey == Key.Language) listener.onLanguageChoice(chosen) else listener.onKeyChoice(choiceItems[chosen])
+                    choosing -> {
+                        val selectedKey = choiceKey
+                        val selectedIndex = choicePopup.finish()
+                        val selectedText = selectedIndex?.let { choiceItems.getOrNull(it) }
+                        clearChoiceState()
+                        if (selectedIndex != null && selectedText != null) {
+                            if (selectedKey == Key.Language) listener.onLanguageChoice(selectedIndex)
+                            else listener.onKeyChoice(selectedText)
+                        }
                     }
                     slot?.key == Key.Backspace -> {
                         timer.removeCallbacks(repeatBackspace)
@@ -546,10 +950,7 @@ class KeyboardView(
                 longPressPointer = -1
             }
             // Z/X/C/V 下滑一旦接管手势，就收起可能已弹出的长按提示，避免悬浮气泡挡住删除手势。
-            if (choicePopup.showing) choicePopup.finish()
-            choiceKey = null
-            choiceItems = emptyList()
-            choiceTracking = false
+            clearChoiceState()
             if (flickPointer == editPointer) endFlick()
             invalidate()
         }
@@ -570,14 +971,31 @@ class KeyboardView(
     }
 
     /** 记着的那根手指挪动：点都记上（含两帧之间的历史点），刚挪够远就转成滑行，撤掉点按的按下态、气泡与长按。 */
+    private fun clearChoiceState() {
+        if (choicePopup.showing) choicePopup.finish()
+        choiceKey = null
+        choiceItems = emptyList()
+        choiceTracking = false
+        timer.removeCallbacks(longPress)
+        longPressPointer = -1
+    }
+
     private fun trackSwipe(event: MotionEvent) {
-        if (trail.pointer < 0 || choicePopup.showing) return
+        if (trail.pointer < 0) return
         val at = event.findPointerIndex(trail.pointer)
         if (at < 0) return
-        var started = false
-        for (h in 0 until event.historySize) started = trail.add(event.getHistoricalX(at, h), event.getHistoricalY(at, h)) || started
-        started = trail.add(event.getX(at), event.getY(at)) || started
-        if (!started) return
+        for (h in 0 until event.historySize) {
+            trail.add(event.getHistoricalX(at, h), event.getHistoricalY(at, h))
+        }
+        trail.add(event.getX(at), event.getY(at))
+        if (!trail.swiping) return
+        if (choicePopup.showing && longPressPointer == trail.pointer) {
+            getLocationOnScreen(screenLocation)
+            val fingerX = screenLocation[0] + event.getX(at)
+            // 横排气泡内继续按原逻辑选字；滑出气泡左右边界后交给整键盘滑行。
+            if (choicePopup.containsX(fingerX)) return
+            clearChoiceState()
+        }
         pressed.remove(trail.pointer)
         if (longPressPointer == trail.pointer) {
             timer.removeCallbacks(longPress)
@@ -760,21 +1178,25 @@ class KeyboardView(
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
-            timer.removeCallbacks(longPress)
-            if (longPressPointer == pointer) longPressPointer = -1
+            clearChoiceState()
             return true
         }
         if (!surfaceCandidateMode && abs(dx) >= metrics.density * CANDIDATE_SWIPE_START_DP && abs(dx) > abs(dy)) {
-            if (!listener.onCandidateSwipeStart()) return false
-            surfaceCandidateMode = true
+            // 达到横滑阈值后先由候选手势接管；即使当前没有候选，也不能再把整段滑动
+            // 回退成普通按键点击，否则用户会感觉手势没有生效、还会误输入一个字母。
+            val started = listener.onCandidateSwipeStart()
+            surfaceCandidateMode = started
+            if (!started) surfaceCandidateCancelled = true
             pressed.remove(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
-            timer.removeCallbacks(longPress)
-            if (longPressPointer == pointer) longPressPointer = -1
+            // Candidate swipes take ownership of this pointer. Dismiss any key-tip/long-press
+            // popup at the hand-off so it cannot remain visible after the gesture ends.
+            clearChoiceState()
             timer.removeCallbacks(repeatBackspace)
             backspaceRepeatStarted = false
+            if (!started) return true
         }
         if (!surfaceCandidateMode) return false
         val currentStep = (dx / (metrics.density * CANDIDATE_SWIPE_STEP_DP)).toInt()
@@ -810,6 +1232,8 @@ class KeyboardView(
     private fun openChoices() {
         val slot = pressed[longPressPointer] ?: return
         val key = slot.key
+        // 该开关只控制字母键长按选择气泡；其他按键（如中英键）仍保留原有长按功能。
+        if (key is Key.Letter && !settings.letterKeyPopup) return
         choiceKey = key
         choiceItems = choicesOf(key)
         if (choiceItems.isEmpty()) return
@@ -964,11 +1388,36 @@ class KeyboardView(
         candidateSwipeMode = false
         candidateSwipeCancelled = false
         candidateSwipeLastStep = 0
-        longPressPointer = -1
-        if (choicePopup.showing) choicePopup.finish()
+        clearChoiceState()
     }
 
     override fun onDetachedFromWindow() {
+        // Clear virtual accessibility state while the keyboard is still attached to its parent.
+        val focusedKey = accessibilityFocusedKey
+        accessibilityFocusedKey = -1
+        if (focusedKey >= 0) {
+            sendVirtualAccessibilityEvent(focusedKey, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        val focusedSideItem = accessibilityFocusedSideItem
+        accessibilityFocusedSideItem = -1
+        if (focusedSideItem >= 0) {
+            sendSideAccessibilityEvent(focusedSideItem, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        if (accessibilityFocusedSideScroll) {
+            accessibilityFocusedSideScroll = false
+            sendSideScrollAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)
+        }
+
+        val hovered = hoveredAccessibilityKey
+        hoveredAccessibilityKey = -1
+        if (hovered >= SIDE_ACCESSIBILITY_BASE) {
+            sendSideAccessibilityEvent(hovered - SIDE_ACCESSIBILITY_BASE, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        } else if (hovered >= 0) {
+            sendVirtualAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
+        }
+
         super.onDetachedFromWindow()
         release()
     }
@@ -985,6 +1434,8 @@ class KeyboardView(
     }
 
     private companion object {
+        const val SIDE_ACCESSIBILITY_SCROLL_ID = 9999
+        const val SIDE_ACCESSIBILITY_BASE = 10000
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 50L
         const val LONG_PRESS_MS = 350L
@@ -1005,7 +1456,7 @@ class KeyboardView(
         const val FLICK_SLOPE = 1.2f
         const val CURSOR_STEP_DP = 14f
         const val CANDIDATE_SWIPE_START_DP = 12f
-        const val CANDIDATE_SWIPE_STEP_DP = 10f
+        const val CANDIDATE_SWIPE_STEP_DP = 15f
         const val SPACE_CLIPBOARD_SWIPE_DP = 22f
         const val SPACE_CLIPBOARD_SLOPE = 1.2f
     }

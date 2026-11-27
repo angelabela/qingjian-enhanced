@@ -49,36 +49,21 @@ class VoicePanel(
 
     enum class Target { NONE, CANCEL, ACTION }
 
-    private val ink = Ink(palette, resources.displayMetrics.density)
+    private val ink = Ink(palette, resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
     private val backdrop = ImageView(context)
     private val scrim = View(context)
-    private val overlay = PhysicsWaveView(context).apply {
-        style = when (animationStyle) {
-            0 -> PhysicsWaveView.Style.SPECTRUM_BARS
-            1 -> PhysicsWaveView.Style.RING_SPECTRUM
-            2 -> PhysicsWaveView.Style.SPRING_BARS
-            3 -> PhysicsWaveView.Style.GRAVITY_BALLS
-            4 -> PhysicsWaveView.Style.PEAK_HOLD
-            5 -> PhysicsWaveView.Style.ELASTIC_STRING
-            6 -> PhysicsWaveView.Style.GLOW_ORBS
-            7 -> PhysicsWaveView.Style.SPHERICAL_PARTICLE_MESH
-            8 -> PhysicsWaveView.Style.REALTIME_WAVEFORM
-            9 -> PhysicsWaveView.Style.WAVEFORM_SPECTRUM
-            10 -> PhysicsWaveView.Style.MIRRORED_BARS
-            11 -> PhysicsWaveView.Style.DUAL_LAYER_BARS
-            12 -> PhysicsWaveView.Style.PARTICLE_MATRIX
-            13 -> PhysicsWaveView.Style.STEPPED_BARS
-            14 -> PhysicsWaveView.Style.PERSPECTIVE_TUNNEL
-            else -> PhysicsWaveView.Style.SPECTRUM_BARS
-        }
-        color = palette.brand
-        spectrumGradient = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
-            .getInt(PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
+    private val spectrumView = SpectrumView(context).apply {
+        lowColor = Color.rgb(235, 120, 40)
+        highColor = Color.rgb(250, 175, 90)
+        glowNearColor = Color.rgb(200, 212, 123)
+        glowFarColor = Color.rgb(243, 90, 20)
+        additive = true
     }
+    // 所有已启用的语音动效统一使用 65 根镜像频谱；样式编号保留以兼容旧设置。
+    private val useSpectrumView = animationStyle != ANIMATION_DISABLED
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
-    private val physicsBands = FloatArray(18)
     private var touchTarget = Target.NONE
     private var lastTargetHapticAt = 0L
     var target = Target.NONE
@@ -87,20 +72,22 @@ class VoicePanel(
     var holding = false
         set(value) {
             field = value
-            overlay.invalidate()
+            spectrumView.invalidate()
         }
 
     var listening = false
         set(value) {
             field = value
-            overlay.listening = value
-            overlay.invalidate()
+            spectrumView.invalidate()
+            if (useSpectrumView) {
+                if (value) spectrumView.resetCollapse() else spectrumView.collapse()
+            }
         }
 
     var recognizing = false
         set(value) {
             field = value
-            overlay.invalidate()
+            spectrumView.invalidate()
         }
 
     private fun glassButtonBackground(selected: Boolean): android.graphics.drawable.Drawable {
@@ -138,6 +125,9 @@ class VoicePanel(
         // 语音面板是覆盖层：空白背景也必须消费触摸，绝不能把事件交回底层键盘。
         isClickable = true
         isFocusable = true
+        // 背景快照、磨砂遮罩和频谱动画仅作装饰；实际可操作按钮仍由原生 TextView 暴露。
+        backdrop.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        scrim.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         backdrop.scaleType = ImageView.ScaleType.FIT_XY
         blurredKeyboard?.let(backdrop::setImageBitmap)
         // 动态键盘背景仍持续绘制在底层；叠加低透明度的模糊快照，恢复语音面板的磨砂层次，
@@ -172,21 +162,20 @@ class VoicePanel(
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         addView(glassHighlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        if (animationStyle != ANIMATION_DISABLED) {
-            addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        if (useSpectrumView) {
+            addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
+            configureSpectrumColors()
         }
-        // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
-        overlay.alpha = 0f
-        overlay.scaleX = 0.12f
-        overlay.post {
-            if (overlay.isAttachedToWindow) {
-                overlay.pivotX = overlay.width / 2f
-                overlay.animate().cancel()
-                overlay.animate()
-                    .scaleX(1f)
-                    .alpha(1f)
-                    .setDuration(1080L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.05f))
+        // 统一频谱从中心柔和展开；仅首次布局播放一次。
+        spectrumView.alpha = 0f
+        spectrumView.scaleX = 0.92f
+        spectrumView.post {
+            if (spectrumView.isAttachedToWindow && useSpectrumView) {
+                spectrumView.pivotX = spectrumView.width / 2f
+                spectrumView.animate().cancel()
+                spectrumView.animate().scaleX(1f).alpha(1f)
+                    .setDuration(720L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.1f))
                     .start()
             }
         }
@@ -226,10 +215,31 @@ class VoicePanel(
         })
     }
 
+    private fun configureSpectrumColors() {
+        val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            .getInt(PREF_SPECTRUM_GRADIENT, 0).coerceIn(0, 5)
+        if (selected == 0) {
+            // 默认保留镜像辉光原本的金橙色，同时借用当前主题品牌色/强调色调节光晕。
+            spectrumView.lowColor = Color.rgb(235, 120, 40)
+            spectrumView.highColor = Color.rgb(250, 175, 90)
+            spectrumView.glowNearColor = palette.brand
+            spectrumView.glowFarColor = palette.accent
+        } else {
+            val stops = PhysicsWaveView.SPECTRUM_GRADIENT_COLORS[selected]
+            spectrumView.lowColor = stops.first()
+            spectrumView.highColor = stops.last()
+            spectrumView.glowNearColor = stops[1]
+            spectrumView.glowFarColor = stops[2]
+        }
+        val luminance = (0.2126 * Color.red(palette.board) +
+            0.7152 * Color.green(palette.board) +
+            0.0722 * Color.blue(palette.board)) / 255.0
+        spectrumView.additive = luminance < 0.48
+    }
+
     fun addAudioFrame(frame: VoiceAudioFrame) {
         if (animationStyle == ANIMATION_DISABLED) return
         updateSpectrum(frame.spectrum)
-        overlay.updateWaveform(frame.waveform, frame.rms, frame.peak)
     }
 
     fun addSpectrum(bands: FloatArray) {
@@ -241,16 +251,7 @@ class VoicePanel(
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        // 物理动效使用18个均匀频带；48段频谱仍完整提供给频谱柱和融合效果。
-        for (band in physicsBands.indices) {
-            val start = band * SAMPLE_COUNT / physicsBands.size
-            val end = (band + 1) * SAMPLE_COUNT / physicsBands.size
-            var sum = 0f
-            for (i in start until end) sum += spectrumBands[i]
-            physicsBands[band] = (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
-        }
-        overlay.updateSpectrum(spectrumBands)
-        overlay.update(physicsBands)
+        if (useSpectrumView) spectrumView.feedBands(spectrumBands)
     }
 
     fun track(screenX: Float, screenY: Float) {
@@ -293,7 +294,7 @@ class VoicePanel(
             lastTargetHapticAt = now
             Haptics.tap(context)
         }
-        overlay.invalidate()
+        spectrumView.invalidate()
     }
 
     private fun targetAt(screenX: Float, screenY: Float): Target {
@@ -351,16 +352,17 @@ class VoicePanel(
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
         const val ANIMATION_DISABLED = -2
-        const val ANIMATION_RANDOM_INDEX = 15
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "每次启动随机")
+        const val ANIMATION_SPECTRUM_GLOW = 15
+        const val ANIMATION_RANDOM_INDEX = 16
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "镜像辉光频谱", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, ANIMATION_DISABLED)
             return when {
                 selected == ANIMATION_DISABLED -> ANIMATION_DISABLED
-                selected == -1 -> kotlin.random.Random.nextInt(15)
-                else -> selected.coerceIn(0, 14)
+                selected == -1 -> kotlin.random.Random.nextInt(16)
+                else -> selected.coerceIn(0, 15)
             }
         }
     }

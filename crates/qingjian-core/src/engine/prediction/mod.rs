@@ -70,7 +70,8 @@ impl Engine {
         candidates: &[Candidate],
     ) -> Option<u64> {
         if !self.predictor.policy().automatic {
-            self.cancel_prediction();
+            // 只作废组句联想；翻译（尤其候选译文）不依赖当前拼音，不能一起取消。
+            self.cancel_composition_prediction();
             return None;
         }
         self.submit_prediction(surrounding, candidates, false)
@@ -402,21 +403,35 @@ impl Engine {
             .or_else(|| self.predictor.poll())
         {
             if let Some(pending) = self.pending_predictions.remove(&prediction.sequence) {
+                // 以 Engine 记录的请求来源为准，不信任 Predictor 返回值。
+                prediction.kind = pending.kind;
                 if self.answer_panel_translation(prediction.sequence, &prediction.sentence) {
                     continue;
                 }
                 // 问字的答案、翻译的译文和敲的拼音本来就对不上，只有组句联想的云端词要校验
                 if pending.kind == PredictionKind::Question {
                     let guess = &pending.question_guess;
-                    prediction
-                        .words
-                        .retain(|word| !restates_question(&word.text, guess));
+                    prediction.words.retain(|word| {
+                        let valid = !is_internal_code_token(&word.text)
+                            && !restates_question(&word.text, guess);
+                        if !valid {
+                            tracing::debug!(text = %word.text, "问字候选含内部编码或重复问题，丢弃");
+                        }
+                        valid
+                    });
                 } else if pending.kind == PredictionKind::Compose && !self.question_mode() {
                     if self.predictor.policy().slots == 0 {
                         // 用户不要云端词，只留整句补全
                         prediction.words.clear();
                     } else {
                         self.validate_cloud_words(&mut prediction.words);
+                    }
+                    // 整句补全此前只做了清理与前文去重叠，没有做内容校验。
+                    // 模型偶尔会把内部码串/原始按键（如「1:zhud」「hhw1」）当整句返回，
+                    // 这些内容没有汉字，不应进入可上屏候选；允许正常中文句子夹带 Docker、GitHub 等术语。
+                    if prediction.sentence.as_deref().is_some_and(|text| !contains_han(text)) {
+                        tracing::debug!(sentence = ?prediction.sentence, "云端整句不含汉字，丢弃疑似原始编码");
+                        prediction.sentence = None;
                     }
                     if !prediction.is_empty() {
                         // 给过用户什么：紧接着的上屏说明接没接受（本地联想能不能替代云端的尺子）
@@ -430,6 +445,18 @@ impl Engine {
                 // 云端词与整句不走候选列表，赶不上 query 那边的 apply，这里单独转并记还原表。
                 // 释义那一类不转：它出来的是中文释义，简繁在挂到候选上时才处理
                 if !is_translation(pending.kind) {
+                    for (index, word) in prediction.words.iter().enumerate() {
+                        tracing::debug!(
+                            target: "qingjian::candidate_source",
+                            index,
+                            text = %word.text,
+                            source = "云端",
+                            syllables = ?word.syllables,
+                            sequence = prediction.sequence,
+                            prediction_kind = ?pending.kind,
+                            "候选来源"
+                        );
+                    }
                     for word in &mut prediction.words {
                         word.text = self.traditional.convert_remember(&word.text);
                     }
@@ -458,9 +485,14 @@ impl Engine {
         let letters = typed.chars().filter(|c| *c != '\'').count();
         let allowed = tolerance(letters);
         words.retain(|word| {
-            let fits = !word.syllables.is_empty()
+            let fits = contains_han(&word.text)
+                && !is_internal_code_token(&word.text)
+                && !word.syllables.is_empty()
                 && word.text.chars().count() == word.syllables.len()
                 && word.syllables.iter().all(|s| parser::is_syllable(s))
+                && candidate_readings_match(&word.text, &word.syllables, |ch, syllable| {
+                    self.accepts_reading(ch, syllable)
+                })
                 && mismatch_count(typed, &word.syllables) <= allowed;
             if !fits {
                 tracing::debug!(text = %word.text, syllables = ?word.syllables, "云端词与拼音不符，丢弃");
@@ -577,6 +609,44 @@ fn is_translation(kind: PredictionKind) -> bool {
     )
 }
 
+/// 组句云候选必须包含汉字。纯 ASCII 的码串/请求标记不能作为中文拼音候选上屏；
+/// 中文技术句可以夹带 GitHub、Docker 等英文术语，因此不限制其余字符。
+fn contains_han(text: &str) -> bool {
+    text.chars().any(|ch| {
+        matches!(
+            ch as u32,
+            0x3400..=0x4DBF
+                | 0x4E00..=0x9FFF
+                | 0xF900..=0xFAFF
+                | 0x20000..=0x2FA1F
+                | 0x30000..=0x323AF
+        )
+    })
+}
+
+/// 检查模型给的每字拼音是否真的能在本地词典中读出；未知生僻字沿用 accepts_reading 的宽容规则。
+fn candidate_readings_match(
+    text: &str,
+    syllables: &[String],
+    mut accepts: impl FnMut(&str, &str) -> bool,
+) -> bool {
+    let chars: Vec<String> = text.chars().map(|ch| ch.to_string()).collect();
+    chars.len() == syllables.len()
+        && chars.iter().zip(syllables).all(|(ch, syllable)| accepts(ch, syllable))
+}
+
+/// 模型偶尔把「序号:内部码」当作问字答案或候选文本；这不是可上屏的词。
+fn is_internal_code_token(text: &str) -> bool {
+    let Some((prefix, code)) = text.trim().split_once(':') else {
+        return false;
+    };
+    !prefix.is_empty()
+        && prefix.len() <= 3
+        && prefix.bytes().all(|byte| byte.is_ascii_digit())
+        && !code.is_empty()
+        && code.bytes().all(|byte| byte.is_ascii_lowercase())
+}
+
 /// 半数以上音节是缩写（声母 `f` 或未打完的前缀 `zho`）：这种输入下模型按声母凑词基本只会给生造词，
 /// 只问整句补全。`fhyq` → 符合要求 是缩写，`fuheyaoqiu` 不是，`nih`（两全一缩）也不是。
 fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
@@ -589,4 +659,47 @@ fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
             .count()
             * 2
             >= total
+}
+
+
+#[cfg(test)]
+mod cloud_candidate_sanity_tests {
+    use super::{candidate_readings_match, contains_han, is_internal_code_token};
+
+    #[test]
+    fn accepts_chinese_sentences_with_english_technical_terms() {
+        assert!(contains_han("我已经上传到 GitHub 了"));
+        assert!(contains_han("用 Docker 部署服务"));
+        assert!(contains_han("知道吗？"));
+    }
+
+    #[test]
+    fn rejects_raw_codes_and_ascii_echoes() {
+        for text in ["1:zhud", "1:cb...", "1:aj", "hhw1", "hhgh.", "hhghd:"] {
+            assert!(!contains_han(text), "{text}");
+        }
+        for text in ["2:cy", "2:cfcvv"] {
+            assert!(is_internal_code_token(text), "{text}");
+        }
+        assert!(!is_internal_code_token("Paris"));
+        assert!(!is_internal_code_token("2:30"));
+    }
+
+    #[test]
+    fn cloud_candidate_pinyin_must_match_the_actual_characters() {
+        let pinyin = vec!["shen".to_owned(), "me".to_owned()];
+        let actual_reading = |ch: &str| match ch {
+            "什" => "shen",
+            "么" => "me",
+            "功" => "gong",
+            "能" => "neng",
+            _ => "",
+        };
+        assert!(candidate_readings_match("什么", &pinyin, |ch, syllable| {
+            actual_reading(ch) == syllable
+        }));
+        assert!(!candidate_readings_match("功能", &pinyin, |ch, syllable| {
+            actual_reading(ch) == syllable
+        }));
+    }
 }

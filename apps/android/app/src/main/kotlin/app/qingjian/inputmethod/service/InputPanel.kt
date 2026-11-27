@@ -109,6 +109,7 @@ private class FlowingKeyboardBackgroundDrawable(
     private var sampleBitmap: Bitmap? = null
     private val frame: Runnable = object : Runnable {
         override fun run() {
+            if (!isVisible || bounds.isEmpty) return
             invalidateSelf()
             onFrame?.invoke()
             scheduleSelf(this, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
@@ -161,6 +162,10 @@ private class FlowingKeyboardBackgroundDrawable(
         val w = bounds.width()
         val h = bounds.height()
         if (w <= 0 || h <= 0) {
+            unscheduleSelf(frame)
+            cloudAtmosphere.setActive(false)
+            sampleBitmap?.recycle()
+            sampleBitmap = null
             shader = null
             return
         }
@@ -174,8 +179,33 @@ private class FlowingKeyboardBackgroundDrawable(
             },
             Shader.TileMode.MIRROR,
         )
+        cloudAtmosphere.setActive(isVisible)
         unscheduleSelf(frame)
-        scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        if (isVisible) scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+    }
+
+    override fun setVisible(visible: Boolean, restart: Boolean): Boolean {
+        val changed = super.setVisible(visible, restart)
+        unscheduleSelf(frame)
+        cloudAtmosphere.setActive(visible)
+        if (visible) {
+            if (!bounds.isEmpty) scheduleSelf(frame, SystemClock.uptimeMillis() + FRAME_DELAY_MS)
+        } else {
+            sampleBitmap?.takeUnless { it.isRecycled }?.recycle()
+            sampleBitmap = null
+        }
+        return changed
+    }
+
+    /** The owning View is being replaced permanently; stop callbacks and drop cached sampling state. */
+    fun dispose() {
+        setVisible(false, false)
+        unscheduleSelf(frame)
+        sampleBitmap?.takeUnless { it.isRecycled }?.recycle()
+        sampleBitmap = null
+        shader = null
+        paint.shader = null
+        onFrame = null
     }
 
     fun setAppearance(alpha: Float, brightness: Int) {
@@ -1077,7 +1107,7 @@ class InputPanel(
                 context, palette, actions, header, kind,
                 leftThumb = settings.arrangement == Settings.Arrangement.LEFT_THUMB,
             )
-            PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.textSize.scale)
+            PanelKind.CANDIDATES -> CandidateGrid(context, palette, actions, header, settings.candidateFontSize / 20f)
             PanelKind.CONTEXT_TOOLS -> ContextToolsPanel(
                 context, palette, header, text, hasSelection, aiChatGenerator,
                 actions::insertAtCursor, actions::replaceSelectedText, actions::copyToClipboard, actions::closePanel,
@@ -1249,6 +1279,11 @@ class InputPanel(
         (panelView as? FunctionPanel)?.refreshState()
     }
 
+    /** 设置面板修改按键颜色后，立即刷新当前 KeyboardView 的 Painter。 */
+    fun refreshKeyEffects() {
+        keyboard.refreshKeyEffects()
+    }
+
     /** 候选展开开着时换上这一帧的拼音与候选。 */
     fun showCandidates(preedit: String, candidates: List<Candidate>, singleChars: Boolean) {
         (panelView as? CandidateGrid)?.show(preedit, candidates, singleChars)
@@ -1336,18 +1371,50 @@ class InputPanel(
             contrastVeil.invalidate()
         }
         private fun makeEffectBackgroundView(ctx: Context, drawable: FlowingKeyboardBackgroundDrawable, blurDp: Int): View =
-            View(ctx).apply {
-                background = drawable
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    val radius = blurDp.coerceIn(0, 30) * resources.displayMetrics.density
-                    setRenderEffect(if (radius > 0f) {
-                        android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
-                    } else null)
+            object : View(ctx) {
+                init {
+                    background = drawable
+                    if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        val radius = blurDp.coerceIn(0, 30) * resources.displayMetrics.density
+                        setRenderEffect(if (radius > 0f) {
+                            android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+                        } else null)
+                    }
+                }
+
+                private fun syncDrawableVisibility() {
+                    drawable.setVisible(
+                        isAttachedToWindow && isShown && windowVisibility == View.VISIBLE,
+                        false,
+                    )
+                }
+
+                override fun onAttachedToWindow() {
+                    super.onAttachedToWindow()
+                    syncDrawableVisibility()
+                }
+
+                override fun onDetachedFromWindow() {
+                    drawable.setVisible(false, false)
+                    super.onDetachedFromWindow()
+                }
+
+                override fun onVisibilityChanged(changedView: View, visibility: Int) {
+                    super.onVisibilityChanged(changedView, visibility)
+                    syncDrawableVisibility()
+                }
+
+                override fun onWindowVisibilityChanged(visibility: Int) {
+                    super.onWindowVisibilityChanged(visibility)
+                    syncDrawableVisibility()
                 }
             }
 
         fun updateEffectBackground(drawable: FlowingKeyboardBackgroundDrawable?, blurDp: Int) {
-            effectBackgroundView?.let(::removeView)
+            effectBackgroundView?.let { oldView ->
+                removeView(oldView)
+                (oldView.background as? FlowingKeyboardBackgroundDrawable)?.dispose()
+            }
             effectBackgroundView = drawable?.let { makeEffectBackgroundView(this.context, it, blurDp) }
             effectBackgroundView?.let {
                 addView(it, 0, FrameLayout.LayoutParams(

@@ -8,15 +8,19 @@ import android.text.TextUtils
 import app.qingjian.inputmethod.theme.Palette
 
 /** 面板共用的画笔：居中的字、图标、圆角块。尺寸参数都是 dp / sp，这里乘密度。 */
-class Ink(val palette: Palette, val density: Float) {
+class Ink(val palette: Palette, val density: Float, val scaledDensity: Float = density) {
+    private fun textSize(sp: Float) = sp * scaledDensity
     val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
 
     fun dp(value: Float) = value * density
 
+    /** Convert scalable text units to pixels; use dp() only for geometry. */
+    fun sp(value: Float) = value * scaledDensity
+
     fun measure(value: String, sp: Float, bold: Boolean = false): Float {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.isFakeBoldText = bold
         return text.measureText(value)
     }
@@ -26,7 +30,7 @@ class Ink(val palette: Palette, val density: Float) {
         canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float,
         bold: Boolean = false, maxWidth: Float = 0f,
     ) {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.color = color
         text.isFakeBoldText = bold
         val shown = if (maxWidth > 0f) {
@@ -39,7 +43,7 @@ class Ink(val palette: Palette, val density: Float) {
 
     /** 从 [x] 起往右画一行字（纵向以 [cy] 居中），超出 [right] 截断加省略号。 */
     fun textStart(canvas: Canvas, value: String, sp: Float, color: Int, x: Float, cy: Float, right: Float) {
-        text.textSize = sp * density
+        text.textSize = textSize(sp)
         text.color = color
         text.isFakeBoldText = false
         text.textAlign = Paint.Align.LEFT

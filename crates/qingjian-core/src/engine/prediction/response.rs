@@ -1,8 +1,12 @@
 use super::cloud_word::CloudWord;
+use super::kind::PredictionKind;
 
 /// 联想结果。只是候选之外的补充展示，**不重排本地候选**：云端词补进第一页末尾几格。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Prediction {
+    /// 请求来源：会话组句只接收 Compose / Question，翻译必须走独立通道。
+    pub kind: PredictionKind,
+
     /// 对应的请求序号。
     pub sequence: u64,
 

@@ -29,7 +29,7 @@ pub extern "system" fn Java_app_qingjian_inputmethod_core_Native_renderStrip<'lo
     };
     let highlighted = usize::try_from(highlighted).ok();
     let painted = catch_unwind(AssertUnwindSafe(|| {
-        strip.paint(highlighted, scale, dark == JNI_TRUE)
+        strip.paint(highlighted, scale, dark == JNI_TRUE, visible_width.max(0) as u32)
     }));
     let meta = match painted {
         Ok(Ok(meta)) => meta,

@@ -33,6 +33,8 @@ import app.qingjian.inputmethod.theme.AppColors
  */
 class SettingsWidgets(private val context: Context, val colors: AppColors) {
     private val density = context.resources.displayMetrics.density
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+    private val fontScale = scaledDensity / density
 
     fun dp(value: Int) = (value * density).toInt()
 
@@ -130,6 +132,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         minimumHeight = dp(ROW_HEIGHT_DP)
         setPadding(dp(16), dp(8), dp(12), dp(8))
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = listOfNotNull(title, value).joinToString("，")
         setOnClickListener { onClick() }
         addView(tile(icon, 30, muted))
         addView(text(title, 16f, colors.text).apply { setPadding(dp(12), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
@@ -141,17 +146,8 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         entry(icon, context.getString(title), value, muted, onClick)
 
     /** 不带图标块的跳转行：标题、右边灰字、›。 */
-    fun link(title: Int, value: String?, onClick: () -> Unit) = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(ROW_HEIGHT_DP)
-        setPadding(dp(16), dp(8), dp(12), dp(8))
-        background = pressable()
-        setOnClickListener { onClick() }
-        addView(text(context.getString(title), 16f, colors.text), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        value?.let { addView(valueText(it)) }
-        addView(chevron())
-    }
+    fun link(title: Int, value: String?, onClick: () -> Unit) =
+        link(context.getString(title), value, onClick)
 
     /** 字符串标题版跳转行，供动态生成的自定义设置项使用。 */
     fun link(title: String, value: String?, onClick: () -> Unit) = LinearLayout(context).apply {
@@ -160,6 +156,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         minimumHeight = dp(ROW_HEIGHT_DP)
         setPadding(dp(16), dp(8), dp(12), dp(8))
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = listOfNotNull(title, value).joinToString("，")
         setOnClickListener { onClick() }
         addView(text(title, 16f, colors.text), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         value?.let { addView(valueText(it)) }
@@ -199,6 +198,8 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         addView(icon(Icon.BACK, colors.brand, 24f).apply {
             contentDescription = context.getString(android.R.string.cancel)
             background = RippleDrawable(ColorStateList.valueOf(colors.divider), null, null)
+            isClickable = true
+            isFocusable = true
             setOnClickListener { onBack() }
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.START or Gravity.CENTER_VERTICAL))
         addView(barTitle(title), FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
@@ -226,8 +227,13 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = pressable()
-            val switch = switch(checked, onChange)
-            addView(row(title, note).apply { setPadding(dp(16), dp(12), dp(8), dp(12)) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            isClickable = true
+            isFocusable = false
+            val switch = switch(checked, onChange).apply {
+                contentDescription = title + if (checked) "，已开启" else "，已关闭"
+                isFocusable = true
+            }
+            addView(row(title, note).apply { setPadding(dp(16), dp(12), dp(8), dp(12)); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             trailing?.let(::addView)
             addView(switch, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(16) })
             setOnClickListener { switch.toggle() }
@@ -243,23 +249,36 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         orientation = LinearLayout.HORIZONTAL
         background = rounded(colors.fill, 9f)
         setPadding(dp(2), dp(2), dp(2), dp(2))
+        val pillHeight = maxOf(dp(28), (13f * scaledDensity + dp(8)).toInt())
+        val targetHeight = maxOf(dp(48), pillHeight + dp(16))
         options.forEachIndexed { index, option ->
             val on = index == selected
-            addView(text(option, 13f, colors.text, bold = on).apply {
-                gravity = Gravity.CENTER
-                if (on) {
-                    background = rounded(if (colors.dark) 0xFF636366.toInt() else colors.surface, 7f)
-                    elevation = dp(1).toFloat()
-                }
+            // Keep the visual pill compact while expanding its touch target to Android's 48dp baseline.
+            val target = FrameLayout(context).apply {
+                minimumHeight = targetHeight
+                isClickable = true
+                isFocusable = true
                 isSelected = on
+                contentDescription = if (on) "$option，已选中" else option
                 setOnClickListener { if (!on) onPick(index) }
-            }, LinearLayout.LayoutParams(0, dp(28), 1f))
+                addView(text(option, 13f, colors.text, bold = on).apply {
+                    gravity = Gravity.CENTER
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    if (on) {
+                        background = rounded(if (colors.dark) 0xFF636366.toInt() else colors.surface, 7f)
+                        elevation = dp(1).toFloat()
+                    }
+                }, FrameLayout.LayoutParams(MATCH_PARENT, pillHeight, Gravity.CENTER))
+            }
+            addView(target, LinearLayout.LayoutParams(0, targetHeight, 1f))
         }
     }
 
     /** 左边标题、右边分段选择的一行；选项多或字长时分段选择单独占满一行。 */
     fun segmentedRow(title: Int, options: List<String>, selected: Int, onPick: (Int) -> Unit): View {
-        val wide = options.size > 4 || options.any { it.length > 3 }
+        val wide = options.size > 4 || options.any { it.length > 3 } || fontScale >= 1.3f ||
+            context.resources.configuration.screenWidthDp in 1..359
         return if (wide) {
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -312,6 +331,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = dp(ROW_HEIGHT_DP)
         background = pressable()
+        isClickable = true
+        isFocusable = true
+        contentDescription = context.getString(title) + "，" + value
         setPadding(dp(16), dp(8), dp(12), dp(8))
         addView(text(context.getString(title), 16f, colors.text), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         addView(valueText(value).apply {
@@ -357,6 +379,9 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             gravity = Gravity.END
             setPadding(dp(12), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        isClickable = true
+        isFocusable = true
+        contentDescription = context.getString(title) + value?.let { "，$it" }.orEmpty()
         setOnClickListener { onClick() }
     }
 
@@ -375,12 +400,15 @@ class SettingsWidgets(private val context: Context, val colors: AppColors) {
             addView(label)
         })
         addView(SeekBar(context).apply {
+            contentDescription = context.getString(title)
+            isFocusable = true
             this.max = (max - min) / step
             progress = (value - min) / step
             progressTintList = ColorStateList.valueOf(colors.brand)
             thumbTintList = ColorStateList.valueOf(colors.brand)
             progressBackgroundTintList = ColorStateList.valueOf(colors.faint)
             setPadding(dp(24), dp(10), dp(24), dp(10))
+            minimumHeight = dp(48)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
                     val current = min + progress * step

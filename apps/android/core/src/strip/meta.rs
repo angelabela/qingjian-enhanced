@@ -1,12 +1,15 @@
-//! 画完一帧候选条交给壳的说明（JSON 过 JNI）；像素另经 `copyStrip` 拷进壳的缓冲区。
+//! 一帧候选条的布局与命中元数据（JSON 过 JNI）；候选字形由 Android 统一绘制。
 
 use serde::Serialize;
 
 use super::StripHit;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StripMeta {
-    /// 位图像素宽高；像素是预乘 RGBA，与 `Bitmap.Config.ARGB_8888` 的内存布局一致。
+    /// 与候选内容同步的单调帧序号；Android 丢弃迟到的旧帧元数据。
+    pub frame_id: u64,
+
+    /// 布局快照逻辑宽高（像素单位）；不包含候选字形像素。
     pub width: u32,
 
     pub height: u32,
@@ -14,16 +17,19 @@ pub struct StripMeta {
     /// 这一行以上是拼音行，壳钉在视口上；以下的候选随横向滚动。
     pub candidates_top: u32,
 
-    /// 主题的底色（ARGB），位图没铺满的地方壳用它填。
+    /// 主题底色（ARGB），由 Android 绘制背景时使用。
     pub background: u32,
+
+    /// Rust 布局中实际参与排版的本地候选原始下标；Android 必须逐项找到有效主矩形。
+    pub candidate_indices: Vec<usize>,
 
     /// 可点区域，译文在前（先命中）。
     pub hits: Vec<StripHit>,
 
-    /// 拼音行上各字之间那道缝的 x（位图像素），第 `i` 个是第 `i` 个字之前；没有拼音行时为空。
+    /// 拼音行上各字之间的 x 坐标（布局像素），第 `i` 个是第 `i` 个字之前；没有拼音行时为空。
     pub preedit_edges: Vec<f32>,
 
-    /// 拼音行的上下沿（位图像素），点在这一条里才算点拼音行。
+    /// 拼音行的上下沿（布局像素），用于拼音行触摸命中。
     pub preedit_top: f32,
 
     pub preedit_bottom: f32,

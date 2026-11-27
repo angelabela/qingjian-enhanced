@@ -29,6 +29,9 @@ class MainActivity : Activity() {
     private var topInset = 0
     private var header: View? = null
     private var column: View? = null
+    private var contentScroll: ScrollView? = null
+    private var contentScrollTab = -1
+    private val scrollPositions = IntArray(3)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +40,9 @@ class MainActivity : Activity() {
         ui = SettingsWidgets(this, AppColors.of(this))
         pages = listOf(HomePage(this, ui, ::select), VocabularyPage(this, ui), SettingsPage(this, ui))
         tab = savedInstanceState?.getInt(KEY_TAB) ?: intent.getIntExtra(EXTRA_TAB, TAB_HOME)
+        savedInstanceState?.getIntArray(KEY_SCROLL_POSITIONS)?.let { saved ->
+            for (index in scrollPositions.indices) scrollPositions[index] = saved.getOrNull(index)?.coerceAtLeast(0) ?: 0
+        }
         host = FrameLayout(this)
         tabBar = TabBar(
             this, ui,
@@ -73,8 +79,14 @@ class MainActivity : Activity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
+        rememberContentScroll()
         outState.putInt(KEY_TAB, tab)
+        outState.putIntArray(KEY_SCROLL_POSITIONS, scrollPositions)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun rememberContentScroll() {
+        if (contentScrollTab == tab) contentScroll?.let { scrollPositions[tab] = it.scrollY }
     }
 
     /** 从系统设置回来、选输入法的弹窗关掉、打完字回来：数据变了才重建这一页。 */
@@ -85,11 +97,13 @@ class MainActivity : Activity() {
 
     private fun select(index: Int) {
         if (index == tab) return
+        rememberContentScroll()
         tab = index
         show()
     }
 
     private fun show() {
+        rememberContentScroll()
         tabBar.selected = tab
         val page = pages[tab]
         val header = FrameLayout(this).apply { addView(page.header(), MATCH_PARENT, WRAP_CONTENT) }
@@ -101,10 +115,15 @@ class MainActivity : Activity() {
         host.addView(Wash.behind(this, ui.colors, LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(header)
+            val shownTab = tab
             val scroll = ScrollView(this@MainActivity).apply {
                 isVerticalScrollBarEnabled = false
                 addView(column)
+                setOnScrollChangeListener { _, _, y, _, _ -> scrollPositions[shownTab] = y }
+                post { scrollTo(0, scrollPositions[shownTab]) }
             }
+            contentScroll = scroll
+            contentScrollTab = shownTab
             addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
             header.background = ui.barBackground(bottomLine = true)
         }))
@@ -121,6 +140,7 @@ class MainActivity : Activity() {
         const val TAB_VOCABULARY = 1
         const val TAB_SETTINGS = 2
         private const val KEY_TAB = "tab"
+        private const val KEY_SCROLL_POSITIONS = "tab_scroll_positions"
 
         /** 从键盘的设置按钮进来时直接落在设置 tab。 */
         const val EXTRA_TAB = "app.qingjian.inputmethod.TAB"

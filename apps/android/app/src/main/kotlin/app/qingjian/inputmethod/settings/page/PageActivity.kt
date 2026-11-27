@@ -22,10 +22,12 @@ abstract class PageActivity : Activity() {
     protected lateinit var ui: SettingsWidgets
     protected val prefs by lazy { Settings.preferences(this) }
     private var scroll: ScrollView? = null
+    private var pendingScrollY = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = SettingsWidgets(this, AppColors.of(this))
+        pendingScrollY = savedInstanceState?.getInt(KEY_SCROLL_Y, 0)?.coerceAtLeast(0) ?: 0
         rebuild()
     }
 
@@ -34,7 +36,8 @@ abstract class PageActivity : Activity() {
     protected abstract fun content(): List<View>
 
     protected fun rebuild() {
-        val scrolled = scroll?.scrollY ?: 0
+        val scrolled = scroll?.scrollY ?: pendingScrollY
+        pendingScrollY = 0
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(32))
@@ -67,8 +70,17 @@ abstract class PageActivity : Activity() {
         setContentView(Wash.behind(this, ui.colors, root))
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt(KEY_SCROLL_Y, scroll?.scrollY ?: pendingScrollY)
+        super.onSaveInstanceState(outState)
+    }
+
     /** 卡片之间的间距。 */
     protected fun spaced(view: View, topDp: Int = 12) = view.apply {
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = ui.dp(topDp) }
+    }
+
+    private companion object {
+        const val KEY_SCROLL_Y = "page_scroll_y"
     }
 }

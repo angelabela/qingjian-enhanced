@@ -60,7 +60,11 @@ object ClipboardStore {
         val array = JSONArray(json)
         return List(array.length()) { i ->
             val item = array.getJSONObject(i)
-            ClipItem(item.optString("text"), item.optString("image").takeIf { !item.isNull("image") && it.isNotEmpty() })
+            ClipItem(
+                item.optString("text"),
+                item.optString("image").takeIf { !item.isNull("image") && it.isNotEmpty() },
+                item.optLong("at", 0L),
+            )
         }
     }
 

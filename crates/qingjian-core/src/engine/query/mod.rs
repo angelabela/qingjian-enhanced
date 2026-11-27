@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use converting::trim_sentence_alternates;
 
-use crate::engine::{Learner, is_raw};
+use crate::engine::{Learner, MIN_COMPLETION_LETTERS, is_raw};
 use crate::ranking::{self, Scored};
 use crate::{Candidate, CandidateKind, Engine, ParseError};
 
@@ -59,6 +59,26 @@ impl Engine {
         };
         query.aux = self.aux_segment();
         query.held = self.held_text();
+        // 字典数据中混入了 Unicode 私用区字形，这些没有可移植的字体映射，
+        // 在排序、个人词频和 Android 绘制之前统一剔除，避免显示成方框或乱码。
+        query.candidates.items.retain(|candidate| {
+            let private_use: Vec<String> = candidate.text.chars()
+                .filter(|ch| is_private_use(*ch))
+                .map(|ch| format!("U+{:04X}", ch as u32))
+                .collect();
+            if !private_use.is_empty() {
+                tracing::warn!(
+                    target: "qingjian::candidate_filter",
+                    codepoints = ?private_use,
+                    kind = ?candidate.kind,
+                    scope = %self.composition.scope(),
+                    "过滤包含 Unicode 私用区字符的候选"
+                );
+                false
+            } else {
+                true
+            }
+        });
         // 永久屏蔽在候选进入重排、联想和展示前统一过滤，避免从个人词频再次冒出。
         query.candidates.items.retain(|candidate| !self.learner.is_banned(&candidate.text));
         self.apply_demotions(&mut query.candidates.items);
@@ -72,6 +92,8 @@ impl Engine {
         if self.composition.single_chars() {
             ranking::keep_only_single_chars(&mut query.candidates.items);
         }
+        // 个人英文前缀补全只能作兜底：即使当前排序策略倾向英文，也不能压过拼音候选。
+        self.demote_personal_english_completions(&mut query.candidates.items);
         // 整句截完、重排完才数得准第一页上排了什么（截之前可能还有十几条整句）；只有拼音输入有切分。
         // 辅码筛词时顺序按码的匹配程度排过，不再挪
         let several = self.aux_filter().is_none()
@@ -93,6 +115,44 @@ impl Engine {
                 .any(|end| self.learner.choice_weight(&letters[..end], &c.text) > 0)
         });
         query.spelled = result::spelling_for(&query.segmentations, query.candidates.items.first());
+
+        // 详细日志：在最终过滤、重排、整句裁剪之后逐条记录真实候选来源。
+        let source_input: String = self.composition.scope().replace('\'', "");
+        for (index, candidate) in query.candidates.items.iter().enumerate() {
+            let choice_weight = self.learner.choice_weight(&source_input, &candidate.text);
+            let user_word = candidate.kind == CandidateKind::Chinese
+                && self.learner.user_words().is_some_and(|dictionary| {
+                    let patterns: Vec<_> = candidate
+                        .syllables
+                        .iter()
+                        .map(|syllable| qingjian_dictionary::SyllablePattern::complete(syllable))
+                        .collect();
+                    dictionary
+                        .lookup_exact(&patterns)
+                        .iter()
+                        .any(|hit| hit.text == candidate.text)
+                });
+            let source = match candidate.kind {
+                CandidateKind::English => "英文词",
+                CandidateKind::Cloud => "云端",
+                CandidateKind::Chinese if choice_weight > 0 => "选择记录",
+                CandidateKind::Chinese if user_word => "用户词",
+                CandidateKind::Chinese | CandidateKind::Code => "本地词库",
+                _ => "本地生成/快捷候选",
+            };
+            tracing::debug!(
+                target: "qingjian::candidate_source",
+                index,
+                text = %candidate.text,
+                source,
+                kind = ?candidate.kind,
+                syllables = ?candidate.syllables,
+                choice_weight,
+                scope = %self.composition.scope(),
+                "候选来源"
+            );
+        }
+
         // 给输入日志留个摘要：上屏时才知道选了什么，这里才知道看到了什么
         // 九宫格没有切分，拼音取拼音行（首选读到的写法），云联想也用它问
         let pinyin = match (&query.correction, &query.typed_display) {
@@ -120,6 +180,38 @@ impl Engine {
         // 放在输入日志摘要之后，日志与学习数据一律记简体
         self.traditional.apply(&mut query.candidates);
         Ok(query)
+    }
+
+    /// 个人英文词只在明确选择三次后出现；作为前缀补全时始终排在中文 / 拼音候选之后。
+    /// 精确输入的英文词仍保留原有位置，不影响用户主动直输一个完整英文词。
+    fn demote_personal_english_completions(&self, items: &mut Vec<Candidate>) {
+        let Some(personal) = self.learner.user_english() else {
+            return;
+        };
+        let prefix = self.composition.scope();
+        if prefix.len() < MIN_COMPLETION_LETTERS
+            || !prefix.bytes().all(|byte| byte.is_ascii_lowercase())
+        {
+            return;
+        }
+        let mut completions = Vec::new();
+        items.retain(|candidate| {
+            if candidate.kind != CandidateKind::English
+                || candidate.text.eq_ignore_ascii_case(prefix)
+            {
+                return true;
+            }
+            let key = candidate.text.to_ascii_lowercase();
+            let is_personal_completion = key.starts_with(prefix)
+                && personal.get(&key).is_some();
+            if is_personal_completion {
+                completions.push(candidate.clone());
+                false
+            } else {
+                true
+            }
+        });
+        items.extend(completions);
     }
 
     pub(super) fn query_inner(&self) -> Result<Query, ParseError> {
@@ -173,4 +265,29 @@ pub(super) fn leading_english(items: &[Candidate]) -> usize {
         .iter()
         .take_while(|c| c.kind == CandidateKind::English)
         .count()
+}
+
+/// Unicode Private Use Area characters have no portable glyph mapping and must not be shown as candidates.
+fn is_private_use(ch: char) -> bool {
+    matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+}
+
+#[cfg(test)]
+mod private_use_tests {
+    use super::is_private_use;
+
+    #[test]
+    fn detects_private_use_characters_in_all_unicode_planes() {
+        assert!(is_private_use('\u{E818}'));
+        assert!(is_private_use('\u{F0000}'));
+        assert!(is_private_use('\u{100000}'));
+    }
+
+    #[test]
+    fn keeps_normal_cjk_emoji_and_format_characters() {
+        assert!(!is_private_use('青'));
+        assert!(!is_private_use('🙂'));
+        assert!(!is_private_use('\u{200D}'));
+        assert!(!is_private_use('\u{FE0F}'));
+    }
 }

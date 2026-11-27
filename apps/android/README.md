@@ -19,7 +19,7 @@ Kotlin 的 `InputMethodService` 壳 + Rust 的 `libqingjian_android.so`。Androi
     `input/` 是输入逻辑：`Composer`（键 → Engine 操作 → 输入框）、`Language` 输入语言、`EditorKind` 哪些输入框不过引擎、`EnterLabel` 回车键文字。
   - `keyboard/`：自绘键盘。`KeyboardView` 管触摸，`SideColumn` 九宫格拼音列，`BottomActionsView` 全面屏底部操作条，`Haptics` 震动，`SwipeTrail` 一笔滑行的判定、轨迹与交 Rust 的 JSON；
     `layout/` 键位与排版（`Key`、`KeyboardLayout` 键位表、`KeyboardMetrics`），`paint/` 绘制（`KeyPainter`、`KeyIcons`）。
-  - `theme/`：配色。`Palette` 键盘与面板（由 Rust 按设置里的主题推出来），`Appearance` 深浅色，`TextSize` 候选字号档，`AppColors` App 页面（不跟主题）。
+  - `theme/`：配色。`Palette` 键盘与面板（由 Rust 按设置里的主题推出来），`Appearance` 深浅色，`TextSize` 候选字号档，`AppColors` App 页面（从当前主题派生颜色）。
   - `panel/`：盖住候选条与键盘的面板。`FunctionPanel` / `ToolbarPanel`（定制工具栏）/ `KeyboardPickerPanel` / `CatalogPanel`（符号与表情）各一种，`PanelKind` 面板种类，`PanelActions` 是面板能做的事（服务实现）；
     `base/` 是共用的底子（`PanelView` 表头与滚动、`Tabs`、`ScrollState`、`Ink` 画笔、`PanelIcons`），`clipboard/` 剪贴板与常用语（`ClipboardPanel`、拆词 `PiecesPanel`），
     `editor/` 浮在键盘上方接管打字的编辑条（`FloatingEditor`、常用语编辑框 `PhraseEditor`）。

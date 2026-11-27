@@ -36,6 +36,7 @@ impl Queue {
     fn reply_last(&self, text: &str) {
         let sequence = self.submitted.lock().unwrap().last().unwrap().sequence;
         self.replies.lock().unwrap().push(Prediction {
+            kind: PredictionKind::Translate,
             sequence,
             words: Vec::new(),
             sentence: Some(text.to_owned()),

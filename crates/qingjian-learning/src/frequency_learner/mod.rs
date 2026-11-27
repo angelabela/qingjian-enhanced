@@ -116,7 +116,7 @@ pub struct FrequencyLearner {
     /// 按输入串记的选择自上次保存后是否有变化。
     choices_dirty: bool,
 
-    /// 个人英文词：小写编码 → (最近一次敲的写法, 带衰减的次数)。回车原样上屏的英文词、选过的英文候选。
+    /// 个人英文词：小写编码 → (最近一次选择的写法, 带衰减的次数)。只记录明确选择的英文候选。
     english: BTreeMap<String, (String, Decay)>,
 
     /// 个人英文词组成的词表，随 `english` 重建。
@@ -474,6 +474,14 @@ impl FrequencyLearner {
         if let Some(source) = read_text_lossy(&demoted_path)? {
             let skipped = learner.load_demoted(&source);
             note_skipped(&demoted_path, skipped);
+        }
+        // 旧个人英文词表在加载时就完成清理并立即回写，避免只在内存隐藏脏词、
+        // 进程异常退出后旧 TSV 又在下次启动重新出现。
+        if learner.english_dirty {
+            let english_path = Self::english_path(&path);
+            if let Err(error) = learner.save_english_to(&english_path) {
+                tracing::warn!(path = %english_path.display(), %error, "旧个人英文词表迁移保存失败");
+            }
         }
         learner.path = Some(path);
         Ok(learner)

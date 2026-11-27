@@ -1,11 +1,27 @@
 //! 候选条的画笔：记住最新一帧要显示的内容，壳要画时按宽度倍数与深浅色出一张位图。
 
-use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Rendered, Renderer, TextSizes, Theme};
+use qingjian_render::{FontLibrary, Frame as RenderFrame, Layout, Mode, Renderer, TextSizes, Theme};
 
 use super::{StripHit, StripMeta, has_emoji, preedit, rows, visible_indices};
 use crate::appearance;
 use crate::error::AndroidError;
 use crate::frame::Frame;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StripCacheKey {
+    theme_id: String,
+    font_identity: &'static str,
+    text_scale_bits: u32,
+    candidate_weight: u16,
+    density_bits: u32,
+    dark: bool,
+    highlighted: Option<usize>,
+    visible_width: u32,
+    content_signature: u64,
+    layout: u8,
+}
 
 /// 中日同形字按简体选字形；学习语言是日语时译文里的汉字也用简体字形，与桌面端一致。
 const LOCALE: &str = "zh-CN";
@@ -23,14 +39,19 @@ pub struct StripPainter {
     /// 最新一帧要画的内容。
     content: RenderFrame,
 
+    /// 单调递增的候选帧序号；随布局元数据传给 Android，拒绝旧帧回写。
+    frame_id: u64,
+
     /// 渲染器的连续行下标 -> 原始候选下标（云候选被独立显示）。
     candidate_indices: Vec<usize>,
 
     /// 原始候选中有 emoji 的下标。
     emoji: Vec<usize>,
+    theme_id: String,
+    candidate_weight: u16,
+    content_signature: u64,
+    cache: Option<(StripCacheKey, StripMeta)>,
 
-    /// 上次画的位图，等壳来拷。
-    last: Option<Rendered>,
 }
 
 impl StripPainter {
@@ -44,9 +65,13 @@ impl StripPainter {
             dark: Theme::dark().with_animations(false),
             text_scale: 1.0,
             content: RenderFrame::default(),
+            frame_id: 0,
             candidate_indices: Vec::new(),
             emoji: Vec::new(),
-            last: None,
+            theme_id: "default".to_owned(),
+            candidate_weight: 400,
+            content_signature: 0,
+            cache: None,
         })
     }
 
@@ -68,16 +93,45 @@ impl StripPainter {
         self.light = sized(false);
         self.dark = sized(true);
         self.text_scale = text_scale;
+        self.theme_id = theme.to_owned();
+        self.candidate_weight = candidate_weight;
+        self.cache = None;
     }
 
     /// 记下一帧要显示的拼音、提示与候选。
     pub fn show(&mut self, frame: &Frame) {
+        self.frame_id = self.frame_id.saturating_add(1);
+        let mut signature = DefaultHasher::new();
+        // Hash sequence boundaries explicitly: candidate/sense field sequences must not
+        // become ambiguous when adjacent variable-length collections change shape.
+        frame.preedit.hash(&mut signature);
+        frame.preedit_cursor.hash(&mut signature);
+        frame.preedit_pinned.hash(&mut signature);
+        frame.notice.hash(&mut signature);
+        frame.candidates.len().hash(&mut signature);
+        for candidate in &frame.candidates {
+            candidate.text.hash(&mut signature);
+            candidate.forgettable.hash(&mut signature);
+            candidate.cloud.hash(&mut signature);
+            candidate.contact.hash(&mut signature);
+            candidate.custom_phrase.hash(&mut signature);
+            candidate.senses.len().hash(&mut signature);
+            for sense in &candidate.senses {
+                sense.pos.hash(&mut signature);
+                sense.text.hash(&mut signature);
+                sense.reading.hash(&mut signature);
+                sense.fresh.hash(&mut signature);
+            }
+        }
+        self.content_signature = signature.finish();
         self.candidate_indices = visible_indices(&frame.candidates);
+        // Emoji 下标覆盖所有候选，包括被独立追加到 Kotlin 侧的云候选；
+        // Kotlin 用自己的 wordRect 取得补充候选区域，再统一绘制彩色 Emoji。
         self.emoji = frame
             .candidates
             .iter()
             .enumerate()
-            .filter(|(_, candidate)| !candidate.cloud && has_emoji(&candidate.text))
+            .filter(|(_, candidate)| has_emoji(&candidate.text))
             .map(|(i, _)| i)
             .collect();
         self.content = RenderFrame {
@@ -104,18 +158,20 @@ impl StripPainter {
         highlighted: Option<usize>,
         scale: f32,
         dark: bool,
+        visible_width: u32,
     ) -> Result<StripMeta, AndroidError> {
         // 空候选帧不进入栅格渲染器；无可绘制内容时返回空元数据，避免生成 0×N 位图。
         if self.content.rows.is_empty()
             && self.content.preedit.is_none()
             && self.content.status.is_none()
         {
-            self.last = None;
             return Ok(StripMeta {
+                frame_id: self.frame_id,
                 width: 0,
                 height: 0,
                 candidates_top: 0,
                 background: 0,
+                candidate_indices: self.candidate_indices.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
@@ -131,18 +187,36 @@ impl StripPainter {
                 .position(|&index| index == original)
         });
         let theme = if dark { &self.dark } else { &self.light };
-        let rendered = self
-            .renderer
-            .render(&self.content, Layout::Strip, theme, scale)?;
-        let width = rendered.pixmap.width();
-        let height = rendered.pixmap.height();
+        let key = StripCacheKey {
+            theme_id: self.theme_id.clone(),
+            font_identity: LOCALE,
+            text_scale_bits: self.text_scale.to_bits(),
+            candidate_weight: self.candidate_weight,
+            density_bits: scale.to_bits(),
+            dark,
+            highlighted: self.content.highlighted,
+            visible_width,
+            content_signature: self.content_signature,
+            layout: 0,
+        };
+        if let Some((cached_key, cached_meta)) = &self.cache {
+            if cached_key == &key {
+                let mut cached = cached_meta.clone();
+                cached.frame_id = self.frame_id;
+                return Ok(cached);
+            }
+        }
+        let snapshot = self.renderer.layout_only(&self.content, Layout::Strip, theme, scale)?;
+        let width = snapshot.width.ceil().max(0.0) as u32;
+        let height = snapshot.height.ceil().max(0.0) as u32;
         if width == 0 || height == 0 {
-            self.last = None;
             return Ok(StripMeta {
+                frame_id: self.frame_id,
                 width: 0,
                 height: 0,
                 candidates_top: 0,
                 background: 0,
+                candidate_indices: self.candidate_indices.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
@@ -150,54 +224,44 @@ impl StripPainter {
                 emoji: Vec::new(),
             });
         }
-        let offset = (rendered.content_x, rendered.content_y);
         let background = theme.variable("surface").map_or(0, appearance::argb);
         let meta = StripMeta {
+            frame_id: self.frame_id,
             width,
             height,
-            candidates_top: rendered.candidates_top(),
+            candidates_top: snapshot.candidates_top().ceil().max(0.0) as u32,
             background,
-            hits: rendered
+            candidate_indices: self.candidate_indices.clone(),
+            hits: snapshot
                 .hits
                 .iter()
-                .filter_map(|region| StripHit::new(region, offset))
-                .map(|mut hit| {
-                    // renderer 回报过滤后连续的显示下标；壳的选择、emoji 与长按仍使用原始候选下标。
-                    if let Some(&original) = self.candidate_indices.get(hit.candidate) {
-                        hit.candidate = original;
+                .filter_map(|region| StripHit::new(region, (0, 0)))
+                .filter_map(|mut hit| {
+                    // Renderer 使用过滤后连续的显示下标；越界下标或无效矩形违反布局协议，
+                    // 必须丢弃，绝不能把显示下标误当成原始候选下标传给 Android。
+                    let original = *self.candidate_indices.get(hit.candidate)?;
+                    if !hit.x.is_finite()
+                        || !hit.y.is_finite()
+                        || !hit.width.is_finite()
+                        || !hit.height.is_finite()
+                        || hit.width <= 0.0
+                        || hit.height <= 0.0
+                    {
+                        return None;
                     }
-                    hit
+                    hit.candidate = original;
+                    Some(hit)
                 })
                 .collect(),
-            preedit_edges: rendered.preedit.as_ref().map_or_else(Vec::new, |hit| {
-                hit.edges.iter().map(|x| x + offset.0 as f32).collect()
-            }),
-            preedit_top: rendered
-                .preedit
-                .as_ref()
-                .map_or(0.0, |hit| hit.y + offset.1 as f32),
-            preedit_bottom: rendered
-                .preedit
-                .as_ref()
-                .map_or(0.0, |hit| hit.y + hit.height + offset.1 as f32),
+            preedit_edges: snapshot.preedit.as_ref().map_or_else(Vec::new, |hit| hit.edges.clone()),
+            preedit_top: snapshot.preedit.as_ref().map_or(0.0, |hit| hit.y),
+            preedit_bottom: snapshot.preedit.as_ref().map_or(0.0, |hit| hit.y + hit.height),
             emoji: self.emoji.clone(),
         };
-        self.last = Some(rendered);
+        self.cache = Some((key, meta.clone()));
         Ok(meta)
     }
 
-    /// 把上次画的像素拷进 `out`；没画过或 `out` 不够大返回 `false`。
-    pub fn copy_pixels(&self, out: &mut [u8]) -> bool {
-        let Some(rendered) = &self.last else {
-            return false;
-        };
-        let data = rendered.pixmap.data();
-        match out.get_mut(..data.len()) {
-            Some(target) => {
-                target.copy_from_slice(data);
-                true
-            }
-            None => false,
-        }
-    }
+    /// 兼容旧 JNI 符号；布局快照不生成可复制的位图像素。
+    pub fn copy_pixels(&self, _out: &mut [u8]) -> bool { false }
 }

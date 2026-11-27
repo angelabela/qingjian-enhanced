@@ -2,6 +2,7 @@ package app.qingjian.inputmethod.settings.widget
 
 import android.content.Context
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
@@ -35,8 +36,12 @@ class TabBar(
                 orientation = VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, ui.dp(2), 0, ui.dp(4))
+                minimumHeight = ui.dp(48)
+                isFocusable = true
+                isClickable = true
                 isSelected = on
-                contentDescription = context.getString(label)
+                contentDescription = context.getString(label) + if (on) "，已选中" else "，未选中"
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
                 setOnClickListener { onSelect(index) }
                 addView(ui.icon(icon, color, 25f))
                 addView(ui.text(context.getString(label), 10.5f, color, bold = on).apply {

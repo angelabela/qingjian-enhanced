@@ -29,6 +29,7 @@ class KeyPainter(
     private var customBorderColor: Int = 0,
     private var customBackgroundColor: Int = 0,
     private val customTextColor: Int = 0,
+    private val scaledDensity: Float = metrics.density,
 ) {
     private val density = metrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -243,7 +244,7 @@ class KeyPainter(
         val index = QWERTY_ORDER.indexOf(letter.lowercaseChar())
         if (index < 0) return
         val now = SystemClock.uptimeMillis()
-        // 2.6s -> 6.5s：速度降低 60%（保留原有亮度/拖尾观感）。
+        // 6.5s -> 13s：在现有基础上再减速 50%，保留亮度与拖尾观感。
         val phase = (now % MARQUEE_CYCLE_MS).toFloat() / MARQUEE_STEP_MS
         val trail = (phase - index + 26f) % 26f
         if (trail > 4.8f) return
@@ -297,7 +298,7 @@ class KeyPainter(
     ) {
         ink.typeface = fontTypeface
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = 8.5f * density
+        ink.textSize = 8.5f * scaledDensity
         val punctuationOnly = upward && (label == "。" || label == ".")
         val arrow = if (upward) "↑" else "↓"
         val fullText = "$arrow$label"
@@ -309,7 +310,7 @@ class KeyPainter(
             ink.measureText(symbolText) <= maxLabelWidth -> symbolText
             else -> arrow
         }
-        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * density
+        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * scaledDensity
         // 只有完整动作文字超出键帽可用宽度时才退化为图标。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
@@ -371,7 +372,7 @@ class KeyPainter(
     /** 空格键剪贴板手势只显示文字，不再绘制剪贴板和箭头图标。 */
     private fun drawClipboardSwipeHint(canvas: Canvas, bounds: RectF) {
         ink.typeface = fontTypeface
-        ink.textSize = 8f * density
+        ink.textSize = 8f * scaledDensity
         ink.color = secondaryColor
         ink.clearShadowLayer()
         canvas.drawText("剪贴板", bounds.centerX(), bounds.bottom - 5f * density, ink)
@@ -497,7 +498,7 @@ class KeyPainter(
     private fun text(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float) {
         // 每次绘制主字都强制以键位中心为锚点，避免上一次绘制状态污染标点键对齐。
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * density * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp) * rowFitScale(sp)
         ink.color = color
         ink.shader = null
         ink.style = Paint.Style.FILL
@@ -516,9 +517,10 @@ class KeyPainter(
                 canvas.drawText(value, cx, baseline, ink)
             }
             Settings.TextEffectPreset.NEON_OUTLINE -> {
-                ink.setShadowLayer(3f * density, 0f, 0f, color)
+                // 降低外发光半径、透明度与描边宽度，保留霓虹轮廓但避免压住字形。
+                ink.setShadowLayer(1.6f * density, 0f, 0f, withAlpha(color, 0x72))
                 ink.style = Paint.Style.STROKE
-                ink.strokeWidth = 1.15f * density
+                ink.strokeWidth = 0.75f * density
                 canvas.drawText(value, cx, baseline, ink)
                 ink.style = Paint.Style.FILL
                 canvas.drawText(value, cx, baseline, ink)
@@ -553,9 +555,16 @@ class KeyPainter(
     /** 同 [text]，放不下 [maxWidth] 就缩小字号（双拼韵母一个键可能有两三个）。 */
     private fun fitted(canvas: Canvas, value: String, sp: Float, color: Int, cx: Float, cy: Float, maxWidth: Float) {
         ink.textAlign = Paint.Align.CENTER
-        ink.textSize = sp * density * scaleOf(sp)
+        ink.textSize = sp * scaledDensity * scaleOf(sp) * rowFitScale(sp)
         val width = ink.measureText(value)
         text(canvas, value, if (width > maxWidth) sp * maxWidth / width else sp, color, cx, cy)
+    }
+
+    /** Reduce oversized key labels only when the actual row is too short (landscape, split-screen or 5-row layouts). */
+    private fun rowFitScale(sp: Float): Float {
+        val available = (metrics.effectiveRowHeight - 6f * density).coerceAtLeast(1f)
+        val requested = (sp * scaledDensity * scaleOf(sp)).coerceAtLeast(1f)
+        return (available / requested).coerceIn(0.35f, 1f)
     }
 
     /** 带角标的键上主字的纵向位置（占键高的比例）：字放大时往下让一点，不顶到角标。 */
@@ -565,8 +574,8 @@ class KeyPainter(
     private fun scaleOf(sp: Float) = if (sp > HINT_MAX_SP) textScale else 1f
 
     private companion object {
-        const val MARQUEE_CYCLE_MS = 6_500L
-        const val MARQUEE_STEP_MS = 250f
+        const val MARQUEE_CYCLE_MS = 13_000L
+        const val MARQUEE_STEP_MS = 500f
         const val BREATH_CYCLE_MS = 2_400L
         const val QWERTY_ORDER = "qwertyuiopasdfghjklzxcvbnm"
         val EDIT_GESTURE_KEYS = setOf('z', 'x', 'c', 'v')
