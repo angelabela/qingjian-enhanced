@@ -169,7 +169,6 @@ val downloadNotoEmojiLottie by tasks.registering {
                             connection.connectTimeout = 15000
                             connection.readTimeout = 30000
                             connection.inputStream.use { input ->
-                            connection.getInputStream().use { input ->
                                 temporary.outputStream().buffered().use { output -> input.copyTo(output) }
                             }
                             if (temporary.length() < 100) throw GradleException("Empty Lottie JSON for $id")
