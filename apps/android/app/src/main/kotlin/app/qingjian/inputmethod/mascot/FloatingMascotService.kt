@@ -20,8 +20,6 @@ import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
@@ -39,8 +37,6 @@ class FloatingMascotService : Service() {
     private lateinit var windowParams: WindowManager.LayoutParams
     private var mascotView: MascotView? = null
     private var receiverRegistered = false
-    private val dragHandler = Handler(Looper.getMainLooper())
-    private var collapsedWidthPx = 0
     private var collapsedWidthPx = 0
     private var collapsedHeightPx = 0
     private var expandedWidthPx = 0
