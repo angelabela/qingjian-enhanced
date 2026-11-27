@@ -333,9 +333,16 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             val bottomY = image.preeditBottom.coerceAtLeast(topY + 1f)
             val left = edges.first()
             val right = edges[codePoints.size]
-            if (right >= scrollX && left <= scrollX + contentViewWidth) {
+            // Rust 边界仍用于光标命中；绘制框按整串拼音的真实字宽扩展，
+            // 防止首尾字母被过窄的预编辑命中区裁切。
+            val preeditPaint = textStyles.paint(CandidateTextStyleEngine.Role.PREEDIT)
+            val requiredWidth = preeditPaint.measureText(preedit) + 8f * density
+            val displayWidth = maxOf(right - left, requiredWidth)
+            val displayLeft = (left + right - displayWidth) / 2f
+            val displayRight = displayLeft + displayWidth
+            if (displayRight >= scrollX && displayLeft <= scrollX + contentViewWidth) {
                 textStyles.drawReplacing(
-                    canvas, preedit, RectF(left, topY, right, bottomY),
+                    canvas, preedit, RectF(displayLeft, topY, displayRight, bottomY),
                     CandidateTextStyleEngine.Role.PREEDIT,
                     eraseUnderlay = false,
                 )

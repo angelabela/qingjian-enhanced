@@ -62,7 +62,7 @@ class CandidateTextStyleEngine(
             fun defaults(color: Int, weight: Settings.FontWeight) = Config(
                 firstCandidate = Style(color, 1.08f, weight.weight),
                 candidate = Style(color, 1f, weight.weight),
-                preedit = Style(color, 0.92f, maxOf(600, weight.weight), typefaceFamily = "sans-serif-medium"),
+                preedit = Style(color, 0.92f, 400, typefaceFamily = "sans-serif"),
                 gloss = Style(color, 0.62f, 400),
                 selected = Style(color, 1.08f, maxOf(600, weight.weight)),
             )
@@ -89,7 +89,9 @@ class CandidateTextStyleEngine(
                     )
                     Settings.TextEffectPreset.COLOR_GRADIENT -> style
                 }
-                return Config(styled(base.firstCandidate), styled(base.candidate), styled(base.preedit),
+                return Config(styled(base.firstCandidate), styled(base.candidate),
+                    // 拼音保持常规字重，不跟随候选字的粗体预设一起加粗。
+                    styled(base.preedit).copy(weight = 400, typefaceFamily = "sans-serif"),
                     styled(base.gloss), styled(base.selected), preset)
             }
         }

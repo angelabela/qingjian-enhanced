@@ -718,8 +718,9 @@ class CandidateBarView(
                     ),
                     floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f),
                 )
+                val flowPhase = (elapsed % EDGE_FLOW_PERIOD_MS).toFloat() / EDGE_FLOW_PERIOD_MS
                 val rotation = android.graphics.Matrix().apply {
-                    setRotate(phase * 360f, rect.centerX(), rect.centerY())
+                    setRotate(flowPhase * 360f, rect.centerX(), rect.centerY())
                 }
                 flow.setLocalMatrix(rotation)
                 firstCandidateSheen.shader = flow
@@ -951,5 +952,7 @@ class CandidateBarView(
     private companion object {
         const val NOTICE_MS = 5000L
         const val FIRST_CANDIDATE_PULSE_PERIOD_MS = 620L
+        // 边缘流影单独使用 2.5 倍周期：速度降为原来的 40%，呼吸节奏不变。
+        const val EDGE_FLOW_PERIOD_MS = 1550L
     }
 }

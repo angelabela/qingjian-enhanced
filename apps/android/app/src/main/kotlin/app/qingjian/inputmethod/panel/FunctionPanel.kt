@@ -18,6 +18,7 @@ import app.qingjian.inputmethod.panel.base.PanelIcons.Icon
 import app.qingjian.inputmethod.panel.base.PanelView
 import app.qingjian.inputmethod.panel.base.Tabs
 import app.qingjian.inputmethod.settings.Settings
+import app.qingjian.inputmethod.settings.page.AppearanceActivity
 import app.qingjian.inputmethod.theme.Palette
 
 /**
@@ -133,6 +134,12 @@ class FunctionPanel(
                 },
                 Feature(if (smsEnabled) Icon.LOCK else Icon.UNLOCK, "验证码", on = smsEnabled) {
                     context.startActivity(Intent(context, SmsCodeSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                Feature(Icon.PALETTE, "皮肤") {
+                    context.startActivity(
+                        Intent(context, AppearanceActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
                 },
                 Feature(Icon.PALETTE, "文字效果", on = textEffectsActive()) {
                     val textPrefs = Settings.preferences(context)
