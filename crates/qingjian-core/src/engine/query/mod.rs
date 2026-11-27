@@ -95,6 +95,44 @@ impl Engine {
                 .any(|end| self.learner.choice_weight(&letters[..end], &c.text) > 0)
         });
         query.spelled = result::spelling_for(&query.segmentations, query.candidates.items.first());
+
+        // 详细日志：在最终过滤、重排、整句裁剪之后逐条记录真实候选来源。
+        let source_input: String = self.composition.scope().replace('\'', "");
+        for (index, candidate) in query.candidates.items.iter().enumerate() {
+            let choice_weight = self.learner.choice_weight(&source_input, &candidate.text);
+            let user_word = candidate.kind == CandidateKind::Chinese
+                && self.learner.user_words().is_some_and(|dictionary| {
+                    let patterns: Vec<_> = candidate
+                        .syllables
+                        .iter()
+                        .map(|syllable| qingjian_dictionary::SyllablePattern::complete(syllable))
+                        .collect();
+                    dictionary
+                        .lookup_exact(&patterns)
+                        .iter()
+                        .any(|hit| hit.text == candidate.text)
+                });
+            let source = match candidate.kind {
+                CandidateKind::English => "英文词",
+                CandidateKind::Cloud => "云端",
+                CandidateKind::Chinese if choice_weight > 0 => "选择记录",
+                CandidateKind::Chinese if user_word => "用户词",
+                CandidateKind::Chinese | CandidateKind::Code => "本地词库",
+                _ => "本地生成/快捷候选",
+            };
+            tracing::debug!(
+                target: "qingjian::candidate_source",
+                index,
+                text = %candidate.text,
+                source,
+                kind = ?candidate.kind,
+                syllables = ?candidate.syllables,
+                choice_weight,
+                scope = %self.composition.scope(),
+                "候选来源"
+            );
+        }
+
         // 给输入日志留个摘要：上屏时才知道选了什么，这里才知道看到了什么
         // 九宫格没有切分，拼音取拼音行（首选读到的写法），云联想也用它问
         let pinyin = match (&query.correction, &query.typed_display) {

@@ -445,6 +445,18 @@ impl Engine {
                 // 云端词与整句不走候选列表，赶不上 query 那边的 apply，这里单独转并记还原表。
                 // 释义那一类不转：它出来的是中文释义，简繁在挂到候选上时才处理
                 if !is_translation(pending.kind) {
+                    for (index, word) in prediction.words.iter().enumerate() {
+                        tracing::debug!(
+                            target: "qingjian::candidate_source",
+                            index,
+                            text = %word.text,
+                            source = "云端",
+                            syllables = ?word.syllables,
+                            sequence = prediction.sequence,
+                            prediction_kind = ?pending.kind,
+                            "候选来源"
+                        );
+                    }
                     for word in &mut prediction.words {
                         word.text = self.traditional.convert_remember(&word.text);
                     }
