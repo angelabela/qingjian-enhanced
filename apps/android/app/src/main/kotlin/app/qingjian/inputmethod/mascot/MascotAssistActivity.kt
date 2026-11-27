@@ -48,13 +48,13 @@ class MascotAssistActivity : PageActivity() {
                     },
                     ui.toggle(
                         "显示短信摘要",
-                        "仅在短信验证码监测已开启并获得短信权限后显示；默认关闭，摘要只在本机处理。",
+                        "需要短信读取权限；默认关闭。开启后只在本机显示短信来源和短摘要，不自动复制短信正文。",
                         smsPreview,
                         null,
                     ) { checked ->
                         smsPrefs.edit().putBoolean(SmsCodeReceiver.KEY_MASCOT_PREVIEW, checked).apply()
                         if (checked && !smsPrefs.getBoolean(SmsCodeReceiver.KEY_ENABLED, false)) {
-                            Toast.makeText(this, "请先开启短信验证码监测并授予短信权限", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "如果尚未授予短信权限，请先开启验证码监测完成授权", Toast.LENGTH_LONG).show()
                         }
                         rebuild()
                     },

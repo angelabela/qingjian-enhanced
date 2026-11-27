@@ -373,9 +373,9 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun detectSmartMatch(text: String): SmartMatch? {
-        val phone = Regex("(?<!\\d)(?:\\+?86[-\\s]?)?1[3-9]\\d{9}(?!\\d)").find(text)?.value
+        val phone = Regex("(?<!\\d)(?:\\+?86[-\\s]?)?(?:1[3-9]\\d{9}|0\\d{2,3}[- ]?\\d{7,8})(?!\\d)").find(text)?.value
         if (!phone.isNullOrBlank()) return SmartMatch("phone", phone, "识别到电话号码：$phone\n点按这里拨号")
-        val url = Regex("(?i)(?:https?://|www\\.)[^\\s<>]+|\\b(?:[a-z0-9-]+\\.)+(?:com|cn|net|org|io|co|me|app|dev)(?:/[^\\s<>]*)?").find(text)?.value?.trimEnd('.', ',', ';', ')', ']', '，', '。')
+        val url = Regex("(?i)(?:https?://|www\\.)[^\\s<>]+|\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}(?:/[^\\s<>]*)?").find(text)?.value?.trimEnd('.', ',', ';', ')', ']', '，', '。')
         if (!url.isNullOrBlank()) return SmartMatch("url", url, "识别到网址：$url\n点按这里打开")
         val code = Regex("(?:验证码|校验码|动态码|短信码|verification\\s*code|otp)[^0-9]{0,12}([0-9]{4,8})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.getOrNull(1)
         if (!code.isNullOrBlank()) return SmartMatch("code", code, "识别到验证码：$code\n点按这里复制")
@@ -464,7 +464,7 @@ class SpriteTranslateService : AccessibilityService() {
         var y = p.y - gap - h
         if (y < dp(40f)) y = p.y + gap
         bubbleLp.x = (p.x - w / 2).coerceIn(dp(8f), max(dp(8f), screenW - w - dp(8f)))
-        bubbleLp.y = y
+        bubbleLp.y = y.coerceIn(dp(8f), max(dp(8f), screenH - h - dp(8f)))
         wm.updateViewLayout(bubble, bubbleLp)
     }
 

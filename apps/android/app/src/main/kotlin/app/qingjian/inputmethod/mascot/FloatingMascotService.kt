@@ -16,7 +16,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.text.TextPaint
 import android.graphics.PixelFormat
-import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
@@ -41,53 +40,7 @@ class FloatingMascotService : Service() {
     private var mascotView: MascotView? = null
     private var receiverRegistered = false
     private val dragHandler = Handler(Looper.getMainLooper())
-    private var pendingCopy: Runnable? = null
-    private var lastDragX = 0
-    private var lastDragY = 0
-    private var selectionOverlay: View? = null
-    private var clearSelectionRunnable: Runnable? = null
-
-    private fun showSelectionHighlight(bounds: Rect) {
-        clearSelectionRunnable?.let(dragHandler::removeCallbacks)
-        selectionOverlay?.let { old -> runCatching { if (old.isAttachedToWindow) windowManager.removeView(old) } }
-        selectionOverlay = null
-        val width = bounds.width().coerceAtLeast(2)
-        val height = bounds.height().coerceAtLeast(2)
-        val highlight = SelectionHighlightView(this)
-        val params = WindowManager.LayoutParams(
-            width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = bounds.left
-            y = bounds.top
-        }
-        runCatching { windowManager.addView(highlight, params); selectionOverlay = highlight }
-            .onFailure { android.util.Log.w("QingjianMascot", "Unable to show copied text bounds", it) }
-        clearSelectionRunnable = Runnable {
-            selectionOverlay?.let { overlay -> runCatching { if (overlay.isAttachedToWindow) windowManager.removeView(overlay) } }
-            selectionOverlay = null
-            clearSelectionRunnable = null
-        }.also { dragHandler.postDelayed(it, 1_800L) }
-    }
-
-    private class SelectionHighlightView(context: Context) : View(context) {
-        private val density = resources.displayMetrics.density
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x2246B7FF }
-        private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF36A9FF.toInt()
-            style = Paint.Style.STROKE
-            strokeWidth = 2f * density
-        }
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val inset = border.strokeWidth / 2f
-            val rect = RectF(inset, inset, width - inset, height - inset)
-            canvas.drawRoundRect(rect, 4f * density, 4f * density, fill)
-            canvas.drawRoundRect(rect, 4f * density, 4f * density, border)
-        }
-    }
+    private var collapsedWidthPx = 0
     private var collapsedWidthPx = 0
     private var collapsedHeightPx = 0
     private var expandedWidthPx = 0
@@ -242,12 +195,6 @@ class FloatingMascotService : Service() {
                 val dx = event.rawX - state[0]; val dy = event.rawY - state[1]
                 if (abs(dx) > slop || abs(dy) > slop) state[4] = 1f
                 if (state[4] > 0f) {
-                    lastDragX = event.rawX.toInt(); lastDragY = event.rawY.toInt()
-                    val pet = view as MascotView
-                    val petLeft = pet.mascotOffsetPx / resources.displayMetrics.density
-                    val petX = event.x / resources.displayMetrics.density - petLeft
-                    val corner = (if (event.y / resources.displayMetrics.density < 34f) 0 else 2) + if (petX >= 32f) 1 else 0
-                    pet.setDragMarker(corner)
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
@@ -267,8 +214,6 @@ class FloatingMascotService : Service() {
             MotionEvent.ACTION_UP -> {
                 val state = view.getTag() as? FloatArray
                 if (state != null && state[5] == 1f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
-                pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
-                (view as? MascotView)?.setDragMarker(-1)
                 if (state != null && state[4] == 0f) {
                     val pet = view as MascotView
                     if (!pet.selectTipAt(event.x, event.y) && !pet.onPhoneBubbleTapped(event.x, event.y)) pet.onPetTapped()
@@ -279,8 +224,7 @@ class FloatingMascotService : Service() {
             MotionEvent.ACTION_CANCEL -> {
                 val state = view.getTag() as? FloatArray
                 if (state != null && state[5] == 1f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
-                pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
-                (view as? MascotView)?.setDragMarker(-1); true
+                true
             }
             else -> true
         }
@@ -305,9 +249,6 @@ class FloatingMascotService : Service() {
         android.util.Log.w("QingjianMascot", "Floating mascot service destroyed; enabled=" + getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false))
         mascotView?.let { view -> runCatching { if (view.isAttachedToWindow) windowManager.removeView(view) } }
         mascotView = null
-        clearSelectionRunnable?.let(dragHandler::removeCallbacks)
-        selectionOverlay?.let { overlay -> runCatching { if (overlay.isAttachedToWindow) windowManager.removeView(overlay) } }
-        selectionOverlay = null
         if (receiverRegistered) runCatching { unregisterReceiver(screenReceiver) }
         receiverRegistered = false
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else stopForeground(true)
@@ -331,15 +272,6 @@ class FloatingMascotService : Service() {
         private var pendingPhoneNumber: String? = null
         private var dialogueExpanded = false
         private var expiryRunnable: Runnable? = null
-        var dragMarkerCorner: Int = -1
-            private set
-
-        fun setDragMarker(corner: Int) {
-            val next = corner.takeIf { it in 0..3 } ?: -1
-            if (dragMarkerCorner == next) return
-            dragMarkerCorner = next
-            invalidate()
-        }
         var onDialogueVisibilityChanged: ((Boolean) -> Unit)? = null
         var onModeChanged: ((String) -> Unit)? = null
         var mode: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MODE, MODE_TRANSLATE) ?: MODE_TRANSLATE
@@ -550,7 +482,6 @@ class FloatingMascotService : Service() {
             }.onFailure { android.util.Log.w("QingjianMascot", "Unable to open phone dialer", it) }
             return true
         }
-        fun setContextLabel(label: String) = setMessage(label, 12_000L)
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val now = SystemClock.uptimeMillis()
@@ -563,12 +494,25 @@ class FloatingMascotService : Service() {
             canvas.translate(mascotLeftDp, sin(now / 560.0).toFloat() * 1.5f + bounce + nod)
             val breathe = sin(now / 760.0).toFloat()
             val bob = sin(now / 510.0).toFloat() * 1.7f + breathe * 0.7f
+            val squash = if (active) sin(elapsed / 95f).toFloat() * 0.025f else sin(now / 1700.0).toFloat() * 0.012f
             canvas.translate(0f, bob)
-            paint.color = 0x55202A45; canvas.drawCircle(32f, 34f, 29f + breathe * 0.8f, paint)
+            canvas.translate(32f, 38f)
+            canvas.scale(1f + squash, 1f - squash)
+            canvas.translate(-32f, -38f)
+            paint.color = 0x55202A45
+            canvas.drawOval(RectF(14f, 60f, 50f, 67f), paint)
+            // Small rounded body and feet sit behind the head, giving the pet a full silhouette.
+            canvas.drawOval(RectF(20f, 46f, 44f, 66f), face)
+            canvas.drawOval(RectF(20f, 46f, 44f, 66f), outline)
+            canvas.drawOval(RectF(19f, 60f, 28f, 67f), face)
+            canvas.drawOval(RectF(36f, 60f, 45f, 67f), face)
+            val earWiggle = sin(now / 930.0).toFloat() * 2.2f
             ear.reset(); ear.moveTo(12f,18f); ear.lineTo(14f,2f); ear.lineTo(26f,13f); ear.close()
-            canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
+            canvas.save(); canvas.rotate(earWiggle, 18f, 15f)
+            canvas.drawPath(ear, face); canvas.drawPath(ear, outline); canvas.restore()
             ear.reset(); ear.moveTo(38f,13f); ear.lineTo(51f,2f); ear.lineTo(52f,20f); ear.close()
-            canvas.drawPath(ear, face); canvas.drawPath(ear, outline)
+            canvas.save(); canvas.rotate(-earWiggle * 0.7f, 46f, 15f)
+            canvas.drawPath(ear, face); canvas.drawPath(ear, outline); canvas.restore()
             canvas.drawCircle(32f,34f,25f,face); canvas.drawCircle(32f,34f,25f,outline)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 2.2f
@@ -606,34 +550,38 @@ class FloatingMascotService : Service() {
                 }
                 paint.style = Paint.Style.FILL
             }
-            val blinkPhase = now % 4100L
-            if (blinkPhase < 170L || blinkPhase in 2350L..2460L) {
-                paint.color = 0xFF473A50.toInt(); paint.strokeWidth = 2.4f; paint.strokeCap = Paint.Cap.ROUND
-                canvas.drawLine(20f,29f,25f,29f,paint); canvas.drawLine(39f,29f,44f,29f,paint)
+            val blinkPhase = now % 4300L
+            val blinking = blinkPhase < 150L || blinkPhase in 2470L..2590L
+            val gaze = sin(now / 1250.0).toFloat() * 0.9f
+            if (blinking) {
+                paint.color = 0xFF473A50.toInt(); paint.strokeWidth = 2.5f; paint.strokeCap = Paint.Cap.ROUND
+                canvas.drawLine(19f,29f,26f,29f,paint); canvas.drawLine(38f,29f,45f,29f,paint)
             } else {
-                canvas.drawCircle(22.5f,29f,3.1f,eye); canvas.drawCircle(41.5f,29f,3.1f,eye)
-                canvas.drawCircle(23.5f,27.8f,1f,white); canvas.drawCircle(42.5f,27.8f,1f,white)
+                canvas.drawCircle(22.5f,29f,4.1f,white); canvas.drawCircle(41.5f,29f,4.1f,white)
+                canvas.drawCircle(22.5f + gaze,29.4f,2.7f,eye); canvas.drawCircle(41.5f + gaze,29.4f,2.7f,eye)
+                canvas.drawCircle(23.4f + gaze,28.2f,1f,white); canvas.drawCircle(42.4f + gaze,28.2f,1f,white)
             }
             canvas.drawOval(RectF(12f,37f,22f,42f),cheek); canvas.drawOval(RectF(42f,37f,52f,42f),cheek)
-            paint.color = 0xFF8A4A54.toInt(); paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.8f; paint.strokeCap = Paint.Cap.ROUND
-            canvas.drawPath(Path().apply { moveTo(28f,39f); quadTo(32f,44f,36f,39f) },paint)
+            paint.color = 0xFF8A4A54.toInt(); paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.9f; paint.strokeCap = Paint.Cap.ROUND
+            val mouth = Path().apply {
+                moveTo(27f,39f)
+                when (mood) {
+                    1 -> quadTo(32f,47f,37f,39f)
+                    2 -> quadTo(32f,45f,37f,39f)
+                    else -> quadTo(32f,43f,37f,39f)
+                }
+            }
+            canvas.drawPath(mouth, paint)
+            if (active && (animationType == "cheer" || animationType == "happy")) {
+                paint.style = Paint.Style.FILL
+                paint.color = 0xFFFF7C9B.toInt()
+                canvas.drawOval(RectF(29f,42f,35f,47f), paint)
+            }
             paint.style = Paint.Style.FILL
             paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); else -> Color.WHITE }
             canvas.drawCircle(49f,12f,5f + sin(now / 260.0).toFloat() * 1.1f,paint)
             paint.color = when (mood) { 1 -> 0xFFFF6FAE.toInt(); 2 -> 0xFF8B73FF.toInt(); 3 -> 0xFF55C8A8.toInt(); else -> 0xFFFF80B5.toInt() }
             canvas.drawCircle(8f,45f,2f,paint)
-            if (dragMarkerCorner >= 0) {
-                val markerX = if ((dragMarkerCorner and 1) == 1) 60f else 4f
-                val markerY = if (dragMarkerCorner >= 2) 64f else 4f
-                paint.color = Color.WHITE
-                canvas.drawCircle(markerX, markerY, 7f, paint)
-                paint.color = 0xFF239BFF.toInt()
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2f
-                canvas.drawLine(markerX - 4f, markerY, markerX + 4f, markerY, paint)
-                canvas.drawLine(markerX, markerY - 4f, markerX, markerY + 4f, paint)
-                paint.style = Paint.Style.FILL
-            }
             canvas.restore()
             drawDialogueBubble(canvas, now)
             if (visibility == View.VISIBLE && isAttachedToWindow) postInvalidateDelayed(32L)
