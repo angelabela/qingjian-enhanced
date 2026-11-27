@@ -157,16 +157,32 @@ object ScanContent {
             if (digits.length != 11 || digits[0] != '1' || digits[1] !in '3'..'9') return@forEach
             found += if (match.groupValues[1].isNotBlank()) "+86$digits" else digits
         }
+        MAINLAND_LANDLINE.findAll(raw).forEach { match ->
+            val before = raw.substring(0, match.range.first).trimEnd(' ', '\\t', '-')
+            val after = raw.substring(match.range.last + 1).trimStart(' ', '\\t', '-')
+            if (before.lastOrNull()?.isDigit() == true || after.firstOrNull()?.isDigit() == true) return@forEach
+            if (Regex("^(?:转|分机|ext\\.?)\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(after)) return@forEach
+            val digits = match.groupValues[1].filter(Char::isDigit)
+            if (digits.length !in 10..12) return@forEach
+            found += digits
+        }
         if (found.isNotEmpty()) return found.toList()
 
         val value = raw.trim()
-        if (!PLAIN_PHONE.matches(value)) return emptyList()
+        if (!value.startsWith("+") || !PLAIN_PHONE.matches(value)) return emptyList()
         val digits = value.filter(Char::isDigit)
         if (digits.length !in 7..15) return emptyList()
         if (value.count { it == '(' } != value.count { it == ')' }) return emptyList()
-        if (value.indexOf('+') > 0 || value.count { it == '+' } > 1) return emptyList()
-        if (value.contains("++") || value.contains("--") || value.contains("  ")) return emptyList()
-        return listOf(if (value.startsWith("+")) "+$digits" else digits)
+        if (value.indexOf('+') != 0 || value.count { it == '+' } != 1) return emptyList()
+        var parenthesisDepth = 0
+        for (ch in value) {
+            when (ch) {
+                '(' -> { if (parenthesisDepth != 0) return emptyList(); parenthesisDepth++ }
+                ')' -> { if (parenthesisDepth == 0) return emptyList(); parenthesisDepth-- }
+            }
+        }
+        if (parenthesisDepth != 0 || value.contains("++") || value.contains("--") || value.contains("  ")) return emptyList()
+        return listOf("+$digits")
     }
 
     /** 兼容单号码调用；有多个号码时返回 null，避免静默选中第一个。 */
@@ -181,7 +197,8 @@ object ScanContent {
     private val DOMAIN_PATTERN = Regex("^(?:www\\.)?(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/[^\\s]*)?(?:\\?[^\\s]*)?(?:#[^\\s]*)?$")
 
     private val MAINLAND_PHONE = Regex("(?<![A-Za-z0-9])(\\+?86[ \\t-]?)?(1[3-9](?:[ \\t-]?\\d){9})(?![A-Za-z0-9])")
-    private val PLAIN_PHONE = Regex("^\\+?[0-9][0-9() .-]{5,25}[0-9]$")
+    private val MAINLAND_LANDLINE = Regex("(?<![A-Za-z0-9])(0(?:10|2[0-9]|[3-9][0-9]{2})[ \\t-]?[0-9]{7,8})(?![A-Za-z0-9])")
+    private val PLAIN_PHONE = Regex("^\\+[0-9][0-9() .-]{5,25}[0-9]$")
     private val URL_IN_TEXT = Regex("""(?i)(?:https?://|www\.)[^\s<>"]+|(?<![\w@])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:/[^\s<>"]*)?(?:\?[^\s<>"]*)?(?:#[^\s<>"]*)?""")
 
 }
