@@ -271,11 +271,11 @@ class SpectrumView @JvmOverloads constructor(
     companion object {
         const val BARS = 65
         private const val REF_W = 720f     // 录屏宽度
-        private const val REF_H = 200f     // 频谱区域高度（含光晕）
-        private const val SPAN = 327f      // 首尾两根条的中心距
-        private const val BAR_W = 2f
+        private const val REF_H = 260f     // 频谱区域高度（含光晕），随面板宽度按比例放大
+        private const val SPAN = 576f      // 首尾两根条的中心距，约占720基准宽度的80%
+        private const val BAR_W = 3f
         private const val REST_H = 2f
-        private const val MAX_H = 76f
+        private const val MAX_H = 108f
         private const val CURSOR_H = 26f
         private const val TICK_MS = 33L
         private const val FFT_N = 1024
