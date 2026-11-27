@@ -1093,6 +1093,13 @@ class InputPanel(
         return true
     }
 
+    /** 优先在现有剪贴板页内弹出号码卡片，避免启动 Activity 导致输入法窗口被系统隐藏。 */
+    fun showPhoneActions(numbers: List<String>): Boolean {
+        val clipboard = panelView as? ClipboardPanel ?: return false
+        clipboard.showPhoneActions(numbers)
+        return true
+    }
+
     /** 打开 [kind]；拆词要带上那段文字 [text]。 */
     fun open(kind: PanelKind, text: String = "", hasSelection: Boolean = false) {
         close()
