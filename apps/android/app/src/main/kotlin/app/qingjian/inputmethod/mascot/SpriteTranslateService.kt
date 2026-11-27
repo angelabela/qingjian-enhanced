@@ -61,8 +61,8 @@ class SpriteTranslateService : AccessibilityService() {
     private val worker = HandlerThread("sprite-hit").apply { start() }
     private val bg by lazy { Handler(worker.looper) }
     private var translator: TranslationEngine? = null
-    private val cloudConfig by lazy { CloudConfig.load(this) }
     private var translatorReady = false
+    private var translatorLoadFailed = false
     private var translationStartedAt = 0L
     private val cache = LruCache<String, String>(300)
 
@@ -86,7 +86,10 @@ class SpriteTranslateService : AccessibilityService() {
         density = resources.displayMetrics.density
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         readScreen()
-        translator = TranslationEngine(this) { loaded -> translatorReady = loaded }
+        translator = TranslationEngine(this) { loaded ->
+            translatorReady = loaded
+            translatorLoadFailed = !loaded
+        }
         crossView = CrosshairView(this, dp(CROSS))
         crossLp = lp(dp(BOX), dp(BOX), touchable = false)
 
@@ -305,15 +308,20 @@ class SpriteTranslateService : AccessibilityService() {
     private fun translateWithCore(text: String, gen: Int) {
         if (gen != translateGen) return
         if (!translatorReady) {
-            showBubble("青简翻译引擎正在准备…")
-            ui.postDelayed({ if (gen == translateGen) translateWithCore(text, gen) }, 250L)
+            if (translatorLoadFailed) {
+                showBubble("青简翻译引擎初始化失败，请重新开启小精灵翻译")
+            } else {
+                showBubble("青简翻译引擎正在准备…")
+                ui.postDelayed({ if (gen == translateGen) translateWithCore(text, gen) }, 250L)
+            }
             return
         }
-        if (!cloudConfig.ready) {
+        val config = CloudConfig.load(this)
+        if (!config.ready) {
             showBubble("请先在青简「云端大模型」中配置翻译服务")
             return
         }
-        if (translator?.translate(cloudConfig, text) != true) {
+        if (translator?.translate(config, text) != true) {
             showBubble("翻译暂不可用，请检查云端配置")
             return
         }
