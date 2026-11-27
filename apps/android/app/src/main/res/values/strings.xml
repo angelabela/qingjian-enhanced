@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">青简</string>
+    <string name="sprite_service_desc">拖动小精灵指向屏幕文字，使用青简翻译引擎翻译</string>
     <string name="subtype_pinyin">拼音</string>
     <string name="tagline">打字的时候，顺便学一门语言</string>
 
