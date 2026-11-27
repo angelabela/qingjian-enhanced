@@ -298,9 +298,7 @@ class PhysicsWaveView @JvmOverloads constructor(
 
     /** 样式切换时由同一帧时间轴交叉淡化旧、新渲染器，避免突然闪断。 */
     private fun drawStyle(canvas: Canvas, renderStyle: Style) {
-        val compactPhysics = isPhysicsStyle(renderStyle) &&
-            renderStyle != Style.FLOWING_RIBBONS &&
-            renderStyle != Style.SPHERICAL_PARTICLE_MESH
+        val compactPhysics = isPhysicsStyle(renderStyle)
         canvas.save()
         if (renderStyle == Style.RING_SPECTRUM) {
             // 环形频谱必须保持等比例；横向留白缩放会把圆形拉成椭圆。
@@ -309,8 +307,8 @@ class PhysicsWaveView @JvmOverloads constructor(
             canvas.translate(width * 0.05f, 0f)
             canvas.scale(0.90f, 1f)
             if (compactPhysics) {
-                canvas.translate(0f, height * 0.31f)
-                canvas.scale(1f, 0.38f)
+                canvas.translate(0f, height * 0.24f)
+                canvas.scale(1f, 0.52f)
             }
             when (renderStyle) {
                 Style.SPECTRUM_BARS -> drawSpectrumBars(canvas)
