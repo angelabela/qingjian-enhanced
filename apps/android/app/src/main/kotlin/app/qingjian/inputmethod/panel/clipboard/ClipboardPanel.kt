@@ -17,10 +17,13 @@ import android.graphics.Shader
 import android.os.SystemClock
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.PopupWindow
+import android.widget.LinearLayout
+import android.widget.TextView
 import net.sourceforge.pinyin4j.PinyinHelper
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -44,7 +47,6 @@ import app.qingjian.inputmethod.core.store.PhrasePage
 import app.qingjian.inputmethod.core.store.PhraseRules
 import app.qingjian.inputmethod.scan.ScanContent
 import app.qingjian.inputmethod.scan.WifiJoinActivity
-import app.qingjian.inputmethod.service.SmartActionActivity
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.keyboard.layout.Key
 import java.lang.ref.WeakReference
@@ -259,6 +261,9 @@ class ClipboardPanel(
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
+
+    /** 剪贴板电话号码动作卡片直接挂在输入法窗口内，弹出时不启动 Activity、不卸载剪贴板页。 */
+    private var phoneActionPopup: PopupWindow? = null
 
     /** 当前展示二维码的剪贴板文字；再次点击面板即可关闭。 */
     private var qrPreview: String? = null
@@ -662,6 +667,8 @@ class ClipboardPanel(
     }
 
     override fun onDetachedFromWindow() {
+        phoneActionPopup?.dismiss()
+        phoneActionPopup = null
         searchPopup?.dismiss()
         searchPopup = null
         searchEditing = false
@@ -1479,14 +1486,122 @@ class ClipboardPanel(
         }
     }
 
-    /** 交给自有 Activity 展示号码选择与拨号/短信操作，避免在输入法 Service 上直接弹 Dialog。 */
-    private fun showPhoneActions(numbers: List<String>) {
+    /** 在输入法窗口内部显示电话号码操作卡片；不切换 Activity，因此剪贴板页始终保留。 */
+    fun showPhoneActions(numbers: List<String>) {
         val validNumbers = numbers.distinct().filter { ScanContent.extractPhones(it).singleOrNull() == it }
         if (validNumbers.isEmpty()) return
-        context.startActivity(Intent(context, SmartActionActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putStringArrayListExtra(SmartActionActivity.EXTRA_NUMBERS, ArrayList(validNumbers))
-        })
+        if (validNumbers.size == 1) showPhoneActionChoices(validNumbers.single())
+        else showPhoneNumberPicker(validNumbers)
+    }
+
+    private fun showPhoneNumberPicker(numbers: List<String>) {
+        showPhonePopup(
+            "选择电话号码",
+            "检测到 ${numbers.size} 个号码，请先选择一个",
+            numbers.take(20).map { number ->
+                PhonePopupAction(number, primary = false) { showPhoneActionChoices(number) }
+            } + PhonePopupAction("取消", primary = false) { phoneActionPopup?.dismiss() },
+        )
+    }
+
+    private fun showPhoneActionChoices(number: String) {
+        showPhonePopup(
+            "电话号码",
+            number,
+            listOf(
+                PhonePopupAction("拨打电话", primary = true) {
+                    phoneActionPopup?.dismiss()
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }.onFailure { actions.toast("无法打开拨号应用") }
+                },
+                PhonePopupAction("发送短信", primary = false) {
+                    phoneActionPopup?.dismiss()
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", number, null))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }.onFailure { actions.toast("无法打开短信应用") }
+                },
+                PhonePopupAction("取消", primary = false) { phoneActionPopup?.dismiss() },
+            ),
+        )
+    }
+
+    private data class PhonePopupAction(
+        val label: String,
+        val primary: Boolean,
+        val onClick: () -> Unit,
+    )
+
+    private fun showPhonePopup(
+        heading: String,
+        detail: String,
+        options: List<PhonePopupAction>,
+    ) {
+        phoneActionPopup?.dismiss()
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(22), dp(22), dp(18))
+            background = GradientDrawable().apply {
+                setColor(palette.surface)
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1).coerceAtLeast(1), palette.faint)
+            }
+            elevation = dp(18).toFloat()
+            isClickable = true
+        }
+        card.addView(TextView(context).apply {
+            text = heading
+            textSize = 18f
+            setTextColor(palette.text)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(8))
+        }, LinearLayout.LayoutParams(-1, -2))
+        card.addView(TextView(context).apply {
+            text = detail
+            textSize = 14f
+            setTextColor(palette.gloss)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(16))
+        }, LinearLayout.LayoutParams(-1, -2))
+        options.forEach { option ->
+            card.addView(TextView(context).apply {
+                text = option.label
+                textSize = 15.5f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                minHeight = dp(48)
+                setTextColor(if (option.primary) palette.onBrand else palette.text)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(if (option.primary) palette.brand else palette.functionalKey)
+                    setStroke(dp(1).coerceAtLeast(1), if (option.primary) palette.brand else palette.faint)
+                }
+                setOnClickListener { option.onClick() }
+            }, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(8)
+            })
+        }
+        val popupWidth = minOf(dp(360), (resources.displayMetrics.widthPixels - dp(40)).coerceAtLeast(dp(260)))
+        val popup = PopupWindow(card, popupWidth, WindowManager.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            elevation = dp(18).toFloat()
+        }
+        phoneActionPopup = popup
+        popup.setOnDismissListener {
+            if (phoneActionPopup === popup) phoneActionPopup = null
+        }
+        popup.showAtLocation(this, Gravity.CENTER, 0, 0)
     }
 
     private fun onAction(i: Int, action: Int) {
