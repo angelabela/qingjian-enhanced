@@ -88,6 +88,7 @@ class VoicePanel(
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
     
     private var touchTarget = Target.NONE
+    private var tapGestureOnButton = false
     private var lastTargetHapticAt = 0L
     var target = Target.NONE
         private set
@@ -194,17 +195,16 @@ class VoicePanel(
                 addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, (116f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             }
         }
-        // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
-        overlay.alpha = 0f
-        overlay.scaleX = 0.12f
-        overlay.post {
-            if (overlay.isAttachedToWindow) {
-                overlay.pivotX = overlay.width / 2f
-                overlay.animate().cancel()
-                overlay.animate()
-                    .scaleX(1f)
+        // 动效完整保持原始宽高比例并居中；只做透明度淡入，不再从中心横向压扁后拉伸。
+        val activeEffect = if (useSpectrumView) spectrumView else overlay
+        activeEffect.alpha = 0f
+        activeEffect.post {
+            if (activeEffect.isAttachedToWindow) {
+                activeEffect.pivotX = activeEffect.width / 2f
+                activeEffect.animate().cancel()
+                activeEffect.animate()
                     .alpha(1f)
-                    .setDuration(1080L)
+                    .setDuration(520L)
                     .setInterpolator(android.view.animation.DecelerateInterpolator(1.05f))
                     .start()
             }
@@ -330,12 +330,35 @@ class VoicePanel(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        // 点按启动的语音面板：任何位置抬手都立即结束识别并提交最终结果。
-        // 统一在父面板截获完整触摸序列，避免撤销/完成子按钮与全屏点按产生双重动作。
+        // 点按模式下按钮必须收到完整触摸序列；旧逻辑在父容器直接吞掉 ACTION_UP，
+        // 导致撤销按钮永远收不到 click。按钮外的空白区域仍保持点按结束录音。
         if (!holding) {
-            if (event.actionMasked == MotionEvent.ACTION_UP) {
-                Haptics.tap(context)
-                actions.onClose()
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    tapGestureOnButton = targetAt(event.rawX, event.rawY) != Target.NONE
+                    return if (tapGestureOnButton) super.dispatchTouchEvent(event) else true
+                }
+                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                    return if (tapGestureOnButton) super.dispatchTouchEvent(event) else true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (tapGestureOnButton) {
+                        val handled = super.dispatchTouchEvent(event)
+                        tapGestureOnButton = false
+                        return handled || true
+                    }
+                    Haptics.tap(context)
+                    actions.onClose()
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (tapGestureOnButton) {
+                        val handled = super.dispatchTouchEvent(event)
+                        tapGestureOnButton = false
+                        return handled || true
+                    }
+                    return true
+                }
             }
             return true
         }
