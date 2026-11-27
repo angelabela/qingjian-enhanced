@@ -102,6 +102,7 @@ class QingjianInputMethodService :
     InputMethodService(), Composer.Host, CandidateBarView.Listener, KeyboardView.Listener, PanelActions, VoiceInput.Host,
     GameMode.Host {
     private lateinit var engine: Engine
+    private var cursorGlowOverlay: CursorGlowOverlay? = null
     private val phraseTransliterator by lazy { Transliterator.getInstance("Han-Latin; Latin-ASCII") }
     private lateinit var composer: Composer
     private var panel: InputPanel? = null
@@ -692,6 +693,8 @@ class QingjianInputMethodService :
         quickAiHandler.removeCallbacksAndMessages(null)
         cloud.stop()
         engine.close()
+        cursorGlowOverlay?.destroy()
+        cursorGlowOverlay = null
         super.onDestroy()
     }
 
@@ -876,7 +879,7 @@ class QingjianInputMethodService :
             }, delay)
         }
         // 订阅编辑器光标坐标；云 Tips 根据插入光标实时浮在输入框上方。
-        runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR) }
+        runCatching { currentInputConnection?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_MONITOR or InputConnection.CURSOR_UPDATE_IMMEDIATE) }
         // 进程可能刚被系统杀过又拉起，或开关刚改过；顺便补一轮
         ClipboardSync.apply(this)
         ClipboardSync.changed()
@@ -906,6 +909,7 @@ class QingjianInputMethodService :
     override fun onWindowHidden() {
         super.onWindowHidden()
         panel?.cancelVisibilityAnimation()
+        cursorGlowOverlay?.hide()
         AppLog.info("window hidden")
         // 提示只展示一个输入法会话；隐藏窗口时清掉 UI，已显示指纹仍保留在设置中。
         panel?.bar?.clearNotice()
@@ -921,6 +925,7 @@ class QingjianInputMethodService :
         AppLog.info("finish input view: finishingInput=$finishingInput, editor=${currentInputEditorInfo?.packageName}, panel=${panel?.openPanel}, clipboardOwner=$clipboardPanelEditorPackage")
         android.util.Log.w("QingjianScanDiag", "finishInputView finishing=$finishingInput editor=${currentInputEditorInfo?.packageName} field=${currentInputEditorInfo?.fieldId}")
         super.onFinishInputView(finishingInput)
+        cursorGlowOverlay?.hide()
         voice.cancel()
         closeEditor()
         // 部分编辑器（尤其表格单元格）在提交文本后会以 finishingInput=true
@@ -953,6 +958,15 @@ class QingjianInputMethodService :
         val y = cursorAnchorInfo.insertionMarkerTop
         if (x.isFinite() && y.isFinite() && y >= 0f) {
             panel?.updateCloudTipsAnchor(x, y)
+        }
+        val enabled = getSharedPreferences(app.qingjian.inputmethod.mascot.MascotAssistActivity.PREFS, MODE_PRIVATE)
+            .getBoolean("cursor_glow_enabled", false)
+        val privateField = !::composer.isInitialized || composer.privateInput || currentInputEditorInfo?.wantsPrivacy() == true
+        if (enabled && !privateField && android.provider.Settings.canDrawOverlays(this)) {
+            if (cursorGlowOverlay == null) cursorGlowOverlay = CursorGlowOverlay(this)
+            cursorGlowOverlay?.update(cursorAnchorInfo)
+        } else {
+            cursorGlowOverlay?.hide()
         }
     }
 
