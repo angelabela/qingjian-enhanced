@@ -148,8 +148,8 @@ object ScanContent {
         if (raw.isBlank()) return emptyList()
         val found = linkedSetOf<String>()
         MAINLAND_PHONE.findAll(raw).forEach { match ->
-            val before = raw.substring(0, match.range.first).trimEnd(' ', '\\t', '-')
-            val after = raw.substring(match.range.last + 1).trimStart(' ', '\\t', '-')
+            val before = raw.substring(0, match.range.first).trimEnd(' ', '\t', '-')
+            val after = raw.substring(match.range.last + 1).trimStart(' ', '\t', '-')
             // 避免从带分隔符的长编号中截取 11 位，也拒绝明显的分机尾号。
             val previousPhone = MAINLAND_PHONE.findAll(before).any { it.range.last == before.lastIndex } ||
                 MAINLAND_LANDLINE.findAll(before).any { it.range.last == before.lastIndex }
@@ -163,8 +163,8 @@ object ScanContent {
             found += if (match.groupValues[1].isNotBlank()) "+86$digits" else digits
         }
         MAINLAND_LANDLINE.findAll(raw).forEach { match ->
-            val before = raw.substring(0, match.range.first).trimEnd(' ', '\\t', '-')
-            val after = raw.substring(match.range.last + 1).trimStart(' ', '\\t', '-')
+            val before = raw.substring(0, match.range.first).trimEnd(' ', '\t', '-')
+            val after = raw.substring(match.range.last + 1).trimStart(' ', '\t', '-')
             val previousPhone = MAINLAND_PHONE.findAll(before).any { it.range.last == before.lastIndex } ||
                 MAINLAND_LANDLINE.findAll(before).any { it.range.last == before.lastIndex }
             val nextPhone = MAINLAND_PHONE.findAll(after).any { it.range.first == 0 } ||
