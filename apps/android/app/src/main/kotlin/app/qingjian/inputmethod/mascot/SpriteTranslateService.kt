@@ -102,7 +102,7 @@ class SpriteTranslateService : AccessibilityService() {
         bubbleLp = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchable = false)
 
         spriteView = ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher)
+            setImageResource(R.drawable.ic_sprite)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         spriteLp = lp(dp(SPRITE), dp(SPRITE), touchable = true).apply {
