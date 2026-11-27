@@ -1,6 +1,7 @@
 package app.qingjian.inputmethod.panel.clipboard
 
 import android.animation.ValueAnimator
+import android.app.AlertDialog
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -1114,9 +1115,12 @@ class ClipboardPanel(
     private fun actionLabels(): List<Pair<Icon, String>> {
         if (showingPhrases) return listOf(Icon.PEN to "编辑", Icon.TOP to "移至首位", Icon.TRASH to "删除")
         val clip = clipAt(expanded) ?: return emptyList()
+        val phones = ScanContent.extractPhones(clip.text)
         val contextual = when {
             ScanContent.parseWifi(clip.text) != null -> listOf(Icon.LOCK to "加入 WiFi")
             ScanContent.webUrl(clip.text) != null -> listOf(Icon.GLOBE to "访问网址")
+            phones.size > 1 -> listOf(Icon.PHONE to "选择号码")
+            phones.size == 1 -> listOf(Icon.PHONE to "电话号码")
             else -> emptyList()
         }
         if (clip.image != null) return contextual
@@ -1475,6 +1479,39 @@ class ClipboardPanel(
         }
     }
 
+    /** 先选号码（多号码时），再由用户明确选择拨号或短信；拨号只打开系统拨号界面。 */
+    private fun showPhoneActions(numbers: List<String>) {
+        val validNumbers = numbers.distinct().filter { ScanContent.extractPhones(it).singleOrNull() == it }
+        if (validNumbers.isEmpty()) return
+
+        fun showActions(number: String) {
+            AlertDialog.Builder(context)
+                .setTitle(number)
+                .setItems(arrayOf("拨打电话", "发送短信")) { _, selected ->
+                    val intent = if (selected == 0) {
+                        Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
+                    } else {
+                        Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", number, null))
+                    }
+                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
+        if (validNumbers.size == 1) {
+            showActions(validNumbers.single())
+        } else {
+            AlertDialog.Builder(context)
+                .setTitle("选择电话号码")
+                .setItems(validNumbers.toTypedArray()) { _, selected ->
+                    validNumbers.getOrNull(selected)?.let(::showActions)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
     private fun onAction(i: Int, action: Int) {
         val labels = actionLabels()
         val label = labels.getOrNull(action)?.second ?: return
@@ -1502,6 +1539,7 @@ class ClipboardPanel(
                 val url = ScanContent.webUrl(clipAt(i)?.text.orEmpty()) ?: return
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
+            "电话号码", "选择号码" -> showPhoneActions(ScanContent.extractPhones(clipAt(i)?.text.orEmpty()))
             "编辑" -> clipAt(i)?.let { actions.editClip(clipSourceIndex(i), it.text) }
             "常用语" -> {
                 val clipText = clipAt(i)?.text.orEmpty()
