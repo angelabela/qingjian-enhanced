@@ -470,7 +470,7 @@ class FunctionPanel(
 
     private fun drawVoiceEffectSettings(canvas: Canvas) {
         val top = card.top + ink.dp(8f)
-        ink.textStart(canvas, "再次点击已选效果可关闭；关闭后语音面板不显示动效", 11f, palette.gloss,
+        ink.textStart(canvas, "所有语音动效统一为65根镜像频谱；再次点击已选项可关闭动效", 11f, palette.gloss,
             card.left + ink.dp(16f), top + ink.dp(22f), card.right - ink.dp(12f))
 
         val labels = VoicePanel.ANIMATION_STYLE_LABELS
@@ -564,179 +564,29 @@ class FunctionPanel(
 
     /** 迷你频谱预览使用当前主题色绘制，选中态不引入独立配色。 */
     private fun drawVoiceStylePreview(canvas: Canvas, bounds: RectF, index: Int, selected: Boolean) {
-        val cx = bounds.left + ink.dp(22f)
-        val cy = bounds.centerY()
+        // 所有预览与实际语音面板保持同一结构：65 根镜像柱，中心低频、两侧高频。
+        // 缩略图只展示其中 13 根代表柱，仍严格左右对称。
+        val centerX = bounds.left + ink.dp(22f)
+        val centerY = bounds.centerY()
         val accent = if (selected) palette.brand else palette.gloss
-        val secondary = if (selected) palette.accent else palette.faint
-        ink.fill.style = android.graphics.Paint.Style.FILL
-        if (index == 10) {
-            // 中心对称频谱
-            val heights = floatArrayOf(3f, 6f, 10f, 7f, 4f)
-            heights.forEachIndexed { i, height ->
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                val half = ink.dp(height)
-                ink.fill.color = if (i % 2 == 0) secondary else accent
-                canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
-                    ink.dp(1f), ink.dp(1f), ink.fill)
-            }
-            return
-        }
-        if (index == 11) {
-            // 双层交错频谱
-            val heights = floatArrayOf(5f, 9f, 13f, 8f, 5f)
-            heights.forEachIndexed { i, height ->
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                ink.fill.color = secondary
-                ink.fill.alpha = 70
-                canvas.drawRoundRect(x - ink.dp(1.6f), cy - ink.dp(height + 3f), x + ink.dp(1.6f), cy + ink.dp(height + 3f),
-                    ink.dp(1.5f), ink.dp(1.5f), ink.fill)
-                ink.fill.color = accent
-                ink.fill.alpha = 255
-                canvas.drawRoundRect(x - ink.dp(1f), cy - ink.dp(height), x + ink.dp(1f), cy + ink.dp(height),
-                    ink.dp(1f), ink.dp(1f), ink.fill)
-            }
-            return
-        }
-        if (index == 12) {
-            // 粒子矩阵
-            for (column in 0..6) for (row in 0..4) {
-                ink.fill.color = if ((column + row) % 3 == 0) accent else secondary
-                ink.fill.alpha = if (row <= (column % 4) + 1) 230 else 38
-                canvas.drawCircle(cx - ink.dp(10f) + column * ink.dp(3.2f),
-                    cy + ink.dp(8f) - row * ink.dp(4f), ink.dp(0.9f), ink.fill)
-            }
-            ink.fill.alpha = 255
-            return
-        }
-        if (index == 15) {
-            val heights = floatArrayOf(2f, 4f, 7f, 11f, 15f, 11f, 7f, 4f, 2f)
-            heights.forEachIndexed { i, height ->
-                val x = cx + (i - 4) * ink.dp(3.1f)
-                ink.fill.color = accent
-                ink.fill.alpha = 65
-                canvas.drawRoundRect(x - ink.dp(1.3f), cy - ink.dp(height + 2f), x + ink.dp(1.3f), cy + ink.dp(height + 2f), ink.dp(1.3f), ink.dp(1.3f), ink.fill)
-                ink.fill.color = if (i in 3..5) Color.rgb(250, 175, 90) else Color.rgb(235, 120, 40)
-                ink.fill.alpha = 255
-                canvas.drawRoundRect(x - ink.dp(0.8f), cy - ink.dp(height), x + ink.dp(0.8f), cy + ink.dp(height), ink.dp(0.8f), ink.dp(0.8f), ink.fill)
-            }
-            return
-        }
-        if (index == 13) {
-            // 阶梯频谱
-            val heights = intArrayOf(2, 4, 6, 5, 3)
-            for (i in heights.indices) for (step in 0 until heights[i]) {
-                ink.fill.color = if (step % 2 == 0) accent else secondary
-                val x = cx + (i - 2) * ink.dp(4.2f)
-                val y = cy + ink.dp(10f) - step * ink.dp(3f)
-                canvas.drawRoundRect(x - ink.dp(1f), y - ink.dp(2f), x + ink.dp(1f), y,
-                    ink.dp(0.8f), ink.dp(0.8f), ink.fill)
-            }
-            return
-        }
-        if (index == 14) {
-            // 透视空间隧道
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            for (i in 0..3) {
-                val inset = ink.dp(i * 3f)
-                ink.fill.color = if (i % 2 == 0) accent else secondary
-                ink.fill.alpha = 210 - i * 35
-                canvas.drawRoundRect(RectF(cx - ink.dp(12f) + inset, cy - ink.dp(11f) + inset,
-                    cx + ink.dp(12f) - inset, cy + ink.dp(11f) - inset),
-                    ink.dp(2f), ink.dp(2f), ink.fill)
-            }
-            ink.fill.alpha = 255
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        if (index == 1) {
-            ink.fill.color = accent
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeWidth = ink.dp(1.4f)
-            canvas.drawCircle(cx, cy, ink.dp(5.5f), ink.fill)
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            for (i in 0 until 8) {
-                val angle = Math.PI * 2.0 * i / 8.0
-                val x1 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(7f)
-                val y1 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(7f)
-                val x2 = cx + kotlin.math.cos(angle).toFloat() * ink.dp(10f)
-                val y2 = cy + kotlin.math.sin(angle).toFloat() * ink.dp(10f)
-                ink.fill.color = secondary
-                ink.fill.strokeWidth = ink.dp(1.1f)
-                canvas.drawLine(x1, y1, x2, y2, ink.fill)
-            }
-            return
-        }
-        if (index == 8 || index == 9) {
-            val wave = android.graphics.Path()
-            for (step in 0..24) {
-                val u = step / 24f
-                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
-                val cycles = if (index == 8) 2.5 else 3.2
-                val y = cy + kotlin.math.sin(u * Math.PI * cycles).toFloat() *
-                    ink.dp(if (index == 8) 5.5f else 3.8f)
-                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
-            }
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
-            ink.fill.strokeWidth = ink.dp(2.8f)
-            ink.fill.color = secondary
-            ink.fill.alpha = 80
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.strokeWidth = ink.dp(1.2f)
-            ink.fill.color = accent
-            ink.fill.alpha = 255
-            canvas.drawPath(wave, ink.fill)
-            if (index == 9) {
-                for (i in 0..4) {
-                    val x = cx - ink.dp(9f) + i * ink.dp(4.5f)
-                    val barH = ink.dp(floatArrayOf(3f, 7f, 11f, 6f, 4f)[i])
-                    ink.fill.strokeWidth = ink.dp(1.4f)
-                    canvas.drawLine(x, cy + ink.dp(12f) - barH, x, cy + ink.dp(12f) + barH, ink.fill)
-                }
-            }
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        if (index == 7) {
-            val wave = android.graphics.Path()
-            for (step in 0..28) {
-                val u = step / 28f
-                val x = bounds.left + ink.dp(8f) + u * ink.dp(28f)
-                val y = cy + kotlin.math.sin(u * Math.PI * 3.0).toFloat() * ink.dp(5f) +
-                    kotlin.math.sin(u * Math.PI * 6.0 + 0.8).toFloat() * ink.dp(2.2f)
-                if (step == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
-            }
-            ink.fill.style = android.graphics.Paint.Style.STROKE
-            ink.fill.strokeCap = android.graphics.Paint.Cap.ROUND
-            ink.fill.strokeJoin = android.graphics.Paint.Join.ROUND
-            ink.fill.strokeWidth = ink.dp(3.2f)
-            ink.fill.color = secondary
-            ink.fill.alpha = 95
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.strokeWidth = ink.dp(1.3f)
-            ink.fill.color = accent
-            ink.fill.alpha = 255
-            canvas.drawPath(wave, ink.fill)
-            ink.fill.style = android.graphics.Paint.Style.FILL
-            return
-        }
-        val heights = when (index) {
-            0 -> floatArrayOf(5f, 9f, 13f, 8f, 5f)
-            2 -> floatArrayOf(4f, 10f, 14f, 9f, 4f)
-            3 -> floatArrayOf(3f, 7f, 11f, 7f, 3f)
-            4 -> floatArrayOf(7f, 12f, 9f, 12f, 7f)
-            5 -> floatArrayOf(5f, 10f, 13f, 10f, 5f)
-            6 -> floatArrayOf(4f, 8f, 11f, 8f, 4f)
-            else -> floatArrayOf(5f, 11f, 6f, 13f, 8f)
-        }
+        val glow = if (selected) palette.accent else palette.faint
+        val heights = floatArrayOf(3.0f, 4.2f, 5.8f, 7.6f, 9.2f, 11.0f, 13.0f,
+            11.0f, 9.2f, 7.6f, 5.8f, 4.2f, 3.0f)
+        val step = ink.dp(2.35f)
         for (i in heights.indices) {
-            val x = cx + (i - 2) * ink.dp(4.2f)
+            val x = centerX + (i - 6) * step
             val half = ink.dp(heights[i] * 0.5f)
-            ink.fill.color = if (i % 2 == 0) secondary else accent
-            canvas.drawRoundRect(x - ink.dp(1f), cy - half, x + ink.dp(1f), cy + half,
-                ink.dp(1f), ink.dp(1f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            ink.fill.color = glow
+            ink.fill.alpha = 58
+            canvas.drawRoundRect(x - ink.dp(1.05f), centerY - half - ink.dp(1.1f),
+                x + ink.dp(1.05f), centerY + half + ink.dp(1.1f), ink.dp(1.1f), ink.dp(1.1f), ink.fill)
+            ink.fill.color = accent
+            ink.fill.alpha = 255
+            canvas.drawRoundRect(x - ink.dp(0.72f), centerY - half,
+                x + ink.dp(0.72f), centerY + half, ink.dp(0.72f), ink.dp(0.72f), ink.fill)
         }
+        ink.fill.alpha = 255
     }
 
 
