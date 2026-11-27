@@ -67,7 +67,7 @@
         <activity android:name=".mascot.MascotPermissionActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.Qingjian.Transparent" />
         <service
             android:name=".mascot.SpriteTranslateService"
-            android:label="青简小精灵翻译"
+            android:label="青简悬浮小精灵翻译辅助"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
