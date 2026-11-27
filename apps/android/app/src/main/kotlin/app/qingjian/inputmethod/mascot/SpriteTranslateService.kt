@@ -261,7 +261,10 @@ class SpriteTranslateService : AccessibilityService() {
 
     private fun findTextAt(x: Int, y: Int): Hit? {
         val r = Rect()
-        val ws = windows.filter { it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+        val ws = windows.filter {
+            it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY &&
+                it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD
+        }
             .sortedByDescending { it.layer }
         for (w in ws) {
             w.getBoundsInScreen(r)
@@ -273,7 +276,7 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun deepest(n: AccessibilityNodeInfo, x: Int, y: Int, depth: Int): Hit? {
-        if (depth > 40 || !n.isVisibleToUser || n.isPassword) return null   // 不读密码框
+        if (depth > 40 || !n.isVisibleToUser || n.isPassword || n.packageName?.toString() == packageName) return null   // 不读密码框
         val b = Rect(); n.getBoundsInScreen(b)
         if (!b.contains(x, y)) return null
         for (i in n.childCount - 1 downTo 0) {      // 后面的子控件画在上面，倒着找
