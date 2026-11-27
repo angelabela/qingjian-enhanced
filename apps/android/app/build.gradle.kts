@@ -158,16 +158,26 @@ val downloadNotoEmojiLottie by tasks.registering {
         val pool = Executors.newFixedThreadPool(8)
         try {
             val downloads = ids.map { id ->
-                pool.submit(Callable {
+                pool.submit(Callable<String?> {
                     val destination = target.resolve("$id.json")
                     if (destination.isFile && destination.length() > 100) return@Callable id
                     var lastError: Exception? = null
                     repeat(3) { attempt ->
                         val temporary = target.resolve("$id.json.part")
+                        var connection: HttpURLConnection? = null
                         try {
-                            val connection = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json").openConnection() as HttpURLConnection
+                            connection = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json").openConnection() as HttpURLConnection
                             connection.connectTimeout = 15000
                             connection.readTimeout = 30000
+                            val status = connection.responseCode
+                            if (status == HttpURLConnection.HTTP_NOT_FOUND) {
+                                temporary.delete()
+                                logger.lifecycle("Noto Emoji upstream asset unavailable (HTTP 404): $id")
+                                return@Callable null
+                            }
+                            if (status !in 200..299) {
+                                throw java.io.IOException("HTTP " + status + " for Noto Emoji " + id)
+                            }
                             connection.inputStream.use { input ->
                                 temporary.outputStream().buffered().use { output -> input.copyTo(output) }
                             }
@@ -181,25 +191,38 @@ val downloadNotoEmojiLottie by tasks.registering {
                             lastError = error
                             temporary.delete()
                             if (attempt < 2) Thread.sleep(500L * (attempt + 1))
+                        } finally {
+                            connection?.disconnect()
                         }
                     }
-                    throw GradleException("Failed to download Noto Emoji $id", lastError)
+                    throw GradleException("Failed to download Noto Emoji " + id + " after retries: " +
+                        (lastError?.javaClass?.simpleName ?: "Unknown") + ": " + (lastError?.message ?: "no details"), lastError)
                 })
             }
+            val available = mutableListOf<String>()
+            val unavailable = mutableListOf<String>()
             val failures = mutableListOf<String>()
             downloads.forEachIndexed { index, future ->
                 try {
-                    future.get()
+                    val result = future.get()
+                    if (result == null) unavailable += ids[index] else available += result
                 } catch (error: Exception) {
                     failures += ids[index]
-                    logger.warn("Noto Emoji download failed: ${ids[index]}: ${error.cause?.message ?: error.message}")
+                    val cause = error.cause ?: error
+                    logger.warn("Noto Emoji download failed: " + ids[index] + ": " +
+                        cause.javaClass.simpleName + ": " + (cause.message ?: "no details"))
                 }
             }
+            target.resolve("catalog-ids.txt").writeText(available.joinToString("\n") + "\n")
+            target.resolve("catalog-unavailable.txt").writeText(unavailable.joinToString("\n") + "\n")
+            target.resolve("catalog-count.txt").writeText(available.size.toString())
             if (failures.isNotEmpty()) {
-                throw GradleException("Noto Emoji catalog incomplete: ${ids.size - failures.size}/${ids.size} downloaded; failed: ${failures.take(20)}")
+                throw GradleException("Noto Emoji download errors: " + available.size + "/" + ids.size +
+                    " available; " + unavailable.size + " upstream 404; failed: " + failures.take(20))
             }
-            target.resolve("catalog-count.txt").writeText(ids.size.toString())
-            logger.lifecycle("Bundled all ${ids.size} currently published Google Noto Emoji animations (offline at runtime)")
+            logger.lifecycle("Bundled " + available.size + "/" + ids.size +
+                " available Google Noto Emoji animations; " + unavailable.size +
+                " upstream assets returned HTTP 404 (offline at runtime)")
         } finally {
             pool.shutdownNow()
         }
