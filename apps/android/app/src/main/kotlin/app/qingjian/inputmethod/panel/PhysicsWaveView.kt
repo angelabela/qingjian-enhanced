@@ -58,19 +58,19 @@ class PhysicsWaveView @JvmOverloads constructor(
     var spectrumGradient: Int = 0
         set(value) { field = value.coerceIn(0, 5); invalidate() }
 
-    private val count = 18
+    private val count = 65
     private val levels = FloatArray(count)
     private val pos = FloatArray(count)
     private val velocity = FloatArray(count)
     private val peaks = FloatArray(count)
     private val peakVelocity = FloatArray(count)
     private val peakHold = FloatArray(count)
-    private val fft = FloatArray(48)
-    private val smoothFft = FloatArray(48)
+    private val fft = FloatArray(65)
+    private val smoothFft = FloatArray(65)
     // 48 段真实频谱的峰值保持状态，与18段物理弹簧状态分离。
-    private val spectrumPeaks = FloatArray(48)
-    private val spectrumPeakHold = FloatArray(48)
-    private val spectrumTrail = FloatArray(48)
+    private val spectrumPeaks = FloatArray(65)
+    private val spectrumPeakHold = FloatArray(65)
+    private val spectrumTrail = FloatArray(65)
     private val particlePhases = FloatArray(36) { i -> i * 2.3999632f }
     private val waveform = FloatArray(128)
     private val smoothWaveform = FloatArray(128)
@@ -119,20 +119,25 @@ class PhysicsWaveView @JvmOverloads constructor(
         val firstBand = min(5, values.lastIndex)
         val lastBand = max(firstBand, values.lastIndex - 5)
         val usableSpan = (lastBand - firstBand).coerceAtLeast(0).toFloat()
-        for (i in fft.indices) {
-            val position = i.toFloat() / (fft.size - 1).coerceAtLeast(1)
+        val center = fft.size / 2
+        // 65 根频谱：中心为最低频，向左右两端依次排列更高频；右侧频带严格镜像到左侧。
+        for (distance in 0..center) {
+            val position = distance.toFloat() / center.coerceAtLeast(1)
             val sourcePosition = firstBand + usableSpan * position
             val lower = sourcePosition.toInt().coerceIn(firstBand, lastBand)
             val upper = (lower + 1).coerceAtMost(lastBand)
             val fraction = sourcePosition - lower
-            val lowerValue = values[lower].coerceIn(0f, 1f)
-            val upperValue = values[upper].coerceIn(0f, 1f)
-            val raw = lowerValue + (upperValue - lowerValue) * fraction
+            val raw = values[lower].coerceIn(0f, 1f) +
+                (values[upper].coerceIn(0f, 1f) - values[lower].coerceIn(0f, 1f)) * fraction
             val gated = ((raw - 0.014f) / 0.986f).coerceIn(0f, 1f)
             val compressed = sqrt(gated)
             val upperMidLift = 0.94f + position * 0.42f
-            fft[i] = (compressed * upperMidLift).coerceIn(0f, 1f)
+            val level = (compressed * upperMidLift).coerceIn(0f, 1f)
+            fft[center + distance] = level
+            fft[center - distance] = level
         }
+        // 物理动效（弹跳球、光球等）与柱形/环形效果使用同一份 65 段镜像频谱。
+        for (i in levels.indices) levels[i] = fft[i]
         postInvalidateOnAnimation()
     }
 
