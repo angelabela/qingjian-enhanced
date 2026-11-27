@@ -385,6 +385,8 @@ class QingjianInputMethodService :
     private fun openPhoneActions(numbers: List<String>) {
         val valid = numbers.distinct().filter { ScanContent.extractPhones(it).singleOrNull() == it }
         if (valid.isEmpty()) return
+        // 当前正在剪贴板页时复用页内 PopupWindow；号码卡片出现不应关闭输入法或切走面板。
+        if (panel?.showPhoneActions(valid) == true) return
         startActivity(Intent(this, SmartActionActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putStringArrayListExtra(SmartActionActivity.EXTRA_NUMBERS, ArrayList(valid))
