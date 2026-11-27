@@ -142,7 +142,21 @@ class CandidateGrid(
         val cy = headerHeight / 2
         val tab = ink.dp(TAB_DP)
         val tabsRight = width - collapse
-        ink.textStart(canvas, preedit, HEADER_SP, palette.text, ink.dp(PAD_DP + 2), cy, tabsRight - tab * 2 - ink.dp(PAD_DP))
+        val preeditLeft = ink.dp(PAD_DP + 2)
+        val preeditRight = tabsRight - tab * 2 - ink.dp(PAD_DP)
+        val preeditWidth = (preeditRight - preeditLeft).coerceAtLeast(1f)
+        val styles = candidateStyles
+        if (styles != null && preedit.isNotEmpty()) {
+            val preeditPaint = styles.paint(CandidateTextStyleEngine.Role.PREEDIT)
+            val oldAlign = preeditPaint.textAlign
+            val shown = TextUtils.ellipsize(preedit, preeditPaint, preeditWidth, TextUtils.TruncateAt.END).toString()
+            preeditPaint.textAlign = Paint.Align.LEFT
+            val baseline = cy - (preeditPaint.ascent() + preeditPaint.descent()) / 2f
+            canvas.drawText(shown, preeditLeft, baseline, preeditPaint)
+            preeditPaint.textAlign = oldAlign
+        } else {
+            ink.textStart(canvas, preedit, HEADER_SP, palette.text, preeditLeft, cy, preeditWidth)
+        }
         for ((i, label) in TABS.withIndex()) {
             val selected = (i == 1) == singleChars
             val cx = tabsRight - tab * (TABS.size - i) + tab / 2
