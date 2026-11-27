@@ -1,3 +1,4 @@
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Callable
@@ -176,7 +177,7 @@ val downloadNotoEmojiLottie by tasks.registering {
                                 return@Callable null
                             }
                             if (status !in 200..299) {
-                                throw java.io.IOException("HTTP " + status + " for Noto Emoji " + id)
+                                throw IOException("HTTP " + status + " for Noto Emoji " + id)
                             }
                             connection.inputStream.use { input ->
                                 temporary.outputStream().buffered().use { output -> input.copyTo(output) }
