@@ -278,16 +278,16 @@ mod private_use_tests {
 
     #[test]
     fn detects_private_use_characters_in_all_unicode_planes() {
-        assert!(is_private_use('\\u{E818}'));
-        assert!(is_private_use('\\u{F0000}'));
-        assert!(is_private_use('\\u{100000}'));
+        assert!(is_private_use('\u{E818}'));
+        assert!(is_private_use('\u{F0000}'));
+        assert!(is_private_use('\u{100000}'));
     }
 
     #[test]
     fn keeps_normal_cjk_emoji_and_format_characters() {
         assert!(!is_private_use('青'));
         assert!(!is_private_use('🙂'));
-        assert!(!is_private_use('\\u{200D}'));
-        assert!(!is_private_use('\\u{FE0F}'));
+        assert!(!is_private_use('\u{200D}'));
+        assert!(!is_private_use('\u{FE0F}'));
     }
 }
