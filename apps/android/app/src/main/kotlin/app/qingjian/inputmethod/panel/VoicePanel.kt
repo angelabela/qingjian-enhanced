@@ -86,7 +86,7 @@ class VoicePanel(
     private val finishButton = TextView(context)
     private val undoButton = TextView(context)
     private val spectrumBands = FloatArray(SAMPLE_COUNT)
-    private val physicsBands = FloatArray(18)
+    
     private var touchTarget = Target.NONE
     private var lastTargetHapticAt = 0L
     var target = Target.NONE
@@ -262,18 +262,9 @@ class VoicePanel(
         synchronized(spectrumBands) {
             for (i in 0 until SAMPLE_COUNT) spectrumBands[i] = bands.getOrElse(i) { 0f }.coerceIn(0f, 1f)
         }
-        // 物理动效使用18个均匀频带；48段频谱仍完整提供给频谱柱和融合效果。
-        for (band in physicsBands.indices) {
-            val start = band * SAMPLE_COUNT / physicsBands.size
-            val end = (band + 1) * SAMPLE_COUNT / physicsBands.size
-            var sum = 0f
-            for (i in start until end) sum += spectrumBands[i]
-            physicsBands[band] = (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
-        }
-        if (!useSpectrumView) {
-            overlay.updateSpectrum(spectrumBands)
-            overlay.update(physicsBands)
-        }
+        // 除独立的镜像辉光视图外，其他语音动效统一由 PhysicsWaveView 使用 65 根中心低频、
+        // 两侧高频镜像数据驱动；不再把 48 段频谱压缩成 18 个物理频带。
+        if (!useSpectrumView) overlay.updateSpectrum(spectrumBands);
     }
 
     fun track(screenX: Float, screenY: Float) {
