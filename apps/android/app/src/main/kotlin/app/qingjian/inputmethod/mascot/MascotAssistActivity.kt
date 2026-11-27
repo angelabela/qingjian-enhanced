@@ -56,7 +56,7 @@ class MascotAssistActivity : PageActivity() {
                         runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 ),
-                footer = "翻译使用「设置 → 云端大模型」中的现有接口与密钥，并遵循青简当前学习语言设置；不使用 ML Kit，也不额外下载翻译模型。",
+                footer = "翻译使用「设置 → 云端大模型」中的现有接口与密钥，并遵循青简当前学习语言设置；只提交准星命中的文字片段，不读取整页。敏感内容请勿使用；不使用 ML Kit，也不额外下载翻译模型。",
             ),
             ui.group(
                 "输入光标辉光",
