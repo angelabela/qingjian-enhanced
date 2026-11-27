@@ -43,20 +43,14 @@ class MascotAssistActivity : PageActivity() {
                     ) {
                         runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
-                ),
-                footer = "权限仅在你手动开启后生效。青简只读取当前窗口中系统允许访问的普通文本；密码框和敏感节点会跳过。不会自动把页面文字上传云端。部分应用可能禁止读取或复制。",
-            ),
-            ui.group(
-                "小精灵翻译",
-                listOf(
                     ui.link(
-                        "启用小精灵翻译",
-                        "在系统无障碍设置中开启「青简小精灵翻译」；拖动屏幕边缘的小精灵指向文字，即可调用青简现有翻译引擎。",
+                        "翻译功能权限",
+                        if (SpriteTranslateService.isEnabled(this)) "已授权 · 拖动同一只悬浮小精灵即可翻译" else "尚未授权 · 点击前往系统设置",
                     ) {
                         runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 ),
-                footer = "翻译使用「设置 → 云端大模型」中的现有接口与密钥，并遵循青简当前学习语言设置；只提交准星命中的文字片段，不读取整页。敏感内容请勿使用；不使用 ML Kit，也不额外下载翻译模型。",
+                footer = "智能辅助和翻译共用同一只悬浮小精灵，不再额外显示第二只精灵。拖动小精灵时显示准星，停留在普通文字上可调用青简翻译；智能复制仅在翻译服务未启用时保留。密码框和敏感节点会跳过。翻译只发送准星命中的文字片段到你配置的翻译服务。",
             ),
             ui.group(
                 "输入光标辉光",
