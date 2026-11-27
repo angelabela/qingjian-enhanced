@@ -57,6 +57,14 @@ class SpriteTranslateService : AccessibilityService() {
         const val CORE_GIVE_UP_MS = 15_000L
         // 准星相对小精灵的优先方位（度，0=右，-90=上），依次尝试
         val ANGLES = doubleArrayOf(-90.0, -45.0, -135.0, 0.0, 180.0, 45.0, 135.0, 90.0)
+
+        fun isEnabled(context: Context): Boolean {
+            val expected = context.packageName + "/" + SpriteTranslateService::class.java.name
+            val enabled = android.provider.Settings.Secure.getString(
+                context.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty()
+            return enabled.split(':').any { it.equals(expected, true) }
+        }
     }
 
     private lateinit var wm: WindowManager
@@ -174,12 +182,6 @@ class SpriteTranslateService : AccessibilityService() {
     }
 
     private fun onMascotStopped() {
-        ui.removeCallbacks(idleRun)
-        hideCross()
-        ui.removeCallbacks(hideBubbleRun); ui.postDelayed(hideBubbleRun, BUBBLE_HOLD_MS)
-    }
-
-    private fun onSpriteStopped() {
         ui.removeCallbacks(idleRun)
         hideCross()
         ui.removeCallbacks(hideBubbleRun); ui.postDelayed(hideBubbleRun, BUBBLE_HOLD_MS)
