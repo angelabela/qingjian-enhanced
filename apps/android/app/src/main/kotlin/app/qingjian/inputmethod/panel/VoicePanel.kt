@@ -59,7 +59,6 @@ class VoicePanel(
         glowFarColor = Color.rgb(243, 90, 20)
         additive = true
     }
-    private val useSpectrumView = animationStyle == ANIMATION_SPECTRUM_GLOW
     // 所有已启用的语音动效统一使用 65 根镜像频谱；样式编号保留以兼容旧设置。
     private val useSpectrumView = animationStyle != ANIMATION_DISABLED
     private val finishButton = TextView(context)
