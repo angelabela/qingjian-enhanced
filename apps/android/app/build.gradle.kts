@@ -137,14 +137,17 @@ val downloadNotoEmojiLottie by tasks.registering {
         val target = outputDir.get().asFile
         target.mkdirs()
 
-        val manifestConnection = URL("https://googlefonts.github.io/noto-emoji-animation/data/api.json")
+        val manifestConnection = java.net.URI("https://googlefonts.github.io/noto-emoji-animation/data/api.json").toURL()
             .openConnection().apply {
                 connectTimeout = 15000
                 readTimeout = 30000
             }
         val manifest = manifestConnection.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val ids = Regex("\\"name\\"\\s*:\\s*\\"emoji_u([0-9a-fA-F_]+)\\"")
-            .findAll(manifest).map { it.groupValues[1].lowercase() }.distinct().toList()
+        val idPattern = Regex("""+""""\"name\"\\s*:\\s*\"emoji_u([0-9a-fA-F_]+)\""""+""")
+        val ids: List<String> = idPattern.findAll(manifest)
+            .map { match -> match.groupValues[1].lowercase() }
+            .distinct()
+            .toList()
         if (ids.size < 500) {
             throw GradleException("Noto Emoji manifest looks incomplete: only ${ids.size} animation IDs found")
         }
@@ -163,7 +166,7 @@ val downloadNotoEmojiLottie by tasks.registering {
                     repeat(3) { attempt ->
                         val temporary = target.resolve("$id.json.part")
                         try {
-                            val connection = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json")
+                            val connection = java.net.URI("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json").toURL()
                                 .openConnection().apply {
                                     connectTimeout = 15000
                                     readTimeout = 30000
