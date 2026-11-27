@@ -189,7 +189,7 @@ class VoicePanel(
         addView(glassHighlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         if (animationStyle != ANIMATION_DISABLED) {
             if (useSpectrumView) {
-                addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, (110f * density).toInt(), android.view.Gravity.CENTER))
+                addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, (110f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             } else {
                 addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             }
