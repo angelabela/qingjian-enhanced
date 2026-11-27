@@ -191,7 +191,7 @@ class VoicePanel(
             if (useSpectrumView) {
                 addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, (110f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             } else {
-                addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+                addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, (116f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             }
         }
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
@@ -367,7 +367,7 @@ class VoicePanel(
         const val ANIMATION_DISABLED = -2
         const val ANIMATION_SPECTRUM_GLOW = 15
         const val ANIMATION_RANDOM_INDEX = 16
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "镜像辉光频谱", "每次启动随机")
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "球形粒子网格", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "镜像辉光频谱", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
