@@ -12,13 +12,17 @@ import kotlin.concurrent.thread
  * 用来走 Core 的 `request_translation`（汉字为主译成学习语言、外文译成中文）。装配放后台线程，好了回调 [onReady]（失败为 false）。
  * 只在主线程用，用完 [close]。
  */
-class TranslationEngine(context: Context, private val onReady: (Boolean) -> Unit) {
+class TranslationEngine(
+    context: Context,
+    private val onReady: (Boolean) -> Unit,
+    languageOverride: String? = null,
+) {
     private var handle = 0L
     private var closed = false
 
     init {
         val app = context.applicationContext
-        val language = Settings.learningLanguage(app)
+        val language = languageOverride?.takeIf { it.isNotBlank() } ?: Settings.learningLanguage(app)
         val main = Handler(Looper.getMainLooper())
         thread(name = "qingjian-translation-load") {
             val dataDir = BundledData.ensure(app)
