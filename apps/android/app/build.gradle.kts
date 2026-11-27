@@ -1,4 +1,6 @@
 import java.net.URL
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -125,41 +127,87 @@ val stageData by tasks.registering(Sync::class) {
     }
 }
 
-// 构建期预取常见 Noto 动画 Emoji；运行时只读 APK assets，不发起网络请求。
+// 构建期同步 Google 官方目录中当前已发布的全部 Noto 动画 Emoji；运行时只读 APK assets。
 val downloadNotoEmojiLottie by tasks.registering {
     group = "qingjian"
-    description = "Download a compact offline set of Google Noto Emoji Lottie animations"
+    description = "Download the complete currently published Google Noto Emoji animation catalog"
     val outputDir = bundledAssets.map { it.dir("noto-emoji") }
     outputs.dir(outputDir)
     doLast {
         val target = outputDir.get().asFile
         target.mkdirs()
-        val emoji = listOf(
-            "😀","😃","😄","😁","😆","😅","😂","🤣","😊","😍","🥰","😘","😎","🤔","😭","😢",
-            "😡","😱","😴","😇","🤗","👍","👎","🙏","👏","🙌","❤️","💔","💕","💯","🔥","🎉",
-            "⭐","🌈","☀️","🌙","☁️","🌧️","❄️","⚡","🚀","🎁","🍀","🐱","🐶","🏹","⚽","🏀",
-            "🍎","🍕","☕","🎵","🎶","💡","✅","❌","⚠️","❤️‍🔥","🫶","🫡","🫠","🦄","🐼","🌸"
-        )
-        emoji.distinct().forEach { glyph ->
-            val codepoints = glyph.codePoints().toArray().joinToString("-") { it.toString(16) }
-            val destination = target.resolve("$codepoints.json")
-            if (!destination.isFile) {
+
+        val manifestConnection = URL("https://googlefonts.github.io/noto-emoji-animation/data/api.json")
+            .openConnection().apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+            }
+        val manifest = manifestConnection.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val ids = Regex("\\"name\\"\\s*:\\s*\\"emoji_u([0-9a-fA-F_]+)\\"")
+            .findAll(manifest).map { it.groupValues[1].lowercase() }.distinct().toList()
+        if (ids.size < 500) {
+            throw GradleException("Noto Emoji manifest looks incomplete: only ${ids.size} animation IDs found")
+        }
+
+        // 删除旧的手工精选集，避免旧命名与完整目录产生重复或错误映射。
+        target.listFiles()?.filter { it.extension == "json" && it.nameWithoutExtension !in ids }
+            ?.forEach { it.delete() }
+
+        val pool = Executors.newFixedThreadPool(8)
+        try {
+            val downloads = ids.map { id ->
+                pool.submit(Callable {
+                    val destination = target.resolve("$id.json")
+                    if (destination.isFile && destination.length() > 100) return@Callable id
+                    var lastError: Exception? = null
+                    repeat(3) { attempt ->
+                        val temporary = target.resolve("$id.json.part")
+                        try {
+                            val connection = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$id/lottie.json")
+                                .openConnection().apply {
+                                    connectTimeout = 15000
+                                    readTimeout = 30000
+                                }
+                            connection.getInputStream().use { input ->
+                                temporary.outputStream().buffered().use { output -> input.copyTo(output) }
+                            }
+                            if (temporary.length() < 100) throw GradleException("Empty Lottie JSON for $id")
+                            if (!temporary.renameTo(destination)) {
+                                destination.delete()
+                                if (!temporary.renameTo(destination)) throw GradleException("Cannot install Lottie asset $id")
+                            }
+                            return@Callable id
+                        } catch (error: Exception) {
+                            lastError = error
+                            temporary.delete()
+                            if (attempt < 2) Thread.sleep(500L * (attempt + 1))
+                        }
+                    }
+                    throw GradleException("Failed to download Noto Emoji $id", lastError)
+                })
+            }
+            val failures = mutableListOf<String>()
+            downloads.forEachIndexed { index, future ->
                 try {
-                    val url = URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$codepoints/lottie.json")
-                    val connection = url.openConnection()
-                    connection.connectTimeout = 8000
-                    connection.readTimeout = 12000
-                    connection.getInputStream().use { input -> destination.outputStream().use { input.copyTo(it) } }
-                    if (destination.length() < 100) destination.delete()
+                    future.get()
                 } catch (error: Exception) {
-                    logger.warn("Noto Emoji Lottie unavailable for $glyph ($codepoints): ${error.message}")
-                    destination.delete()
+                    failures += ids[index]
+                    logger.warn("Noto Emoji download failed: ${ids[index]}: ${error.cause?.message ?: error.message}")
                 }
             }
+            if (failures.isNotEmpty()) {
+                throw GradleException("Noto Emoji catalog incomplete: ${ids.size - failures.size}/${ids.size} downloaded; failed: ${failures.take(20)}")
+            }
+            target.resolve("catalog-count.txt").writeText(ids.size.toString())
+            logger.lifecycle("Bundled all ${ids.size} currently published Google Noto Emoji animations (offline at runtime)")
+        } finally {
+            pool.shutdownNow()
         }
-        // Attribution/license is bundled as a readable text asset as well as shown in About.
+
         target.resolve("LICENSE.txt").writeText(
-            "Google Noto Emoji animations\nSource: https://googlefonts.github.io/noto-emoji-animation/\n" +
+            "Google Noto Emoji animations\n" +
+            "Official catalog: https://googlefonts.github.io/noto-emoji-animation/\n" +
+            "Manifest: https://googlefonts.github.io/noto-emoji-animation/data/api.json\n" +
             "Lottie files: https://fonts.gstatic.com/s/e/notoemoji/latest/<codepoints>/lottie.json\n" +
             "License: Creative Commons Attribution 4.0 International (CC BY 4.0)\n" +
             "https://creativecommons.org/licenses/by/4.0/\n"

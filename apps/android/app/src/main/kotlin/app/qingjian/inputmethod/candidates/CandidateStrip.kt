@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.graphics.RectF
 import android.text.TextUtils
+import android.util.Log
 import kotlin.math.roundToInt
 import android.text.TextPaint
 import app.qingjian.inputmethod.settings.Settings
@@ -104,6 +105,21 @@ class CandidateStrip(
         }
         this.preedit = preedit
         this.candidates = candidates
+        if (changed) {
+            // 只记录形似输入残片的候选（字母混数字/分隔符），用于定位脏候选来源；
+            // 不记录普通中文句子，避免日志收集大量用户输入内容。
+            candidates.forEachIndexed { index, candidate ->
+                val value = candidate.text
+                val suspiciousToken = value.length in 2..40 &&
+                    value.any { it.isLetter() } &&
+                    value.any { it.isDigit() || it in ":._-" } &&
+                    value.all { it.isLetterOrDigit() || it in ":._-" }
+                if (suspiciousToken) {
+                    val cps = value.codePoints().toArray().joinToString("-") { it.toString(16) }
+                    Log.w("QJ_CANDIDATE_DIAG", "preedit=$preedit index=$index text=$value codepoints=$cps cloud=${candidate.cloud}")
+                }
+            }
+        }
         cachedExtraCandidates = null
         cachedExtraCandidatePositions = null
         cachedExtraWidths = null
@@ -379,7 +395,8 @@ class CandidateStrip(
             val candidateRect = RectF(word.left, word.top + shift, word.right, word.bottom + shift)
             val animated = image.emoji.contains(index) && animatedEmojiCount < 2 &&
                 emojiAnimations.draw(canvas, candidate.text, candidateRect)
-            if (image.emoji.contains(index)) animatedEmojiCount++
+            // 只统计真正成功绘制的动画；未收录的 Emoji 静态回退，不占用另外两个动画名额。
+            if (animated) animatedEmojiCount++
             if (!animated) {
                 textStyles.drawReplacing(
                     canvas, candidate.text, candidateRect, role,
