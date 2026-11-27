@@ -254,11 +254,38 @@ class CandidateStrip(
     private fun extraCandidates(): List<Int> {
         val frame = image ?: return emptyList()
         return cachedExtraCandidates ?: candidates.indices
-            .filter { frame.wordRect(it) == null }
+            .filter { index ->
+                if (frame.wordRect(index) != null) return@filter false
+                val candidate = candidates[index]
+                // 没有 Rust 主布局格的补充项只允许云候选或纯标点/符号。
+                // 本地字词若缺少有效矩形属于异常帧，不能悄悄追加成一个可点击的隐形占位。
+                candidate.cloud || isPunctuationOrSymbolOnly(candidate.text)
+            }
             .also { extra ->
                 cachedExtraCandidates = extra
                 cachedExtraCandidatePositions = extra.withIndex().associate { it.value to it.index }
             }
+    }
+
+    private fun isPunctuationOrSymbolOnly(text: String): Boolean {
+        val codePoints = text.codePoints().toArray()
+        if (codePoints.isEmpty()) return false
+        return codePoints.all { codePoint ->
+            when (Character.getType(codePoint)) {
+                Character.CONNECTOR_PUNCTUATION.toInt(),
+                Character.DASH_PUNCTUATION.toInt(),
+                Character.START_PUNCTUATION.toInt(),
+                Character.END_PUNCTUATION.toInt(),
+                Character.OTHER_PUNCTUATION.toInt(),
+                Character.INITIAL_QUOTE_PUNCTUATION.toInt(),
+                Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+                Character.MATH_SYMBOL.toInt(),
+                Character.CURRENCY_SYMBOL.toInt(),
+                Character.MODIFIER_SYMBOL.toInt(),
+                Character.OTHER_SYMBOL.toInt() -> true
+                else -> false
+            }
+        }
     }
 
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
