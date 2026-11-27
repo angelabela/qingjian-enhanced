@@ -57,26 +57,26 @@ object LogPack {
         var lastError: Throwable? = null
         repeat(3) {
             try {
-                val beforeLength = file.length()
-                val beforeModified = file.lastModified()
-                val bytes = file.readBytes()
-                val afterLength = file.length()
-                val afterModified = file.lastModified()
-                if (beforeLength != bytes.size.toLong() || beforeLength != afterLength || beforeModified != afterModified) {
-                    throw IOException("log changed while snapshotting: ${file.name}")
+                // 日志文件是追加写入的。先固定本次快照长度，再只读取这个长度的前缀；
+                // 不把读取期间新追加的日志误判成文件损坏，否则活跃输入时会连续三次导出失败。
+                val modified = file.lastModified()
+                val bytes = java.io.RandomAccessFile(file, "r").use { source ->
+                    val capturedLength = source.length()
+                    if (capturedLength > Int.MAX_VALUE) throw IOException("log file too large: ${file.name}")
+                    ByteArray(capturedLength.toInt()).also(source::readFully)
                 }
                 val text = String(bytes, StandardCharsets.UTF_8)
                 val lineCount = if (text.isEmpty()) 0 else text.count { it == '\n' } + if (text.endsWith("\n")) 0 else 1
                 val latest = text.lineSequence().filter { it.isNotBlank() }.lastOrNull()
                     ?.takeWhile { !it.isWhitespace() }.orEmpty()
                 val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-                return LogSnapshot(file, bytes, afterModified, lineCount, hash, latest)
+                return LogSnapshot(file, bytes, modified, lineCount, hash, latest)
             } catch (error: Throwable) {
                 lastError = error
                 Thread.sleep(80)
             }
         }
-        throw IOException("unable to capture complete log file ${file.name}", lastError)
+        throw IOException("unable to capture log snapshot ${file.name}", lastError)
     }
 
     /** 文字的两份先算好再开压缩包：算到一半出错不留下半个包。写完关掉 [output]。 */
