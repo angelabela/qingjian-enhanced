@@ -44,7 +44,7 @@ internal class NotoEmojiAnimations(
         typing = true
         handler.removeCallbacks(resumeAfterTyping)
         handler.postDelayed(resumeAfterTyping, 300L)
-        pauseAll()
+        drawables.snapshot().values.forEach { it.pauseAnimation() }
     }
 
     fun pauseAll() {
