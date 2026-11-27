@@ -192,7 +192,11 @@ class VoicePanel(
             if (useSpectrumView) {
                 addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, (110f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             } else {
-                addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, (116f * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
+                // 环形频谱的外侧柱长达 42dp；116dp 容器会裁掉圆环上下两端，
+                // 视觉上像被缩小/压扁。单独给它足够的正方形绘制高度，其余样式尺寸不变。
+                val effectHeightDp = if (animationStyle == 1) 160f else 116f
+                addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT,
+                    (effectHeightDp * resources.displayMetrics.density).toInt(), android.view.Gravity.CENTER))
             }
         }
         // 动效完整保持原始宽高比例并居中；只做透明度淡入，不再从中心横向压扁后拉伸。
