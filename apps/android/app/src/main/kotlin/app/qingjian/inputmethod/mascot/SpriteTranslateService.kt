@@ -24,11 +24,11 @@ import app.qingjian.inputmethod.core.TranslationEngine
 import kotlin.math.*
 
 /**
- * 浮动小精灵 + 十字准星：拖着小精灵划过屏幕，准星指到哪段文字，就把它翻成英文显示在气泡里。
+ * 浮动小精灵 + 十字准星：拖着小精灵划过屏幕，准星指到哪段文字，就调用青简当前学习语言的翻译目标显示在气泡里。
  *
  * - 小精灵不动：准星动画收起；开始拖动：准星动画展开并跟随。
  * - 准星靠近屏幕边缘时，自动换到小精灵的另一侧，不会跑出屏幕。
- * - 取字用无障碍接口（读屏幕上控件的文字），翻译用 ML Kit 本地翻译，文字不出手机。
+ * - 取字用无障碍接口（读屏幕上控件的文字），翻译复用青简现有 Rust 翻译核心与云端配置。
  */
 class SpriteTranslateService : AccessibilityService() {
 
@@ -43,6 +43,8 @@ class SpriteTranslateService : AccessibilityService() {
         const val DEBOUNCE_MS = 120L  // 指到新文字后等多久再翻译
         const val BUBBLE_HOLD_MS = 3000L
         const val MAX_CHARS = 400
+        const val CORE_POLL_MS = 100L
+        const val CORE_GIVE_UP_MS = 15_000L
         // 准星相对小精灵的优先方位（度，0=右，-90=上），依次尝试
         val ANGLES = doubleArrayOf(-90.0, -45.0, -135.0, 0.0, 180.0, 45.0, 135.0, 90.0)
     }
@@ -375,10 +377,6 @@ class SpriteTranslateService : AccessibilityService() {
             @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(dm)
             screenW = dm.widthPixels; screenH = dm.heightPixels
         }
-    }
-    private companion object {
-        const val CORE_POLL_MS = 100L
-        const val CORE_GIVE_UP_MS = 15_000L
     }
 }
 
