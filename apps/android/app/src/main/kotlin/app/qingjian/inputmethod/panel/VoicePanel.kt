@@ -52,6 +52,14 @@ class VoicePanel(
     private val ink = Ink(palette, resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
     private val backdrop = ImageView(context)
     private val scrim = View(context)
+    private val spectrumView = SpectrumView(context).apply {
+        lowColor = Color.rgb(235, 120, 40)
+        highColor = Color.rgb(250, 175, 90)
+        glowNearColor = Color.rgb(200, 212, 123)
+        glowFarColor = Color.rgb(243, 90, 20)
+        additive = true
+    }
+    private val useSpectrumView = animationStyle == ANIMATION_SPECTRUM_GLOW
     private val overlay = PhysicsWaveView(context).apply {
         style = when (animationStyle) {
             0 -> PhysicsWaveView.Style.SPECTRUM_BARS
@@ -95,6 +103,9 @@ class VoicePanel(
             field = value
             overlay.listening = value
             overlay.invalidate()
+            if (useSpectrumView) {
+                if (value) spectrumView.resetCollapse() else spectrumView.collapse()
+            }
         }
 
     var recognizing = false
@@ -177,7 +188,11 @@ class VoicePanel(
         }
         addView(glassHighlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         if (animationStyle != ANIMATION_DISABLED) {
-            addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            if (useSpectrumView) {
+                addView(spectrumView, LayoutParams(LayoutParams.MATCH_PARENT, (110f * density).toInt(), android.view.Gravity.CENTER))
+            } else {
+                addView(overlay, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            }
         }
         // 可视化从面板中心向两侧展开；只在首次布局后播放一次，避免重建/刷新时反复闪动。
         overlay.alpha = 0f
@@ -233,12 +248,14 @@ class VoicePanel(
     fun addAudioFrame(frame: VoiceAudioFrame) {
         if (animationStyle == ANIMATION_DISABLED) return
         updateSpectrum(frame.spectrum)
-        overlay.updateWaveform(frame.waveform, frame.rms, frame.peak)
+        if (useSpectrumView) spectrumView.feedBands(frame.spectrum)
+        else overlay.updateWaveform(frame.waveform, frame.rms, frame.peak)
     }
 
     fun addSpectrum(bands: FloatArray) {
         if (animationStyle == ANIMATION_DISABLED) return
         updateSpectrum(bands)
+        if (useSpectrumView) spectrumView.feedBands(bands)
     }
 
     private fun updateSpectrum(bands: FloatArray) {
@@ -253,8 +270,10 @@ class VoicePanel(
             for (i in start until end) sum += spectrumBands[i]
             physicsBands[band] = (sum / (end - start).coerceAtLeast(1)).coerceIn(0f, 1f)
         }
-        overlay.updateSpectrum(spectrumBands)
-        overlay.update(physicsBands)
+        if (!useSpectrumView) {
+            overlay.updateSpectrum(spectrumBands)
+            overlay.update(physicsBands)
+        }
     }
 
     fun track(screenX: Float, screenY: Float) {
@@ -355,16 +374,17 @@ class VoicePanel(
         const val PREF_GLASS_STRENGTH = "voice_glass_strength"
         const val DEFAULT_GLASS_STRENGTH = 40
         const val ANIMATION_DISABLED = -2
-        const val ANIMATION_RANDOM_INDEX = 15
-        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "每次启动随机")
+        const val ANIMATION_SPECTRUM_GLOW = 15
+        const val ANIMATION_RANDOM_INDEX = 16
+        val ANIMATION_STYLE_LABELS = listOf("频谱柱", "环形频谱", "弹簧柱", "重力弹跳球", "峰值保持", "弹性丝带", "呼吸光球", "流体声波", "实时波形", "波形频谱融合", "中心对称", "双层交错", "粒子矩阵", "阶梯频谱", "空间隧道", "镜像辉光频谱", "每次启动随机")
 
         fun resolveAnimationStyle(context: Context): Int {
             val selected = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
                 .getInt(PREF_STYLE, ANIMATION_DISABLED)
             return when {
                 selected == ANIMATION_DISABLED -> ANIMATION_DISABLED
-                selected == -1 -> kotlin.random.Random.nextInt(15)
-                else -> selected.coerceIn(0, 14)
+                selected == -1 -> kotlin.random.Random.nextInt(16)
+                else -> selected.coerceIn(0, 15)
             }
         }
     }
