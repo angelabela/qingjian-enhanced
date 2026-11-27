@@ -411,9 +411,14 @@ impl Engine {
                 // 问字的答案、翻译的译文和敲的拼音本来就对不上，只有组句联想的云端词要校验
                 if pending.kind == PredictionKind::Question {
                     let guess = &pending.question_guess;
-                    prediction
-                        .words
-                        .retain(|word| !restates_question(&word.text, guess));
+                    prediction.words.retain(|word| {
+                        let valid = !is_internal_code_token(&word.text)
+                            && !restates_question(&word.text, guess);
+                        if !valid {
+                            tracing::debug!(text = %word.text, "问字候选含内部编码或重复问题，丢弃");
+                        }
+                        valid
+                    });
                 } else if pending.kind == PredictionKind::Compose && !self.question_mode() {
                     if self.predictor.policy().slots == 0 {
                         // 用户不要云端词，只留整句补全
@@ -469,9 +474,13 @@ impl Engine {
         let allowed = tolerance(letters);
         words.retain(|word| {
             let fits = contains_han(&word.text)
+                && !is_internal_code_token(&word.text)
                 && !word.syllables.is_empty()
                 && word.text.chars().count() == word.syllables.len()
                 && word.syllables.iter().all(|s| parser::is_syllable(s))
+                && candidate_readings_match(&word.text, &word.syllables, |ch, syllable| {
+                    self.accepts_reading(ch, syllable)
+                })
                 && mismatch_count(typed, &word.syllables) <= allowed;
             if !fits {
                 tracing::debug!(text = %word.text, syllables = ?word.syllables, "云端词与拼音不符，丢弃");
@@ -603,6 +612,29 @@ fn contains_han(text: &str) -> bool {
     })
 }
 
+/// 检查模型给的每字拼音是否真的能在本地词典中读出；未知生僻字沿用 accepts_reading 的宽容规则。
+fn candidate_readings_match(
+    text: &str,
+    syllables: &[String],
+    mut accepts: impl FnMut(&str, &str) -> bool,
+) -> bool {
+    let chars: Vec<String> = text.chars().map(|ch| ch.to_string()).collect();
+    chars.len() == syllables.len()
+        && chars.iter().zip(syllables).all(|(ch, syllable)| accepts(ch, syllable))
+}
+
+/// 模型偶尔把「序号:内部码」当作问字答案或候选文本；这不是可上屏的词。
+fn is_internal_code_token(text: &str) -> bool {
+    let Some((prefix, code)) = text.trim().split_once(':') else {
+        return false;
+    };
+    !prefix.is_empty()
+        && prefix.len() <= 3
+        && prefix.bytes().all(|byte| byte.is_ascii_digit())
+        && !code.is_empty()
+        && code.bytes().all(|byte| byte.is_ascii_lowercase())
+}
+
 /// 半数以上音节是缩写（声母 `f` 或未打完的前缀 `zho`）：这种输入下模型按声母凑词基本只会给生造词，
 /// 只问整句补全。`fhyq` → 符合要求 是缩写，`fuheyaoqiu` 不是，`nih`（两全一缩）也不是。
 fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
@@ -620,7 +652,7 @@ fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
 
 #[cfg(test)]
 mod cloud_candidate_sanity_tests {
-    use super::contains_han;
+    use super::{candidate_readings_match, contains_han, is_internal_code_token};
 
     #[test]
     fn accepts_chinese_sentences_with_english_technical_terms() {
@@ -634,5 +666,28 @@ mod cloud_candidate_sanity_tests {
         for text in ["1:zhud", "1:cb...", "1:aj", "hhw1", "hhgh.", "hhghd:"] {
             assert!(!contains_han(text), "{text}");
         }
+        for text in ["2:cy", "2:cfcvv"] {
+            assert!(is_internal_code_token(text), "{text}");
+        }
+        assert!(!is_internal_code_token("Paris"));
+        assert!(!is_internal_code_token("2:30"));
+    }
+
+    #[test]
+    fn cloud_candidate_pinyin_must_match_the_actual_characters() {
+        let pinyin = vec!["shen".to_owned(), "me".to_owned()];
+        let actual_reading = |ch: &str| match ch {
+            "什" => "shen",
+            "么" => "me",
+            "功" => "gong",
+            "能" => "neng",
+            _ => "",
+        };
+        assert!(candidate_readings_match("什么", &pinyin, |ch, syllable| {
+            actual_reading(ch) == syllable
+        }));
+        assert!(!candidate_readings_match("功能", &pinyin, |ch, syllable| {
+            actual_reading(ch) == syllable
+        }));
     }
 }

@@ -67,9 +67,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
     val contentWidth: Float
         get() {
             val frame = image ?: return fallbackWidth()
-            val extra = extraCandidates()
-            if (extra.isEmpty()) return frame.width.toFloat()
-            return frame.width + 12f * density + extra.size * 38f * density
+            if (extraCandidates().isEmpty()) return frame.width.toFloat()
+            return frame.width + EXTRA_START_GAP_DP * density + extraTotalWidth()
         }
 
     fun setAdaptiveTextColor(color: Int?) {
@@ -89,11 +88,15 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             awaitingCandidateFrame = true
             cachedExtraCandidates = null
             cachedExtraCandidatePositions = null
+            cachedExtraWidths = null
+            cachedExtraOffsets = null
         }
         this.preedit = preedit
         this.candidates = candidates
         cachedExtraCandidates = null
         cachedExtraCandidatePositions = null
+        cachedExtraWidths = null
+        cachedExtraOffsets = null
         if (animateReveal && changed && (preedit.isNotEmpty() || candidates.isNotEmpty())) {
             textFadeStartedAt = android.os.SystemClock.uptimeMillis()
             textFadeActive = true
@@ -154,6 +157,8 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         awaitingCandidateFrame = false
         cachedExtraCandidates = null
         cachedExtraCandidatePositions = null
+        cachedExtraWidths = null
+        cachedExtraOffsets = null
     }
 
     /** Transparent backgrounds are handled by the parent surface. */
@@ -165,13 +170,59 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()
-        val start = frame.width + 12f * density
-        if (contentX < start) return -1
-        return extras.getOrNull(((contentX - start) / (38f * density)).toInt()) ?: -1
+        val relativeX = contentX - frame.width - EXTRA_START_GAP_DP * density
+        if (relativeX < 0f) return -1
+        val widths = extraWidths()
+        val offsets = extraOffsets()
+        val slot = extras.indices.firstOrNull { relativeX >= offsets[it] && relativeX < offsets[it] + widths[it] }
+            ?: return -1
+        return extras[slot]
     }
 
     private var cachedExtraCandidates: List<Int>? = null
     private var cachedExtraCandidatePositions: Map<Int, Int>? = null
+    private var cachedExtraWidths: List<Float>? = null
+    private var cachedExtraOffsets: List<Float>? = null
+
+    private fun extraCandidateWidth(index: Int): Float {
+        val candidate = candidates.getOrNull(index) ?: return EXTRA_MIN_WIDTH_DP * density
+        val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+            else CandidateTextStyleEngine.Role.CANDIDATE
+        val wordPaint = textStyles.paint(role)
+        val maxTextWidth = (EXTRA_MAX_WIDTH_DP - EXTRA_HORIZONTAL_PADDING_DP) * density
+        val word = TextUtils.ellipsize(candidate.text, wordPaint, maxTextWidth, TextUtils.TruncateAt.END).toString()
+        var measured = wordPaint.measureText(word)
+        candidate.senses.firstOrNull()?.let { sense ->
+            val gloss = buildString {
+                sense.pos?.takeIf { it.isNotBlank() }?.let { append(it).append(' ') }
+                append(sense.text)
+            }
+            val glossPaint = textStyles.paint(CandidateTextStyleEngine.Role.GLOSS)
+            val shownGloss = TextUtils.ellipsize(gloss, glossPaint, maxTextWidth, TextUtils.TruncateAt.END).toString()
+            measured = maxOf(measured, glossPaint.measureText(shownGloss))
+        }
+        return (measured + EXTRA_HORIZONTAL_PADDING_DP * density)
+            .coerceIn(EXTRA_MIN_WIDTH_DP * density, EXTRA_MAX_WIDTH_DP * density)
+    }
+
+    private fun extraWidths(): List<Float> = cachedExtraWidths ?: extraCandidates()
+        .map(::extraCandidateWidth)
+        .also { cachedExtraWidths = it }
+
+    /** 每个补充候选的累计起点；绘制、命中和滚动宽度共用同一份布局。 */
+    private fun extraOffsets(): List<Float> = cachedExtraOffsets ?: run {
+        var offset = 0f
+        extraWidths().map { width ->
+            val start = offset
+            offset += width + EXTRA_GAP_DP * density
+            start
+        }.also { cachedExtraOffsets = it }
+    }
+
+    private fun extraTotalWidth(): Float {
+        val widths = extraWidths()
+        return widths.sum() + (widths.size - 1).coerceAtLeast(0) * EXTRA_GAP_DP * density
+    }
 
     private fun extraCandidates(): List<Int> {
         val frame = image ?: return emptyList()
@@ -197,11 +248,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val extras = extraCandidates()
         val extraIndex = cachedExtraCandidatePositions?.get(index) ?: extras.indexOf(index)
         if (extraIndex < 0) return null
-        val left = frame.width + 12f * density + extraIndex * 38f * density
+        val width = extraWidths().getOrNull(extraIndex) ?: return null
+        val left = frame.width + EXTRA_START_GAP_DP * density + extraOffsets()[extraIndex]
         return RectF(
-            left + 2f * density,
+            left + EXTRA_SIDE_PADDING_DP * density,
             8f * density,
-            left + 38f * density - 2f * density,
+            left + width - EXTRA_SIDE_PADDING_DP * density,
             barHeight - 8f * density,
         )
     }
@@ -379,12 +431,19 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
         // Kotlin 侧补充的语义标点没有 Rust 主布局格子，直接追加绘制在主候选栏。
         val extras = extraCandidates()
-        val extraStart = image.width + 12f * density
-        val extraCell = 38f * density
+        val extraStart = image.width + EXTRA_START_GAP_DP * density
+        val extraWidths = extraWidths()
+        val extraOffsets = extraOffsets()
         extras.forEachIndexed { slot, index ->
-            val left = extraStart + slot * extraCell
-            if (left + extraCell < scrollX || left > scrollX + contentViewWidth) return@forEachIndexed
-            val rect = RectF(left + 2f * density, 8f * density, left + extraCell - 2f * density, barHeight - 8f * density)
+            val cellWidth = extraWidths[slot]
+            val left = extraStart + extraOffsets[slot]
+            if (left + cellWidth < scrollX || left > scrollX + contentViewWidth) return@forEachIndexed
+            val rect = RectF(
+                left + EXTRA_SIDE_PADDING_DP * density,
+                8f * density,
+                left + cellWidth - EXTRA_SIDE_PADDING_DP * density,
+                barHeight - 8f * density,
+            )
             val candidate = candidates.getOrNull(index) ?: return@forEachIndexed
             // 没有 Rust hit 矩形的云端/补充候选也必须走同一套 Android 样式引擎，
             // 不能再用 extraText 的 markColor + 粗体直接 drawText，否则会露出黑色粗体且丢失释义。
@@ -532,6 +591,12 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
     }
     private companion object {
+        const val EXTRA_START_GAP_DP = 12f
+        const val EXTRA_GAP_DP = 4f
+        const val EXTRA_SIDE_PADDING_DP = 4f
+        const val EXTRA_HORIZONTAL_PADDING_DP = EXTRA_SIDE_PADDING_DP * 2f
+        const val EXTRA_MIN_WIDTH_DP = 42f
+        const val EXTRA_MAX_WIDTH_DP = 120f
         const val TEXT_FADE_DURATION_MS = 220L
         const val CANDIDATE_REVEAL_STAGGER_MS = 58L
         const val CANDIDATE_REVEAL_OFFSET_DP = 9f
