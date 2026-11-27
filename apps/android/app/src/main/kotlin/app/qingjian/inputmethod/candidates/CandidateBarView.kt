@@ -685,11 +685,16 @@ class CandidateBarView(
                     floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
                 )
                 firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
+                // 柔光呼吸的高光主体增加轻微柔化，避免边缘过硬；每帧绘制后清除避免串到其他样式。
+                firstCandidateGlow.setShadowLayer(3.2f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateGlow.clearShadowLayer()
                 firstCandidateGlow.shader = null
                 firstCandidateRing.color = accent
                 firstCandidateRing.alpha = (135f + breath * 105f).toInt()
+                firstCandidateRing.setShadowLayer(2.2f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateRing.clearShadowLayer()
                 firstCandidateSheen.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.top,
                     intArrayOf(0x00FFFFFF, 0xBFFFFFFF.toInt(), 0x00FFFFFF),
@@ -731,7 +736,10 @@ class CandidateBarView(
                 firstCandidateSheen.shader = flow
                 firstCandidateSheen.strokeWidth = 2.2f * density
                 firstCandidateSheen.alpha = (205f + breath * 50f).toInt()
+                // 流彩边框保留清晰内线，同时在外侧增加低半径柔化光晕。
+                firstCandidateSheen.setShadowLayer(2.4f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateSheen)
+                firstCandidateSheen.clearShadowLayer()
                 firstCandidateSheen.shader = null
                 firstCandidateSheen.strokeWidth = 1.8f * density
                 firstCandidateSheen.alpha = 255
