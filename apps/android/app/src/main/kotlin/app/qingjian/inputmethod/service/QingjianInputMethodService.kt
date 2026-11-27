@@ -94,8 +94,6 @@ import app.qingjian.inputmethod.scan.WifiJoinActivity
 import app.qingjian.inputmethod.scan.ScanOverlayService
 import androidx.core.content.ContextCompat
 import app.qingjian.inputmethod.sms.SmsCodeReceiver
-import app.qingjian.inputmethod.mascot.FloatingMascotService
-import app.qingjian.inputmethod.mascot.MascotDialogueEngine
 
 /** 输入法服务：管生命周期、设置与视图，输入逻辑在 [Composer]。 */
 class QingjianInputMethodService :
@@ -205,10 +203,7 @@ class QingjianInputMethodService :
         retry(0)
     }
 
-    private var lastClipboardPhoneNumber = ""
-    private var lastClipboardPhonePromptAt = 0L
     private val clipboardPhoneListener = ClipboardManager.OnPrimaryClipChangedListener {
-        maybeShowClipboardPhonePrompt()
         // 只在系统真正发出剪贴板变化事件时放行相同文本；重新打开键盘的重复读取不会重新提示。
         clipboardNoticeEventPending = true
         // 系统剪贴板监听与输入法面板生命周期解耦：面板关闭时也先收录最新内容。
@@ -533,16 +528,6 @@ class QingjianInputMethodService :
 
     private var neon: NeonEdgeView? = null
 
-    private val mascotTipSelectedReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context, intent: Intent) {
-            val index = intent.getIntExtra(app.qingjian.inputmethod.mascot.FloatingMascotService.EXTRA_TIP_INDEX, -1)
-            if (index < 0) return
-            if (panel?.selectSmartSuggestion(index) == true) return
-            if (shownCandidates.getOrNull(index)?.cloud != true) return
-            composer.select(originalCandidateIndex(index))
-        }
-    }
-
     /** 同步的事件：键盘边缘亮灯，收到内容后开着的剪贴板面板重读。 */
     private val syncListener = object : ClipboardSync.Listener {
         override fun onSyncEvent(type: String, event: JSONObject) {
@@ -571,11 +556,7 @@ class QingjianInputMethodService :
     private lateinit var voice: VoiceInput
     private val smartInfo by lazy { SmartInfoProvider(this) }
     private var smartInfoSequence = 0
-    private var mascotSmartInfoSequence = 0
-    private var lastMascotSmartInfoText = ""
     private var localAiSuggestionSequence = 0
-    private var lastMascotReaction = ""
-    private var lastMascotReactionAt = 0L
 
     /** 返回键关了面板，它的抬起也要吞掉。 */
     private var backConsumed = false
@@ -661,13 +642,6 @@ class QingjianInputMethodService :
         cloud.start()
         clipboardWatcher.start()
         getSystemService(ClipboardManager::class.java)?.addPrimaryClipChangedListener(clipboardPhoneListener)
-        maybeShowClipboardPhonePrompt()
-        ContextCompat.registerReceiver(
-            this,
-            mascotTipSelectedReceiver,
-            IntentFilter(app.qingjian.inputmethod.mascot.FloatingMascotService.ACTION_TIP_SELECTED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
         ClipboardSync.addListener(syncListener)
         ClipboardSync.apply(this)
     }
@@ -683,7 +657,6 @@ class QingjianInputMethodService :
         runCatching { unregisterReceiver(smsStateListener) }
         runCatching { unregisterReceiver(scanResultListener) }
         runCatching { unregisterReceiver(dynamicBackgroundListener) }
-        runCatching { unregisterReceiver(mascotTipSelectedReceiver) }
         candidateRerankHandler.removeCallbacksAndMessages(null)
         LocalAiModelManager.releaseRuntime()
         KeySounds.release()
@@ -985,8 +958,6 @@ class QingjianInputMethodService :
             "[IME_DIAG] selection old=$oldSelStart/$oldSelEnd new=$newSelStart/$newSelEnd " +
                 "candidates=$candidatesStart/$candidatesEnd selected=$hasActiveSelection editor=${currentInputEditorInfo?.packageName}",
         )
-        maybeShowMascotSemanticReaction(newSelStart, newSelEnd)
-        maybeShowMascotSmartInfo(newSelStart, newSelEnd)
         // 表格粘贴后可能连续触发多次 selection 更新；只更新选区状态，不重建候选或切换面板。
         if (isClipboardPanel()) return
         if (editor != null) return
@@ -997,101 +968,6 @@ class QingjianInputMethodService :
         refreshSmartInfoSuggestions()
     }
 
-
-    /** 本地语义回应：只处理普通非密码输入框中刚提交的文本，不联网、不上传。 */
-    private fun maybeShowMascotSemanticReaction(newSelStart: Int, newSelEnd: Int) {
-        if (newSelStart < 0 || newSelEnd != newSelStart) return
-        if (editor != null || composer.privateInput) return
-        val info = currentInputEditorInfo ?: return
-        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
-        if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-        ) return
-        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
-        val before = currentInputConnection?.getTextBeforeCursor(48, 0)?.toString().orEmpty()
-        val reaction = MascotDialogueEngine.reaction(before) ?: return
-        val response = reaction.message
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (response == lastMascotReaction && now - lastMascotReactionAt < 2_000L) return
-        lastMascotReaction = response
-        lastMascotReactionAt = now
-        val intent = Intent(this, FloatingMascotService::class.java)
-            .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
-            .putExtra(FloatingMascotService.EXTRA_MESSAGE, response)
-            .putExtra(FloatingMascotService.EXTRA_ANIMATION, reaction.animation)
-        runCatching { ContextCompat.startForegroundService(this, intent) }
-            .onFailure { AppLog.warn("mascot semantic response unavailable: " + it.javaClass.simpleName) }
-    }
-
-    /** 输入设备信息关键词时，直接把实时结果显示在小精灵原有的提示语气泡中。 */
-    private fun maybeShowMascotSmartInfo(newSelStart: Int, newSelEnd: Int) {
-        if (newSelStart < 0 || newSelEnd != newSelStart || editor != null || composer.privateInput) return
-        val info = currentInputEditorInfo ?: return
-        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
-        if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-            variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-            variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-            variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-        ) return
-        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) ||
-            !android.provider.Settings.canDrawOverlays(this)
-        ) return
-
-        val connection = currentInputConnection ?: return
-        val before = runCatching { connection.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
-            .getOrDefault("").trimEnd()
-        val trigger = SmartInfoProvider.TRIGGERS.sortedByDescending { it.length }
-            .firstOrNull { before.endsWith(it, ignoreCase = true) }
-        if (trigger == null) {
-            lastMascotSmartInfoText = ""
-            return
-        }
-        if (before == lastMascotSmartInfoText) return
-        lastMascotSmartInfoText = before
-        val request = ++mascotSmartInfoSequence
-        smartInfo.resolve(trigger) { result ->
-            if (request != mascotSmartInfoSequence || currentInputConnection !== connection) return@resolve
-            val latest = runCatching { connection.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
-                .getOrDefault("").trimEnd()
-            if (latest != before) return@resolve
-            if (result.isBlank() || listOf("暂时无法", "无法获取", "无法查询", "暂时不可用", "没有返回数据", "无法解析").any(result::contains)) return@resolve
-            showMascotDialogue(result)
-        }
-    }
-
-    /** 剪贴板出现电话号码时由小精灵提示；点击提示框打开系统拨号器并预填号码。 */
-    private fun maybeShowClipboardPhonePrompt() {
-        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
-        if (isInputViewShown || !prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) ||
-            !android.provider.Settings.canDrawOverlays(this)) return
-        val clip = runCatching { getSystemService(ClipboardManager::class.java)?.primaryClip }.getOrNull() ?: return
-        if (clip.itemCount == 0 || (Build.VERSION.SDK_INT >= 33 && clip.description.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)) return
-        val raw = clip.getItemAt(0).text?.toString()?.trim().orEmpty()
-        val number = ScanContent.extractPhone(raw) ?: return
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (number == lastClipboardPhoneNumber && now - lastClipboardPhonePromptAt < 30_000L) return
-        lastClipboardPhoneNumber = number
-        lastClipboardPhonePromptAt = now
-        val intent = Intent(this, FloatingMascotService::class.java)
-            .setAction(FloatingMascotService.ACTION_SHOW_PHONE)
-            .putExtra(FloatingMascotService.EXTRA_PHONE_NUMBER, number)
-        runCatching { ContextCompat.startForegroundService(this, intent) }
-            .onFailure { AppLog.warn("clipboard phone prompt unavailable: " + it.javaClass.simpleName) }
-    }
-
-    private fun showMascotDialogue(message: String) {
-        val prefs = getSharedPreferences(FloatingMascotService.PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(FloatingMascotService.KEY_ENABLED, false) || !android.provider.Settings.canDrawOverlays(this)) return
-        val intent = Intent(this, FloatingMascotService::class.java)
-            .setAction(FloatingMascotService.ACTION_SHOW_MESSAGE)
-            .putExtra(FloatingMascotService.EXTRA_MESSAGE, message)
-        runCatching { ContextCompat.startForegroundService(this, intent) }
-            .onFailure { AppLog.warn("mascot dialogue unavailable: " + it.javaClass.simpleName) }
-    }
 
     /** 保留本地 AI 联想；设备信息关键词不再生成任何浮窗或候选 Tips。 */
     private fun refreshSmartInfoSuggestions() {
