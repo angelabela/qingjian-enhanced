@@ -124,8 +124,50 @@ val stageData by tasks.registering(Sync::class) {
     }
 }
 
+// 构建期预取常见 Noto 动画 Emoji；运行时只读 APK assets，不发起网络请求。
+val downloadNotoEmojiLottie by tasks.registering {
+    group = "qingjian"
+    description = "Download a compact offline set of Google Noto Emoji Lottie animations"
+    val outputDir = bundledAssets.map { it.dir("noto-emoji") }
+    outputs.dir(outputDir)
+    doLast {
+        val target = outputDir.get().asFile
+        target.mkdirs()
+        val emoji = listOf(
+            "😀","😃","😄","😁","😆","😅","😂","🤣","😊","😍","🥰","😘","😎","🤔","😭","😢",
+            "😡","😱","😴","😇","🤗","👍","👎","🙏","👏","🙌","❤️","💔","💕","💯","🔥","🎉",
+            "⭐","🌈","☀️","🌙","☁️","🌧️","❄️","⚡","🚀","🎁","🍀","🐱","🐶","🏹","⚽","🏀",
+            "🍎","🍕","☕","🎵","🎶","💡","✅","❌","⚠️","❤️‍🔥","🫶","🫡","🫠","🦄","🐼","🌸"
+        )
+        emoji.distinct().forEach { glyph ->
+            val codepoints = glyph.codePoints().toArray().joinToString("-") { it.toString(16) }
+            val destination = target.resolve("$codepoints.json")
+            if (!destination.isFile) {
+                try {
+                    val url = java.net.URL("https://fonts.gstatic.com/s/e/notoemoji/latest/$codepoints/lottie.json")
+                    val connection = url.openConnection()
+                    connection.connectTimeout = 8000
+                    connection.readTimeout = 12000
+                    connection.getInputStream().use { input -> destination.outputStream().use { input.copyTo(it) } }
+                    if (destination.length() < 100) destination.delete()
+                } catch (error: Exception) {
+                    logger.warn("Noto Emoji Lottie unavailable for $glyph ($codepoints): ${error.message}")
+                    destination.delete()
+                }
+            }
+        }
+        // Attribution/license is bundled as a readable text asset as well as shown in About.
+        target.resolve("LICENSE.txt").writeText(
+            "Google Noto Emoji animations\nSource: https://googlefonts.github.io/noto-emoji-animation/\n" +
+            "Lottie files: https://fonts.gstatic.com/s/e/notoemoji/latest/<codepoints>/lottie.json\n" +
+            "License: Creative Commons Attribution 4.0 International (CC BY 4.0)\n" +
+            "https://creativecommons.org/licenses/by/4.0/\n"
+        )
+    }
+}
+
 tasks.named("preBuild") {
-    dependsOn(cargoNdk, stageData)
+    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie)
 }
 
 
@@ -145,6 +187,7 @@ dependencies {
     // 剪贴板搜索：预生成逐字拼音首字母，支持多音字。
     implementation("com.belerweb:pinyin4j:2.5.1")
     // 剪贴板文字二维码生成（本机处理，不上传内容）。
+    implementation("com.airbnb.android:lottie:6.6.7")
     implementation("com.google.zxing:core:3.5.3")
     // Binary Eye 同源的 ZXing-C++ Android 官方绑定（Apache-2.0）。
     implementation("io.github.zxing-cpp:android:3.1.1")

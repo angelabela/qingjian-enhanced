@@ -289,6 +289,7 @@ class CandidateBarView(
     // 给候选字、拼音与译文留出更充足的垂直空间；大字档按比例继续增高，避免内容被候选栏裁切。
     val barHeight = 66f * density * maxOf(1f, textScale * fontScale)
     private val strip = CandidateStrip(
+        context, this,
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
         palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board, scaledDensity = resources.displayMetrics.scaledDensity,
     )
@@ -486,6 +487,7 @@ class CandidateBarView(
         // Clear focus/hover before replacing position-based virtual IDs with different candidates.
         clearReplacedAccessibilityTargets(candidates)
         strip.show(preedit, candidates, animateCandidates)
+        strip.onCandidatesChanged()
         scroller.forceFinished(true)
         if (!preserveScroll) scrollTo(0, 0)
         repaint()
@@ -942,7 +944,19 @@ class CandidateBarView(
             sendCandidateAccessibilityEvent(hovered, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)
         }
         closePopup()
+        strip.pauseAll()
         super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (windowVisibility == View.VISIBLE) strip.resumeAll()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == View.VISIBLE && isAttachedToWindow) strip.resumeAll()
+        else strip.pauseAll()
     }
 
     // 内容绘制从左内边距开始，因此最大滚动量也要补偿这段内边距。

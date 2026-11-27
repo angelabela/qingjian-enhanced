@@ -1,7 +1,10 @@
 package app.qingjian.inputmethod.candidates
 
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.drawable.Drawable
 import android.graphics.RectF
 import android.text.TextUtils
 import kotlin.math.roundToInt
@@ -15,9 +18,13 @@ import app.qingjian.inputmethod.panel.base.PanelIcons
  * 候选条的原生绘制层：Rust 只提供布局快照与命中矩形，文字、拼音、释义和标记由 Android Canvas 绘制。
  * 拼音行钉在视口上，候选行随横向滚动；Emoji、云候选补充项和通讯录标记沿用统一样式与命中体系。
  */
-class CandidateStrip(private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
+class CandidateStrip(
+    context: Context,
+    animationCallback: Drawable.Callback,
+    private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
     private val fallbackBackgroundColor: Int = markColor,
     private val scaledDensity: Float = density) {
+    private val emojiAnimations = NotoEmojiAnimations(context, animationCallback)
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
     private val textStyles = CandidateTextStyleEngine(
         density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig,
@@ -79,6 +86,10 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
 
     private var textFadeStartedAt = 0L
     private var textFadeActive = false
+
+    fun onCandidatesChanged() = emojiAnimations.onCandidatesChanged()
+    fun pauseAll() = emojiAnimations.pauseAll()
+    fun resumeAll() = emojiAnimations.resumeAll()
 
     fun show(preedit: String, candidates: List<Candidate>, animateReveal: Boolean = true) {
         val changed = this.preedit != preedit || this.candidates != candidates
@@ -354,6 +365,7 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
         val shift = if (top == 0) ((barHeight - image.height) / 2).coerceAtLeast(0f) else 0f
         // 选中/首选高亮统一由 CandidateBarView 绘制，确保同一时刻只有一个高亮层。
         // 候选文字、拼音、释义全部由独立样式引擎覆盖绘制；Rust 只提供几何与命中区域。
+        var animatedEmojiCount = 0
         candidates.forEachIndexed { index, candidate ->
             val word = image.wordRect(index) ?: return@forEachIndexed
             if (word.right < scrollX || word.left > scrollX + contentViewWidth) return@forEachIndexed
@@ -364,14 +376,18 @@ class CandidateStrip(private val density: Float, private val barHeight: Float, t
             }
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
-            textStyles.drawReplacing(
-                canvas, candidate.text,
-                RectF(word.left, word.top + shift, word.right, word.bottom + shift),
-                role,
-                eraseUnderlay = false,
-                alphaMultiplier = candidateRevealAlpha(index),
-                maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
-            )
+            val candidateRect = RectF(word.left, word.top + shift, word.right, word.bottom + shift)
+            val animated = image.emoji.contains(index) && animatedEmojiCount < 2 &&
+                emojiAnimations.draw(canvas, candidate.text, candidateRect)
+            if (image.emoji.contains(index)) animatedEmojiCount++
+            if (!animated) {
+                textStyles.drawReplacing(
+                    canvas, candidate.text, candidateRect, role,
+                    eraseUnderlay = false,
+                    alphaMultiplier = candidateRevealAlpha(index),
+                    maxTextWidth = minOf(contentViewWidth / 3f, 180f * density),
+                )
+            }
             canvas.restoreToCount(revealSave)
         }
         // 拼音数据可能比上一帧短或字符宽度发生变化。先清理整条旧拼音绘制带，
