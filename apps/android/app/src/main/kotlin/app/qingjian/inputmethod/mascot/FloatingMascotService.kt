@@ -219,11 +219,24 @@ class FloatingMascotService : Service() {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
     }
 
+    /** 把同一只悬浮小精灵的拖动轨迹交给翻译无障碍服务；不再创建第二只可拖动精灵。 */
+    private fun dispatchMascotTranslationDrag(action: String) {
+        val pet = mascotView ?: return
+        val density = resources.displayMetrics.density
+        val x = windowParams.x + pet.mascotOffsetPx
+        val y = windowParams.y
+        sendBroadcast(Intent(action).setPackage(packageName)
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_X, x)
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_Y, y)
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_WIDTH, collapsedWidthPx)
+            .putExtra(SpriteTranslateService.EXTRA_MASCOT_HEIGHT, collapsedHeightPx))
+    }
+
     private fun createTouchListener(view: View) = View.OnTouchListener { _, event ->
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                view.setTag(floatArrayOf(event.rawX, event.rawY, windowParams.x.toFloat(), windowParams.y.toFloat(), 0f)); true
+                view.setTag(floatArrayOf(event.rawX, event.rawY, windowParams.x.toFloat(), windowParams.y.toFloat(), 0f, 0f)); true
             }
             MotionEvent.ACTION_MOVE -> {
                 val state = view.getTag() as? FloatArray ?: return@OnTouchListener true
@@ -239,8 +252,16 @@ class FloatingMascotService : Service() {
                     windowParams.x = (state[2] + dx).toInt().coerceIn(0, (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0))
                     windowParams.y = (state[3] + dy).toInt().coerceIn(0, (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0))
                     runCatching { windowManager.updateViewLayout(view, windowParams) }
+                    val translating = SpriteTranslateService.isEnabled(this)
+                    if (translating) {
+                        if (state[5] == 0f) {
+                            dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_START)
+                            state[5] = 1f
+                        }
+                        dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE)
+                    }
                     pendingCopy?.let(dragHandler::removeCallbacks)
-                    pendingCopy = Runnable {
+                    if (!translating) pendingCopy = Runnable {
                         if (getSharedPreferences(MascotAssistActivity.PREFS, MODE_PRIVATE).getBoolean(MascotAssistActivity.KEY_ENABLED, false)) {
                             val currentView = mascotView
                             val corner = currentView?.dragMarkerCorner ?: -1
@@ -262,9 +283,10 @@ class FloatingMascotService : Service() {
                 true
             }
             MotionEvent.ACTION_UP -> {
+                val state = view.getTag() as? FloatArray
+                if (state != null && state[5] > 0f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
                 pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
                 (view as? MascotView)?.setDragMarker(-1)
-                val state = view.getTag() as? FloatArray
                 if (state != null && state[4] == 0f) {
                     val pet = view as MascotView
                     if (!pet.selectTipAt(event.x, event.y) && !pet.onPhoneBubbleTapped(event.x, event.y)) pet.onPetTapped()
@@ -272,7 +294,12 @@ class FloatingMascotService : Service() {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_X, windowParams.x).putInt(KEY_Y, windowParams.y).apply()
                 true
             }
-            MotionEvent.ACTION_CANCEL -> { pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null; (view as? MascotView)?.setDragMarker(-1); true }
+            MotionEvent.ACTION_CANCEL -> {
+                val state = view.getTag() as? FloatArray
+                if (state != null && state[5] > 0f) dispatchMascotTranslationDrag(SpriteTranslateService.ACTION_MASCOT_DRAG_STOP)
+                pendingCopy?.let(dragHandler::removeCallbacks); pendingCopy = null
+                (view as? MascotView)?.setDragMarker(-1); true
+            }
             else -> true
         }
     }
