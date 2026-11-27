@@ -59,6 +59,26 @@ impl Engine {
         };
         query.aux = self.aux_segment();
         query.held = self.held_text();
+        // 字典数据中混入了 Unicode 私用区字形，这些没有可移植的字体映射，
+        // 在排序、个人词频和 Android 绘制之前统一剔除，避免显示成方框或乱码。
+        query.candidates.items.retain(|candidate| {
+            let private_use: Vec<String> = candidate.text.chars()
+                .filter(|ch| is_private_use(*ch))
+                .map(|ch| format!("U+{:04X}", ch as u32))
+                .collect();
+            if !private_use.is_empty() {
+                tracing::warn!(
+                    target: "qingjian::candidate_filter",
+                    codepoints = ?private_use,
+                    kind = ?candidate.kind,
+                    scope = %self.composition.scope(),
+                    "过滤包含 Unicode 私用区字符的候选"
+                );
+                false
+            } else {
+                true
+            }
+        });
         // 永久屏蔽在候选进入重排、联想和展示前统一过滤，避免从个人词频再次冒出。
         query.candidates.items.retain(|candidate| !self.learner.is_banned(&candidate.text));
         self.apply_demotions(&mut query.candidates.items);
@@ -245,4 +265,29 @@ pub(super) fn leading_english(items: &[Candidate]) -> usize {
         .iter()
         .take_while(|c| c.kind == CandidateKind::English)
         .count()
+}
+
+/// Unicode Private Use Area characters have no portable glyph mapping and must not be shown as candidates.
+fn is_private_use(ch: char) -> bool {
+    matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+}
+
+#[cfg(test)]
+mod private_use_tests {
+    use super::is_private_use;
+
+    #[test]
+    fn detects_private_use_characters_in_all_unicode_planes() {
+        assert!(is_private_use('\\u{E818}'));
+        assert!(is_private_use('\\u{F0000}'));
+        assert!(is_private_use('\\u{100000}'));
+    }
+
+    #[test]
+    fn keeps_normal_cjk_emoji_and_format_characters() {
+        assert!(!is_private_use('青'));
+        assert!(!is_private_use('🙂'));
+        assert!(!is_private_use('\\u{200D}'));
+        assert!(!is_private_use('\\u{FE0F}'));
+    }
 }
