@@ -203,8 +203,8 @@ class CandidateGrid(
                 val wordHeight = (wordPaint.descent() - wordPaint.ascent() + ink.dp(4f))
                     .coerceAtMost(cell.height())
                 val wordRect = RectF(
-                    cell.left, wordY - wordHeight / 2f,
-                    cell.right - cloudWidth, wordY + wordHeight / 2f,
+                    cell.left + cloudWidth, wordY - wordHeight / 2f,
+                    cell.right, wordY + wordHeight / 2f,
                 )
                 styles.drawReplacing(
                     canvas, candidate.text, wordRect, role,
