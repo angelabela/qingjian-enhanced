@@ -22,11 +22,11 @@ class MascotAssistActivity : PageActivity() {
         val granted = MascotTextAccessibilityService.isEnabled(this)
         return listOf(
             ui.group(
-                "跨应用智能辅助",
+                "悬浮小精灵",
                 listOf(
                     ui.toggle(
                         "启用小精灵智能辅助",
-                        "识别当前应用场景，并支持拖动小精灵到文字上停留 1 秒后尝试复制。默认关闭。",
+                        "识别当前应用场景；翻译服务关闭时，可拖动小精灵到文字上停留 1 秒尝试复制。默认关闭。",
                         enabled,
                         null,
                     ) { checked ->
@@ -75,7 +75,7 @@ class MascotAssistActivity : PageActivity() {
             ui.group(
                 "拖动复制说明",
                 listOf(
-                    ui.row("使用方法", "开启本页开关并在系统无障碍设置中授权后，拖动小精灵到要复制的文字上，停住超过 1 秒。青简会尝试复制该文本到系统剪贴板。"),
+                    ui.row("使用方法", "翻译服务未开启时，开启本页开关并授权后，拖动小精灵到文字上停留超过 1 秒可尝试复制。翻译服务开启时，拖动同一只小精灵会优先显示准星并翻译命中的文字。"),
                     ui.row("隐私保护", "跳过密码输入框、敏感内容和青简自身窗口。不读取整页内容，也不会将识别到的文字发送给云端。"),
                 ),
             ),
