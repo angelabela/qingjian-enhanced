@@ -214,6 +214,7 @@ class FunctionPanel(
             Toggle(Settings.KEY_KEEP_CHINESE, "换语言时保留中文", "开着时总在中文和选的语言之间切", settings.keepChinese),
             Toggle(Settings.KEY_VOICE_HOLD_SPACE, "长按空格说话", "按住空格键启动语音输入", settings.voiceHoldSpace),
             Toggle(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, "键盘区域滑动选词", "在键盘按键区域左右滑动预选候选词", settings.keyboardCandidateSwipe),
+            Toggle(Settings.KEY_KEYBOARD_HANDWRITING, "键盘区域手写找字", "仅在三排字母键区域内书写，停笔后识别；可在这里快速开关", settings.keyboardHandwriting),
         )
 
     private val tabs = Tabs(ink, scrollable(true) { x, y -> y < headerHeight && x > ink.dp(BACK_WIDTH_DP) }, Tabs.Style.UNDERLINE)
