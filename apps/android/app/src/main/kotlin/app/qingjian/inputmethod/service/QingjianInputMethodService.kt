@@ -109,6 +109,8 @@ class QingjianInputMethodService :
     private var lastInputEditorFieldId: Int? = null
     private var quickAiSequence = 0
     @Volatile private var handwritingRequestId = 0
+    private val handwritingAutoCommitHandler = Handler(Looper.getMainLooper())
+    private var handwritingAutoCommit: Runnable? = null
     private var handwritingCandidates: List<String>? = null
     private val quickAiHandler = Handler(Looper.getMainLooper())
     private var quickAiLoadingRunnable: Runnable? = null
@@ -1631,6 +1633,8 @@ class QingjianInputMethodService :
     override fun onSelect(index: Int) {
         val handwriting = handwritingCandidates
         if (handwriting != null) {
+            handwritingAutoCommit?.let(handwritingAutoCommitHandler::removeCallbacks)
+            handwritingAutoCommit = null;
             val text = handwriting.getOrNull(index) ?: return
             handwritingCandidates = null
             handwritingRequestId++
@@ -1893,7 +1897,15 @@ class QingjianInputMethodService :
 
     override fun setToggle(key: String, on: Boolean) {
         reopenPanel = panel?.openPanel
-        Settings.preferences(this).edit().putBoolean(key, on).apply()
+        val edit = Settings.preferences(this).edit().putBoolean(key, on)
+        if (key == Settings.KEY_KEYBOARD_HANDWRITING) {
+            edit.putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, false)
+            if (on) edit.putBoolean(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, false)
+        } else if (on && key == Settings.KEY_KEYBOARD_CANDIDATE_SWIPE) {
+            edit.putBoolean(Settings.KEY_KEYBOARD_HANDWRITING, false)
+                .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, false)
+        }
+        edit.apply()
     }
 
     override fun setChoice(key: String, value: String) {
@@ -2223,25 +2235,30 @@ class QingjianInputMethodService :
 
     override fun onSwipe(input: String) = composer.onSwipe(input)
 
-    /** 在后台线程执行本机 ochwpro 推理；结果作为临时候选显示，点击后直接上屏。 */
+    /** 新一轮书写开始时，取消上一个字符候选的自动上屏倒计时。 */
+    override fun onHandwritingStarted() {
+        handwritingAutoCommit?.let(handwritingAutoCommitHandler::removeCallbacks)
+        handwritingAutoCommit = null
+        handwritingCandidates = null
+        handwritingRequestId++
+        panel?.bar?.show("", emptyList(), animateCandidates = false)
+    }
+
+    /** 后台执行本机 ochwpro 单字识别；候选显示 500ms 后默认首选自动上屏。 */
     override fun onHandwriting(strokesJson: String) {
         val request = ++handwritingRequestId
-        val wordMode = Settings.load(this).keyboardHandwritingWords
         val strokeStats = runCatching {
             val strokes = org.json.JSONObject(strokesJson).getJSONArray("strokes")
             var points = 0
             for (i in 0 until strokes.length()) points += strokes.getJSONArray(i).length()
             "strokes=${strokes.length()} points=$points"
         }.getOrDefault("stroke_stats=invalid")
-        android.util.Log.i("QJ_HANDWRITING", "request mode=${if (wordMode) "word" else "char"} $strokeStats")
+        android.util.Log.i("QJ_HANDWRITING", "request mode=char $strokeStats")
         Thread({
-            val inference = runCatching {
-                if (wordMode) engine.recognizeHandwritingWords(strokesJson)
-                else engine.recognizeHandwriting(strokesJson)
-            }
-            inference.exceptionOrNull()?.let { android.util.Log.e("QJ_HANDWRITING", "offline recognition failed (wordMode=$wordMode)", it) }
+            val inference = runCatching { engine.recognizeHandwriting(strokesJson) }
+            inference.exceptionOrNull()?.let { android.util.Log.e("QJ_HANDWRITING", "offline character recognition failed", it) }
             val raw = inference.getOrNull()
-            if (raw == null) android.util.Log.e("QJ_HANDWRITING", "offline recognition returned null (wordMode=$wordMode)")
+            if (raw == null) android.util.Log.e("QJ_HANDWRITING", "offline character recognition returned null")
             val texts = runCatching {
                 val array = org.json.JSONArray(raw ?: return@runCatching emptyList<String>())
                 buildList {
@@ -2255,12 +2272,17 @@ class QingjianInputMethodService :
             Handler(Looper.getMainLooper()).post {
                 if (request != handwritingRequestId || !isInputViewShown) return@post
                 if (texts.isEmpty()) {
-                    toast(if (wordMode) "没有识别到词语，请放慢书写并稍后停笔" else "没有识别到字符，请放慢书写并稍后停笔")
+                    toast("没有识别到字符，请放慢书写并稍后停笔")
                     return@post
                 }
                 handwritingCandidates = texts
                 panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
-                AppLog.info("[HANDWRITING] mode=" + (if (wordMode) "word" else "char") + " candidate_count=" + texts.size)
+                AppLog.info("[HANDWRITING] mode=char candidate_count=" + texts.size)
+                val autoCommit = Runnable {
+                    if (request == handwritingRequestId && handwritingCandidates === texts) onSelect(0)
+                }
+                handwritingAutoCommit = autoCommit
+                handwritingAutoCommitHandler.postDelayed(autoCommit, 500L)
             }
         }, "qingjian-handwriting").start()
     }
