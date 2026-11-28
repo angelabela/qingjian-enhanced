@@ -70,11 +70,11 @@ internal class NotoEmojiAnimations(
             repeatCount = LottieDrawable.INFINITE
             resumeAnimation()
             if (!isAnimating) playAnimation()
-            callback.invalidateDrawable(this)
+            callback?.invalidateDrawable(this)
         }
         drawables.snapshot().values.forEach {
             it.resumeAnimation()
-            callback.invalidateDrawable(it)
+            callback?.invalidateDrawable(it)
         }
     }
 
