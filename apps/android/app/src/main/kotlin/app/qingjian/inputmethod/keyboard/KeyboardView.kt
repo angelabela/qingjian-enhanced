@@ -742,27 +742,23 @@ class KeyboardView(
         val iterator = pressGlowStates.entries.iterator()
         while (iterator.hasNext()) {
             val state = iterator.next().value
-            val alpha = if (state.releasedAt == 0L) 150 else {
+            val alpha = if (state.releasedAt == 0L) 190 else {
                 val progress = ((now - state.releasedAt).toFloat() / PRESS_GLOW_FADE_MS).coerceIn(0f, 1f)
-                (150f * (1f - progress)).toInt()
+                (190f * (1f - progress)).toInt()
             }
-            if (alpha <= 0) iterator.remove()
-            else if (glowEnabled) {
-                val bounds = RectF(state.slot.bounds).apply { inset(-metrics.density * 4f, -metrics.density * 3f) }
-                pressGlowPaint.shader = RadialGradient(
-                    bounds.centerX(), bounds.centerY(),
-                    maxOf(bounds.width(), bounds.height()) * 0.78f,
-                    intArrayOf((glowColor and 0x00FFFFFF) or (alpha shl 24),
-                        (glowColor and 0x00FFFFFF) or ((alpha / 3) shl 24), android.graphics.Color.TRANSPARENT),
-                    floatArrayOf(0f, 0.62f, 1f), Shader.TileMode.CLAMP,
-                )
-                canvas.drawRoundRect(bounds, metrics.density * 12f, metrics.density * 12f, pressGlowPaint)
-                pressGlowPaint.shader = null
-            }
+            if (alpha <= 0 || !glowEnabled) iterator.remove()
         }
         if (pressGlowStates.values.any { it.releasedAt != 0L } && glowEnabled) postInvalidateOnAnimation()
         for (slot in slots) {
-            painter.drawKey(canvas, slot, down = pressed.containsValue(slot))
+            val slotGlowAlpha = if (!glowEnabled) 0 else pressGlowStates.values
+                .filter { it.slot === slot }
+                .maxOfOrNull { state ->
+                    if (state.releasedAt == 0L) 190 else {
+                        val progress = ((now - state.releasedAt).toFloat() / PRESS_GLOW_FADE_MS).coerceIn(0f, 1f)
+                        (190f * (1f - progress)).toInt()
+                    }
+                } ?: 0
+            painter.drawKey(canvas, slot, down = pressed.containsValue(slot), pressGlowAlpha = slotGlowAlpha, pressGlowColor = glowColor)
             painter.drawGestureHints(
                 canvas, slot,
                 gestureHintLabel(slot.key, upward = true),
