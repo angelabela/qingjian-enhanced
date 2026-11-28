@@ -1016,7 +1016,7 @@ class FunctionPanel(
         val entryTop = selectionTop + ink.dp(150f)
         ink.textStart(canvas, "候选文字入场效果", 11f, palette.text,
             card.left + ink.dp(14f), entryTop + ink.dp(10f), card.right - ink.dp(14f))
-        val entryLabels = listOf("淡入滑入", "上浮淡入", "缩放显现", "左侧滑入", "柔和弹入")
+        val entryLabels = listOf("淡入滑入", "上浮淡入", "缩放显现", "左侧滑入", "轻柔缩放")
         val selectedEntry = Settings.preferences(context).getInt(Settings.KEY_CANDIDATE_ENTRY_EFFECT, 0).coerceIn(0, 4)
         val entryGap = ink.dp(4f)
         val entryWidth = (card.width() - ink.dp(24f) - entryGap * 4f) / 5f
