@@ -314,7 +314,7 @@ class FloatingMascotService : Service() {
         }
 
         private fun wrapDialogueText(value: String, maxWidthPx: Float): List<String> =
-            value.split('\\n').flatMap { paragraph ->
+            value.split('\n').flatMap { paragraph ->
                 if (paragraph.isEmpty()) listOf("") else {
                     var rest = paragraph
                     val wrapped = ArrayList<String>()
