@@ -1654,6 +1654,7 @@ class KeyboardView(
         const val SIDE_ACCESSIBILITY_SCROLL_ID = 9999
         const val SIDE_ACCESSIBILITY_BASE = 10000
         const val HANDWRITING_PAUSE_MS = 520L
+        const val PRESS_GLOW_FADE_MS = 220L
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 50L
         const val LONG_PRESS_MS = 350L
