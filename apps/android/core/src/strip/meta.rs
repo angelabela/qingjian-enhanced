@@ -23,6 +23,9 @@ pub struct StripMeta {
     /// Rust 布局中实际参与排版的本地候选原始下标；Android 必须逐项找到有效主矩形。
     pub candidate_indices: Vec<usize>,
 
+    /// 当前 Rust 帧中完整候选文本快照；Android 用它拒绝同索引但不同内容的迟到布局。
+    pub candidate_texts: Vec<String>,
+
     /// 可点区域，译文在前（先命中）。
     pub hits: Vec<StripHit>,
 
