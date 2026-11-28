@@ -1621,10 +1621,14 @@ class QingjianInputMethodService :
         spaceCandidateSwipeIndex = -1
         panel?.bar?.setGestureSelection(-1)
         if (commit && selected in shownCandidates.indices) {
-            pendingCandidateCommitIndex = selected
-            panel?.bar?.animateCandidateCommit(selected)
-            cancelPendingCandidateRerank()
-            composer.select(originalCandidateIndex(selected))
+            if (handwritingCandidates != null) {
+                onSelect(selected)
+            } else {
+                pendingCandidateCommitIndex = selected
+                panel?.bar?.animateCandidateCommit(selected)
+                cancelPendingCandidateRerank()
+                composer.select(originalCandidateIndex(selected))
+            }
         }
     }
 
@@ -1638,8 +1642,12 @@ class QingjianInputMethodService :
             val text = handwriting.getOrNull(index) ?: return
             handwritingCandidates = null
             handwritingRequestId++
-            currentInputConnection?.commitText(text, 1)
-            panel?.bar?.show("", emptyList(), animateCandidates = false)
+            val committed = runCatching { currentInputConnection?.commitText(text, 1) == true }.getOrDefault(false)
+            if (committed) {
+                // 让宿主 selection 更新触发联想；同时主动刷新本地 completion，候选栏不再被手写分支清空。
+                panel?.bar?.setGestureSelection(-1)
+                composer.refreshCompletions()
+            }
             return
         }
         pendingCandidateCommitIndex = index
@@ -2237,11 +2245,11 @@ class QingjianInputMethodService :
 
     /** 新一轮书写开始时，取消上一个字符候选的自动上屏倒计时。 */
     override fun onHandwritingStarted() {
+        // 新一笔落下意味着上一字已完成：若仍有手写候选，默认确认首选后再开始采集新字。
         handwritingAutoCommit?.let(handwritingAutoCommitHandler::removeCallbacks)
         handwritingAutoCommit = null
-        handwritingCandidates = null
+        if (!handwritingCandidates.isNullOrEmpty()) onSelect(0)
         handwritingRequestId++
-        panel?.bar?.show("", emptyList(), animateCandidates = false)
     }
 
     /** 后台执行本机 StrokeTransformer 识别；几何重采样保留笔画曲线，本地上下文模型只重排已有候选。 */
@@ -2285,7 +2293,10 @@ class QingjianInputMethodService :
                     if (request != handwritingRequestId || !isInputViewShown) return
                     val finalTexts = ranked.filter { it in texts }.distinct() + texts.filterNot { it in ranked }
                     handwritingCandidates = finalTexts
-                    panel?.bar?.show("", finalTexts.map { Candidate(it, emptyList()) })
+                    shownPreedit = ""
+                    shownCandidates = finalTexts.map { Candidate(it, emptyList()) }
+                    candidateIndexMap = shownCandidates.indices.toList()
+                    panel?.bar?.show("", shownCandidates)
                     AppLog.info("[HANDWRITING] mode=offline-hybrid candidate_count=${finalTexts.size} top_score=${"%.4f".format(java.util.Locale.ROOT, topScore)} context_rerank=${ranked != texts}")
                     // 低置信度时不自动提交，保留候选让用户确认，避免模型猜错后直接上屏。
                     // 上下文模型正在重排时也不提前提交，防止旧顺序抢先上屏。
@@ -2301,7 +2312,10 @@ class QingjianInputMethodService :
                     }
                 }
                 handwritingCandidates = texts
-                panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
+                shownPreedit = ""
+                shownCandidates = texts.map { Candidate(it, emptyList()) }
+                candidateIndexMap = shownCandidates.indices.toList()
+                panel?.bar?.show("", shownCandidates)
                 val useLocalContext = texts.size > 1 && (before.isNotBlank() || after.isNotBlank()) &&
                     LocalAiModelManager.isEnabled(this@QingjianInputMethodService) &&
                     LocalAiModelManager.isInstalled(this@QingjianInputMethodService)
