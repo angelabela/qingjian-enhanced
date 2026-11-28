@@ -93,7 +93,16 @@ class CandidateStrip(
     private var textFadeActive = false
 
     fun onCandidatesChanged() = emojiAnimations.onCandidatesChanged()
-    fun isEmojiCandidate(index: Int): Boolean = image?.emoji?.contains(index) == true
+    fun isEmojiCandidate(index: Int): Boolean {
+        if (image?.emoji?.contains(index) == true) return true
+        val text = candidates.getOrNull(index)?.text ?: return false
+        return text.codePoints().anyMatch { codePoint ->
+            codePoint in 0x1F000..0x1FAFF ||
+                codePoint in 0x2600..0x27BF ||
+                codePoint in 0x2300..0x23FF ||
+                codePoint in 0x2B00..0x2BFF
+        }
+    }
     fun resumeEmojiForLongPress(index: Int) {
         val text = candidates.getOrNull(index)?.text ?: return
         emojiAnimations.resumeForLongPress(text)
