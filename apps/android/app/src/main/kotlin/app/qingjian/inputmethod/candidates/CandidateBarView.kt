@@ -534,7 +534,8 @@ class CandidateBarView(
 
     /** 选中候选上屏前保存其视觉位置，随后向键盘/应用面板上沿飞出。 */
     fun animateCandidateCommit(index: Int) {
-        if (commitFlyText != null) return
+        // 每次真实提交都启动自己的飞出动画；上一条动画尚未结束时也不能吞掉后续候选。
+        commitFlyText = null
         val candidate = strip.candidates.getOrNull(index) ?: return
         val rect = strip.wordRect(index) ?: return
         commitFlyText = candidate.text
@@ -606,7 +607,10 @@ class CandidateBarView(
         val selected = gestureSelectionIndex
         gestureSelectionIndex = -1
         invalidate()
-        if (commit && selected in strip.candidates.indices) listener.onSelect(selected)
+        if (commit && selected in strip.candidates.indices) {
+            animateCandidateCommit(selected)
+            listener.onSelect(selected)
+        }
     }
 
     /** 在工具栏的位置放一句提示 [message]，点它执行 [action]（打开对应的设置页）。 */
