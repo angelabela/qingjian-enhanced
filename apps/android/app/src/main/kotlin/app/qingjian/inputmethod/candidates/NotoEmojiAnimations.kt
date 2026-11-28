@@ -59,6 +59,14 @@ internal class NotoEmojiAnimations(
         if (!typing) drawables.snapshot().values.forEach { it.resumeAnimation() }
     }
 
+    /** Long-press preview is an explicit user request; do not let the typing debounce suppress it. */
+    fun resumeForLongPress() {
+        handler.removeCallbacks(resumeAfterTyping)
+        typing = false
+        paused = false
+        drawables.snapshot().values.forEach { it.resumeAnimation() }
+    }
+
     fun draw(canvas: Canvas, text: String, rect: RectF): Boolean {
         if (paused || typing || rect.isEmpty) return false
         val drawable = drawables.get(text) ?: createDrawable(text) ?: return false
