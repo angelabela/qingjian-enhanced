@@ -985,7 +985,7 @@ class CandidateBarView(
         }
         if (!strip.isEmpty) {
             strip.indexAt(x + scrollX - strip.leftInsetPx(stripWidth)).takeIf { it >= 0 }?.let { index ->
-                val text = strip.candidates.getOrNull(index)?.text.orEmpty()
+                animateCandidateCommit(index)
                 listener.onSelect(index)
             }
             return
