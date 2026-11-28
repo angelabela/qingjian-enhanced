@@ -1426,6 +1426,7 @@ class FunctionPanel(
                         selectedCandidateSelectionEffect = index
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, index).apply()
+                        restoreTextEffectPage = true
                         actions.refreshKeyboardSettings()
                         invalidate()
                     }
@@ -1436,6 +1437,7 @@ class FunctionPanel(
                 if (selectionRestoreRect.contains(x, contentY)) {
                     Settings.preferences(context).edit()
                         .putInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0).apply()
+                    restoreTextEffectPage = true
                     actions.refreshKeyboardSettings()
                     invalidate()
                     return
