@@ -265,7 +265,7 @@ val downloadOchwproModel by tasks.registering {
         }
         download("ochw-wasm/ochw_model_fp16.safetensors", "ochw_model_fp16.safetensors", 3451280L)
         download("ochw-wasm/char_index.json", "char_index.json", 51317L)
-        download("LICENSE", "LICENSE-MIT.txt", 1063L)
+        download("LICENSE", "LICENSE-MIT.txt", 1064L)
         logger.lifecycle("Bundled ochwpro offline handwriting model (" + dir.resolve("ochw_model_fp16.safetensors").length() + " bytes)")
     }
 }
