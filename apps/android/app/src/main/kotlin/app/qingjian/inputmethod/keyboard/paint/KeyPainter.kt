@@ -78,13 +78,14 @@ class KeyPainter(
     /** 回车键上的字（发送、搜索…）；null 画回车图标。 */
     var enterLabel: String? = null
 
-    fun drawKey(canvas: Canvas, slot: KeySlot, down: Boolean) {
+    fun drawKey(canvas: Canvas, slot: KeySlot, down: Boolean, pressGlowAlpha: Int = 0, pressGlowColor: Int = palette.brand) {
         val key = slot.key
         val bounds = slot.bounds
         val brand = key is Key.Enter
         val baseFill = keyFillColor(key, down, brand)
         if (threeDimensionalEnabled) drawKeyDepth(canvas, bounds)
         drawPlate(canvas, bounds, if (customBackgroundColor != 0) customBackgroundColor else baseFill)
+        if (pressGlowAlpha > 0) drawInternalPressGlow(canvas, bounds, pressGlowAlpha, pressGlowColor)
         if (customBorderColor != 0) {
             fill.shader = null
             fill.style = Paint.Style.STROKE
@@ -310,7 +311,11 @@ class KeyPainter(
             ink.measureText(symbolText) <= maxLabelWidth -> symbolText
             else -> arrow
         }
-        ink.textSize = (if (punctuationOnly) 12f else if (useText) 8.5f else 11f) * scaledDensity
+        ink.textSize = if (punctuationOnly) {
+            val targetSize = 21f * textScale * scaledDensity
+            val measured = ink.measureText(label).coerceAtLeast(1f)
+            minOf(targetSize, targetSize * maxLabelWidth / measured)
+        } else (if (useText) 8.5f else 11f) * scaledDensity
         // 只有完整动作文字超出键帽可用宽度时才退化为图标。
         ink.color = if (onBrand) labelColorForBrand() else secondaryColor
         ink.clearShadowLayer()
@@ -377,6 +382,33 @@ class KeyPainter(
         ink.clearShadowLayer()
         canvas.drawText("剪贴板", bounds.centerX(), bounds.bottom - 5f * density, ink)
         ink.textAlign = Paint.Align.CENTER
+    }
+
+    /** 按下时只在键帽内部形成柔和呼吸光，松手后的透明度由 KeyboardView 缓慢衰减。 */
+    private fun drawInternalPressGlow(canvas: Canvas, bounds: RectF, baseAlpha: Int, color: Int) {
+        val now = SystemClock.uptimeMillis()
+        val phase = (now % 1_180L).toFloat() / 1_180f
+        val breathe = 0.78f + 0.22f * (0.5f - 0.5f * kotlin.math.cos(phase * (2f * Math.PI).toFloat()))
+        val alpha = (baseAlpha * breathe).toInt().coerceIn(0, 220)
+        if (alpha <= 0) return
+        val inset = 1.8f * density
+        val inner = RectF(bounds).apply { inset(inset, inset) }
+        val radius = (metrics.radius - inset).coerceAtLeast(1f)
+        val save = canvas.save()
+        canvas.clipRoundRect(bounds, metrics.radius, metrics.radius)
+        fill.shader = RadialGradient(
+            inner.centerX(), inner.centerY(), maxOf(inner.width(), inner.height()) * 0.76f,
+            intArrayOf(
+                (color and 0x00FFFFFF) or (alpha shl 24),
+                (color and 0x00FFFFFF) or ((alpha * 0.48f).toInt() shl 24),
+                (color and 0x00FFFFFF) or ((alpha * 0.08f).toInt() shl 24),
+            ),
+            floatArrayOf(0f, 0.58f, 1f), Shader.TileMode.CLAMP,
+        )
+        fill.style = Paint.Style.FILL
+        canvas.drawRoundRect(inner, radius, radius, fill)
+        fill.shader = null
+        canvas.restoreToCount(save)
     }
 
     /** 键帽颜色跟随皮肤变化；轮廓、边界与圆角半径始终沿用原来的 bounds。 */
