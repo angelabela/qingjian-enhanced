@@ -91,6 +91,7 @@ class FunctionPanel(
             prefs.getBoolean("keyboard_key_marquee", false) ||
             prefs.getBoolean("keyboard_key_edge_glow", false) ||
             prefs.getBoolean("keyboard_key_3d", false) ||
+            prefs.getBoolean("keyboard_key_press_glow", false) ||
             prefs.getInt("keyboard_key_border_index", 0) != 0 ||
             prefs.getInt("keyboard_key_background_index", 0) != 0 ||
             prefs.getInt("keyboard_key_border_color", 0) != 0 ||
