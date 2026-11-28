@@ -43,6 +43,7 @@ class CandidateBarView(
     fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL,
     private var transparentBackground: Boolean = false,
     private val candidateTextStyles: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(palette.text, fontWeight),
+    private val candidateEntryEffect: Int = 0,
 ) : View(context) {
     interface Listener {
         fun onSelect(index: Int)
@@ -291,7 +292,8 @@ class CandidateBarView(
     private val strip = CandidateStrip(
         context, this,
         density, barHeight, textScale, palette.gloss, fontWeight, transparentBackground,
-        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board, scaledDensity = resources.displayMetrics.scaledDensity,
+        palette.brand, palette.text, candidateTextStyles, fallbackBackgroundColor = palette.board,
+        scaledDensity = resources.displayMetrics.scaledDensity, entryEffect = candidateEntryEffect,
     )
     /** 扩展候选面板直接复用候选栏的样式引擎，保证颜色、字重、字号和特效配置完全一致。 */
     val candidateTextStyleEngine: CandidateTextStyleEngine get() = strip.textStyles
