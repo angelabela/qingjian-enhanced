@@ -943,10 +943,20 @@ class FunctionPanel(
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
                 Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, textColor)
-                Settings.TextEffectPreset.NEON_OUTLINE -> { sample.style = android.graphics.Paint.Style.STROKE; sample.strokeWidth = ink.dp(0.65f); sample.color = android.graphics.Color.argb(190, android.graphics.Color.red(textColor), android.graphics.Color.green(textColor), android.graphics.Color.blue(textColor)) }
+                Settings.TextEffectPreset.NEON_OUTLINE -> {
+                    sample.style = android.graphics.Paint.Style.STROKE
+                    sample.strokeWidth = ink.dp(1.8f)
+                    val hsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(textColor, hsv)
+                    hsv[0] = (hsv[0] + 155f) % 360f
+                    hsv[1] = 0.96f
+                    hsv[2] = 1f
+                    sample.color = android.graphics.Color.HSVToColor(0xFF, hsv)
+                    sample.setShadowLayer(ink.dp(3.5f), 0f, 0f, sample.color)
+                }
                 Settings.TextEffectPreset.CONTRAST_OUTLINE -> {
                     sample.style = android.graphics.Paint.Style.STROKE
-                    sample.strokeWidth = ink.dp(1.4f)
+                    sample.strokeWidth = ink.dp(2.1f)
                     sample.color = if (textLuminance(textColor) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
                 }
                 Settings.TextEffectPreset.COLOR_GRADIENT -> sample.shader = android.graphics.LinearGradient(sampleX - ink.dp(25f), 0f, sampleX + ink.dp(25f), 0f,
