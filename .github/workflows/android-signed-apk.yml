@@ -10,6 +10,7 @@ name: android-signed-apk
 on:
   push:
     branches:
+      - fix/1130-candidate-filter-hit-sync
       - feature/workflow-444-model-coordination
       - feature/scan-tips-space-voice-font-460
       - feature/workflow-466-fixed-signature-voice-tips
