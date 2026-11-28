@@ -2256,7 +2256,7 @@ class QingjianInputMethodService :
             for (i in 0 until strokes.length()) points += strokes.getJSONArray(i).length()
             "strokes=${strokes.length()} points=$points"
         }.getOrDefault("stroke_stats=invalid")
-        android.util.Log.i("QJ_HANDWRITING", "request mode=offline-hybrid $strokeStats context_before=${before.length()} context_after=${after.length()}")
+        android.util.Log.i("QJ_HANDWRITING", "request mode=offline-hybrid $strokeStats context_before=${before.length} context_after=${after.length}")
         Thread({
             val inference = runCatching { engine.recognizeHandwriting(strokesJson) }
             inference.exceptionOrNull()?.let { android.util.Log.e("QJ_HANDWRITING", "offline character recognition failed", it) }
