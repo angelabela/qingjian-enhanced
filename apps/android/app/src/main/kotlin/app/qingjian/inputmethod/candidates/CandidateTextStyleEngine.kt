@@ -247,24 +247,25 @@ class CandidateTextStyleEngine(
             val strokeColor = if (config.preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
                 if (relativeLuminance(adaptiveTextColor ?: style.color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             } else style.strokeColor
-            strokeColor?.let { color ->
+            // 先绘制正文，再叠加描边，确保描边不会被正文覆盖。
+            canvas.drawText(displayText, x, baseline, paint)
+            if (strokeColor != null) {
                 val stroke = TextPaint(paint).apply {
-                    this.color = color
+                    this.shader = null
+                    this.color = strokeColor
                     this.style = Paint.Style.STROKE
                     strokeWidth = style.strokeWidthDp.coerceAtLeast(0f) * density
                     clearShadowLayer()
+                    if (config.preset == Settings.TextEffectPreset.NEON_OUTLINE) {
+                        setShadowLayer(3.2f * density, 0f, 0f,
+                            (strokeColor and 0x00FFFFFF) or (0xCC shl 24))
+                    }
                 }
                 canvas.drawText(displayText, x, baseline, stroke)
             }
+        } else {
+            canvas.drawText(displayText, x, baseline, paint)
         }
-        if (config.preset == Settings.TextEffectPreset.COLOR_GRADIENT && adaptiveTextColor == null) {
-            paint.shader = android.graphics.LinearGradient(
-                rect.left, rect.top, rect.right, rect.bottom,
-                intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()),
-                null, android.graphics.Shader.TileMode.CLAMP,
-            )
-        }
-        canvas.drawText(displayText, x, baseline, paint)
         paint.shader = null
         paint.textSize = originalSize
         paint.alpha = originalAlpha
