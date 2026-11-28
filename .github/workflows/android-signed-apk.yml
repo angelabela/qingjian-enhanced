@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - fix/1130-candidate-filter-hit-sync
+      - test/1130-raw-token-candidate-regression
       - feature/workflow-444-model-coordination
       - feature/scan-tips-space-voice-font-460
       - feature/workflow-466-fixed-signature-voice-tips
