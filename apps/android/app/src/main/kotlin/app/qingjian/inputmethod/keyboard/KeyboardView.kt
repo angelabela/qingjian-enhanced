@@ -507,8 +507,12 @@ class KeyboardView(
     }
     private val handwritingPath = Path()
     private var handwritingPointer = -1
+    private val handwritingHandler = Handler(Looper.getMainLooper())
+    private val handwritingFinish = Runnable { finishHandwriting() }
     private val handwritingStrokes = mutableListOf<MutableList<Pair<Float, Float>>>()
     private var handwritingCurrent: MutableList<Pair<Float, Float>>? = null
+    private val handwritingEnabled: Boolean
+        get() = settings.keyboardHandwriting || settings.keyboardHandwritingWords
 
     /**
      * 可能是上滑的那根手指与它落下的键（[Key.flick]，开着「上滑输入」时）；-1 是没在看。
@@ -752,21 +756,11 @@ class KeyboardView(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 if (pointerIndex >= 0) addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
-                val json = buildString {
-                    append("{\"strokes\":[")
-                    handwritingStrokes.forEachIndexed { strokeIndex, stroke ->
-                        if (strokeIndex > 0) append(',')
-                        append('[')
-                        stroke.forEachIndexed { pointIndex, point ->
-                            if (pointIndex > 0) append(',')
-                            append('[').append(point.first).append(',').append(point.second).append(']')
-                        }
-                        append(']')
-                    }
-                    append("]}")
-                }
-                clearHandwriting()
-                if (json.contains("[[")) listener.onHandwriting(json)
+                // 抬笔只结束当前笔画；保留之前笔画，允许同一个字分多笔写。
+                handwritingPointer = -1
+                handwritingCurrent = null
+                handwritingHandler.removeCallbacks(handwritingFinish)
+                handwritingHandler.postDelayed(handwritingFinish, HANDWRITING_PAUSE_MS)
                 invalidate()
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -777,7 +771,34 @@ class KeyboardView(
         return true
     }
 
+    private fun finishHandwriting() {
+        if (handwritingPointer >= 0 || handwritingStrokes.isEmpty()) return
+        val valid = handwritingStrokes.filter { it.size >= 2 }
+        if (valid.isEmpty()) {
+            clearHandwriting()
+            invalidate()
+            return
+        }
+        val json = buildString {
+            append("{\\"strokes\\":[")
+            valid.forEachIndexed { strokeIndex, stroke ->
+                if (strokeIndex > 0) append(',')
+                append('[')
+                stroke.forEachIndexed { pointIndex, point ->
+                    if (pointIndex > 0) append(',')
+                    append('[').append(point.first).append(',').append(point.second).append(']')
+                }
+                append(']')
+            }
+            append("]}")
+        }
+        clearHandwriting()
+        listener.onHandwriting(json)
+        invalidate()
+    }
+
     private fun clearHandwriting() {
+        handwritingHandler.removeCallbacks(handwritingFinish)
         handwritingPointer = -1
         handwritingCurrent = null
         handwritingStrokes.clear()
@@ -791,11 +812,12 @@ class KeyboardView(
         // 手写模式独占键盘按键区域的整段单指轨迹；在抬手前不触发任何按键或滑动选词。
         if (handwritingPointer >= 0) return trackHandwriting(event)
         if (side.onTouch(event, ::invalidate)) return true
-        if (settings.keyboardHandwriting && event.actionMasked == MotionEvent.ACTION_DOWN &&
+        if (handwritingEnabled && event.actionMasked == MotionEvent.ACTION_DOWN &&
             slotAt(event.getX(event.actionIndex), event.getY(event.actionIndex)) != null
         ) {
+            // 在停笔超时前再次落笔，取消提交并把新轨迹作为同一汉字的下一笔。
+            handwritingHandler.removeCallbacks(handwritingFinish)
             handwritingPointer = event.getPointerId(event.actionIndex)
-            handwritingStrokes.clear()
             handwritingCurrent = mutableListOf<Pair<Float, Float>>().also { handwritingStrokes += it }
             addHandwritingPoint(event.getX(event.actionIndex), event.getY(event.actionIndex))
             invalidate()
