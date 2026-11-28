@@ -14,6 +14,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.LinearGradient
 import android.graphics.Shader
+import android.graphics.BlurMaskFilter
 import android.os.SystemClock
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -258,8 +259,11 @@ class ClipboardPanel(
     private val thumbnails = HashMap<String, Bitmap?>()
     private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    /** 剪贴板列表顶部的磨砂渐隐遮罩，让首条内容柔和融入面板。 */
-    private val topFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** 列表滚动越过顶部时，只淡出被顶边裁切的首条卡片内容与容器。 */
+    private val itemFadeMaskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+        maskFilter = BlurMaskFilter(ink.dp(4f), BlurMaskFilter.Blur.NORMAL)
+    }
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
@@ -845,22 +849,29 @@ class ClipboardPanel(
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
             if (bottom < list.top || top > list.bottom) continue
-            canvas.save()
+            val cardBounds = RectF(
+                list.left + ink.dp(CARD_MARGIN_DP), top,
+                list.right - ink.dp(CARD_MARGIN_DP), bottom,
+            )
+            val fadingAtTop = !showingPhrases && top < list.top && bottom > list.top
+            val save = if (fadingAtTop) canvas.saveLayer(cardBounds, null) else canvas.save()
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
-            canvas.restore()
-        }
-        if (!showingPhrases && !list.isEmpty) {
-            val fadeHeight = minOf(ink.dp(30f), list.height()).coerceAtLeast(1f)
-            topFadePaint.shader = LinearGradient(
-                0f, list.top, 0f, list.top + fadeHeight,
-                intArrayOf(palette.board, palette.board and 0x00FFFFFF),
-                null, Shader.TileMode.CLAMP,
-            )
-            canvas.drawRect(list.left, list.top, list.right, list.top + fadeHeight, topFadePaint)
-            topFadePaint.shader = null
+            if (fadingAtTop) {
+                // DST_IN 遮罩只作用于越过列表顶边的第一张卡片：上缘透明，向下逐渐恢复，
+                // 卡片文字和圆角容器一起淡出；不再在列表顶部覆盖一条固定模糊色带。
+                val fadeHeight = minOf(ink.dp(58f), list.height()).coerceAtLeast(1f)
+                itemFadeMaskPaint.shader = LinearGradient(
+                    0f, list.top, 0f, list.top + fadeHeight,
+                    intArrayOf(Color.TRANSPARENT, Color.WHITE),
+                    null, Shader.TileMode.CLAMP,
+                )
+                canvas.drawRect(cardBounds, itemFadeMaskPaint)
+                itemFadeMaskPaint.shader = null
+            }
+            canvas.restoreToCount(save)
         }
         canvas.restore()
         if (showingPhrases) {
