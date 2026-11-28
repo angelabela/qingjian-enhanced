@@ -187,6 +187,24 @@ class CandidateTextStyleEngine(
         )
         // 不设置缩放下限：极长词组也必须完整落入候选格，不能再被硬裁切。
         paint.textSize = originalSize * fitScale
+        val style = config.style(role)
+        // ShadowLayer 的颜色 alpha 在部分 Android GPU/硬件加速路径上不会随 Paint.alpha 同步淡出，
+        // 会先于正文露出一排模糊字形。将阴影 alpha 绑定到当前候选实际显现 alpha，
+        // 并在文字尚未进入可见阶段时关闭阴影，避免候选入场前出现黑色重影。
+        val shadowColor = style.shadowColor
+        if (shadowColor != null && style.shadowRadiusDp > 0f && paint.alpha >= 96) {
+            val shadowAlpha = (android.graphics.Color.alpha(shadowColor) * paint.alpha / 255)
+                .coerceIn(0, 255)
+            val synchronizedShadow = (shadowColor and 0x00FFFFFF) or (shadowAlpha shl 24)
+            paint.setShadowLayer(
+                style.shadowRadiusDp * density,
+                style.shadowDxDp * density,
+                style.shadowDyDp * density,
+                synchronizedShadow,
+            )
+        } else {
+            paint.clearShadowLayer()
+        }
         val baseline = rect.centerY() - (paint.ascent() + paint.descent()) / 2f
         canvas.save()
         val clipRect = if (role == Role.PREEDIT) {
@@ -217,7 +235,6 @@ class CandidateTextStyleEngine(
             canvas.drawText(text, x, eraseBaseline, clearPaint)
         }
         if (paint.textSize > 0f) {
-            val style = config.style(role)
             val strokeColor = if (config.preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
                 if (relativeLuminance(adaptiveTextColor ?: style.color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             } else style.strokeColor
