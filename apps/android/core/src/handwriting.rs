@@ -21,12 +21,14 @@ impl Inference {
  }
  pub fn predict(&self, strokes: &[Vec<(f32,f32)>], top_k: usize) -> anyhow::Result<Vec<TopK>> {
   anyhow::ensure!(!strokes.is_empty() && strokes.iter().any(|s| !s.is_empty()), "empty handwriting strokes");
+  anyhow::ensure!(strokes.len() <= 256, "handwriting stroke count exceeds model budget: {}", strokes.len());
   let seq_len = strokes.iter().map(Vec::len).sum::<usize>();
   // 触屏采样密度远高于 CASIA 训练数据；超出模型 512 序列长度时按笔画均匀抽样，
-  // 每笔保留首尾点，避免整字直接因点数过多而被拒识。
+  // 为每笔额外预留末点预算，避免多笔字在逐笔补尾点后意外超过 512。
   let bounded;
   let source = if seq_len > 512 {
-   let step = seq_len.div_ceil(512).max(1);
+   let point_budget = 512usize.saturating_sub(strokes.len()).max(1);
+   let step = seq_len.div_ceil(point_budget).max(1);
    bounded = strokes.iter().map(|stroke| {
     if stroke.len() <= 2 { return stroke.clone(); }
     let mut points: Vec<(f32,f32)> = stroke.iter().step_by(step).copied().collect();
