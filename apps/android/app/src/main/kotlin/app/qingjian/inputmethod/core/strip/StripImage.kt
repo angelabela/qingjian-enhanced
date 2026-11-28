@@ -8,7 +8,7 @@ import org.json.JSONObject
 /** Rust layout snapshot: geometry and hit regions only; glyphs are drawn by Android Canvas. */
 class StripImage(
     val frameId: Long, val width: Int, val height: Int, val candidatesTop: Int,
-    val background: Int, val candidateIndices: List<Int>, val candidateTexts: List<String>, val hits: List<StripHit>, val emoji: Set<Int>,
+    val background: Int, val candidateIndices: List<Int>, val candidateTexts: List<String>, val preedit: String, val hits: List<StripHit>, val emoji: Set<Int>,
     val preeditEdges: List<Float>, val preeditTop: Float, val preeditBottom: Float,
 ) {
     fun caretAt(x: Float, y: Float): Int {
@@ -62,6 +62,7 @@ class StripImage(
                 candidatesTop = meta.getInt("candidates_top"), background = meta.getLong("background").toInt(),
                 candidateIndices = candidateIndices,
                 candidateTexts = List(candidateTextsJson.length()) { candidateTextsJson.getString(it) },
+                preedit = meta.getString("preedit"),
                 hits = parsedHits,
                 emoji = List(emoji.length(), emoji::getInt).toSet(),
                 preeditEdges = List(edges.length()) { edges.getDouble(it).toFloat() },
