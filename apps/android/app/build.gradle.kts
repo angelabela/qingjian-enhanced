@@ -243,7 +243,7 @@ val downloadNotoEmojiLottie by tasks.registering {
 val downloadOchwproModel by tasks.registering {
     group = "qingjian"
     description = "Bundle the official ochwpro offline handwriting model and labels"
-    val target = bundledAssets.map { it.dir("data/handwriting") }
+    val target = layout.buildDirectory.dir("ochwpro-model")
     outputs.dir(target)
     doLast {
         val dir = target.get().asFile
@@ -268,8 +268,14 @@ val downloadOchwproModel by tasks.registering {
     }
 }
 
+// 让 Sync 任务把模型复制进最终 assets/data，避免与 Noto/其他随包数据发生目录竞争。
+stageData.configure {
+    dependsOn(downloadOchwproModel)
+    from(layout.buildDirectory.dir("ochwpro-model")) { into("handwriting") }
+}
+
 tasks.named("preBuild") {
-    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie, downloadOchwproModel)
+    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie)
 }
 
 
