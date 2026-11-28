@@ -310,6 +310,18 @@ class Composer(private val engine: Engine, private val host: Host) {
     }
 
     fun onKey(key: Key) {
+        // 无拼音但候选栏仍显示上下文词时，退格先清候选，不触碰宿主输入框。
+        if (key == Key.Backspace && !composing && candidates.isNotEmpty()) {
+            completing = false
+            candidates = emptyList()
+            localCompletions = emptyList()
+            localCompletionStart = Int.MAX_VALUE
+            structuredCompletions = emptyList()
+            structuredCompletionStart = Int.MAX_VALUE
+            structuredTokenBuffer.clear()
+            host.showComposition("", emptyList(), animateCandidates = false)
+            return
+        }
         if (key != Key.Backspace) {
             lastClearSnapshot = null
             clearAfterCursorNext = false
