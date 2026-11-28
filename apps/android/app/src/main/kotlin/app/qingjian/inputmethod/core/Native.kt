@@ -32,6 +32,9 @@ internal object Native {
     /** 只解码不进组句，回字母串（解不出是空串）。 */
     external fun decodeSwipe(handle: Long, input: String): String?
 
+    /** 本机 ochwpro 离线手写识别，输入笔画 JSON，返回 Top-K 字符候选 JSON。 */
+    external fun recognizeHandwriting(modelDir: String, strokesJson: String): String?
+
     external fun select(handle: Long, index: Int): String?
 
     /** 展开面板的「全部 / 单字」：切换这段组句的单字模式。 */
