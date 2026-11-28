@@ -90,6 +90,9 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     /** 只在后台线程调用；模型在 Rust 侧按需加载并缓存。 */
     fun recognizeHandwriting(strokesJson: String): String? = dataDirectory?.let { Native.recognizeHandwriting(File(it, "handwriting").path, strokesJson) }
 
+    /** 多字叠写模式：按笔画分段识别并组合词语候选。 */
+    fun recognizeHandwritingWords(strokesJson: String): String? = dataDirectory?.let { Native.recognizeHandwritingWords(File(it, "handwriting").path, strokesJson) }
+
     fun select(index: Int): Frame = Frame.parse(Native.select(handle, index))
 
     fun toggleSingleChars(): Frame = Frame.parse(Native.toggleSingleChars(handle))
