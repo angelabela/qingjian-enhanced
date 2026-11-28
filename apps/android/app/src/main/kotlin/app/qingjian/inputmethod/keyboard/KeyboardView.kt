@@ -502,6 +502,31 @@ class KeyboardView(
     private val spaceHold = Runnable { onSpaceHold() }
 
     private var handwritingPointer = -1
+    /** 毛笔质感的实时手写轨迹：柔和外沿、厚实主体与轻微内侧高光。 */
+    private val handwritingGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = resources.displayMetrics.density * 10f
+        color = palette.brand
+        alpha = 58
+    }
+    private val handwritingBrushPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = resources.displayMetrics.density * 5.6f
+        color = palette.brand
+        setShadowLayer(resources.displayMetrics.density * 1.8f, 0f, resources.displayMetrics.density * 0.7f, palette.brand)
+    }
+    private val handwritingHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = resources.displayMetrics.density * 1.25f
+        color = palette.onBrand
+        alpha = 105
+    }
     private val handwritingHandler = Handler(Looper.getMainLooper())
     private val handwritingFinish = Runnable { finishHandwriting() }
     private val handwritingStrokes = mutableListOf<MutableList<Pair<Float, Float>>>()
@@ -704,6 +729,7 @@ class KeyboardView(
             )
         }
         if (side.enabled) painter.drawSide(canvas, side)
+        drawHandwriting(canvas)
         if (isShown && slots.any { it.key is Key.Space }) postInvalidateDelayed(32L)
         val flicking = flickSlot?.takeIf { flickArmed }
         if (flicking == null) trail.draw(canvas)
@@ -726,8 +752,43 @@ class KeyboardView(
     private fun addHandwritingPoint(x: Float, y: Float) {
         val points = handwritingCurrent ?: return
         val previous = points.lastOrNull()
-        if (previous == null || hypot(x - previous.first, y - previous.second) >= resources.displayMetrics.density * 1.5f) {
+        if (previous == null || hypot(x - previous.first, y - previous.second) >= resources.displayMetrics.density * 1.15f) {
             points += x to y
+            // 只刷新键盘当前帧，笔迹与按键一起重绘，不清屏、不闪烁。
+            invalidate()
+        }
+    }
+
+    /** 用二次曲线平滑采样点，叠加粗圆头笔锋，模拟略带墨色的毛笔轨迹。 */
+    private fun drawHandwriting(canvas: Canvas) {
+        if (handwritingStrokes.isEmpty()) return
+        val density = resources.displayMetrics.density
+        handwritingStrokes.forEach { stroke ->
+            if (stroke.isEmpty()) return@forEach
+            if (stroke.size == 1) {
+                val point = stroke.first()
+                canvas.drawCircle(point.first, point.second, density * 2.8f, handwritingBrushPaint.apply { style = Paint.Style.FILL })
+                handwritingBrushPaint.style = Paint.Style.STROKE
+                return@forEach
+            }
+            val path = Path().apply {
+                moveTo(stroke.first().first, stroke.first().second)
+                for (index in 1 until stroke.size) {
+                    val previous = stroke[index - 1]
+                    val current = stroke[index]
+                    if (index == stroke.lastIndex) {
+                        quadTo(previous.first, previous.second, current.first, current.second)
+                    } else {
+                        val next = stroke[index + 1]
+                        val midX = (current.first + next.first) * 0.5f
+                        val midY = (current.second + next.second) * 0.5f
+                        quadTo(previous.first, previous.second, midX, midY)
+                    }
+                }
+            }
+            canvas.drawPath(path, handwritingGlowPaint)
+            canvas.drawPath(path, handwritingBrushPaint)
+            canvas.drawPath(path, handwritingHighlightPaint)
         }
     }
 
@@ -799,6 +860,7 @@ class KeyboardView(
         handwritingPointer = -1
         handwritingCurrent = null
         handwritingStrokes.clear()
+        invalidate()
     }
 
     @SuppressLint("ClickableViewAccessibility")
