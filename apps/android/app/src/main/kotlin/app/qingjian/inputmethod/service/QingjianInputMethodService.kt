@@ -1218,6 +1218,11 @@ class QingjianInputMethodService :
     override fun onKey(key: Key) {
         KeySounds.play(this, key)
         if (ClipboardPanel.handleSearchKey(key)) return
+        // 空格默认确认首选候选：在 Core 清空候选快照前捕获文字与当前候选样式。
+        if (key == Key.Space && shownPreedit.isNotEmpty() && shownCandidates.isNotEmpty()) {
+            pendingCandidateCommitIndex = 0
+            panel?.bar?.animateCandidateCommit(0)
+        }
         composer.onKey(key)
     }
 
