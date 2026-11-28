@@ -419,8 +419,9 @@ class CatalogPanel(
         tracking = false
         choices = listOf(item) + if (symbols) emptyList() else Catalog.skinTones(item)
         if (!symbols && emojiTop == 0) {
-            emojiAnimations.resumeAll()
             animatedHoldItem = item
+            emojiAnimations.resumeForLongPress()
+            postInvalidateOnAnimation()
         }
         if (choices.size > 1) {
             popup.show(
