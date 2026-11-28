@@ -20,6 +20,7 @@ import org.json.JSONObject
 class Engine(context: Context, private val onReady: () -> Unit) {
     private val app = context.applicationContext
     private var handle = 0L
+    @Volatile private var dataDirectory: File? = null
     private var closed = false
     private val density = context.resources.displayMetrics.density
 
@@ -51,6 +52,7 @@ class Engine(context: Context, private val onReady: () -> Unit) {
         val loading = ++generation
         thread(name = "qingjian-engine-load") {
             val dataDir = BundledData.ensure(app)
+            dataDirectory = dataDir
             val created = Native.create(dataDir.path, userDir(app).path)
             main.post {
                 if (closed || loading != generation) {
@@ -84,6 +86,9 @@ class Engine(context: Context, private val onReady: () -> Unit) {
     fun swipe(input: String): Frame = Frame.parse(Native.swipe(handle, input))
 
     fun decodeSwipe(input: String): String = if (ready) Native.decodeSwipe(handle, input).orEmpty() else ""
+
+    /** 只在后台线程调用；模型在 Rust 侧按需加载并缓存。 */
+    fun recognizeHandwriting(strokesJson: String): String? = dataDirectory?.let { Native.recognizeHandwriting(File(it, "handwriting").path, strokesJson) }
 
     fun select(index: Int): Frame = Frame.parse(Native.select(handle, index))
 
