@@ -24,7 +24,9 @@ class CandidateStrip(
     animationCallback: Drawable.Callback,
     private val density: Float, private val barHeight: Float, textScale: Float, markColor: Int, fontWeight: Settings.FontWeight = Settings.FontWeight.NORMAL, private var transparentBackground: Boolean = false, private val glassTint: Int = markColor, candidateTextColor: Int = markColor, styleConfig: CandidateTextStyleEngine.Config = CandidateTextStyleEngine.Config.defaults(candidateTextColor, fontWeight),
     private val fallbackBackgroundColor: Int = markColor,
-    private val scaledDensity: Float = density) {
+    private val scaledDensity: Float = density,
+    /** 候选文字入场效果：0 淡入滑入、1 上浮、2 缩放、3 左滑、4 轻柔缩放。 */
+    private val entryEffect: Int = 0) {
     private val emojiAnimations = NotoEmojiAnimations(context, animationCallback)
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
     val textStyles = CandidateTextStyleEngine(
