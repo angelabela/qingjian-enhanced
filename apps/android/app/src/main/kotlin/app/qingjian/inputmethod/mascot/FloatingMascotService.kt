@@ -440,14 +440,14 @@ class FloatingMascotService : Service() {
                 }
             } else {
                 var rest = messageText.ifBlank { "我在这里陪你呀！" }
-                var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 15f) / 2f - dialogueText.ascent()
+                var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 13f) / 2f - dialogueText.ascent()
                 var lines = 0
                 while (rest.isNotEmpty() && lines < 9) {
                     val count = dialogueText.breakText(rest, true, (bubbleWidthDp - 12f) * density, null).coerceAtLeast(1)
                     val visible = rest.substring(0, count)
                     canvas.drawText(visible, bubbleLeftDp + 6f, baseline, dialogueText)
                     rest = rest.substring(count)
-                    baseline += 15f
+                    baseline += 13f
                     lines++
                 }
                 if (rest.isNotEmpty()) canvas.drawText("…", bubbleLeftDp + bubbleWidthDp - 12f, 8f + bubbleHeightDp - 8f, dialogueText)
