@@ -24,6 +24,8 @@ internal class NotoEmojiAnimations(
     private val handler = Handler(Looper.getMainLooper())
     private var typing = false
     private var paused = false
+    /** 当前长按明确请求预览的 Emoji；输入候选防抖不得暂停它。 */
+    private var previewText: String? = null
     private val resumeAfterTyping = Runnable {
         typing = false
         if (!paused) {
@@ -42,6 +44,7 @@ internal class NotoEmojiAnimations(
     }
 
     fun onCandidatesChanged() {
+        previewText = null
         typing = true
         handler.removeCallbacks(resumeAfterTyping)
         handler.postDelayed(resumeAfterTyping, 300L)
@@ -49,6 +52,7 @@ internal class NotoEmojiAnimations(
     }
 
     fun pauseAll() {
+        previewText = null
         paused = true
         handler.removeCallbacks(resumeAfterTyping)
         drawables.snapshot().values.forEach { it.pauseAnimation() }
@@ -64,22 +68,26 @@ internal class NotoEmojiAnimations(
         handler.removeCallbacks(resumeAfterTyping)
         typing = false
         paused = false
+        previewText = text
         // 长按时可能尚未绘制过该 Emoji，缓存里没有 Drawable；此处必须按候选文字主动加载。
         val requested = text?.let { drawables.get(it) ?: createDrawable(it) }
         requested?.apply {
+            callback = this@NotoEmojiAnimations.callback
             repeatCount = LottieDrawable.INFINITE
-            resumeAnimation()
-            if (!isAnimating) playAnimation()
-            callback?.invalidateDrawable(this)
+            speed = 1f
+            if (!isAnimating) {
+                progress = 0f
+                playAnimation()
+            } else resumeAnimation()
+            this@NotoEmojiAnimations.callback.invalidateDrawable(this)
         }
         drawables.snapshot().values.forEach {
-            it.resumeAnimation()
-            callback?.invalidateDrawable(it)
+            if (it !== requested) it.pauseAnimation()
         }
     }
 
     fun draw(canvas: Canvas, text: String, rect: RectF): Boolean {
-        if (paused || typing || rect.isEmpty) return false
+        if (paused || (typing && text != previewText) || rect.isEmpty) return false
         val drawable = drawables.get(text) ?: createDrawable(text) ?: return false
         drawable.callback = callback
         val sourceBounds = drawable.composition?.bounds ?: return false
