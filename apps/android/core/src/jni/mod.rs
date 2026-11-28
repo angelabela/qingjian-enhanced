@@ -9,6 +9,7 @@ mod cloud;
 mod contacts;
 mod expression;
 mod logging;
+mod handwriting;
 mod operations;
 mod options;
 mod shuangpin;
