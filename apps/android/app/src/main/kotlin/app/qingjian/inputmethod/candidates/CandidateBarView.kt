@@ -701,10 +701,12 @@ class CandidateBarView(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && !strip.isEmpty) {
+        if (!strip.isEmpty && lastShownPreedit.isNullOrEmpty() &&
+            event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP)
+        ) {
             idleFadeStartedAt = 0L
             idleHandler.removeCallbacks(hideIdleCandidates)
-            if (strip.candidates.isNotEmpty() && strip.candidates.none { false }) {
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
                 idleHandler.postDelayed(hideIdleCandidates, 5_000L)
             }
         }
