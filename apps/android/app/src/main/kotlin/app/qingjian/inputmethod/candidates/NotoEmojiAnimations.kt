@@ -60,11 +60,22 @@ internal class NotoEmojiAnimations(
     }
 
     /** Long-press preview is an explicit user request; do not let the typing debounce suppress it. */
-    fun resumeForLongPress() {
+    fun resumeForLongPress(text: String? = null) {
         handler.removeCallbacks(resumeAfterTyping)
         typing = false
         paused = false
-        drawables.snapshot().values.forEach { it.resumeAnimation() }
+        // 长按时可能尚未绘制过该 Emoji，缓存里没有 Drawable；此处必须按候选文字主动加载。
+        val requested = text?.let { drawables.get(it) ?: createDrawable(it) }
+        requested?.apply {
+            repeatCount = LottieDrawable.INFINITE
+            resumeAnimation()
+            if (!isAnimating) playAnimation()
+            callback.invalidateDrawable(this)
+        }
+        drawables.snapshot().values.forEach {
+            it.resumeAnimation()
+            callback.invalidateDrawable(it)
+        }
     }
 
     fun draw(canvas: Canvas, text: String, rect: RectF): Boolean {
