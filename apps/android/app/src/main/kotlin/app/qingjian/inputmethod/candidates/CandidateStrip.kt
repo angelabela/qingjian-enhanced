@@ -308,7 +308,10 @@ class CandidateStrip(
 
     /** 候选文字格的实际绘制区域（已考虑无拼音行时的垂直居中偏移）。 */
     fun wordRect(index: Int): RectF? {
-        val frame = image ?: return fallbackRects.getOrNull(index)?.let { RectF(it) }
+        val frame = image ?: run {
+            val rectIndex = fallbackCandidateIndices.indexOf(index)
+            return fallbackRects.getOrNull(rectIndex)?.let { RectF(it) }
+        }
         val rect = frame.wordRect(index)
         if (rect != null) {
             if (frame.candidatesTop == 0) {
