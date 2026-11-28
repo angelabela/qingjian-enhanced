@@ -694,7 +694,7 @@ class CandidateBarView(
                     firstCandidateGlow.setShadowLayer(8.5f * density, 0f, 0f, accent)
                 }
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
-                firstCandidateGlow.setRenderEffect(null)
+                if (android.os.Build.VERSION.SDK_INT >= 31) firstCandidateGlow.setRenderEffect(null)
                 firstCandidateGlow.clearShadowLayer()
                 firstCandidateGlow.shader = null
                 firstCandidateRing.color = accent
@@ -706,7 +706,7 @@ class CandidateBarView(
                     firstCandidateRing.setShadowLayer(5.5f * density, 0f, 0f, accent)
                 }
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
-                firstCandidateRing.setRenderEffect(null)
+                if (android.os.Build.VERSION.SDK_INT >= 31) firstCandidateRing.setRenderEffect(null)
                 firstCandidateRing.clearShadowLayer()
                 firstCandidateSheen.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.top,
