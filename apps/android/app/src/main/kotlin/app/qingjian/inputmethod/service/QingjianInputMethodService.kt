@@ -2253,7 +2253,7 @@ class QingjianInputMethodService :
                 }
                 handwritingCandidates = texts
                 panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
-                AppLog.info("[HANDWRITING] mode=" + if (wordMode) "word" else "char" + " candidate_count=" + texts.size)
+                AppLog.info("[HANDWRITING] mode=" + (if (wordMode) "word" else "char") + " candidate_count=" + texts.size)
             }
         }, "qingjian-handwriting").start()
     }
