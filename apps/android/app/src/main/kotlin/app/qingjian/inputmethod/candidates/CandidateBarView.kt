@@ -675,7 +675,8 @@ class CandidateBarView(
         val layer = canvas.saveLayer(layerBounds, null)
         canvas.clipRect(scrollX.toFloat(), 0f, (scrollX + stripWidth).toFloat(), height.toFloat())
         val glow = android.graphics.RectF(rect).apply { inset(-4f * density, -3f * density) }
-        val accent = palette.brand
+        val accent = Settings.preferences(context).getInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0)
+            .takeIf { it != 0 } ?: palette.brand
         val outline = android.graphics.RectF(rect).apply { inset(-1.2f * density, -1f * density) }
         when (candidateSelectionEffect) {
             0 -> {
@@ -686,13 +687,13 @@ class CandidateBarView(
                 )
                 firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
                 // 柔光呼吸的高光主体增加轻微柔化，避免边缘过硬；每帧绘制后清除避免串到其他样式。
-                firstCandidateGlow.setShadowLayer(3.2f * density, 0f, 0f, accent)
+                firstCandidateGlow.setShadowLayer(8.5f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
                 firstCandidateGlow.clearShadowLayer()
                 firstCandidateGlow.shader = null
                 firstCandidateRing.color = accent
                 firstCandidateRing.alpha = (135f + breath * 105f).toInt()
-                firstCandidateRing.setShadowLayer(2.2f * density, 0f, 0f, accent)
+                firstCandidateRing.setShadowLayer(5.5f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
                 firstCandidateRing.clearShadowLayer()
                 firstCandidateSheen.shader = android.graphics.LinearGradient(
@@ -709,7 +710,7 @@ class CandidateBarView(
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
                 firstCandidateRing.color = accent
                 firstCandidateRing.alpha = (175f + breath * 80f).toInt()
-                firstCandidateRing.setShadowLayer(4f * density, 0f, 0f, accent)
+                firstCandidateRing.setShadowLayer(6f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
                 firstCandidateRing.clearShadowLayer()
             }
