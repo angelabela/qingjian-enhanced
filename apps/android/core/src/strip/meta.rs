@@ -26,6 +26,9 @@ pub struct StripMeta {
     /// 当前 Rust 帧中完整候选文本快照；Android 用它拒绝同索引但不同内容的迟到布局。
     pub candidate_texts: Vec<String>,
 
+    /// 与布局命中矩形同帧的拼音输入串；Android 拒绝旧 preedit 的迟到布局。
+    pub preedit: String,
+
     /// 可点区域，译文在前（先命中）。
     pub hits: Vec<StripHit>,
 
