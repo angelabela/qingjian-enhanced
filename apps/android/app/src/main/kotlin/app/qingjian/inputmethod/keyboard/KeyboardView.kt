@@ -9,6 +9,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
@@ -128,6 +131,9 @@ class KeyboardView(
     private var rows: List<List<Key>> = emptyList()
     private var slots: List<KeySlot> = emptyList()
     private val pressed = HashMap<Int, KeySlot>()
+    private data class PressGlowState(val slot: KeySlot, var releasedAt: Long = 0L)
+    private val pressGlowStates = HashMap<Int, PressGlowState>()
+    private val pressGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val timer = Handler(Looper.getMainLooper())
     private var backspaceRepeatStarted = false
@@ -720,6 +726,32 @@ class KeyboardView(
     }
 
     override fun onDraw(canvas: Canvas) {
+        val glowEnabled = keyEffectPrefs.getBoolean("keyboard_key_press_glow", false)
+        val configuredGlow = keyEffectPrefs.getInt("keyboard_key_press_glow_color", 0)
+        val glowColor = configuredGlow.takeIf { it != 0 } ?: palette.brand
+        val now = android.os.SystemClock.uptimeMillis()
+        val iterator = pressGlowStates.entries.iterator()
+        while (iterator.hasNext()) {
+            val state = iterator.next().value
+            val alpha = if (state.releasedAt == 0L) 150 else {
+                val progress = ((now - state.releasedAt).toFloat() / PRESS_GLOW_FADE_MS).coerceIn(0f, 1f)
+                (150f * (1f - progress)).toInt()
+            }
+            if (alpha <= 0) iterator.remove()
+            else if (glowEnabled) {
+                val bounds = RectF(state.slot.bounds).apply { inset(-metrics.density * 4f, -metrics.density * 3f) }
+                pressGlowPaint.shader = RadialGradient(
+                    bounds.centerX(), bounds.centerY(),
+                    maxOf(bounds.width(), bounds.height()) * 0.78f,
+                    intArrayOf((glowColor and 0x00FFFFFF) or (alpha shl 24),
+                        (glowColor and 0x00FFFFFF) or ((alpha / 3) shl 24), android.graphics.Color.TRANSPARENT),
+                    floatArrayOf(0f, 0.62f, 1f), Shader.TileMode.CLAMP,
+                )
+                canvas.drawRoundRect(bounds, metrics.density * 12f, metrics.density * 12f, pressGlowPaint)
+                pressGlowPaint.shader = null
+            }
+        }
+        if (pressGlowStates.values.any { it.releasedAt != 0L } && glowEnabled) postInvalidateOnAnimation()
         for (slot in slots) {
             painter.drawKey(canvas, slot, down = pressed.containsValue(slot))
             painter.drawGestureHints(
@@ -903,6 +935,7 @@ class KeyboardView(
                     editTriggered = false
                 }
                 pressed[pointer] = slot
+                pressGlowStates[pointer] = PressGlowState(slot)
                 if (settings.keyboardCandidateSwipe && slot.key !is Key.Space &&
                     surfaceCandidatePointer < 0 && spacePointer < 0 && pressed.size == 1
                 ) {
@@ -1047,6 +1080,9 @@ class KeyboardView(
                 if (pointer == spacePointer && voiceMode) trackVoice(event)
                 if (pointer == spacePointer && candidateSwipeMode) trackCursor(event)
                 val slot = pressed.remove(pointer)
+                pressGlowStates[pointer]?.let { state ->
+                    if (state.releasedAt == 0L) state.releasedAt = android.os.SystemClock.uptimeMillis()
+                }
                 val choosing = pointer == longPressPointer && choicePopup.showing
                 val movedCursor = pointer == spacePointer && cursorMode
                 val spoke = pointer == spacePointer && voiceMode
@@ -1542,6 +1578,7 @@ class KeyboardView(
         if (surfaceCandidateMode) listener.onCandidateSwipeEnd(commit = false)
         clearSurfaceCandidateSwipe()
         pressed.clear()
+        pressGlowStates.clear()
         trail.clear()
         endFlick()
         endEditShortcut()
