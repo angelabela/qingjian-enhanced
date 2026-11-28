@@ -47,7 +47,7 @@ class FunctionPanel(
     private class Toggle(val key: String, val label: String, val note: String, val on: Boolean)
 
     private var voiceEffectPage = false
-    private var textEffectPage = restoreTextEffectPage.also { restoreTextEffectPage = false }
+    private var textEffectPage = restoreTextEffectPage
     private var aiLoadingEffectPage = false
     private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
@@ -152,7 +152,7 @@ class FunctionPanel(
                     selectedCandidateSelectionEffect = textPrefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
                     selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
-                    restoreTextEffectPage = false
+                    restoreTextEffectPage = true
                     voiceEffectPage = false
                     invalidate()
                 },
@@ -988,8 +988,8 @@ class FunctionPanel(
         }
         val selectionColor = currentCandidateSelectionColor()
         val selectionColorLabelY = selectionTop + ink.dp(72f)
-        ink.textStart(canvas, "选中框颜色 RGB", 11f, palette.text,
-            card.left + ink.dp(14f), selectionColorLabelY, card.right - ink.dp(112f))
+        ink.text(canvas, "选中框颜色 RGB", 11f, palette.text,
+            card.left + ink.dp(14f) + ink.dp(43f), selectionRestoreRect.centerY())
         val selectionRestoreRect = RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f),
             card.right - ink.dp(10f), selectionTop + ink.dp(94f))
         ink.round(canvas, selectionRestoreRect, 9f, palette.functionalKey)
@@ -1175,6 +1175,7 @@ class FunctionPanel(
                 card.right - ink.dp(8f), rgbY + ink.dp(18f))
             if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
                 rgbHit.contains(event.x, event.y)) {
+                restoreTextEffectPage = true
                 adjustingTextSlider = 3
                 parent?.requestDisallowInterceptTouchEvent(true)
                 updateTextSlider(event.x, 3)
@@ -1227,7 +1228,7 @@ class FunctionPanel(
                         parent?.requestDisallowInterceptTouchEvent(false)
                         // 字色、字号、字重在松手时一次性刷新绘制层，避免拖动过程中反复重建输入视图。
                         if (completedSlider in 0..2) {
-                            restoreTextEffectPage = textEffectPage
+                            restoreTextEffectPage = true
                             actions.refreshKeyboardSettings()
                         }
                     }
@@ -1437,8 +1438,8 @@ class FunctionPanel(
                 if (selectionRestoreRect.contains(x, contentY)) {
                     Settings.preferences(context).edit()
                         .putInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0).apply()
+                    // 恢复主题色只更新本页预览，不重建输入视图，焦点留在文字效果页。
                     restoreTextEffectPage = true
-                    actions.refreshKeyboardSettings()
                     invalidate()
                     return
                 }
@@ -1450,6 +1451,7 @@ class FunctionPanel(
                     card.right - ink.dp(14f), selectionColorY + ink.dp(16f),
                 )
                 if (selectionColorRect.contains(x, contentY)) {
+                    restoreTextEffectPage = true
                     updateTextSlider(x, 3)
                     invalidate()
                     return
