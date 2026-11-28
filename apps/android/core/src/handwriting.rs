@@ -22,9 +22,25 @@ impl Inference {
  pub fn predict(&self, strokes: &[Vec<(f32,f32)>], top_k: usize) -> anyhow::Result<Vec<TopK>> {
   anyhow::ensure!(!strokes.is_empty() && strokes.iter().any(|s| !s.is_empty()), "empty handwriting strokes");
   let seq_len = strokes.iter().map(Vec::len).sum::<usize>();
-  anyhow::ensure!(seq_len <= 512, "too many handwriting points: {seq_len}");
-  let input = preprocessing::strokes_to_tensor(strokes, &Device::Cpu)?;
-  let output = self.model.forward(&input, seq_len)?;
+  // 触屏采样密度远高于 CASIA 训练数据；超出模型 512 序列长度时按笔画均匀抽样，
+  // 每笔保留首尾点，避免整字直接因点数过多而被拒识。
+  let bounded;
+  let source = if seq_len > 512 {
+   let step = seq_len.div_ceil(512).max(1);
+   bounded = strokes.iter().map(|stroke| {
+    if stroke.len() <= 2 { return stroke.clone(); }
+    let mut points: Vec<(f32,f32)> = stroke.iter().step_by(step).copied().collect();
+    if let Some(last) = stroke.last().copied() {
+     if points.last().copied() != Some(last) { points.push(last); }
+    }
+    points
+   }).collect::<Vec<_>>();
+   bounded.as_slice()
+  } else { strokes };
+  let bounded_len = source.iter().map(Vec::len).sum::<usize>();
+  anyhow::ensure!(bounded_len > 0 && bounded_len <= 512, "handwriting point reduction failed: {bounded_len}");
+  let input = preprocessing::strokes_to_tensor(source, &Device::Cpu)?;
+  let output = self.model.forward(&input, bounded_len)?;
   let probs = candle_nn::ops::softmax(&output, 1)?.squeeze(0)?.to_vec1::<f32>()?;
   let mut ranked: Vec<(usize,f32)> = probs.into_iter().enumerate().collect();
   ranked.sort_by(|a,b| b.1.total_cmp(&a.1));
