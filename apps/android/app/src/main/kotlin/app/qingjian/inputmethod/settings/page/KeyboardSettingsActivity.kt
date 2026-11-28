@@ -115,13 +115,13 @@ class KeyboardSettingsActivity : PageActivity() {
                     customGestureKeyPicker(settings),
                     customGestureActionPicker(
                         "按键上滑", Settings.KEY_CUSTOM_GESTURE_UP,
-                        displayedGestureAction(settings, effectiveGestureKey(settings), upward = true),
-                        effectiveGestureKey(settings),
+                        displayedGestureAction(settings, effectiveGestureKeys(settings).firstOrNull() ?: "NONE", upward = true),
+                        effectiveGestureKeys(settings).firstOrNull() ?: "NONE",
                     ),
                     customGestureActionPicker(
                         "按键下滑", Settings.KEY_CUSTOM_GESTURE_DOWN,
-                        displayedGestureAction(settings, effectiveGestureKey(settings), upward = false),
-                        effectiveGestureKey(settings),
+                        displayedGestureAction(settings, effectiveGestureKeys(settings).firstOrNull() ?: "NONE", upward = false),
+                        effectiveGestureKeys(settings).firstOrNull() ?: "NONE",
                     ),
                 ),
                 footer = "先选择要配置的按键，再分别设置上滑和下滑动作。选择“沿用默认”不会覆盖该按键原有行为。",
@@ -170,8 +170,9 @@ class KeyboardSettingsActivity : PageActivity() {
     }
 
     /** 已有固定按键手势时，默认把它作为当前配置对象显示，避免页面重开后落回“不指定”。 */
-    private fun effectiveGestureKey(settings: Settings): String {
-        if (settings.customGestureKey != "NONE") return settings.customGestureKey
+    private fun effectiveGestureKeys(settings: Settings): Set<String> {
+        val stored = settings.customGestureKey.split(',').map(String::trim).filter { it.isNotEmpty() && it != "NONE" }.toSet()
+        if (stored.isNotEmpty()) return stored
         return listOf(
             "SPACE" to (settings.spaceSwipeUp to settings.spaceSwipeDown),
             "ENTER" to (settings.enterSwipeUp to settings.enterSwipeDown),
@@ -179,7 +180,7 @@ class KeyboardSettingsActivity : PageActivity() {
             "SYMBOLS" to (settings.symbolsSwipeUp to settings.symbolsSwipeDown),
         ).firstOrNull { (_, actions) ->
             actions.first != Settings.GestureAction.DEFAULT || actions.second != Settings.GestureAction.DEFAULT
-        }?.first ?: "NONE"
+        }?.first?.let(::setOf) ?: emptySet()
     }
 
     /** 设置栏显示所选按键真正生效的动作：自定义动作优先；沿用默认时回退到该键原有手势。 */
@@ -218,10 +219,18 @@ class KeyboardSettingsActivity : PageActivity() {
 
     private fun customGestureKeyPicker(settings: Settings): View {
         val options = gestureKeyOptions()
-        val selectedKey = effectiveGestureKey(settings)
-        val selected = options.indexOfFirst { it.id == selectedKey }.coerceAtLeast(0)
-        return ui.picker("选择自定义按键", options[selected].label, options.map { it.label }, selected) { index ->
-            prefs.edit().putString(Settings.KEY_CUSTOM_GESTURE_KEY, options[index].id).apply()
+        val selectedKeys = effectiveGestureKeys(settings)
+        val selectedLabels = selectedKeys.mapNotNull { id -> options.firstOrNull { it.id == id }?.label }
+        val selectedText = selectedLabels.takeIf { it.isNotEmpty() }?.joinToString("、") ?: "未选择"
+        return ui.picker("选择自定义按键（可多选）", selectedText, options.map { it.label }, 0) { index ->
+            val id = options[index].id
+            val updated = selectedKeys.toMutableSet().apply {
+                if (id == "NONE") clear() else {
+                    remove("NONE")
+                    if (!add(id)) remove(id)
+                }
+            }
+            prefs.edit().putString(Settings.KEY_CUSTOM_GESTURE_KEY, updated.takeIf { it.isNotEmpty() }?.joinToString(",") ?: "NONE").apply()
             rebuild()
         }
     }

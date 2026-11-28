@@ -392,9 +392,9 @@ class KeyPainter(
         val now = SystemClock.uptimeMillis()
         val phase = (now % 1_180L).toFloat() / 1_180f
         val breathe = 0.78f + 0.22f * (0.5f - 0.5f * kotlin.math.cos(phase * (2f * Math.PI).toFloat()))
-        val alpha = (baseAlpha * breathe).toInt().coerceIn(0, 220)
+        val alpha = (baseAlpha * 1.22f * breathe).toInt().coerceIn(0, 255)
         if (alpha <= 0) return
-        val inset = 1.8f * density
+        val inset = 0.8f * density
         val inner = RectF(bounds).apply { inset(inset, inset) }
         val radius = (metrics.radius - inset).coerceAtLeast(1f)
         val save = canvas.save()
@@ -406,10 +406,10 @@ class KeyPainter(
             inner.centerX(), inner.centerY(), maxOf(inner.width(), inner.height()) * 0.76f,
             intArrayOf(
                 (color and 0x00FFFFFF) or (alpha shl 24),
-                (color and 0x00FFFFFF) or ((alpha * 0.48f).toInt() shl 24),
-                (color and 0x00FFFFFF) or ((alpha * 0.08f).toInt() shl 24),
+                (color and 0x00FFFFFF) or ((alpha * 0.68f).toInt() shl 24),
+                (color and 0x00FFFFFF) or ((alpha * 0.16f).toInt() shl 24),
             ),
-            floatArrayOf(0f, 0.58f, 1f), Shader.TileMode.CLAMP,
+            floatArrayOf(0f, 0.66f, 1f), Shader.TileMode.CLAMP,
         )
         fill.style = Paint.Style.FILL
         canvas.drawRoundRect(inner, radius, radius, fill)

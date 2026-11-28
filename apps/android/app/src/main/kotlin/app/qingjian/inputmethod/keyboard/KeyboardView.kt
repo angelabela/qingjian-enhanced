@@ -742,9 +742,9 @@ class KeyboardView(
         val iterator = pressGlowStates.entries.iterator()
         while (iterator.hasNext()) {
             val state = iterator.next().value
-            val alpha = if (state.releasedAt == 0L) 190 else {
+            val alpha = if (state.releasedAt == 0L) 230 else {
                 val progress = ((now - state.releasedAt).toFloat() / PRESS_GLOW_FADE_MS).coerceIn(0f, 1f)
-                (190f * (1f - progress)).toInt()
+                (230f * (1f - progress)).toInt()
             }
             if (alpha <= 0 || !glowEnabled) iterator.remove()
         }
@@ -753,9 +753,9 @@ class KeyboardView(
             val slotGlowAlpha = if (!glowEnabled) 0 else pressGlowStates.values
                 .filter { it.slot === slot }
                 .maxOfOrNull { state ->
-                    if (state.releasedAt == 0L) 190 else {
+                    if (state.releasedAt == 0L) 230 else {
                         val progress = ((now - state.releasedAt).toFloat() / PRESS_GLOW_FADE_MS).coerceIn(0f, 1f)
-                        (190f * (1f - progress)).toInt()
+                        (230f * (1f - progress)).toInt()
                     }
                 } ?: 0
             painter.drawKey(canvas, slot, down = pressed.containsValue(slot), pressGlowAlpha = slotGlowAlpha, pressGlowColor = glowColor)
@@ -1215,16 +1215,19 @@ class KeyboardView(
         }
     }
 
-    private fun matchesCustomGestureKey(key: Key): Boolean = when (settings.customGestureKey) {
-        "SPACE" -> key is Key.Space
-        "ENTER" -> key is Key.Enter
-        "BACKSPACE" -> key == Key.Backspace
-        "SYMBOLS" -> key is Key.Symbols
-        "SHIFT" -> key == Key.Shift
-        "LANGUAGE" -> key == Key.Language
-        else -> settings.customGestureKey.startsWith("LETTER_") &&
-            (key as? Key.Letter)?.char?.uppercaseChar()?.let { settings.customGestureKey == "LETTER_$it" } == true
-    }
+    private fun matchesCustomGestureKey(key: Key): Boolean =
+        settings.customGestureKey.split(',').any { raw ->
+            when (raw.trim()) {
+                "SPACE" -> key is Key.Space
+                "ENTER" -> key is Key.Enter
+                "BACKSPACE" -> key == Key.Backspace
+                "SYMBOLS" -> key is Key.Symbols
+                "SHIFT" -> key is Key.Shift
+                "LANGUAGE" -> key is Key.Language
+                else -> raw.trim().startsWith("LETTER_") &&
+                    (key as? Key.Letter)?.char?.uppercaseChar()?.let { raw.trim() == "LETTER_$it" } == true
+            }
+        }
 
     private fun gestureAction(key: Key, upward: Boolean): Settings.GestureAction {
         // 四个编辑快捷键的下滑动作固定；自定义手势只作用于其他按键。

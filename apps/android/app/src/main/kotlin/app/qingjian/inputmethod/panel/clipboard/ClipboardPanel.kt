@@ -863,17 +863,15 @@ class ClipboardPanel(
             drawCard(canvas, i, top, bottom)
             canvas.restoreToCount(save)
         }
-        if (!showingPhrases) {
-            val fadeHeight = minOf(ink.dp(58f), list.height()).coerceAtLeast(1f)
-            itemFadeMaskPaint.maskFilter = null
-            itemFadeMaskPaint.shader = LinearGradient(
-                0f, list.top, 0f, list.top + fadeHeight,
-                intArrayOf(Color.TRANSPARENT, Color.WHITE),
-                null, Shader.TileMode.CLAMP,
-            )
-            canvas.drawRect(list.left, list.top, list.right, list.top + fadeHeight, itemFadeMaskPaint)
-            itemFadeMaskPaint.shader = null
-        }
+        val fadeHeight = minOf(ink.dp(58f), list.height() * 0.22f).coerceAtLeast(1f)
+        itemFadeMaskPaint.maskFilter = null
+        itemFadeMaskPaint.shader = LinearGradient(0f, list.top, 0f, list.top + fadeHeight,
+            intArrayOf(Color.TRANSPARENT, Color.WHITE), null, Shader.TileMode.CLAMP)
+        canvas.drawRect(list.left, list.top, list.right, list.top + fadeHeight, itemFadeMaskPaint)
+        itemFadeMaskPaint.shader = LinearGradient(0f, list.bottom - fadeHeight, 0f, list.bottom,
+            intArrayOf(Color.WHITE, Color.TRANSPARENT), null, Shader.TileMode.CLAMP)
+        canvas.drawRect(list.left, list.bottom - fadeHeight, list.right, list.bottom, itemFadeMaskPaint)
+        itemFadeMaskPaint.shader = null
         canvas.restoreToCount(listLayer)
         canvas.restore()
         if (showingPhrases) {
