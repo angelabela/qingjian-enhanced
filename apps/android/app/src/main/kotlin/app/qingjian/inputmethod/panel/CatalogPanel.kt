@@ -264,10 +264,8 @@ class CatalogPanel(
             for (column in 0 until columns) {
                 val item = items.getOrNull(row * columns + column) ?: break
                 val cx = grid.left + cellWidth * (column + 0.5f)
-                if (true) {
-                    ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
-                        maxWidth = cellWidth - ink.dp(8f))
-                }
+                ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
+                    maxWidth = cellWidth - ink.dp(8f))
             }
             if (symbols) ink.line(canvas, grid.left, y + rowHeight, grid.right, y + rowHeight, palette.faint)
         }
@@ -406,6 +404,10 @@ class CatalogPanel(
     private fun release() {
         if (pressed == null) return
         pressed = null
+        if (animatedHoldItem != null) {
+            animatedHoldItem = null
+            if (emojiAnimationsDelegate.isInitialized()) emojiAnimations.pauseAll()
+        }
         invalidate()
     }
 
@@ -420,10 +422,12 @@ class CatalogPanel(
             emojiAnimations.resumeAll()
             animatedHoldItem = item
         }
-        popup.show(
-            choices.map { ChoicePopup.Item(it) }, initial = 0,
-            fingerScreenX = screenCentreX(), bottom = pressedCell.top, centred = true,
-        )
+        if (choices.size > 1) {
+            popup.show(
+                choices.map { ChoicePopup.Item(it) }, initial = 0,
+                fingerScreenX = screenCentreX(), bottom = pressedCell.top, centred = true,
+            )
+        }
         invalidate()
     }
 
