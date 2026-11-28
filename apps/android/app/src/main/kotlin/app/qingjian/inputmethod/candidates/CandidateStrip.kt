@@ -780,7 +780,6 @@ class CandidateStrip(
             val cy = word.top + markerSize * 0.85f
             PanelIcons.draw(canvas, PanelIcons.Icon.USER, cx - scrollX, cy, markerSize, markPaint)
         }
-        canvas.drawRect(scrollX.toFloat(), barHeight - density, (scrollX + viewWidth).toFloat(), barHeight, fill)
     }
     private companion object {
         const val EXTRA_START_GAP_DP = 12f
