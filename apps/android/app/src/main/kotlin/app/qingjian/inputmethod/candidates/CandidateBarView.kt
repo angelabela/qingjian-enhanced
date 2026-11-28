@@ -686,7 +686,7 @@ class CandidateBarView(
                     idleFadeStartedAt = 0L
                     lastShownPreedit = ""
                     lastShownCandidates = emptyList()
-                    strip.show("", emptyList(), animateCandidates = false)
+                    strip.show("", emptyList())
                     repaint()
                 } else postInvalidateOnAnimation()
             }
