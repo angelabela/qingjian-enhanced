@@ -258,6 +258,8 @@ class ClipboardPanel(
     private val thumbnails = HashMap<String, Bitmap?>()
     private val pendingThumbnails = HashSet<String>()
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    /** 剪贴板列表顶部的磨砂渐隐遮罩，让首条内容柔和融入面板。 */
+    private val topFadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     /** 长按打开的大图（图片完整路径），null 是没开。 */
     private var preview: String? = null
     private var previewDecoded: Pair<String, Bitmap?>? = null
@@ -849,6 +851,16 @@ class ClipboardPanel(
             }
             drawCard(canvas, i, top, bottom)
             canvas.restore()
+        }
+        if (!showingPhrases && !list.isEmpty) {
+            val fadeHeight = minOf(ink.dp(30f), list.height()).coerceAtLeast(1f)
+            topFadePaint.shader = LinearGradient(
+                0f, list.top, 0f, list.top + fadeHeight,
+                intArrayOf(palette.board, palette.board and 0x00FFFFFF),
+                null, Shader.TileMode.CLAMP,
+            )
+            canvas.drawRect(list.left, list.top, list.right, list.top + fadeHeight, topFadePaint)
+            topFadePaint.shader = null
         }
         canvas.restore()
         if (showingPhrases) {
