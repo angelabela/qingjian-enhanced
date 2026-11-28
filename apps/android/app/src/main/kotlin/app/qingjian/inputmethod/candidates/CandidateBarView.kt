@@ -532,32 +532,9 @@ class CandidateBarView(
         notifyAccessibilityContentChanged()
     }
 
-    /** 选中候选上屏前保存其视觉位置，随后向键盘/应用面板上沿飞出。 */
+    /** 候选选中后直接提交，不再播放字符飞出动画。 */
     fun animateCandidateCommit(index: Int) {
-        // 每次真实提交都启动自己的飞出动画；上一条动画尚未结束时也不能吞掉后续候选。
         commitFlyText = null
-        val candidate = strip.candidates.getOrNull(index) ?: return
-        val rect = strip.wordRect(index) ?: return
-        commitFlyText = candidate.text
-        val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
-        val style = candidateTextStyles.style(role)
-        commitFlyPaint.color = style.color
-        commitFlyPaint.textSize = 20f * resources.displayMetrics.scaledDensity * style.sizeScale
-        commitFlyPaint.typeface = android.graphics.Typeface.create(
-            style.typefaceFamily,
-            if (style.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
-        )
-        commitFlyPaint.isFakeBoldText = style.weight >= 600
-        commitFlyPaint.clearShadowLayer()
-        style.shadowColor?.takeIf { style.shadowRadiusDp > 0f }?.let {
-            commitFlyPaint.setShadowLayer(style.shadowRadiusDp * density, style.shadowDxDp * density, style.shadowDyDp * density, it)
-        }
-        commitFlyFromX = rect.centerX() + strip.leftInsetPx(stripWidth) - scrollX
-        commitFlyFromY = rect.centerY()
-        commitFlyStartedAt = android.os.SystemClock.uptimeMillis()
-        idleFadeStartedAt = 0L
-        idleHandler.removeCallbacks(hideIdleCandidates)
-        postInvalidateOnAnimation()
     }
 
     private fun drawCommitFly(canvas: Canvas) {
