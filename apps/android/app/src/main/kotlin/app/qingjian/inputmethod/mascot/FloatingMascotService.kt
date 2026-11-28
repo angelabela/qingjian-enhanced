@@ -298,6 +298,7 @@ class FloatingMascotService : Service() {
         private var bubbleWidthDp = 112f
         private var bubbleHeightDp = 32f
         private var dialogueLineCount = 1
+        private var dialogueWrappedItems: List<List<String>> = listOf(listOf("你好呀！"))
         var bubbleOnLeft: Boolean = false
             private set
         val dialogueWindowWidthPx: Int get() = ((bubbleWidthDp + 84f) * density).toInt()
@@ -312,24 +313,30 @@ class FloatingMascotService : Service() {
             invalidate()
         }
 
+        private fun wrapDialogueText(value: String, maxWidthPx: Float): List<String> =
+            value.split('\\n').flatMap { paragraph ->
+                if (paragraph.isEmpty()) listOf("") else {
+                    var rest = paragraph
+                    val wrapped = ArrayList<String>()
+                    while (rest.isNotEmpty()) {
+                        val count = dialogueText.breakText(rest, true, maxWidthPx, null).coerceAtLeast(1)
+                        wrapped += rest.substring(0, count)
+                        rest = rest.substring(count)
+                    }
+                    wrapped
+                }
+            }.ifEmpty { listOf("") }
+
         private fun updateDialogueMetrics() {
-            // TextPaint 的测量单位是 px；气泡布局单位是 dp。先统一换算，避免高密度屏幕把气泡撑大。
+            // 测量与绘制共用同一份换行结果，显式换行和自动折行都计入气泡尺寸。
             val maxTextWidthPx = (if (tipItems.isNotEmpty()) 160f else 172f) * density
             val values = if (tipItems.isNotEmpty()) tipItems.map { it.first } else listOf(messageText)
-            val lines = values.flatMap { value ->
-                var rest = value.trim()
-                val result = ArrayList<String>()
-                while (rest.isNotEmpty()) {
-                    val count = dialogueText.breakText(rest, true, maxTextWidthPx, null).coerceAtLeast(1)
-                    result += rest.substring(0, count)
-                    rest = rest.substring(count)
-                }
-                result
-            }
+            dialogueWrappedItems = values.map { wrapDialogueText(it.trim(), maxTextWidthPx) }
+            val lines = dialogueWrappedItems.flatten()
             dialogueLineCount = lines.size.coerceAtLeast(1)
             val widestDp = (lines.maxOfOrNull { dialogueText.measureText(it) } ?: 80f) / density
-            bubbleWidthDp = (widestDp + 24f).coerceIn(68f, 196f)
-            bubbleHeightDp = (dialogueLineCount * 13f + 12f).coerceIn(28f, 148f)
+            bubbleWidthDp = (widestDp + 20f).coerceIn(68f, 196f)
+            bubbleHeightDp = (dialogueLineCount * 13f + 14f).coerceIn(30f, 148f)
         }
 
         private fun setDialogueExpanded(expanded: Boolean) {
@@ -424,32 +431,22 @@ class FloatingMascotService : Service() {
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
                 var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 13f) / 2f - dialogueText.ascent()
-                tipItems.take(3).forEach { item ->
-                    var rest = item.first
-                    var firstLine = true
-                    while (rest.isNotEmpty() && baseline < 8f + bubbleHeightDp - 6f) {
-                        val count = dialogueText.breakText(rest, true, (bubbleWidthDp - if (firstLine) 24f else 12f) * density, null).coerceAtLeast(1)
-                        val visible = rest.substring(0, count)
-                        if (firstLine) canvas.drawCircle(bubbleLeftDp + 6f, baseline - 4f, 1.8f, dialogueAccent)
-                        canvas.drawText(visible, bubbleLeftDp + if (firstLine) 10f else 6f, baseline, dialogueText)
-                        rest = rest.substring(count)
-                        firstLine = false
-                        baseline += 13f
+                dialogueWrappedItems.take(3).forEach { itemLines ->
+                    itemLines.forEachIndexed { lineIndex, visible ->
+                        if (baseline < 8f + bubbleHeightDp - 6f) {
+                            if (lineIndex == 0) canvas.drawCircle(bubbleLeftDp + 6f, baseline - 4f, 1.8f, dialogueAccent)
+                            canvas.drawText(visible, bubbleLeftDp + if (lineIndex == 0) 10f else 6f, baseline, dialogueText)
+                            baseline += 13f
+                        }
                     }
                 }
             } else {
-                var rest = messageText.ifBlank { "我在这里陪你呀！" }
                 var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 13f) / 2f - dialogueText.ascent()
-                var lines = 0
-                while (rest.isNotEmpty() && lines < 9) {
-                    val count = dialogueText.breakText(rest, true, (bubbleWidthDp - 12f) * density, null).coerceAtLeast(1)
-                    val visible = rest.substring(0, count)
+                dialogueWrappedItems.firstOrNull().orEmpty().take(9).forEach { visible ->
                     canvas.drawText(visible, bubbleLeftDp + 6f, baseline, dialogueText)
-                    rest = rest.substring(count)
                     baseline += 13f
-                    lines++
                 }
-                if (rest.isNotEmpty()) canvas.drawText("…", bubbleLeftDp + bubbleWidthDp - 12f, 8f + bubbleHeightDp - 8f, dialogueText)
+                if (dialogueLineCount > 9) canvas.drawText("…", bubbleLeftDp + bubbleWidthDp - 12f, 8f + bubbleHeightDp - 8f, dialogueText)
             }
             canvas.restore()
         }
