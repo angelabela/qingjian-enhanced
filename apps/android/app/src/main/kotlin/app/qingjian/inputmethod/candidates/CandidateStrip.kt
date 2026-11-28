@@ -438,7 +438,7 @@ class CandidateStrip(
             val pad = 2.5f * density
             result.set(
                 wordBounds.centerX() - glyphWidth / 2f - pad,
-                wordBounds.centerY() + (metrics.ascent + metrics.descent) / 2f - pad,
+                wordBounds.centerY() + (metrics.ascent - metrics.descent) / 2f - pad,
                 wordBounds.centerX() + glyphWidth / 2f + pad,
                 wordBounds.centerY() + (metrics.descent - metrics.ascent) / 2f + pad,
             )
@@ -473,7 +473,7 @@ class CandidateStrip(
                     val pad = 2f * density
                     result.union(RectF(
                         hit.rect.centerX() - glyphWidth / 2f - pad,
-                        centerY + (metrics.ascent + metrics.descent) / 2f - pad,
+                        centerY + (metrics.ascent - metrics.descent) / 2f - pad,
                         hit.rect.centerX() + glyphWidth / 2f + pad,
                         centerY + (metrics.descent - metrics.ascent) / 2f + pad,
                     ))
