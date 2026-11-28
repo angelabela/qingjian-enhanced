@@ -987,11 +987,10 @@ class FunctionPanel(
                 maxWidth = selectionWidth - ink.dp(3f))
         }
         val selectionColor = currentCandidateSelectionColor()
-        val selectionColorLabelY = selectionTop + ink.dp(72f)
-        ink.text(canvas, "选中框颜色 RGB", 11f, palette.text,
-            card.left + ink.dp(14f) + ink.dp(43f), selectionRestoreRect.centerY())
         val selectionRestoreRect = RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f),
             card.right - ink.dp(10f), selectionTop + ink.dp(94f))
+        ink.text(canvas, "选中框颜色 RGB", 11f, palette.text,
+            card.left + ink.dp(14f) + ink.dp(43f), selectionRestoreRect.centerY())
         ink.round(canvas, selectionRestoreRect, 9f, palette.functionalKey)
         ink.text(canvas, "恢复主题色", 9.5f, palette.text, selectionRestoreRect.centerX(), selectionRestoreRect.centerY())
         val selectionColorY = selectionTop + ink.dp(120f)
