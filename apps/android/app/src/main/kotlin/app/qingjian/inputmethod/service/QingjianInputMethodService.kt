@@ -2227,6 +2227,13 @@ class QingjianInputMethodService :
     override fun onHandwriting(strokesJson: String) {
         val request = ++handwritingRequestId
         val wordMode = Settings.load(this).keyboardHandwritingWords
+        val strokeStats = runCatching {
+            val strokes = org.json.JSONObject(strokesJson).getJSONArray("strokes")
+            var points = 0
+            for (i in 0 until strokes.length()) points += strokes.getJSONArray(i).length()
+            "strokes=${strokes.length()} points=$points"
+        }.getOrDefault("stroke_stats=invalid")
+        android.util.Log.i("QJ_HANDWRITING", "request mode=${if (wordMode) "word" else "char"} $strokeStats")
         Thread({
             val inference = runCatching {
                 if (wordMode) engine.recognizeHandwritingWords(strokesJson)
