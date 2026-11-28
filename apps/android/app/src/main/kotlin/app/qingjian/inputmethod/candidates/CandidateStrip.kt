@@ -94,7 +94,10 @@ class CandidateStrip(
 
     fun onCandidatesChanged() = emojiAnimations.onCandidatesChanged()
     fun isEmojiCandidate(index: Int): Boolean = image?.emoji?.contains(index) == true
-    fun resumeEmojiForLongPress() = emojiAnimations.resumeForLongPress()
+    fun resumeEmojiForLongPress(index: Int) {
+        val text = candidates.getOrNull(index)?.text ?: return
+        emojiAnimations.resumeForLongPress(text)
+    }
     fun pauseEmojiAfterLongPress() = emojiAnimations.pauseAll()
     fun pauseAll() = emojiAnimations.pauseAll()
     fun resumeAll() = emojiAnimations.resumeAll()
