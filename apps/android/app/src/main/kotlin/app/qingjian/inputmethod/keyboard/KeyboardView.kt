@@ -3,6 +3,8 @@ package app.qingjian.inputmethod.keyboard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
@@ -496,6 +498,14 @@ class KeyboardView(
     private var surfaceCandidateLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
+    private val handwritingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = resources.displayMetrics.density * 3.2f
+        color = 0xFF42A5F5.toInt()
+    }
+    private val handwritingPath = Path()
     private var handwritingPointer = -1
     private val handwritingStrokes = mutableListOf<MutableList<Pair<Float, Float>>>()
     private var handwritingCurrent: MutableList<Pair<Float, Float>>? = null
@@ -695,6 +705,17 @@ class KeyboardView(
             )
         }
         if (side.enabled) painter.drawSide(canvas, side)
+        if (handwritingPointer >= 0) {
+            handwritingStrokes.forEach { stroke ->
+                if (stroke.isNotEmpty()) {
+                    val path = Path().apply {
+                        moveTo(stroke.first().first, stroke.first().second)
+                        stroke.drop(1).forEach { lineTo(it.first, it.second) }
+                    }
+                    canvas.drawPath(path, handwritingPaint)
+                }
+            }
+        }
         if (isShown && slots.any { it.key is Key.Space }) postInvalidateDelayed(32L)
         val flicking = flickSlot?.takeIf { flickArmed }
         if (flicking == null) trail.draw(canvas)
