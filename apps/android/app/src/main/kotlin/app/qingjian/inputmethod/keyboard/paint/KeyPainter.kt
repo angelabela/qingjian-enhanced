@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.os.SystemClock
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import app.qingjian.inputmethod.keyboard.ShiftState
@@ -395,7 +397,10 @@ class KeyPainter(
         val inner = RectF(bounds).apply { inset(inset, inset) }
         val radius = (metrics.radius - inset).coerceAtLeast(1f)
         val save = canvas.save()
-        canvas.clipRoundRect(bounds, metrics.radius, metrics.radius)
+        val clip = Path().apply {
+            addRoundRect(bounds, metrics.radius, metrics.radius, Path.Direction.CW)
+        }
+        canvas.clipPath(clip)
         fill.shader = RadialGradient(
             inner.centerX(), inner.centerY(), maxOf(inner.width(), inner.height()) * 0.76f,
             intArrayOf(
