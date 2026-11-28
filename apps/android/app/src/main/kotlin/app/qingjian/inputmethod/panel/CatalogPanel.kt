@@ -501,6 +501,8 @@ class CatalogPanel(
         ink.round(canvas, bubble, 12f, palette.surface)
         val animated = animatedHoldItem == item && !symbols &&
             emojiAnimations.draw(canvas, item, bubble)
+        // 长按期间主动请求下一帧，避免部分 ROM 对 Drawable.Callback 的调度回调丢帧后停在静态帧。
+        if (animated) postInvalidateOnAnimation()
         if (!animated) ink.text(
             canvas, item, if (symbols) 26f else 36f, palette.text, bubble.centerX(), bubble.centerY(),
             maxWidth = bubble.width() - ink.dp(8f),
