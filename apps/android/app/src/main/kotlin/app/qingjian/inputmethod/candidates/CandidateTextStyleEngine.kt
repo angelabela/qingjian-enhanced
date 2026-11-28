@@ -80,12 +80,12 @@ class CandidateTextStyleEngine(
                         shadowRadiusDp = 3.5f, shadowDxDp = 0f, shadowDyDp = 0f,
                     )
                     Settings.TextEffectPreset.NEON_OUTLINE -> style.copy(
-                        strokeColor = color, strokeWidthDp = 0.85f,
-                        shadowColor = (color and 0x00FFFFFF) or (0x99 shl 24), shadowRadiusDp = 2f,
+                        strokeColor = color, strokeWidthDp = 1.65f,
+                        shadowColor = (color and 0x00FFFFFF) or (0xCC shl 24), shadowRadiusDp = 3.2f,
                     )
                     Settings.TextEffectPreset.CONTRAST_OUTLINE -> style.copy(
                         strokeColor = android.graphics.Color.WHITE,
-                        strokeWidthDp = 1.35f,
+                        strokeWidthDp = 2.0f,
                     )
                     Settings.TextEffectPreset.COLOR_GRADIENT -> style
                 }
@@ -233,6 +233,15 @@ class CandidateTextStyleEngine(
             canvas.drawText(text, x, eraseBaseline, clearPaint)
             clearPaint.style = Paint.Style.FILL
             canvas.drawText(text, x, eraseBaseline, clearPaint)
+        }
+        paint.shader = null
+        val gradientEnabled = config.preset == Settings.TextEffectPreset.COLOR_GRADIENT
+        if (gradientEnabled) {
+            paint.shader = android.graphics.LinearGradient(
+                rect.left, rect.top, rect.right, rect.bottom,
+                intArrayOf(0xFF45D7FF.toInt(), 0xFF8B65FF.toInt(), 0xFFFF6FB5.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP,
+            )
         }
         if (paint.textSize > 0f) {
             val strokeColor = if (config.preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
