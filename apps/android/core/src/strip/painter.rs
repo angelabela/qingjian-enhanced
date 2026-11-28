@@ -45,6 +45,9 @@ pub struct StripPainter {
     /// 渲染器的连续行下标 -> 原始候选下标（云候选被独立显示）。
     candidate_indices: Vec<usize>,
 
+    /// 与 frame_id 同步的原始候选文本，防止同索引旧布局套到新候选上。 
+    candidate_texts: Vec<String>,
+
     /// 原始候选中有 emoji 的下标。
     emoji: Vec<usize>,
     theme_id: String,
@@ -67,6 +70,7 @@ impl StripPainter {
             content: RenderFrame::default(),
             frame_id: 0,
             candidate_indices: Vec::new(),
+            candidate_texts: Vec::new(),
             emoji: Vec::new(),
             theme_id: "default".to_owned(),
             candidate_weight: 400,
@@ -125,6 +129,7 @@ impl StripPainter {
         }
         self.content_signature = signature.finish();
         self.candidate_indices = visible_indices(&frame.candidates);
+        self.candidate_texts = frame.candidates.iter().map(|candidate| candidate.text.clone()).collect();
         // Emoji 下标覆盖所有候选，包括被独立追加到 Kotlin 侧的云候选；
         // Kotlin 用自己的 wordRect 取得补充候选区域，再统一绘制彩色 Emoji。
         self.emoji = frame
@@ -172,6 +177,7 @@ impl StripPainter {
                 candidates_top: 0,
                 background: 0,
                 candidate_indices: self.candidate_indices.clone(),
+                candidate_texts: self.candidate_texts.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
@@ -217,6 +223,7 @@ impl StripPainter {
                 candidates_top: 0,
                 background: 0,
                 candidate_indices: self.candidate_indices.clone(),
+                candidate_texts: self.candidate_texts.clone(),
                 hits: Vec::new(),
                 preedit_edges: Vec::new(),
                 preedit_top: 0.0,
@@ -232,6 +239,7 @@ impl StripPainter {
             candidates_top: snapshot.candidates_top().ceil().max(0.0) as u32,
             background,
             candidate_indices: self.candidate_indices.clone(),
+                candidate_texts: self.candidate_texts.clone(),
             hits: snapshot
                 .hits
                 .iter()
