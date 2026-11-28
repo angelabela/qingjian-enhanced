@@ -1613,6 +1613,7 @@ class QingjianInputMethodService :
         panel?.bar?.setGestureSelection(-1)
         if (commit && selected in shownCandidates.indices) {
             pendingCandidateCommitIndex = selected
+            panel?.bar?.animateCandidateCommit(selected)
             cancelPendingCandidateRerank()
             composer.select(originalCandidateIndex(selected))
         }
@@ -1622,6 +1623,7 @@ class QingjianInputMethodService :
 
     override fun onSelect(index: Int) {
         pendingCandidateCommitIndex = index
+        panel?.bar?.animateCandidateCommit(index)
         cancelPendingCandidateRerank()
         composer.select(originalCandidateIndex(index))
     }
