@@ -79,6 +79,7 @@ class FunctionPanel(
             prefs.getInt(Settings.KEY_CANDIDATE_TEXT_COLOR, 0) != 0 ||
             prefs.getInt(Settings.KEY_KEYBOARD_TEXT_COLOR, 0) != 0 ||
             prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0) != 0 ||
+            prefs.getInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0) != 0 ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_CANDIDATE_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL ||
             Settings.FontWeight.of(prefs.getString(Settings.KEY_KEYBOARD_FONT_WEIGHT, prefs.getString(Settings.KEY_FONT_WEIGHT, null))) != Settings.FontWeight.NORMAL
     }
@@ -424,6 +425,19 @@ class FunctionPanel(
                     selected = selectedCandidateSelectionEffect == index, virtualId = 52000 + index,
                 )
             }
+            val selectionColorTop = selectionTop + ink.dp(112f)
+            val selectionColorLeft = card.left + ink.dp(14f)
+            val selectionColorRight = card.right - ink.dp(14f)
+            val selectionHsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(currentCandidateSelectionColor(), selectionHsv)
+            result += AccessibilityElement("候选栏选中框颜色，色相 ${selectionHsv[0].toInt()} 度",
+                RectF(selectionColorLeft, selectionColorTop - ink.dp(12f), selectionColorRight, selectionColorTop + ink.dp(12f)),
+                rangeMin = 0f, rangeMax = 360f, rangeCurrent = selectionHsv[0],
+                onSetProgress = { value -> updateTextSlider(selectionColorLeft +
+                    (selectionColorRight - selectionColorLeft) * (value / 360f), 3) }, virtualId = 52010)
+            result += AccessibilityElement("恢复候选栏选中框主题色",
+                RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f), card.right - ink.dp(10f), selectionTop + ink.dp(94f)),
+                virtualId = 52011)
             val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))
             accessibilityScrollElement("文字效果设置列表，可滚动", viewport, effectScroll, virtualId = 1000003)?.let(result::add)
             return result.mapNotNull { element ->
@@ -755,6 +769,8 @@ class FunctionPanel(
     private fun textSizeKey() = if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_FONT_SIZE else Settings.KEY_KEY_FONT_SIZE
     private fun textWeightKey() = if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_FONT_WEIGHT else Settings.KEY_KEYBOARD_FONT_WEIGHT
     private fun currentTextColor(): Int = Settings.preferences(context).getInt(textColorKey(), 0).takeIf { it != 0 } ?: palette.text
+    private fun currentCandidateSelectionColor(): Int = Settings.preferences(context)
+        .getInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0).takeIf { it != 0 } ?: palette.brand
     private fun currentTextSize(): Int = Settings.preferences(context).getInt(textSizeKey(),
         if (selectedTextTarget == 0) selectedCandidateFontSize else Settings.preferences(context).getInt(Settings.KEY_KEY_FONT_SIZE, 20)).coerceIn(1, 50)
     private fun currentTextWeight(): Settings.FontWeight = Settings.FontWeight.of(
@@ -792,7 +808,7 @@ class FunctionPanel(
         val presetRowTop = targetTopForScroll + ink.dp(218f)
         val rowStepForScroll = ink.dp(82f)
         val selectionTopForScroll = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll + ink.dp(8f)
-        val contentBottom = selectionTopForScroll + ink.dp(64f)
+        val contentBottom = selectionTopForScroll + ink.dp(128f)
         effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
@@ -963,12 +979,38 @@ class FunctionPanel(
             ink.round(canvas, bounds, 8f, if (selected) palette.functionalKey else palette.surface)
             ink.fill.style = android.graphics.Paint.Style.STROKE
             ink.fill.strokeWidth = ink.dp(if (selected) 1.25f else 0.6f)
-            ink.fill.color = if (selected) palette.brand else palette.faint
+            ink.fill.color = if (selected) currentCandidateSelectionColor() else palette.faint
             canvas.drawRoundRect(bounds, ink.dp(8f), ink.dp(8f), ink.fill)
             ink.fill.style = android.graphics.Paint.Style.FILL
-            ink.text(canvas, label, 8.5f, if (selected) palette.brand else palette.text, bounds.centerX(), bounds.centerY(),
+            ink.text(canvas, label, 8.5f, if (selected) currentCandidateSelectionColor() else palette.text, bounds.centerX(), bounds.centerY(),
                 maxWidth = selectionWidth - ink.dp(3f))
         }
+        val selectionColor = currentCandidateSelectionColor()
+        val selectionColorLabelY = selectionTop + ink.dp(82f)
+        ink.textStart(canvas, "选中框颜色 RGB", 11f, palette.text,
+            card.left + ink.dp(14f), selectionColorLabelY, card.right - ink.dp(112f))
+        val selectionRestoreRect = RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f),
+            card.right - ink.dp(10f), selectionTop + ink.dp(94f))
+        ink.round(canvas, selectionRestoreRect, 9f, palette.functionalKey)
+        ink.text(canvas, "恢复主题色", 9.5f, palette.text, selectionRestoreRect.centerX(), selectionRestoreRect.centerY())
+        val selectionColorY = selectionTop + ink.dp(112f)
+        val selectionColorRect = RectF(left, selectionColorY - ink.dp(6f), right, selectionColorY + ink.dp(6f))
+        ink.fill.shader = android.graphics.LinearGradient(selectionColorRect.left, 0f, selectionColorRect.right, 0f,
+            rainbow, null, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(selectionColorRect, ink.dp(6f), ink.dp(6f), ink.fill)
+        ink.fill.shader = null
+        ink.fill.style = android.graphics.Paint.Style.STROKE
+        ink.fill.strokeWidth = ink.dp(1f)
+        ink.fill.color = palette.text
+        canvas.drawRoundRect(selectionColorRect, ink.dp(6f), ink.dp(6f), ink.fill)
+        ink.fill.style = android.graphics.Paint.Style.FILL
+        val selectionHsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(selectionColor, selectionHsv)
+        val selectionMarkerX = left + (right - left) * (selectionHsv[0] / 360f)
+        ink.fill.color = android.graphics.Color.WHITE
+        canvas.drawCircle(selectionMarkerX, selectionColorY, ink.dp(7f), ink.fill)
+        ink.fill.color = selectionColor
+        canvas.drawCircle(selectionMarkerX, selectionColorY, ink.dp(4.5f), ink.fill)
         canvas.restore()
     }
 
@@ -1103,11 +1145,16 @@ class FunctionPanel(
                 contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
                 contentY in (controlsTop + ink.dp(104f))..(controlsTop + ink.dp(132f)) ->
                     if (event.x < card.centerX()) 1 else 2
-                else -> -1
+                else -> {
+                    val rowTop = targetTop + ink.dp(218f)
+                    val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(82f) + ink.dp(8f)
+                    if (contentY in (selectionTop + ink.dp(98f))..(selectionTop + ink.dp(126f))) 3 else -1
+                }
             }
             val sliderTrackY = when (slider) {
                 0 -> controlsTop + ink.dp(49f)
                 1, 2 -> controlsTop + ink.dp(118f)
+                3 -> targetTop + ink.dp(218f) + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(82f) + ink.dp(120f)
                 else -> -1f
             }
             val trackLeft = when (slider) {
@@ -1181,6 +1228,10 @@ class FunctionPanel(
                 val index = (fraction * (Settings.FontWeight.entries.size - 1)).roundToInt()
                 setTextChoice(textWeightKey(), Settings.FontWeight.entries[index].name)
             }
+            3 -> Settings.preferences(context).edit().putInt(
+                Settings.KEY_CANDIDATE_SELECTION_COLOR,
+                android.graphics.Color.HSVToColor(floatArrayOf(fraction * 360f, 0.86f, 1f)),
+            ).apply()
         }
         invalidate()
     }
@@ -1253,6 +1304,8 @@ class FunctionPanel(
                 if (restoreThemeRect.contains(x, contentY)) {
                     // 写入 0 表示不保存自定义色，绘制与输入时自动跟随当前主题色。
                     setTextInt(textColorKey(), 0)
+                    if (selectedTextTarget == 0) Settings.preferences(context).edit()
+                        .putInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0).apply()
                     invalidate()
                     return
                 }
@@ -1325,6 +1378,15 @@ class FunctionPanel(
                         actions.refreshKeyboardSettings()
                         invalidate()
                     }
+                    return
+                }
+                val selectionRestoreRect = RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f),
+                    card.right - ink.dp(10f), selectionTop + ink.dp(94f))
+                if (selectionRestoreRect.contains(x, contentY)) {
+                    Settings.preferences(context).edit()
+                        .putInt(Settings.KEY_CANDIDATE_SELECTION_COLOR, 0).apply()
+                    actions.refreshKeyboardSettings()
+                    invalidate()
                     return
                 }
             }
