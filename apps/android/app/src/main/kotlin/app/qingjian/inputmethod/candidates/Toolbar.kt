@@ -348,10 +348,6 @@ class Toolbar(
             }
         }
         canvas.restore()
-        line.strokeWidth = density
-        line.color = palette.faint
-        canvas.drawLine(logoSlot, cy - 12 * density, logoSlot, cy + 12 * density, line)
-        canvas.drawLine(divider, cy - 12 * density, divider, cy + 12 * density, line)
         if (liquidGlassEnabled) drawLiquidGlassIcon(canvas, Icon.HIDE, viewWidth - hideSlot / 2, cy, 24 * density, backdrop, viewWidth)
         else {
             stroke.shader = null
