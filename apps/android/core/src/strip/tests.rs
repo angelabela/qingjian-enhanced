@@ -110,6 +110,29 @@ fn cloud_candidates_are_left_for_the_android_cloud_suggestion_row() {
 }
 
 #[test]
+fn malformed_input_fragments_are_removed_before_layout_and_do_not_take_slots() {
+    let candidates = vec![
+        candidate(":fhd", &[]),
+        candidate(":xoxfpfdnBadm", &[]),
+        candidate("1:zhud", &[]),
+        candidate("2:cy", &[]),
+        candidate("hello", &[]),
+        candidate("你好", &[]),
+    ];
+    assert_eq!(visible_indices(&candidates), vec![4, 5]);
+    let rendered = rows(&candidates, 1.0, chars);
+    assert_eq!(rendered.len(), 2);
+    assert_eq!(rendered[0].text, "hello");
+    assert_eq!(rendered[1].text, "你好");
+}
+
+#[test]
+fn ordinary_colons_inside_valid_text_are_not_filtered() {
+    let candidates = vec![candidate("a:b", &[]), candidate("1st", &[])];
+    assert_eq!(visible_indices(&candidates), vec![0, 1]);
+}
+
+#[test]
 fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
     let mut cloud = candidate("云端词", &[]);
     cloud.cloud = true;
