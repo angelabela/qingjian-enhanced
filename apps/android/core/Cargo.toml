@@ -28,6 +28,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+candle-core.workspace = true
+candle-nn.workspace = true
+anyhow = "1.0"
 
 [dev-dependencies]
 # 测试里固定界面语言，比对中文选项名
