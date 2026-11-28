@@ -500,8 +500,8 @@ class CandidateStrip(
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
             val revealSave = canvas.save()
-            applyCandidateReveal(canvas, index, candidateRect)
             val candidateRect = RectF(word.left, word.top + shift, word.right, word.bottom + shift)
+            applyCandidateReveal(canvas, index, candidateRect)
             val animated = image.emoji.contains(index) && animatedEmojiCount < 2 &&
                 emojiAnimations.draw(canvas, candidate.text, candidateRect)
             // 只统计真正成功绘制的动画；未收录的 Emoji 静态回退，不占用另外两个动画名额。
