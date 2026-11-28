@@ -8,6 +8,7 @@ mod cloud;
 mod error;
 mod frame;
 mod handle;
+pub mod handwriting;
 mod jni;
 mod options;
 mod session;
