@@ -72,13 +72,14 @@ class CatalogPanel(
     private var downY = 0f
     private var holdRawX = 0f
     private var tracking = false
+    private var animatedHoldItem: String? = null
     private val location = IntArray(2)
 
     private val gridScroll = scrollable(false) { x, y -> grid.contains(x, y) }
 
     private val top = Tabs(ink, scrollable(true) { _, _ -> false }, Tabs.Style.UNDERLINE).apply {
-        labels = if (symbols) listOf("符号", "Emoji") else listOf("Emoji", "颜文字")
-        selected = if (symbols) symbolEmojiPage else emojiTop
+        labels = if (symbols) emptyList() else listOf("Emoji", "颜文字")
+        selected = emojiTop
     }
 
     private val emojiAnimationsDelegate = lazy { NotoEmojiAnimations(context, this) }
@@ -96,12 +97,7 @@ class CatalogPanel(
     }
 
     /** 当前大类下的分类：符号就是全部；表情看顶上选的是 Emoji 还是颜文字。 */
-    private fun sections() = when {
-        symbols && top.selected == 1 -> emojiSections
-        symbols -> all
-        top.selected == 1 -> kaomoji
-        else -> emoji
-    }
+    private fun sections() = if (symbols) all else if (top.selected == 1) kaomoji else emoji
 
     private val section get() = sections().getOrNull(categories.selected)
 
@@ -133,7 +129,7 @@ class CatalogPanel(
     /** 一行几格：emoji 八格；符号一字一格六格（网格窄了四格），宽的（颜文字、单位）四格或两格，总是偶数。 */
     private fun columns(): Int {
         val section = section ?: return 1
-        if (symbols && top.selected == 1) return 8
+        if (!symbols && top.selected == 0) return 8
         if (!symbols) return if (section.name == Catalog.KAOMOJI) 3 else 8
         val widest = section.items.maxOfOrNull { item -> item.sumOf { if (it.code < 0x80) 6 else 10 } } ?: 10
         return when {
@@ -241,7 +237,7 @@ class CatalogPanel(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (!symbols) drawHeader(canvas, top) else top.draw(canvas)
+        if (!symbols) drawHeader(canvas, top)
         drawGrid(canvas)
         if (symbols) drawSide(canvas)
         drawBottom(canvas)
@@ -269,14 +265,7 @@ class CatalogPanel(
             for (column in 0 until columns) {
                 val item = items.getOrNull(row * columns + column) ?: break
                 val cx = grid.left + cellWidth * (column + 0.5f)
-                if (symbols && top.selected == 1) {
-                    val cell = RectF(grid.left + cellWidth * column, y,
-                        grid.left + cellWidth * (column + 1), y + rowHeight)
-                    if (!emojiAnimations.draw(canvas, item, cell)) {
-                        ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
-                            maxWidth = cellWidth - ink.dp(8f))
-                    }
-                } else {
+                if (true) {
                     ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
                         maxWidth = cellWidth - ink.dp(8f))
                 }
@@ -351,9 +340,7 @@ class CatalogPanel(
 
             y > bottom.top || categoryColumn.contains(x, y) -> categories.indexAt(x, y)?.let {
                 categories.selected = it
-                if (symbols && top.selected == 0) symbolSection = it
-                else if (symbols) symbolEmojiSection = it
-                else emojiSection = it
+                if (symbols) symbolSection = it else emojiSection = it
                 gridScroll.reset()
             }
 
@@ -375,13 +362,7 @@ class CatalogPanel(
     private fun chooseTop(index: Int) {
         if (index == top.selected) return
         top.selected = index
-        if (symbols) {
-            symbolEmojiPage = index
-            if (emojiAnimationsDelegate.isInitialized()) {
-                if (index == 1) emojiAnimations.resumeAll() else emojiAnimations.pauseAll()
-            }
-            symbolSection = 0
-        } else {
+        if (!symbols) {
             emojiTop = index
             emojiSection = 0
         }
@@ -435,7 +416,11 @@ class CatalogPanel(
         Haptics.hold(context)
         holdRawX = rawX
         tracking = false
-        choices = listOf(item) + if (symbols && top.selected == 0) emptyList() else Catalog.skinTones(item)
+        choices = listOf(item) + if (symbols) emptyList() else Catalog.skinTones(item)
+        if (!symbols && emojiTop == 0) {
+            emojiAnimations.resumeAll()
+            animatedHoldItem = item
+        }
         popup.show(
             choices.map { ChoicePopup.Item(it) }, initial = 0,
             fingerScreenX = screenCentreX(), bottom = pressedCell.top, centred = true,
@@ -461,11 +446,15 @@ class CatalogPanel(
 
                 MotionEvent.ACTION_UP -> {
                     popup.finish()?.let { commit(choices[it]) }
+                    animatedHoldItem = null
+                    if (emojiAnimationsDelegate.isInitialized()) emojiAnimations.pauseAll()
                     release()
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
                     popup.finish()
+                    animatedHoldItem = null
+                    if (emojiAnimationsDelegate.isInitialized()) emojiAnimations.pauseAll()
                     release()
                 }
             }
@@ -483,18 +472,18 @@ class CatalogPanel(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (symbols && top.selected == 1 && emojiAnimationsDelegate.isInitialized()) emojiAnimations.resumeAll()
+        if (animatedHoldItem != null && emojiAnimationsDelegate.isInitialized()) emojiAnimations.resumeAll()
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         if (emojiAnimationsDelegate.isInitialized()) emojiAnimations.pauseAll()
+        animatedHoldItem = null
         if (popup.showing) popup.finish()
     }
 
     private fun drawPressed(canvas: Canvas) {
         val item = pressed ?: return
-        if (popup.showing) return
         val grow = pressedCell.width() * 0.15f
         val height = pressedCell.height() * 1.15f
         val bottom = pressedCell.top - ink.dp(2f)
@@ -506,7 +495,9 @@ class CatalogPanel(
         ink.round(canvas, bubble, 12f, palette.keyShadow)
         bubble.offset(0f, -ink.density)
         ink.round(canvas, bubble, 12f, palette.surface)
-        ink.text(
+        val animated = animatedHoldItem == item && !symbols &&
+            emojiAnimations.draw(canvas, item, bubble)
+        if (!animated) ink.text(
             canvas, item, if (symbols) 26f else 36f, palette.text, bubble.centerX(), bubble.centerY(),
             maxWidth = bubble.width() - ink.dp(8f),
         )
