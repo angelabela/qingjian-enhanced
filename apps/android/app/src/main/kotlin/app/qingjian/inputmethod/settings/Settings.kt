@@ -54,8 +54,6 @@ data class Settings(
     val keyboardCandidateSwipe: Boolean = false,
     /** 在键盘区域连续书写并在抬手后调用离线手写识别；与键盘区域滑动选词互斥。 */
     val keyboardHandwriting: Boolean = false,
-    /** 键盘区域连续叠写多个汉字，并通过单字模型切分组成词语候选。 */
-    val keyboardHandwritingWords: Boolean = false,
     /** 键位排法：缺省是 [Arrangement.STANDARD]，另一套挪动了几个键的位置，见 [Arrangement]。 */
     val arrangement: Arrangement,
     /** 双拼方案（Core 的方案名，同 PC 的 `[general] shuangpin`），键盘选「双拼」时用。 */
@@ -243,6 +241,7 @@ data class Settings(
         const val KEY_SPACE_CURSOR = "space_cursor"
         const val KEY_KEYBOARD_CANDIDATE_SWIPE = "keyboard_candidate_swipe"
         const val KEY_KEYBOARD_HANDWRITING = "keyboard_handwriting"
+        /** 兼容旧版本「手写找词」设置，升级后合并进统一手写入口。 */
         const val KEY_KEYBOARD_HANDWRITING_WORDS = "keyboard_handwriting_words"
         const val KEY_FLICK_CLEAR = "flick_clear"
         const val KEY_ARRANGEMENT = "arrangement"
@@ -360,9 +359,9 @@ data class Settings(
                 keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, true) &&
                     !prefs.getBoolean(KEY_KEYBOARD_HANDWRITING, false) &&
                     !prefs.getBoolean(KEY_KEYBOARD_HANDWRITING_WORDS, false),
-                keyboardHandwriting = prefs.getBoolean(KEY_KEYBOARD_HANDWRITING, false) &&
-                    !prefs.getBoolean(KEY_KEYBOARD_HANDWRITING_WORDS, false),
-                keyboardHandwritingWords = prefs.getBoolean(KEY_KEYBOARD_HANDWRITING_WORDS, false),
+                // 旧版「手写找词」合并到同一个手写入口，避免两个重复开关。
+                keyboardHandwriting = prefs.getBoolean(KEY_KEYBOARD_HANDWRITING, false) ||
+                    prefs.getBoolean(KEY_KEYBOARD_HANDWRITING_WORDS, false),
                 arrangement = Arrangement.entries.firstOrNull { it.name == prefs.getString(KEY_ARRANGEMENT, null) }
                     ?: Arrangement.STANDARD,
                 shuangpinScheme = prefs.getString(KEY_SHUANGPIN, null) ?: DEFAULT_SHUANGPIN,
