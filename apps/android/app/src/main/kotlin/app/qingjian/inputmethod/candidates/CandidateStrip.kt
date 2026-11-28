@@ -93,6 +93,9 @@ class CandidateStrip(
     private var textFadeActive = false
 
     fun onCandidatesChanged() = emojiAnimations.onCandidatesChanged()
+    fun isEmojiCandidate(index: Int): Boolean = image?.emoji?.contains(index) == true
+    fun resumeEmojiForLongPress() = emojiAnimations.resumeForLongPress()
+    fun pauseEmojiAfterLongPress() = emojiAnimations.pauseAll()
     fun pauseAll() = emojiAnimations.pauseAll()
     fun resumeAll() = emojiAnimations.resumeAll()
 
