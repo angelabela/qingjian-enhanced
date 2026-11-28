@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">青简</string>
+    <string name="app_name">简墨输入法</string>
     <string name="sprite_service_desc">授权后，小精灵通过准星定位屏幕文字，提供翻译、复制以及电话号码、网址和验证码识别。</string>
     <string name="subtype_pinyin">拼音</string>
     <string name="tagline">打字的时候，顺便学一门语言</string>
 
-    <string name="setup_enable">先在系统设置里启用青简</string>
+    <string name="setup_enable">先在系统设置里启用简墨输入法</string>
     <string name="setup_enable_note">启用后回到这里，再切换成青简</string>
-    <string name="setup_pick">当前输入法还不是青简</string>
+    <string name="setup_pick">当前输入法还不是简墨输入法</string>
     <string name="setup_pick_note">切换后就能在任何输入框里用</string>
     <string name="setup_go">去启用</string>
     <string name="setup_switch">切换</string>
@@ -134,21 +134,21 @@
     <string name="gloss_fill_title">补充译词</string>
     <string name="gloss_fill_note">候选没有译词时，上屏后让云端补一条，以后就有了；只发这个词</string>
     <string name="gloss_fill_unavailable">填好接口地址、模型和密钥后可开启</string>
-    <string name="process_text_label">青简翻译</string>
-    <string name="process_text_title">青简翻译</string>
+    <string name="process_text_label">简墨翻译</string>
+    <string name="process_text_title">简墨翻译</string>
     <string name="process_text_source">原文</string>
     <string name="process_text_result">译文</string>
     <string name="process_text_translating">翻译中…</string>
-    <string name="process_text_failed">翻译失败，检查青简「设置 → 云端大模型」</string>
+    <string name="process_text_failed">翻译失败，检查简墨「设置 → 云端大模型」</string>
     <string name="process_text_timeout">翻译失败，服务没有回应，检查网络</string>
     <string name="process_text_empty">翻译失败，服务没有给出译文</string>
     <string name="process_text_retry">重试</string>
-    <string name="process_text_no_cloud">先在青简「设置 → 云端大模型」里填好接口和密钥</string>
+    <string name="process_text_no_cloud">先在简墨「设置 → 云端大模型」里填好接口和密钥</string>
     <string name="process_text_settings">去设置</string>
     <string name="process_text_copy">复制</string>
     <string name="process_text_replace">替换</string>
     <string name="process_text_copied">已复制译文</string>
-    <string name="translate_no_cloud">快捷翻译要先在青简「设置 → 云端大模型」里填好接口和密钥</string>
+    <string name="translate_no_cloud">快捷翻译要先在简墨「设置 → 云端大模型」里填好接口和密钥</string>
     <string name="translate_needs_setup">快捷翻译要先填写云端大模型，点这里去设置</string>
     <string name="voice_needs_setup">语音输入要先选好识别服务，点这里去设置</string>
     <string name="clipboard_limit_value">%1$d 条</string>
@@ -379,6 +379,8 @@
     <string name="clear_failed">清空失败</string>
 
     <string name="about_version">版本 %1$s · 预览版</string>
+    <string name="about_derivative_title">开源项目与二次开发</string>
+    <string name="about_derivative_note">简墨输入法基于开源项目「青简输入法」（angelabela/qingjian-enhanced）进行二次开发。原项目代码、作者版权声明及各项开源许可证继续有效；本项目不主张原项目及第三方组件的原创权利。项目来源：https://github.com/angelabela/qingjian-enhanced</string>
     <string name="about_local_title">全部在本机</string>
     <string name="about_local_note">打字、词库、学习数据和统计都只在这台手机上；只有填了云端大模型或语音识别，才会把要翻译的文字或录音发给那家服务</string>
     <string name="about_license_title">开源许可</string>
