@@ -755,6 +755,9 @@ class KeyboardView(
                 invalidate()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
+                    event.getPointerId(event.actionIndex) != handwritingPointer
+                ) return true
                 if (pointerIndex >= 0) addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
                 // 抬笔只结束当前笔画；保留之前笔画，允许同一个字分多笔写。
                 handwritingPointer = -1
