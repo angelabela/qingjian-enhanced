@@ -715,10 +715,7 @@ class CandidateBarView(
                 } else postInvalidateOnAnimation()
             }
             if (expandable) drawExpand(canvas)
-            // 视频背景模式下候选栏与键盘共用同一动态画面，不绘制底部分界线。
-            if (!transparentBackground) {
-                canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
-            }
+            // 候选栏底部不再绘制横向下划分界线，避免与选中框/主题边缘产生重叠。
             drawCommitFly(canvas)
             Unit
         }
