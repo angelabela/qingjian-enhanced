@@ -48,7 +48,7 @@
     <application
         android:name=".QingjianApp"
         android:allowBackup="false"
-        android:icon="@drawable/ic_brand"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Qingjian">
