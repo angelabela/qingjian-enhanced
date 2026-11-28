@@ -35,6 +35,11 @@ pub fn strokes_to_tensor(
 
     let range_x = (max_x - min_x).max(1.0);
     let range_y = (max_y - min_y).max(1.0);
+    // 使用统一比例缩放并居中，而不是分别拉伸 X/Y。
+    // 独立拉伸会把窄字、长横和斜笔画压扁/拉宽，改变模型实际看到的字形结构。
+    let scale = range_x.max(range_y).max(1.0);
+    let offset_x = (scale - range_x) * 0.5;
+    let offset_y = (scale - range_y) * 0.5;
 
     let n = xs.len();
     let mut features = Vec::with_capacity(n * 5);
@@ -43,10 +48,10 @@ pub fn strokes_to_tensor(
     let mut prev_y = ys[0];
 
     for i in 0..n {
-        let x_norm = (xs[i] - min_x) / range_x;
-        let y_norm = (ys[i] - min_y) / range_y;
-        let dx = (xs[i] - prev_x) / range_x;
-        let dy = (ys[i] - prev_y) / range_y;
+        let x_norm = (xs[i] - min_x + offset_x) / scale;
+        let y_norm = (ys[i] - min_y + offset_y) / scale;
+        let dx = (xs[i] - prev_x) / scale;
+        let dy = (ys[i] - prev_y) / scale;
 
         features.push(x_norm);
         features.push(y_norm);
