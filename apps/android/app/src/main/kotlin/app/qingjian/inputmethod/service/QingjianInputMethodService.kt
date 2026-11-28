@@ -2244,45 +2244,78 @@ class QingjianInputMethodService :
         panel?.bar?.show("", emptyList(), animateCandidates = false)
     }
 
-    /** 后台执行本机 ochwpro 单字识别；候选显示 500ms 后默认首选自动上屏。 */
+    /** 后台执行本机 StrokeTransformer 识别；几何重采样保留笔画曲线，本地上下文模型只重排已有候选。 */
     override fun onHandwriting(strokesJson: String) {
         val request = ++handwritingRequestId
+        val connection = currentInputConnection
+        val before = runCatching { connection?.getTextBeforeCursor(96, 0)?.toString().orEmpty() }.getOrDefault("")
+        val after = runCatching { connection?.getTextAfterCursor(48, 0)?.toString().orEmpty() }.getOrDefault("")
         val strokeStats = runCatching {
             val strokes = org.json.JSONObject(strokesJson).getJSONArray("strokes")
             var points = 0
             for (i in 0 until strokes.length()) points += strokes.getJSONArray(i).length()
             "strokes=${strokes.length()} points=$points"
         }.getOrDefault("stroke_stats=invalid")
-        android.util.Log.i("QJ_HANDWRITING", "request mode=char $strokeStats")
+        android.util.Log.i("QJ_HANDWRITING", "request mode=offline-hybrid $strokeStats context_before=${before.length()} context_after=${after.length()}")
         Thread({
             val inference = runCatching { engine.recognizeHandwriting(strokesJson) }
             inference.exceptionOrNull()?.let { android.util.Log.e("QJ_HANDWRITING", "offline character recognition failed", it) }
             val raw = inference.getOrNull()
             if (raw == null) android.util.Log.e("QJ_HANDWRITING", "offline character recognition returned null")
-            val texts = runCatching {
-                val array = org.json.JSONArray(raw ?: return@runCatching emptyList<String>())
+            val parsed = runCatching {
+                val array = org.json.JSONArray(raw ?: return@runCatching emptyList<Pair<String, Double>>())
                 buildList {
                     for (i in 0 until array.length()) {
                         val item = array.optJSONObject(i) ?: continue
                         val text = item.optString("label")
-                        if (text.isNotBlank() && text != "?" && text !in this) add(text)
+                        val score = item.optDouble("score", 0.0).takeIf { it.isFinite() } ?: 0.0
+                        if (text.isNotBlank() && text != "?" && none { it.first == text }) add(text to score)
                     }
                 }
             }.getOrDefault(emptyList())
+            val texts = parsed.map { it.first }
+            val topScore = parsed.firstOrNull()?.second ?: 0.0
             Handler(Looper.getMainLooper()).post {
                 if (request != handwritingRequestId || !isInputViewShown) return@post
                 if (texts.isEmpty()) {
                     toast("没有识别到字符，请放慢书写并稍后停笔")
                     return@post
                 }
+                fun display(ranked: List<String>) {
+                    if (request != handwritingRequestId || !isInputViewShown) return
+                    val finalTexts = ranked.filter { it in texts }.distinct() + texts.filterNot { it in ranked }
+                    handwritingCandidates = finalTexts
+                    panel?.bar?.show("", finalTexts.map { Candidate(it, emptyList()) })
+                    AppLog.info("[HANDWRITING] mode=offline-hybrid candidate_count=${finalTexts.size} top_score=${"%.4f".format(java.util.Locale.ROOT, topScore)} context_rerank=${ranked != texts}")
+                    // 低置信度时不自动提交，保留候选让用户确认，避免模型猜错后直接上屏。
+                    // 上下文模型正在重排时也不提前提交，防止旧顺序抢先上屏。
+                    if (topScore >= 0.92 && !(LocalAiModelManager.isEnabled(this@QingjianInputMethodService) &&
+                                LocalAiModelManager.isInstalled(this@QingjianInputMethodService) &&
+                                finalTexts.size > 1 && (before.isNotBlank() || after.isNotBlank()))
+                    ) {
+                        val autoCommit = Runnable {
+                            if (request == handwritingRequestId && handwritingCandidates === finalTexts) onSelect(0)
+                        }
+                        handwritingAutoCommit = autoCommit
+                        handwritingAutoCommitHandler.postDelayed(autoCommit, 900L)
+                    }
+                }
                 handwritingCandidates = texts
                 panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
-                AppLog.info("[HANDWRITING] mode=char candidate_count=" + texts.size)
-                val autoCommit = Runnable {
-                    if (request == handwritingRequestId && handwritingCandidates === texts) onSelect(0)
+                val useLocalContext = texts.size > 1 && (before.isNotBlank() || after.isNotBlank()) &&
+                    LocalAiModelManager.isEnabled(this@QingjianInputMethodService) &&
+                    LocalAiModelManager.isInstalled(this@QingjianInputMethodService)
+                if (useLocalContext) {
+                    // 此模型只在本地已安装且用户启用时运行；不发网络请求、不生成新字，只能重排识别候选。
+                    LocalAiModelManager.rerankCandidates(
+                        this@QingjianInputMethodService, before, after, "手写识别", texts,
+                    ) { ranked ->
+                        if (request != handwritingRequestId || !isInputViewShown) return@rerankCandidates
+                        display(ranked ?: texts)
+                    }
+                } else {
+                    display(texts)
                 }
-                handwritingAutoCommit = autoCommit
-                handwritingAutoCommitHandler.postDelayed(autoCommit, 500L)
             }
         }, "qingjian-handwriting").start()
     }
