@@ -40,3 +40,60 @@ pub fn recognize_from_dir(dir: &Path, strokes: &[Vec<(f32,f32)>], top_k: usize) 
  if guard.is_none() { *guard = Some(Inference::from_dir(dir)?); }
  guard.as_ref().expect("initialized").predict(strokes, top_k)
 }
+
+/// 多字叠写识别：对连续笔画做动态规划切分，再组合单字模型候选。
+/// 限制笔画数与每字最大笔画数，避免低端设备上出现无界 CPU 推理。
+pub fn recognize_words_from_dir(dir: &Path, strokes: &[Vec<(f32,f32)>]) -> anyhow::Result<Vec<TopK>> {
+ let n = strokes.len();
+ anyhow::ensure!(n > 0 && n <= 24, "word handwriting stroke count out of range: {n}");
+ let cell = MODEL.get_or_init(|| Mutex::new(None));
+ let mut guard = cell.lock().map_err(|_| anyhow::anyhow!("handwriting model lock poisoned"))?;
+ if guard.is_none() { *guard = Some(Inference::from_dir(dir)?); }
+ let model = guard.as_ref().expect("initialized");
+ let mut dp = vec![f32::NEG_INFINITY; n + 1];
+ let mut previous = vec![0usize; n + 1];
+ let mut cache: Vec<Vec<Option<Vec<TopK>>>> = vec![vec![None; n + 1]; n + 1];
+ dp[0] = 0.0;
+ for end in 1..=n {
+  let start_min = end.saturating_sub(12);
+  for start in start_min..end {
+   let candidates = model.predict(&strokes[start..end], 3)?;
+   let best = candidates.first().map(|c| c.score.max(1e-12).ln()).unwrap_or(-30.0);
+   cache[start][end] = Some(candidates);
+   let total = dp[start] + best + if start == 0 { 0.0 } else { -0.3 };
+   if total > dp[end] { dp[end] = total; previous[end] = start; }
+  }
+ }
+ let mut ranges = Vec::new();
+ let mut cursor = n;
+ while cursor > 0 {
+  let start = previous[cursor];
+  anyhow::ensure!(start < cursor, "invalid handwriting segmentation");
+  ranges.push((start, cursor));
+  cursor = start;
+ }
+ ranges.reverse();
+ let mut best_text = String::new();
+ let mut parts: Vec<Vec<TopK>> = Vec::new();
+ for (start, end) in &ranges {
+  let candidates = cache[*start][*end].clone().unwrap_or_default();
+  if let Some(best) = candidates.first() { best_text.push_str(&best.label); }
+  parts.push(candidates);
+ }
+ let mut result = vec![TopK { label: best_text.clone(), score: dp[n].exp(), class_idx: 0 }];
+ // 给每个分段尝试第二候选，生成少量可纠错的整词变体。
+ for index in 0..parts.len() {
+  if result.len() >= 10 { break; }
+  if parts[index].len() < 2 { continue; }
+  let mut text = String::new();
+  for (part_index, candidates) in parts.iter().enumerate() {
+   if let Some(candidate) = candidates.get(if part_index == index { 1 } else { 0 }) {
+    text.push_str(&candidate.label);
+   }
+  }
+  if !text.is_empty() && !result.iter().any(|item| item.label == text) {
+   result.push(TopK { label: text, score: parts[index][1].score, class_idx: 0 });
+  }
+ }
+ Ok(result)
+}
