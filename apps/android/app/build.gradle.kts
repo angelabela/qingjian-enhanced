@@ -245,12 +245,14 @@ val downloadOchwproModel by tasks.registering {
     description = "Bundle the official ochwpro offline handwriting model and labels"
     val target = layout.buildDirectory.dir("ochwpro-model")
     outputs.dir(target)
+    outputs.upToDateWhen { false }
     doLast {
         val dir = target.get().asFile
         dir.mkdirs()
-        fun download(path: String, file: String) {
+        fun download(path: String, file: String, expectedBytes: Long) {
             val destination = dir.resolve(file)
-            if (destination.isFile && destination.length() > 100) return
+            if (destination.isFile && destination.length() == expectedBytes) return
+            destination.delete()
             val url = URL("https://raw.githubusercontent.com/ximeiorg/ochwpro/main/" + path)
             val connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 20000
@@ -259,11 +261,11 @@ val downloadOchwproModel by tasks.registering {
                 if (connection.responseCode !in 200..299) throw GradleException("ochwpro download failed: " + path + " HTTP " + connection.responseCode)
                 connection.inputStream.use { input -> destination.outputStream().buffered().use { output -> input.copyTo(output) } }
             } finally { connection.disconnect() }
-            if (destination.length() < 100) throw GradleException("ochwpro asset is empty: " + file)
+            if (destination.length() != expectedBytes) throw GradleException("ochwpro asset size mismatch: " + file + " expected=" + expectedBytes + " actual=" + destination.length())
         }
-        download("ochw-wasm/ochw_model_fp16.safetensors", "ochw_model_fp16.safetensors")
-        download("ochw-wasm/char_index.json", "char_index.json")
-        download("LICENSE", "LICENSE-MIT.txt")
+        download("ochw-wasm/ochw_model_fp16.safetensors", "ochw_model_fp16.safetensors", 3451280L)
+        download("ochw-wasm/char_index.json", "char_index.json", 51317L)
+        download("LICENSE", "LICENSE-MIT.txt", 1063L)
         logger.lifecycle("Bundled ochwpro offline handwriting model (" + dir.resolve("ochw_model_fp16.safetensors").length() + " bytes)")
     }
 }
