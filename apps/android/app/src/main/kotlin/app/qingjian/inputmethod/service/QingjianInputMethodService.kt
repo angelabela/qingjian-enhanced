@@ -108,6 +108,8 @@ class QingjianInputMethodService :
     private var lastInputEditorPackage: String? = null
     private var lastInputEditorFieldId: Int? = null
     private var quickAiSequence = 0
+    @Volatile private var handwritingRequestId = 0
+    private var handwritingCandidates: List<String>? = null
     private val quickAiHandler = Handler(Looper.getMainLooper())
     private var quickAiLoadingRunnable: Runnable? = null
     private var quickAiLoadingConnection: InputConnection? = null
@@ -1627,6 +1629,15 @@ class QingjianInputMethodService :
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
     override fun onSelect(index: Int) {
+        val handwriting = handwritingCandidates
+        if (handwriting != null) {
+            val text = handwriting.getOrNull(index) ?: return
+            handwritingCandidates = null
+            handwritingRequestId++
+            currentInputConnection?.commitText(text, 1)
+            panel?.bar?.show("", emptyList(), animateCandidates = false)
+            return
+        }
         pendingCandidateCommitIndex = index
         panel?.bar?.animateCandidateCommit(index)
         cancelPendingCandidateRerank()
@@ -2211,6 +2222,34 @@ class QingjianInputMethodService :
     override fun onVoiceRelease(cancel: Boolean) = voice.release(cancel)
 
     override fun onSwipe(input: String) = composer.onSwipe(input)
+
+    /** 在后台线程执行本机 ochwpro 推理；结果作为临时候选显示，点击后直接上屏。 */
+    override fun onHandwriting(strokesJson: String) {
+        val request = ++handwritingRequestId
+        Thread({
+            val raw = runCatching { engine.recognizeHandwriting(strokesJson) }.getOrNull()
+            val texts = runCatching {
+                val array = org.json.JSONArray(raw ?: return@runCatching emptyList<String>())
+                buildList {
+                    for (i in 0 until array.length()) {
+                        val item = array.optJSONObject(i) ?: continue
+                        val text = item.optString("label")
+                        if (text.isNotBlank() && text != "?" && text !in this) add(text)
+                    }
+                }
+            }.getOrDefault(emptyList())
+            Handler(Looper.getMainLooper()).post {
+                if (request != handwritingRequestId || !isInputViewShown) return@post
+                if (texts.isEmpty()) {
+                    toast("没有识别到字符，请再写一次")
+                    return@post
+                }
+                handwritingCandidates = texts
+                panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
+                AppLog.info("[HANDWRITING] ochwpro candidates=" + texts.joinToString(""))
+            }
+        }, "qingjian-handwriting").start()
+    }
 
     /** 删除键可中止面板 AI，也可中止空格手势触发的快捷 AI 请求。 */
     private fun cancelQuickAiGeneration(): Boolean {
