@@ -102,14 +102,6 @@ class KeyboardSettingsActivity : PageActivity() {
                         .apply()
                     rebuild()
                 },
-                ui.toggle(R.string.keyboard_handwriting_words_title, R.string.keyboard_handwriting_words_note, settings.keyboardHandwritingWords) { enabled ->
-                    prefs.edit()
-                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, enabled)
-                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING, false)
-                        .putBoolean(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, false)
-                        .apply()
-                    rebuild()
-                },
                 ui.toggle(R.string.voice_hold_space_title, R.string.voice_hold_space_note, settings.voiceHoldSpace) {
                     prefs.edit().putBoolean(Settings.KEY_VOICE_HOLD_SPACE, it).apply()
                 },
