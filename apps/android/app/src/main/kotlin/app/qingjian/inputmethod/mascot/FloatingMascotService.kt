@@ -186,8 +186,7 @@ class FloatingMascotService : Service() {
         if (action == SpriteTranslateService.ACTION_MASCOT_DRAG_STOP) {
             pet.removeCallbacks(dragMoveDispatch)
             dragMovePosted = false
-            // 松手前先同步最后一个位置，再发 STOP，复制命中点不会落后一帧。
-            sendMascotDragBroadcast(SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE)
+            // STOP 广播本身携带最新坐标，复制命中点直接使用松手位置。
         }
         sendMascotDragBroadcast(action)
     }
