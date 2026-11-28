@@ -49,11 +49,11 @@ class SpriteTranslateService : AccessibilityService() {
         const val EXTRA_MASCOT_HEIGHT = "mascot_height"
         const val EXTRA_MASCOT_MODE = "mascot_mode"
         const val SPRITE = 56f        // 小精灵
-        const val CROSS = 88f         // 准星本身
-        const val DIST = 84f          // 准星中心到小精灵中心的距离
+        const val CROSS = 22f         // 准星缩至原尺寸的 1/4
+        const val DIST = 66f          // 准星中心到小精灵中心的距离
         const val BOX = 2 * (DIST + CROSS / 2)   // 准星窗口：能装下任何方向的准星
         const val IDLE_MS = 350L      // 手指停住多久后收起准星
-        const val QUERY_GAP_MS = 60L  // 取字节流
+        const val QUERY_GAP_MS = 48L  // 取字节节流；视觉跟随不受此间隔限制
         const val DEBOUNCE_MS = 120L  // 指到新文字后等多久再翻译
         const val BUBBLE_HOLD_MS = 3000L
         const val MAX_CHARS = 400
@@ -148,8 +148,8 @@ class SpriteTranslateService : AccessibilityService() {
         crossLp = lp(dp(BOX), dp(BOX), touchable = false)
 
         bubble = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            setPadding(dp(12f), dp(8f), dp(12f), dp(8f)); maxWidth = dp(280f)
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dp(9f), dp(6f), dp(9f), dp(6f)); maxWidth = dp(240f)
             background = GradientDrawable().apply { cornerRadius = dp(12f).toFloat(); setColor(0xE6202124.toInt()) }
             alpha = 0f
         }
@@ -237,9 +237,14 @@ class SpriteTranslateService : AccessibilityService() {
     private fun placeAll() {
         val cx = mascotX + mascotWidth / 2
         val cy = mascotY + mascotHeight / 2
-        crossLp.x = cx - crossLp.width / 2
-        crossLp.y = cy - crossLp.height / 2
-        wm.updateViewLayout(crossView, crossLp)
+        val nextX = cx - crossLp.width / 2
+        val nextY = cy - crossLp.height / 2
+        if (crossLp.x != nextX || crossLp.y != nextY) {
+            crossLp.x = nextX
+            crossLp.y = nextY
+            wm.updateViewLayout(crossView, crossLp)
+        }
+        crossView.invalidate()
     }
 
     /** 当前方位还在屏幕内就不动（避免来回跳）；否则按优先级换到另一侧，并带动画过渡。 */
@@ -261,7 +266,8 @@ class SpriteTranslateService : AccessibilityService() {
         targetOff = to
         offsetAnim?.cancel()
         offsetAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 160
+            duration = 110
+            interpolator = DecelerateInterpolator(1.25f)
             addUpdateListener {
                 val f = it.animatedFraction
                 crossView.offX = from.x + (to.x - from.x) * f
@@ -510,11 +516,11 @@ private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
 
     private val d = ctx.resources.displayMetrics.density
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 2f * d; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; strokeWidth = 1.2f * d; strokeCap = Paint.Cap.ROUND
         color = 0xFF2EE6A8.toInt()
     }
-    private val edge = Paint(line).apply { strokeWidth = 4.5f * d; color = 0x99000000.toInt() }
-    private val link = Paint(line).apply { strokeWidth = 1.5f * d; pathEffect = DashPathEffect(floatArrayOf(6f * d, 5f * d), 0f) }
+    private val edge = Paint(line).apply { strokeWidth = 2.8f * d; color = 0x99000000.toInt() }
+    private val link = Paint(line).apply { strokeWidth = 1.1f * d; pathEffect = DashPathEffect(floatArrayOf(4f * d, 3.5f * d), 0f) }
 
     override fun onDraw(c: Canvas) {
         val r = reveal
@@ -523,7 +529,7 @@ private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
         val cx = width / 2f; val cy = height / 2f
         val px = cx + offX * r; val py = cy + offY * r        // 收起时回到小精灵中心
         val arm = sizePx / 2f * r
-        val ring = 9f * d * r
+        val ring = 3.2f * d * r
         edge.alpha = a * 0x99 / 255; line.alpha = a; link.alpha = a / 2
 
         c.drawLine(cx, cy, px, py, link)                      // 小精灵到准星的虚线
