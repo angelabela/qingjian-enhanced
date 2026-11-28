@@ -111,6 +111,11 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             onSetProgress = { setColorHue(2, it) },
         )
         addColors(pressGlowColorTop(), "按键按下发光颜色", PRESET_COLORS, PRESET_COLORS.indexOf(pressGlowColor))
+        elements += AccessibilityElement(
+            "按键按下发光颜色跟随主题",
+            RectF(card.right - ink.dp(76f), pressGlowColorTop() - offset + ink.dp(3f),
+                card.right - ink.dp(10f), pressGlowColorTop() - offset + ink.dp(29f)),
+        )
         addColors(borderTop(), "按键边框效果", PRESET_COLORS, PRESET_COLORS.indexOf(borderColor))
         addColors(backgroundTop(), "按键背景效果", PRESET_COLORS, PRESET_COLORS.indexOf(backgroundColor and 0x00FFFFFF or 0xFF000000.toInt()))
         elements += AccessibilityElement(
@@ -153,7 +158,13 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
         drawToggle(canvas, edgeGlowTop(), "边缘发光效果", edgeGlow, "按键轮廓增加柔和外扩光晕")
         drawToggle(canvas, threeDimensionalTop(), "立体按键效果", threeDimensional, "增加底部厚度阴影与顶部高光")
         drawToggle(canvas, pressGlowTop(), "按下发光效果", pressGlow, "按住按键发光，松手后渐淡；关闭不影响按键触摸")
-        drawColorChoice(canvas, pressGlowColorTop(), "按下发光颜色（默认跟随主题）", pressGlowColor, isBackground = false)
+        drawColorChoice(canvas, pressGlowColorTop(), "按下发光颜色", pressGlowColor, isBackground = false)
+        val themeColorBounds = RectF(
+            card.right - ink.dp(76f), pressGlowColorTop() + ink.dp(3f),
+            card.right - ink.dp(10f), pressGlowColorTop() + ink.dp(29f),
+        )
+        ink.round(canvas, themeColorBounds, 7f, palette.functionalKey)
+        ink.text(canvas, "跟随主题", 9.5f, palette.text, themeColorBounds.centerX(), themeColorBounds.centerY())
         drawColorChoice(canvas, borderTop(), "按键边框效果 RGB", borderColor, isBackground = false)
         drawColorChoice(canvas, backgroundTop(), "按键背景效果 RGB", backgroundColor, isBackground = true)
         val restoreBounds = RectF(card.left + ink.dp(14f), restoreTop() + ink.dp(4f), card.right - ink.dp(14f), restoreTop() + ink.dp(40f))
@@ -234,7 +245,12 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
             prefs.edit().putBoolean(KEY_PRESS_GLOW, !pressGlow).apply()
             notifyChanged()
         } else if (contentY >= pressGlowColorTop() && contentY < borderTop()) {
-            selectColorAt(x, contentY, pressGlowColorTop(), KEY_PRESS_GLOW_COLOR, isBackground = false)
+            if (x >= card.right - ink.dp(80f) && contentY <= pressGlowColorTop() + ink.dp(32f)) {
+                prefs.edit().remove(KEY_PRESS_GLOW_COLOR).apply()
+                notifyChanged()
+            } else {
+                selectColorAt(x, contentY, pressGlowColorTop(), KEY_PRESS_GLOW_COLOR, isBackground = false)
+            }
         } else if (contentY >= borderTop() && contentY < backgroundTop()) {
             selectColorAt(x, contentY, borderTop(), KEY_BORDER_COLOR, isBackground = false)
         } else if (contentY >= backgroundTop() && contentY < restoreTop()) {
