@@ -34,7 +34,7 @@ internal class NotoEmojiAnimations(
         }
     }
     private val compositions = LruCache<String, LottieComposition>(24)
-    private val drawables = object : LruCache<String, LottieDrawable>(2) {
+    private val drawables = object : LruCache<String, LottieDrawable>(16) {
         override fun entryRemoved(evicted: Boolean, key: String, oldValue: LottieDrawable, newValue: LottieDrawable?) {
             oldValue.cancelAnimation()
             oldValue.callback = null
