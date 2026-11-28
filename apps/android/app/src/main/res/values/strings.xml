@@ -231,6 +231,8 @@
     <string name="keyboard_candidate_swipe_note">在键盘按键区域左右滑动，预选并上屏候选栏字词；与空格键滑动选词使用相同规则。开启后会自动关闭键盘区域手写找字</string>
     <string name="keyboard_handwriting_title">键盘区域手写找字</string>
     <string name="keyboard_handwriting_note">在键盘区域连续书写，抬起手指后由本机离线手写模型识别并显示候选；开启后会自动关闭键盘区域滑动选词</string>
+    <string name="keyboard_handwriting_words_title">键盘区域手写找词</string>
+    <string name="keyboard_handwriting_words_note">在键盘区域连续叠写多个汉字，停笔后识别并组合成词语候选；与手写找字、键盘区域滑动选词互斥</string>
     <string name="swipe_input_title">滑行输入</string>
     <string name="swipe_input_note">手指不抬起，依次划过要打的字母；打不出来就照常点</string>
     <string name="flick_symbols_title">上滑输入</string>
