@@ -1253,9 +1253,20 @@ class QingjianInputMethodService :
             Settings.GestureAction.ENTER -> composer.onKey(Key.Enter())
             Settings.GestureAction.SWITCH_LANGUAGE -> composer.onKey(Key.Language)
             Settings.GestureAction.BACKSPACE -> composer.onKey(Key.Backspace)
+            Settings.GestureAction.COMMIT_SELECTED_CANDIDATE -> commitSelectedCandidateToEditor()
             Settings.GestureAction.AI_CHAT_QUICK -> runQuickAiChat()
             Settings.GestureAction.AI_EXPRESSION_QUICK -> runQuickAiExpression()
         }
+    }
+
+    /** 将候选栏当前选中的词提交到当前编辑框；保留重排后的显示索引映射。 */
+    private fun commitSelectedCandidateToEditor() {
+        if (shownCandidates.isEmpty()) return
+        val index = (panel?.bar?.selectedCandidateIndex ?: 0).coerceIn(0, shownCandidates.lastIndex)
+        pendingCandidateCommitIndex = index
+        panel?.bar?.animateCandidateCommit(index)
+        cancelPendingCandidateRerank()
+        composer.select(originalCandidateIndex(index))
     }
 
     /** 输入框优先；输入框为空时才读取系统剪贴板最新的纯文本内容。 */

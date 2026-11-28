@@ -845,6 +845,9 @@ class ClipboardPanel(
                 14f, palette.gloss, width / 2f, list.top + ink.dp(60f),
             )
         }
+        // 所有卡片先绘制到同一图层，再统一施加列表顶部渐隐遮罩。
+        // 这样相邻卡片、卡片间距和文字共用同一条连续 alpha 曲线，不会逐项出现遮罩接缝。
+        val listLayer = canvas.saveLayer(list, null)
         for (i in 0 until count) {
             val top = list.top + tops[i] - listScroll.offset
             val bottom = list.top + bottoms[i] - listScroll.offset
@@ -853,26 +856,25 @@ class ClipboardPanel(
                 list.left + ink.dp(CARD_MARGIN_DP), top,
                 list.right - ink.dp(CARD_MARGIN_DP), bottom,
             )
-            val fadingAtTop = !showingPhrases && top < list.top && bottom > list.top
-            val save = if (fadingAtTop) canvas.saveLayer(cardBounds, null) else canvas.save()
+            val save = canvas.save()
             if (!showingPhrases && swipeLongPressed && i == swipeClipIndex && swipeOffsetX != 0f) {
                 canvas.translate(swipeOffsetX, 0f)
             }
             drawCard(canvas, i, top, bottom)
-            if (fadingAtTop) {
-                // DST_IN 遮罩只作用于越过列表顶边的第一张卡片：上缘透明，向下逐渐恢复，
-                // 卡片文字和圆角容器一起淡出；不再在列表顶部覆盖一条固定模糊色带。
-                val fadeHeight = minOf(ink.dp(58f), list.height()).coerceAtLeast(1f)
-                itemFadeMaskPaint.shader = LinearGradient(
-                    0f, list.top, 0f, list.top + fadeHeight,
-                    intArrayOf(Color.TRANSPARENT, Color.WHITE),
-                    null, Shader.TileMode.CLAMP,
-                )
-                canvas.drawRect(cardBounds, itemFadeMaskPaint)
-                itemFadeMaskPaint.shader = null
-            }
             canvas.restoreToCount(save)
         }
+        if (!showingPhrases) {
+            val fadeHeight = minOf(ink.dp(58f), list.height()).coerceAtLeast(1f)
+            itemFadeMaskPaint.maskFilter = null
+            itemFadeMaskPaint.shader = LinearGradient(
+                0f, list.top, 0f, list.top + fadeHeight,
+                intArrayOf(Color.TRANSPARENT, Color.WHITE),
+                null, Shader.TileMode.CLAMP,
+            )
+            canvas.drawRect(list.left, list.top, list.right, list.top + fadeHeight, itemFadeMaskPaint)
+            itemFadeMaskPaint.shader = null
+        }
+        canvas.restoreToCount(listLayer)
         canvas.restore()
         if (showingPhrases) {
             groups.setBounds(ink.dp(6f), groupTop(), width - ink.dp(6f), height.toFloat() - ink.dp(4f))

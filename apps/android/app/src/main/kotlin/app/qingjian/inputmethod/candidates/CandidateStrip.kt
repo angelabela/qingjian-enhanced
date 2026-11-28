@@ -31,7 +31,7 @@ class CandidateStrip(
     private val customTextColor = styleConfig.firstCandidate.color.takeIf { it != candidateTextColor }
     val textStyles = CandidateTextStyleEngine(
         density, 20f * scaledDensity * textScale, candidateTextColor, fontWeight, styleConfig,
-        preeditBaseTextSize = 18f * scaledDensity,
+        preeditBaseTextSize = 16f * scaledDensity,
     )
     private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).also { it.color = markColor }
     private val glossColor = markColor
@@ -418,16 +418,31 @@ class CandidateStrip(
             ((barHeight - frame.height) / 2).coerceAtLeast(0f)
         } else 0f
         val candidate = candidates.getOrNull(index)
-        // 常用语文字超过候选区 1/3 时，按实际显示（省略后）的宽度计算中文部分。
-        if (candidate != null && maxTextWidth != null && maxTextWidth > 0f) {
+        // 高亮框按 Android 实际绘制的汉字字形收紧，避免直接沿用 Rust 单元格高度。
+        if (candidate != null) {
             val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE else CandidateTextStyleEngine.Role.CANDIDATE
             val paint = textStyles.paint(role)
-            val display = TextUtils.ellipsize(candidate.text, paint, maxTextWidth, TextUtils.TruncateAt.END).toString()
-            val displayWidth = (paint.measureText(display) + 12f * density)
-                .coerceAtMost(maxTextWidth + 12f * density)
-                .coerceAtMost(wordBounds.width())
-            result.set(wordBounds.centerX() - displayWidth / 2f, wordBounds.top,
-                wordBounds.centerX() + displayWidth / 2f, wordBounds.bottom)
+            val originalSize = paint.textSize
+            val availableWidth = minOf(
+                (wordBounds.width() - 2f * density).coerceAtLeast(1f),
+                maxTextWidth?.takeIf { it > 0f } ?: Float.MAX_VALUE,
+            )
+            val display = TextUtils.ellipsize(candidate.text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
+            val measuredWidth = paint.measureText(display).coerceAtLeast(1f)
+            val measuredHeight = (paint.descent() - paint.ascent()).coerceAtLeast(1f)
+            val availableHeight = (wordBounds.height() - 2f * density).coerceAtLeast(1f)
+            val fitScale = minOf(1f, availableWidth / measuredWidth, availableHeight / measuredHeight)
+            paint.textSize = originalSize * fitScale
+            val glyphWidth = paint.measureText(display)
+            val metrics = paint.fontMetrics
+            val pad = 2.5f * density
+            result.set(
+                wordBounds.centerX() - glyphWidth / 2f - pad,
+                wordBounds.centerY() + (metrics.ascent + metrics.descent) / 2f - pad,
+                wordBounds.centerX() + glyphWidth / 2f + pad,
+                wordBounds.centerY() + (metrics.descent - metrics.ascent) / 2f + pad,
+            )
+            paint.textSize = originalSize
         }
         // Rust 的释义 hit 框通常覆盖整格；用实际英文/词性宽度收紧后再并入高亮框。
         val glossPaint = textStyles.paint(CandidateTextStyleEngine.Role.GLOSS)
@@ -444,10 +459,25 @@ class CandidateStrip(
                 }
                 hits.forEachIndexed { segmentIndex, hit ->
                     val text = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
-                    val measured = glossPaint.measureText(text).coerceAtMost(hit.rect.width())
-                    if (measured <= 0f) return@forEachIndexed
-                    result.union(RectF(hit.rect.centerX() - measured / 2f, hit.rect.top + shift,
-                        hit.rect.centerX() + measured / 2f, hit.rect.bottom + shift))
+                    val originalSize = glossPaint.textSize
+                    val availableWidth = (hit.rect.width() - 2f * density).coerceAtLeast(1f)
+                    val display = TextUtils.ellipsize(text, glossPaint, availableWidth, TextUtils.TruncateAt.END).toString()
+                    val measured = glossPaint.measureText(display).coerceAtLeast(1f)
+                    val measuredHeight = (glossPaint.descent() - glossPaint.ascent()).coerceAtLeast(1f)
+                    val availableHeight = (hit.rect.height() - 2f * density).coerceAtLeast(1f)
+                    val fitScale = minOf(1f, availableWidth / measured, availableHeight / measuredHeight)
+                    glossPaint.textSize = originalSize * fitScale
+                    val glyphWidth = glossPaint.measureText(display)
+                    val metrics = glossPaint.fontMetrics
+                    val centerY = hit.rect.centerY() + shift - 2.5f * density
+                    val pad = 2f * density
+                    result.union(RectF(
+                        hit.rect.centerX() - glyphWidth / 2f - pad,
+                        centerY + (metrics.ascent + metrics.descent) / 2f - pad,
+                        hit.rect.centerX() + glyphWidth / 2f + pad,
+                        centerY + (metrics.descent - metrics.ascent) / 2f + pad,
+                    ))
+                    glossPaint.textSize = originalSize
                 }
             }
         // Kotlin 追加候选（常见为「？。！」）没有 Rust 的文字格，wordRect 会覆盖整条候选栏。
@@ -606,10 +636,15 @@ class CandidateStrip(
                 hits.forEachIndexed { segmentIndex, hit ->
                     if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEachIndexed
                     val segment = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
+                    val glossRect = RectF(hit.rect).apply {
+                        if (image.candidatesTop == 0) offset(0f, shift)
+                        // 与候选字行轻微靠拢；同一矩形也供选中特效计算，保持绘制与高亮一致。
+                        offset(0f, -2.5f * density)
+                    }
                     val revealSave = canvas.save()
-                    applyCandidateReveal(canvas, candidateIndex, RectF(hit.rect))
+                    applyCandidateReveal(canvas, candidateIndex, glossRect)
                     textStyles.drawReplacing(
-                        canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS,
+                        canvas, segment, glossRect, CandidateTextStyleEngine.Role.GLOSS,
                         eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(candidateIndex),
                     )
                     canvas.restoreToCount(revealSave)

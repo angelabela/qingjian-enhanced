@@ -34,9 +34,9 @@ class SpectrumView @JvmOverloads constructor(
     var additive = true
 
     // ───────── 音频映射与平滑（估计值，按手感调）─────────
-    var floorDb = -70f
+    var floorDb = -72f
     var rangeDb = 50f
-    var attack = 0.5f      // 每 33ms 一步，上升
+    var attack = 0.58f     // 稍微加快上升响应，并略微提高低音量拾取灵敏度
     var release = 0.22f    // 每 33ms 一步，下降
 
     private val hRef = FloatArray(BARS) { REST_H }   // 单位：720px 基准下的像素

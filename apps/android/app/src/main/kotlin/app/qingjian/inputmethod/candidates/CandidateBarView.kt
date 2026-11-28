@@ -435,6 +435,14 @@ class CandidateBarView(
     /** 空格左右滑动时临时预选的候选；抬手提交，滑动过程只更新高亮。 */
     private var gestureSelectionIndex = -1
 
+    /** 当前候选栏选中项；无手势预选时使用首选词，气泡预览时跟随气泡候选。 */
+    val selectedCandidateIndex: Int
+        get() = when {
+            gestureSelectionIndex in strip.candidates.indices -> gestureSelectionIndex
+            popupIndex in strip.candidates.indices -> popupIndex
+            else -> 0
+        }
+
     /** 气泡里「删除」那一项的下标；这个候选删不了时为 -1。 */
     private var forgetItem = -1
 

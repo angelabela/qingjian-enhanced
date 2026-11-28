@@ -339,6 +339,7 @@ class KeyPainter(
         "执行回车" -> "↵"
         "切换中英文" -> "文"
         "打开扫码" -> "▦"
+        "选中候选栏文字上屏" -> "↥"
         "AI 对话一键生成" -> "✧"
         "AI 情景表达一键生成" -> "✦"
         else -> if (upward) "↑" else "↓"
@@ -454,7 +455,7 @@ class KeyPainter(
         )
 
         if (keySkin == Settings.KeySkin.ORIGINAL) {
-            fill.color = scaleAlpha(color, keyBackgroundAlpha)
+            fill.color = scaleSurfaceAlpha(color, keyBackgroundAlpha)
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
             if (keyBackgroundFrosted) {
                 // 玻璃雾面层使用真正带 alpha 的颜色，不依赖 Paint.alpha 的残留状态。
@@ -469,8 +470,8 @@ class KeyPainter(
         }
 
         // 液态玻璃键帽：渐层、高光、反射和描边都乘以同一透明度，避免只有底色变化。
-        val top = scaleAlpha(withAlpha(lighten(color, 1.28f), 0xB8), keyBackgroundAlpha)
-        val bottom = scaleAlpha(withAlpha(darken(color, 0.86f), 0xE0), keyBackgroundAlpha)
+        val top = scaleSurfaceAlpha(lighten(color, 1.28f), keyBackgroundAlpha)
+        val bottom = scaleSurfaceAlpha(darken(color, 0.86f), keyBackgroundAlpha)
         fill.shader = LinearGradient(bounds.left, bounds.top, bounds.left, bounds.bottom, top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
         fill.shader = null
@@ -514,6 +515,12 @@ class KeyPainter(
             fill.color = scaleAlpha(0x50FFFFFF, keyBackgroundAlpha)
             canvas.drawRoundRect(bounds, metrics.radius, metrics.radius, fill)
         }
+    }
+
+    /** 主键帽底色按滑块百分比设置最终不透明度；100% 始终是完全不透明。 */
+    private fun scaleSurfaceAlpha(color: Int, factor: Float): Int {
+        val alpha = (255f * factor.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
+        return (color and 0x00FFFFFF) or (alpha shl 24)
     }
 
     private fun scaleAlpha(color: Int, factor: Float): Int {
