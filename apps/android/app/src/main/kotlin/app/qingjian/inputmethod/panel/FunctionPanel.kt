@@ -231,6 +231,10 @@ class FunctionPanel(
             x >= card.left && x <= card.right &&
             y >= card.top + ink.dp(38f) && y <= card.bottom - ink.dp(6f)
     }
+    /** 键盘设置项目独立滚动，避免小屏幕上八项开关挤在同一屏。 */
+    private val toggleScroll = scrollable(false) { x, y ->
+        tabs.selected == 1 && card.contains(x, y)
+    }
 
     private val columns = 5
 
@@ -467,16 +471,19 @@ class FunctionPanel(
                 )
             }
         } else {
-            toggles.mapIndexed { index, toggle ->
-                val top = card.top + rowHeight() * index
-                AccessibilityElement(
+            toggles.mapIndexedNotNull { index, toggle ->
+                val top = card.top + rowHeight() * index - toggleScroll.offset
+                val visible = RectF(card.left, top, card.right, top + rowHeight())
+                if (!visible.intersect(card)) null else AccessibilityElement(
                     label = toggle.label + if (toggle.on) "，已开启" else "，已关闭",
-                    bounds = RectF(card.left, top, card.right, top + rowHeight()),
+                    bounds = visible,
                     selected = toggle.on,
                     checked = toggle.on,
                     virtualId = 70000 + index,
                 )
-            }
+            } + listOfNotNull(
+                accessibilityScrollElement("键盘设置列表，可滚动", RectF(card), toggleScroll, virtualId = 1000004)
+            )
         }
     }
 
@@ -1145,22 +1152,29 @@ class FunctionPanel(
         ink.icon(canvas, Icon.CHECK, cx, cy, 13f, palette.onBrand)
     }
 
-    private fun rowHeight() = card.height() / toggles.size
+    private fun rowHeight() = ink.dp(64f)
 
     private fun drawToggles(canvas: Canvas) {
+        val row = rowHeight()
+        toggleScroll.max = (toggles.size * row - card.height()).coerceAtLeast(0f)
+        canvas.save()
+        canvas.clipRect(card)
+        canvas.translate(0f, -toggleScroll.offset)
         toggles.forEachIndexed { i, toggle ->
-            val top = card.top + rowHeight() * i
-            val cy = top + rowHeight() / 2
-            val left = card.left + ink.dp(20f)
+            val top = card.top + row * i
+            val cy = top + row / 2
+            val left = card.left + ink.dp(16f)
+            val textRight = card.right - ink.dp(82f)
             if (toggle.note.isEmpty()) {
-                drawLeft(canvas, toggle.label, 16f, palette.text, left, cy)
+                ink.textStart(canvas, toggle.label, 14f, palette.text, left, cy + ink.dp(1f), textRight)
             } else {
-                drawLeft(canvas, toggle.label, 16f, palette.text, left, cy - ink.dp(10f))
-                drawLeft(canvas, toggle.note, 12f, palette.gloss, left, cy + ink.dp(12f))
+                ink.textStart(canvas, toggle.label, 14f, palette.text, left, cy - ink.dp(7f), textRight)
+                ink.textStart(canvas, toggle.note, 10f, palette.gloss, left, cy + ink.dp(13f), textRight)
             }
-            drawSwitch(canvas, card.right - ink.dp(44f), cy, toggle.on)
-            if (i > 0) ink.line(canvas, left, top, card.right - ink.dp(20f), top, palette.faint)
+            drawSwitch(canvas, card.right - ink.dp(42f), cy, toggle.on)
+            if (i > 0) ink.line(canvas, left, top, card.right - ink.dp(16f), top, palette.faint)
         }
+        canvas.restore()
     }
 
     private fun drawLeft(canvas: Canvas, value: String, sp: Float, color: Int, left: Float, cy: Float) {
@@ -1325,6 +1339,7 @@ class FunctionPanel(
             y < headerHeight -> if (!voiceEffectPage && !textEffectPage && !aiLoadingEffectPage) tabs.indexAt(x)?.let {
                 tabs.selected = it
                 lastTab = it
+                if (it == 1) toggleScroll.reset()
                 voiceEffectPage = false
             }
 
@@ -1531,7 +1546,7 @@ class FunctionPanel(
                 features.getOrNull(row * columns + column)?.run?.invoke(actions)
             }
 
-            else -> toggles.getOrNull(((y - card.top) / rowHeight()).toInt())?.let {
+            else -> toggles.getOrNull(((y - card.top + toggleScroll.offset) / rowHeight()).toInt())?.let {
                 actions.setToggle(it.key, !it.on)
                 // Settings 是键盘创建时的快照；立即重建输入视图，确保开关状态与实际绘制同步。
                 actions.refreshKeyboardSettings()
