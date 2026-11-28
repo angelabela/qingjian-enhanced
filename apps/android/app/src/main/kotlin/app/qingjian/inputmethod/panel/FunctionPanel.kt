@@ -1201,7 +1201,7 @@ class FunctionPanel(
                 else -> {
                     val rowTop = targetTop + ink.dp(218f)
                     val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(52f) + ink.dp(8f)
-                    if (contentY in (selectionTop + ink.dp(104f))..(selectionTop + ink.dp(136f))) 3 else -1
+                    if (selectedTextTarget == 0 && contentY in (selectionTop + ink.dp(104f))..(selectionTop + ink.dp(136f))) 3 else -1
                 }
             }
             val sliderTrackY = when (slider) {
@@ -1440,6 +1440,7 @@ class FunctionPanel(
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, index).apply()
                         restoreTextEffectPage = true
+                        textEffectPage = true
                         actions.refreshKeyboardSettings()
                         invalidate()
                     }
@@ -1476,6 +1477,8 @@ class FunctionPanel(
                     if (index in 0..4) {
                         Settings.preferences(context).edit()
                             .putInt(Settings.KEY_CANDIDATE_ENTRY_EFFECT, index).apply()
+                        restoreTextEffectPage = true
+                        textEffectPage = true
                         actions.refreshKeyboardSettings()
                         invalidate()
                     }
