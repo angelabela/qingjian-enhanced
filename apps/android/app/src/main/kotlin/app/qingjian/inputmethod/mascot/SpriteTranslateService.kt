@@ -551,6 +551,5 @@ private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
         c.drawLine(x, y - arm, x, y - ring, paint)
         c.drawLine(x, y + ring, x, y + arm, paint)
     }
-    }
 }
 
