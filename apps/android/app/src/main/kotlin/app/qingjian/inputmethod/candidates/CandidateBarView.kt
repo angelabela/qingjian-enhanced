@@ -480,7 +480,7 @@ class CandidateBarView(
         override fun onLongPress(e: MotionEvent) {
             val candidateIndex = strip.indexAt(e.x - strip.leftInsetPx(stripWidth) + scrollX)
             if (candidateIndex >= 0 && strip.isEmojiCandidate(candidateIndex)) {
-                strip.resumeEmojiForLongPress()
+                strip.resumeEmojiForLongPress(candidateIndex)
                 invalidate()
             } else {
                 openTranslations(e)
