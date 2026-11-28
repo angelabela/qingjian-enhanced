@@ -17,7 +17,7 @@ class AboutActivity : PageActivity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, ui.dp(28), 0, ui.dp(28))
-                addView(ImageView(context).apply { setImageResource(R.drawable.ic_brand) }, LinearLayout.LayoutParams(ui.dp(72), ui.dp(72)))
+                addView(ImageView(context).apply { setImageResource(R.mipmap.ic_launcher) }, LinearLayout.LayoutParams(ui.dp(72), ui.dp(72)))
                 addView(ui.text(getString(R.string.app_name), 22f, ui.colors.text, bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, ui.dp(14), 0, 0)
@@ -29,6 +29,7 @@ class AboutActivity : PageActivity() {
             },
             ui.group(
                 null,
+                ui.row(R.string.about_derivative_title, R.string.about_derivative_note),
                 ui.row(R.string.about_local_title, R.string.about_local_note),
                 ui.row(R.string.about_license_title, R.string.about_license_note),
             ),
