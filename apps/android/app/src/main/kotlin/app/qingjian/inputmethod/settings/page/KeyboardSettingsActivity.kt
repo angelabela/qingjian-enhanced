@@ -90,12 +90,22 @@ class KeyboardSettingsActivity : PageActivity() {
                     prefs.edit()
                         .putBoolean(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, enabled)
                         .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING, false)
+                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, false)
                         .apply()
                     rebuild()
                 },
                 ui.toggle(R.string.keyboard_handwriting_title, R.string.keyboard_handwriting_note, settings.keyboardHandwriting) { enabled ->
                     prefs.edit()
                         .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING, enabled)
+                        .putBoolean(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, false)
+                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, false)
+                        .apply()
+                    rebuild()
+                },
+                ui.toggle(R.string.keyboard_handwriting_words_title, R.string.keyboard_handwriting_words_note, settings.keyboardHandwritingWords) { enabled ->
+                    prefs.edit()
+                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING_WORDS, enabled)
+                        .putBoolean(Settings.KEY_KEYBOARD_HANDWRITING, false)
                         .putBoolean(Settings.KEY_KEYBOARD_CANDIDATE_SWIPE, false)
                         .apply()
                     rebuild()
