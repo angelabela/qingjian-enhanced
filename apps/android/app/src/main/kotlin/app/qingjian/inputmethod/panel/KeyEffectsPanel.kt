@@ -90,6 +90,8 @@ class KeyEffectsPanel(context: Context, palette: app.qingjian.inputmethod.theme.
                     "$label，第${index + 1}种${if (index == selected) "，已选中" else ""}",
                     RectF(x, y - ink.dp(3f), x + size, y + size + ink.dp(3f)),
                     selected = index == selected,
+                    checked = index == selected,
+                    role = "android.widget.RadioButton",
                 )
             }
         }

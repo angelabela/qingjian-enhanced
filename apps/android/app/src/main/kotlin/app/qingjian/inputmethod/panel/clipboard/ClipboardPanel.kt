@@ -705,6 +705,8 @@ class ClipboardPanel(
                 "常用语分组，${groups.labels[index]}" + if (index == groups.selected) "，已选中" else "",
                 bounds,
                 selected = index == groups.selected,
+                checked = index == groups.selected,
+                role = "android.widget.RadioButton",
                 virtualId = 2000 + index,
             )
         }
@@ -751,7 +753,7 @@ class ClipboardPanel(
                 groups.accessibilityScrollLabel,
                 RectF(groups.bounds),
                 virtualId = 1000001,
-                onScroll = groups::accessibilityScroll,
+                onScrollResult = groups::accessibilityScroll,
             )
         }
         return elements.mapNotNull { element ->

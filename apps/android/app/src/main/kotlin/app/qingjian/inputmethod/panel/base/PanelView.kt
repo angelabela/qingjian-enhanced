@@ -58,6 +58,8 @@ abstract class PanelView(
         val onSetProgress: ((Float) -> Unit)? = null,
         val virtualId: Int? = null,
         val onScroll: ((Int) -> Unit)? = null,
+        /** Reports whether an accessibility scroll action actually changed the viewport. */
+        val onScrollResult: ((Int) -> Boolean)? = null,
         /** Optional non-touch alternatives for drag-only operations, exposed as named TalkBack actions. */
         val onMoveUp: (() -> Unit)? = null,
         val onMoveDown: (() -> Unit)? = null,
@@ -86,9 +88,9 @@ abstract class PanelView(
             label = label,
             bounds = RectF(bounds),
             virtualId = virtualId,
-            onScroll = { direction ->
+            onScrollResult = { direction ->
                 state.stop()
-                state.drag(page * direction.coerceIn(-1, 1))
+                state.dragIfChanged(page * direction.coerceIn(-1, 1))
             },
         )
     }
@@ -141,7 +143,7 @@ abstract class PanelView(
         for (pass in 0..1) {
             for (index in elements.indices.reversed()) {
                 val element = elements[index]
-                if ((element.onScroll != null) != (pass == 1)) continue
+                if ((element.onScroll != null || element.onScrollResult != null) != (pass == 1)) continue
                 if (element.bounds.contains(x, y)) {
                     return ELEMENT_ACCESSIBILITY_BASE + accessibilityElementId(index, element)
                 }
@@ -257,7 +259,7 @@ abstract class PanelView(
                 isTabScroll && tab?.accessibilityScrollLabel?.contains("横向") == true -> "android.widget.HorizontalScrollView"
                 isTabScroll -> "android.widget.ScrollView"
                 isElement && element!!.role != null -> element!!.role!!
-                isElement && element!!.onScroll != null -> "android.widget.ScrollView"
+                isElement && (element!!.onScroll != null || element!!.onScrollResult != null) -> "android.widget.ScrollView"
                 isElement && element!!.rangeMin != null -> "android.widget.SeekBar"
                 isElement && element!!.checked != null -> "android.widget.Switch"
                 isBack || isRight || isElement -> "android.widget.Button"
@@ -268,9 +270,9 @@ abstract class PanelView(
             node.isEnabled = isEnabled && (!isElement || element!!.enabled)
             node.isVisibleToUser = isShown
             node.isFocusable = true
-            node.isClickable = isEnabled && !isTabScroll && (!isElement || (element!!.enabled && element.rangeMin == null && element.onScroll == null))
-            node.isScrollable = node.isEnabled && (isTabScroll || (isElement && element!!.onScroll != null))
-            if (node.isEnabled && (isTabScroll || (isElement && element!!.onScroll != null))) {
+            node.isClickable = isEnabled && !isTabScroll && (!isElement || (element!!.enabled && element.rangeMin == null && element.onScroll == null && element.onScrollResult == null))
+            node.isScrollable = node.isEnabled && (isTabScroll || (isElement && (element!!.onScroll != null || element!!.onScrollResult != null)))
+            if (node.isEnabled && (isTabScroll || (isElement && (element!!.onScroll != null || element!!.onScrollResult != null)))) {
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                 node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
@@ -361,7 +363,7 @@ abstract class PanelView(
                         if (!isEnabled) return false
                         val tabs = accessibilityTabs ?: return false
                         if (!tabs.accessibilityScrollable) return false
-                        tabs.accessibilityScroll(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)
+                        if (!tabs.accessibilityScroll(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)) return false
                         sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED)
                         notifyAccessibilityContentChanged()
                         invalidate()
@@ -370,8 +372,13 @@ abstract class PanelView(
                     if (virtualViewId < ELEMENT_ACCESSIBILITY_BASE) return false
                     val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
                     if (!isEnabled || !item.enabled) return false
-                    if (item.onScroll != null) {
-                        item.onScroll.invoke(if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1)
+                    if (item.onScroll != null || item.onScrollResult != null) {
+                        val direction = if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) 1 else -1
+                        val didScroll = item.onScrollResult?.invoke(direction) ?: run {
+                            item.onScroll?.invoke(direction)
+                            true
+                        }
+                        if (!didScroll) return false
                         sendPanelAccessibilityEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED)
                         notifyAccessibilityContentChanged()
                         invalidate()

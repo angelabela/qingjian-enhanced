@@ -83,6 +83,8 @@ class DynamicBackgroundPanel(
                 RectF(x, rowsTop + rowHeight + ink.dp(7f) - offset,
                     x + modeWidth, rowsTop + rowHeight + ink.dp(39f) - offset),
                 selected = DynamicBackgroundActivity.displayMode(context) == mode,
+                checked = DynamicBackgroundActivity.displayMode(context) == mode,
+                role = "android.widget.RadioButton",
             )
         }
         val frostTop = rowsTop + rowHeight * 2
@@ -106,6 +108,8 @@ class DynamicBackgroundPanel(
                 "背景光效样式，${style.second}" + if (style.first == selectedStyle) "，已选中" else "",
                 RectF(x, y - offset, x + cellWidth, y + effectCellHeight - offset),
                 selected = style.first == selectedStyle,
+                checked = style.first == selectedStyle,
+                role = "android.widget.RadioButton",
             )
         }
         val glassTop = adaptiveIconRowTop(top)

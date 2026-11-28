@@ -69,6 +69,8 @@ class KeyboardPickerPanel(
                 label = choice.label + if (chosen(choice)) "，当前输入方式" else "",
                 bounds = RectF(left, top, left + cellWidth(), top + cellHeight()),
                 selected = chosen(choice),
+                checked = chosen(choice),
+                role = "android.widget.RadioButton",
             )
         }
     }

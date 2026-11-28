@@ -147,6 +147,8 @@ class CatalogPanel(
                     "分类，${categories.labels[index]}" + if (index == categories.selected) "，已选中" else "",
                     bounds,
                     selected = index == categories.selected,
+                    checked = index == categories.selected,
+                    role = "android.widget.RadioButton",
                     virtualId = 1000 + index,
                 )
             }
@@ -208,7 +210,7 @@ class CatalogPanel(
                 categories.accessibilityScrollLabel,
                 RectF(categories.bounds),
                 virtualId = 1000001,
-                onScroll = categories::accessibilityScroll,
+                onScrollResult = categories::accessibilityScroll,
             )
         }
         return elements.mapNotNull { element ->

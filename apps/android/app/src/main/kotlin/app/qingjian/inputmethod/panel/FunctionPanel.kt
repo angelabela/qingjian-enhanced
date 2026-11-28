@@ -272,7 +272,14 @@ class FunctionPanel(
                 val visibleBounds = RectF(bounds)
                 if (visibleBounds.intersect(viewport)) {
                     val selected = (if (selectedVoiceStyle == -1) VoicePanel.ANIMATION_RANDOM_INDEX else selectedVoiceStyle) == index
-                    result += AccessibilityElement(label + if (selected) "，已选中" else "", visibleBounds, selected = selected, virtualId = 10000 + index)
+                    result += AccessibilityElement(
+                        label + if (selected) "，已选中" else "",
+                        visibleBounds,
+                        selected = selected,
+                        checked = selected,
+                        role = "android.widget.RadioButton",
+                        virtualId = 10000 + index,
+                    )
                 }
             }
             val swatchLeft = card.left + ink.dp(12f)
@@ -285,6 +292,8 @@ class FunctionPanel(
                     "频谱渐变颜色，" + gradientLabels[index] + if (selectedVoiceSpectrumGradient == index) "，已选中" else "",
                     RectF(left, card.bottom - ink.dp(119f), left + swatchWidth, card.bottom - ink.dp(84f)),
                     selected = selectedVoiceSpectrumGradient == index,
+                    checked = selectedVoiceSpectrumGradient == index,
+                    role = "android.widget.RadioButton",
                     virtualId = 20000 + index,
                 )
             }
@@ -327,6 +336,8 @@ class FunctionPanel(
                     label + if (selectedAiLoadingStyle == index) "，已选中" else "",
                     RectF(left, top, left + itemWidth, top + ink.dp(60f)),
                     selected = selectedAiLoadingStyle == index,
+                    checked = selectedAiLoadingStyle == index,
+                    role = "android.widget.RadioButton",
                     virtualId = 40000 + index,
                 )
             }.filter { RectF.intersects(it.bounds, RectF(card.left, rowTop, card.right, card.bottom - ink.dp(6f))) }
@@ -351,7 +362,11 @@ class FunctionPanel(
                 val left = card.left + ink.dp(14f) + index * (targetWidth + ink.dp(8f))
                 result += AccessibilityElement(label + if (selectedTextTarget == index) "，当前编辑区域" else "",
                     RectF(left, targetTop, left + targetWidth, targetTop + ink.dp(36f)),
-                    selected = selectedTextTarget == index, virtualId = 50000 + index)
+                    selected = selectedTextTarget == index,
+                    checked = selectedTextTarget == index,
+                    role = "android.widget.RadioButton",
+                    virtualId = 50000 + index,
+                )
             }
             val controlsTop = card.top + ink.dp(84f) - effectScroll.offset
             val left = card.left + ink.dp(14f)
@@ -372,7 +387,10 @@ class FunctionPanel(
                     "字体颜色预设 #" + Integer.toHexString(color and 0x00FFFFFF) +
                         if (currentTextColor() == color) "，已选中" else "",
                     RectF(swatchLeft, colorSwatchY - ink.dp(3f), swatchLeft + ink.dp(18f), colorSwatchY + ink.dp(15f)),
-                    selected = currentTextColor() == color, virtualId = 50100 + index,
+                    selected = currentTextColor() == color,
+                    checked = currentTextColor() == color,
+                    role = "android.widget.RadioButton",
+                    virtualId = 50100 + index,
                 )
             }
             val currentSize = currentTextSize().toFloat()
@@ -411,7 +429,11 @@ class FunctionPanel(
                 val top = rowTop + row * rowStep
                 result += AccessibilityElement("文字效果，" + preset.label + if (selectedTextPreset == preset) "，已选中" else "",
                     RectF(itemLeft, top, itemLeft + itemWidth, top + ink.dp(74f)),
-                    selected = selectedTextPreset == preset, virtualId = 51000 + index)
+                    selected = selectedTextPreset == preset,
+                    checked = selectedTextPreset == preset,
+                    role = "android.widget.RadioButton",
+                    virtualId = 51000 + index,
+                )
             }
             val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
             CANDIDATE_SELECTION_LABELS.forEachIndexed { index, label ->
@@ -421,7 +443,10 @@ class FunctionPanel(
                 result += AccessibilityElement(
                     "候选栏选中效果，$label" + if (selectedCandidateSelectionEffect == index) "，已选中" else "",
                     RectF(itemLeft, selectionTop + ink.dp(22f), itemLeft + itemWidth, selectionTop + ink.dp(60f)),
-                    selected = selectedCandidateSelectionEffect == index, virtualId = 52000 + index,
+                    selected = selectedCandidateSelectionEffect == index,
+                    checked = selectedCandidateSelectionEffect == index,
+                    role = "android.widget.RadioButton",
+                    virtualId = 52000 + index,
                 )
             }
             val viewport = RectF(card.left, card.top + ink.dp(6f), card.right, card.bottom - ink.dp(6f))

@@ -29,6 +29,13 @@ class ScrollState(context: Context, friction: Float = 0.015f) {
         offset = (offset + delta).coerceIn(0f, max)
     }
 
+    /** Drag once and report whether the visible offset actually changed. */
+    fun dragIfChanged(delta: Float): Boolean {
+        val previous = offset
+        drag(delta)
+        return offset != previous
+    }
+
     fun fling(velocity: Float) {
         scroller.fling(0, offset.toInt(), 0, -velocity.toInt(), 0, 0, 0, max.toInt())
     }
