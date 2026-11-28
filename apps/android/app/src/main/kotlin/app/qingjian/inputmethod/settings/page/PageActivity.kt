@@ -45,6 +45,10 @@ abstract class PageActivity : Activity() {
         }
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isSmoothScrollingEnabled = true
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(column)
             post { scrollTo(0, scrolled) }
         }
