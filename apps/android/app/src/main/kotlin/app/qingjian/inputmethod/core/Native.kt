@@ -35,6 +35,9 @@ internal object Native {
     /** 本机 ochwpro 离线手写识别，输入笔画 JSON，返回 Top-K 字符候选 JSON。 */
     external fun recognizeHandwriting(modelDir: String, strokesJson: String): String?
 
+    /** 多字叠写：用单字模型按笔画边界动态切分并返回词语候选。 */
+    external fun recognizeHandwritingWords(modelDir: String, strokesJson: String): String?
+
     external fun select(handle: Long, index: Int): String?
 
     /** 展开面板的「全部 / 单字」：切换这段组句的单字模式。 */
