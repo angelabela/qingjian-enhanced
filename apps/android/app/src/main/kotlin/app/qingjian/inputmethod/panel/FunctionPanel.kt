@@ -978,6 +978,7 @@ class FunctionPanel(
                 canvas.drawCircle(bounds.right - ink.dp(8f), bounds.top + ink.dp(8f), ink.dp(3f), ink.fill)
             }
         }
+        if (selectedTextTarget == 0) {
         val selectionTop = rowTop + ((labels.size + 1) / 2) * rowStep + ink.dp(8f)
         ink.textStart(canvas, "候选栏选中效果", 11.5f, palette.text,
             card.left + ink.dp(14f), selectionTop + ink.dp(13f), card.right - ink.dp(14f))
@@ -1046,6 +1047,7 @@ class FunctionPanel(
             ink.fill.style = android.graphics.Paint.Style.FILL
             ink.text(canvas, label, 8f, if (selected) palette.brand else palette.text,
                 bounds.centerX(), bounds.centerY(), maxWidth = entryWidth - ink.dp(2f))
+        }
         }
         canvas.restore()
     }
@@ -1182,7 +1184,7 @@ class FunctionPanel(
             val rgbY = selectionTopForRgb + ink.dp(120f) - effectScroll.offset
             val rgbHit = RectF(card.left + ink.dp(8f), rgbY - ink.dp(18f),
                 card.right - ink.dp(8f), rgbY + ink.dp(18f))
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
+            if (selectedTextTarget == 0 && event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
                 rgbHit.contains(event.x, event.y)) {
                 restoreTextEffectPage = true
                 adjustingTextSlider = 3
@@ -1426,6 +1428,7 @@ class FunctionPanel(
                     invalidate()
                     return
                 }
+                if (selectedTextTarget == 0) {
                 val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStep + ink.dp(8f)
                 if (contentY in (selectionTop + ink.dp(18f))..(selectionTop + ink.dp(64f)) &&
                     x in (card.left + ink.dp(10f))..(card.right - ink.dp(10f))) {
@@ -1479,6 +1482,7 @@ class FunctionPanel(
                     return
                 }
             }
+                }
             tabs.selected == 0 && voiceEffectPage -> {
                 val swatchTop = card.bottom - ink.dp(119f)
                 val swatchBottom = card.bottom - ink.dp(84f)
