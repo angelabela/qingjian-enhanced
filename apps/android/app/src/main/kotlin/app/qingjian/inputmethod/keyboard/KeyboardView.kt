@@ -735,6 +735,7 @@ class KeyboardView(
 
     override fun onDraw(canvas: Canvas) {
         val glowEnabled = keyEffectPrefs.getBoolean("keyboard_key_press_glow", false)
+        if (!glowEnabled) pressGlowStates.clear()
         val configuredGlow = keyEffectPrefs.getInt("keyboard_key_press_glow_color", 0)
         val glowColor = configuredGlow.takeIf { it != 0 } ?: palette.brand
         val now = android.os.SystemClock.uptimeMillis()
@@ -1057,7 +1058,7 @@ class KeyboardView(
                             voiceMode = false
                             clipboardMode = false
                         }
-                        pressed.remove(pointer)
+                        releasePressed(pointer)
                         performFlick(flicked.key, direction)
                         invalidate()
                         return true
@@ -1079,7 +1080,7 @@ class KeyboardView(
                     trail.clear()
                     if (swiped) {
                         if (pointer == editPointer) endEditShortcut()
-                        pressed.remove(pointer)
+                        releasePressed(pointer)
                         invalidate()
                         return true
                     }
@@ -1087,7 +1088,7 @@ class KeyboardView(
                 // 松手事件的坐标可能比最后一帧 MOVE 更新；释放前再做一次按钮命中检测。
                 if (pointer == spacePointer && voiceMode) trackVoice(event)
                 if (pointer == spacePointer && candidateSwipeMode) trackCursor(event)
-                val slot = pressed.remove(pointer)
+                val slot = releasePressed(pointer)
                 pressGlowStates[pointer]?.let { state ->
                     if (state.releasedAt == 0L) state.releasedAt = android.os.SystemClock.uptimeMillis()
                 }
@@ -1389,7 +1390,7 @@ class KeyboardView(
             surfaceCandidateMode = false
             surfaceCandidateCancelled = true
             surfaceCandidateLastStep = 0
-            pressed.remove(pointer)
+            releasePressed(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
@@ -1402,7 +1403,7 @@ class KeyboardView(
             val started = listener.onCandidateSwipeStart()
             surfaceCandidateMode = started
             if (!started) surfaceCandidateCancelled = true
-            pressed.remove(pointer)
+            releasePressed(pointer)
             if (pointer == trail.pointer) trail.clear()
             if (pointer == flickPointer) endFlick()
             if (pointer == editPointer) endEditShortcut()
