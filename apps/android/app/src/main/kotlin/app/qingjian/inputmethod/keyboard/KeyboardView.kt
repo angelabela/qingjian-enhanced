@@ -764,7 +764,6 @@ class KeyboardView(
         val valid = handwritingStrokes.filter { it.size >= 2 }
         if (valid.isEmpty()) {
             clearHandwriting()
-            invalidate()
             return
         }
         val json = buildString {
