@@ -52,6 +52,8 @@ data class Settings(
     val spaceCursor: Boolean,
     /** 在键盘区域左右滑动预选候选（缺省关），与空格键候选滑动共用选词逻辑。 */
     val keyboardCandidateSwipe: Boolean = false,
+    /** 在键盘区域连续书写并在抬手后调用离线手写识别；与键盘区域滑动选词互斥。 */
+    val keyboardHandwriting: Boolean = false,
     /** 键位排法：缺省是 [Arrangement.STANDARD]，另一套挪动了几个键的位置，见 [Arrangement]。 */
     val arrangement: Arrangement,
     /** 双拼方案（Core 的方案名，同 PC 的 `[general] shuangpin`），键盘选「双拼」时用。 */
@@ -238,6 +240,7 @@ data class Settings(
         const val KEY_LONG_PRESS_UPPER = "long_press_upper"
         const val KEY_SPACE_CURSOR = "space_cursor"
         const val KEY_KEYBOARD_CANDIDATE_SWIPE = "keyboard_candidate_swipe"
+        const val KEY_KEYBOARD_HANDWRITING = "keyboard_handwriting"
         const val KEY_FLICK_CLEAR = "flick_clear"
         const val KEY_ARRANGEMENT = "arrangement"
         const val KEY_SHUANGPIN = "shuangpin_scheme"
@@ -351,7 +354,8 @@ data class Settings(
                 longPressUpper = prefs.getBoolean(KEY_LONG_PRESS_UPPER, false),
                 flickClear = prefs.getBoolean(KEY_FLICK_CLEAR, true),
                 spaceCursor = prefs.getBoolean(KEY_SPACE_CURSOR, true),
-                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, true),
+                keyboardCandidateSwipe = prefs.getBoolean(KEY_KEYBOARD_CANDIDATE_SWIPE, true) && !prefs.getBoolean(KEY_KEYBOARD_HANDWRITING, false),
+                keyboardHandwriting = prefs.getBoolean(KEY_KEYBOARD_HANDWRITING, false),
                 arrangement = Arrangement.entries.firstOrNull { it.name == prefs.getString(KEY_ARRANGEMENT, null) }
                     ?: Arrangement.STANDARD,
                 shuangpinScheme = prefs.getString(KEY_SHUANGPIN, null) ?: DEFAULT_SHUANGPIN,
