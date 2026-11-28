@@ -919,7 +919,6 @@ class CandidateBarView(
             canvas.drawRect(left, 0f, scrollX + width.toFloat(), height.toFloat(), expandFill)
         }
         val cy = (strip.candidatesTop + height) / 2f
-        canvas.drawRect(left, cy - 12 * density, left + divider.strokeWidth, cy + 12 * density, divider)
         PanelIcons.draw(canvas, PanelIcons.Icon.EXPAND, left + expandSlot / 2, cy, 24 * density, expandIcon)
     }
 
