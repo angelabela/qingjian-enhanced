@@ -384,8 +384,35 @@ class CandidateStrip(
 
     /** 首选词的整体视觉区域：同时包含词条和其下方的词性/英文释义 hit 区。 */
     fun candidateEffectRect(index: Int, maxTextWidth: Float? = null): RectF? {
-        val frame = image ?: return wordRect(index)
         val result = wordRect(index) ?: return null
+        val frame = image
+        if (frame == null) {
+            // 手写候选和布局快照尚未抵达时使用回退格；选中框仍按实际字形收紧，
+            // 不把整格宽高当作字词尺寸。
+            val candidate = candidates.getOrNull(index) ?: return result
+            val role = if (index == 0) CandidateTextStyleEngine.Role.FIRST_CANDIDATE
+                else CandidateTextStyleEngine.Role.CANDIDATE
+            val paint = textStyles.paint(role)
+            val originalSize = paint.textSize
+            val availableWidth = minOf(
+                (result.width() - 6f * density).coerceAtLeast(1f),
+                maxTextWidth?.takeIf { it > 0f } ?: Float.MAX_VALUE,
+            )
+            val display = TextUtils.ellipsize(candidate.text, paint, availableWidth, TextUtils.TruncateAt.END).toString()
+            val measuredWidth = paint.measureText(display).coerceAtLeast(1f)
+            val metrics = paint.fontMetrics
+            val measuredHeight = (metrics.descent - metrics.ascent).coerceAtLeast(1f)
+            val fitScale = minOf(1f, availableWidth / measuredWidth,
+                (result.height() - 6f * density).coerceAtLeast(1f) / measuredHeight)
+            paint.textSize = originalSize * fitScale
+            val glyphWidth = paint.measureText(display)
+            val glyphHeight = paint.descent() - paint.ascent()
+            val pad = 3f * density
+            result.set(result.centerX() - glyphWidth / 2f - pad, result.centerY() - glyphHeight / 2f - pad,
+                result.centerX() + glyphWidth / 2f + pad, result.centerY() + glyphHeight / 2f + pad)
+            paint.textSize = originalSize
+            return result
+        }
         val wordBounds = RectF(result)
         val shift = if (frame.candidatesTop == 0) {
             ((barHeight - frame.height) / 2).coerceAtLeast(0f)
