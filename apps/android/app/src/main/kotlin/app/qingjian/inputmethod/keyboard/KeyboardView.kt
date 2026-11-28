@@ -135,6 +135,13 @@ class KeyboardView(
     private val pressGlowStates = HashMap<Int, PressGlowState>()
     private val pressGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    private fun releasePressed(pointer: Int): KeySlot? {
+        pressGlowStates[pointer]?.let { state ->
+            if (state.releasedAt == 0L) state.releasedAt = android.os.SystemClock.uptimeMillis()
+        }
+        return pressed.remove(pointer)
+    }
+
     private val timer = Handler(Looper.getMainLooper())
     private var backspaceRepeatStarted = false
     private val repeatBackspace = object : Runnable {
@@ -658,6 +665,7 @@ class KeyboardView(
         this.rows = rows
         this.side.enabled = side
         pressed.clear()
+        pressGlowStates.clear()
         relayout()
     }
 
@@ -1006,7 +1014,7 @@ class KeyboardView(
                     clearSurfaceCandidateSwipe()
                     if (wasGesture) {
                         if (pointer == editPointer) endEditShortcut()
-                        pressed.remove(pointer)
+                        releasePressed(pointer)
                         if (pointer == trail.pointer) trail.clear()
                         if (pointer == flickPointer) endFlick()
                         invalidate()
@@ -1019,7 +1027,7 @@ class KeyboardView(
                     if (action != null) {
                         if (pointer == flickPointer) endFlick()
                         if (pointer == trail.pointer) trail.clear()
-                        pressed.remove(pointer)
+                        releasePressed(pointer)
                         if (longPressPointer == pointer) {
                             timer.removeCallbacks(longPress)
                             longPressPointer = -1
@@ -1151,7 +1159,7 @@ class KeyboardView(
         if (dy > metrics.density * EDIT_SWIPE_DP && abs(dx) < dy * EDIT_SWIPE_MAX_SLOPE) {
             editTriggered = true
             trail.clear()
-            pressed.remove(editPointer)
+            releasePressed(editPointer)
             if (longPressPointer == editPointer) {
                 timer.removeCallbacks(longPress)
                 longPressPointer = -1
@@ -1203,7 +1211,7 @@ class KeyboardView(
             if (choicePopup.containsX(fingerX)) return
             clearChoiceState()
         }
-        pressed.remove(trail.pointer)
+        releasePressed(trail.pointer)
         if (longPressPointer == trail.pointer) {
             timer.removeCallbacks(longPress)
             longPressPointer = -1
