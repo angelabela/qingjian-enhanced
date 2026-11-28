@@ -133,6 +133,22 @@ fn ordinary_colons_inside_valid_text_are_not_filtered() {
 }
 
 #[test]
+fn raw_input_tokens_are_not_accidentally_hidden_by_the_layout_filter() {
+    // These strings can be valid literal input (IDs, abbreviations, punctuation, email/URL parts).
+    // The layout filter only removes the explicitly malformed internal prefix patterns above.
+    let candidates = vec![
+        candidate("hhw1", &[]),
+        candidate("hhgh.", &[]),
+        candidate("xoxfpfdnBadm", &[]),
+        candidate("user@example.com", &[]),
+        candidate("https://example.com", &[]),
+    ];
+    assert_eq!(visible_indices(&candidates), vec![0, 1, 2, 3, 4]);
+    let rendered = rows(&candidates, 1.0, chars);
+    assert_eq!(rendered.len(), candidates.len());
+}
+
+#[test]
 fn filtered_cloud_rows_keep_a_contiguous_display_index_mapping() {
     let mut cloud = candidate("云端词", &[]);
     cloud.cloud = true;
