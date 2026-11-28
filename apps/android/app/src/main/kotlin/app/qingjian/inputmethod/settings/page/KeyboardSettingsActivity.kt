@@ -185,7 +185,7 @@ class KeyboardSettingsActivity : PageActivity() {
 
     /** 设置栏显示所选按键真正生效的动作：自定义动作优先；沿用默认时回退到该键原有手势。 */
     private fun displayedGestureAction(settings: Settings, selectedKey: String, upward: Boolean): Settings.GestureAction {
-        val custom = if (settings.customGestureKey == selectedKey) {
+        val custom = if (settings.customGestureKey.split(',').map(String::trim).contains(selectedKey)) {
             if (upward) settings.customGestureUp else settings.customGestureDown
         } else {
             Settings.GestureAction.DEFAULT
@@ -244,7 +244,6 @@ class KeyboardSettingsActivity : PageActivity() {
         val options = Settings.GestureAction.entries
         return ui.picker(title, current.label, options.map { it.label }, options.indexOf(current)) { index ->
             prefs.edit()
-                .putString(Settings.KEY_CUSTOM_GESTURE_KEY, selectedKey)
                 .putString(key, options[index].name)
                 .apply()
             rebuild()
