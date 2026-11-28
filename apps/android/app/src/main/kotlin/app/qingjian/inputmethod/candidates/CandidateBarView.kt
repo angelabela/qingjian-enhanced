@@ -527,6 +527,7 @@ class CandidateBarView(
 
     /** 选中候选上屏前保存其视觉位置，随后向键盘/应用面板上沿飞出。 */
     fun animateCandidateCommit(index: Int) {
+        if (commitFlyText != null) return
         val candidate = strip.candidates.getOrNull(index) ?: return
         val rect = strip.wordRect(index) ?: return
         commitFlyText = candidate.text
