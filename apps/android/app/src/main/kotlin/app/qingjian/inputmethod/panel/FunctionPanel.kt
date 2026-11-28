@@ -47,7 +47,7 @@ class FunctionPanel(
     private class Toggle(val key: String, val label: String, val note: String, val on: Boolean)
 
     private var voiceEffectPage = false
-    private var textEffectPage = false
+    private var textEffectPage = restoreTextEffectPage.also { restoreTextEffectPage = false }
     private var aiLoadingEffectPage = false
     private var selectedAiLoadingStyle = Settings.preferences(context).getInt(Settings.KEY_AI_LOADING_EFFECT, 0).coerceIn(0, 15)
     /** 0 候选区，1 键盘区；两个范围分别保存预设。 */
@@ -152,6 +152,7 @@ class FunctionPanel(
                     selectedCandidateSelectionEffect = textPrefs.getInt(Settings.KEY_CANDIDATE_SELECTION_EFFECT, 0).coerceIn(0, 4)
                     selectedFontWeight = Settings.FontWeight.of(textPrefs.getString(Settings.KEY_FONT_WEIGHT, null))
                     textEffectPage = true
+                    restoreTextEffectPage = false
                     voiceEffectPage = false
                     invalidate()
                 },
@@ -1225,7 +1226,10 @@ class FunctionPanel(
                         adjustingTextSlider = -1
                         parent?.requestDisallowInterceptTouchEvent(false)
                         // 字色、字号、字重在松手时一次性刷新绘制层，避免拖动过程中反复重建输入视图。
-                        if (completedSlider in 0..2) actions.refreshKeyboardSettings()
+                        if (completedSlider in 0..2) {
+                            restoreTextEffectPage = textEffectPage
+                            actions.refreshKeyboardSettings()
+                        }
                     }
                 }
                 return true
@@ -1407,6 +1411,7 @@ class FunctionPanel(
                     setTextChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
                     // 候选栏样式引擎在输入视图创建时读取预设；立即重建并恢复文字工具面板，
                     // 否则界面显示已选中，但当前候选绘制层仍持有旧的 STANDARD 配置。
+                    restoreTextEffectPage = true
                     actions.refreshKeyboardSettings()
                     invalidate()
                     return
@@ -1520,6 +1525,7 @@ class FunctionPanel(
             textEffectPage = false
             aiLoadingEffectPage = false
             if (leavingTextEffects) {
+                restoreTextEffectPage = false
                 effectScroll.reset()
                 // 只刷新输入法绘制设置，不关闭整个功能面板。
                 actions.refreshKeyboardSettings()
@@ -1541,5 +1547,7 @@ class FunctionPanel(
         )
         /** 上次停在哪一页；改开关会重建键盘，回来时还在这页。 */
         var lastTab = 0
+        /** 重建输入视图后恢复文字特效子页面，避免每次应用设置都退回功能宫格。 */
+        var restoreTextEffectPage = false
     }
 }
