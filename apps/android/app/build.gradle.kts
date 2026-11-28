@@ -239,8 +239,37 @@ val downloadNotoEmojiLottie by tasks.registering {
     }
 }
 
+// ochwpro MIT offline handwriting model: weights + character index are packaged in APK assets/data/handwriting.
+val downloadOchwproModel by tasks.registering {
+    group = "qingjian"
+    description = "Bundle the official ochwpro offline handwriting model and labels"
+    val target = bundledAssets.map { it.dir("data/handwriting") }
+    outputs.dir(target)
+    doLast {
+        val dir = target.get().asFile
+        dir.mkdirs()
+        fun download(path: String, file: String) {
+            val destination = dir.resolve(file)
+            if (destination.isFile && destination.length() > 100) return
+            val url = URL("https://raw.githubusercontent.com/ximeiorg/ochwpro/main/" + path)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 20000
+            connection.readTimeout = 60000
+            try {
+                if (connection.responseCode !in 200..299) throw GradleException("ochwpro download failed: " + path + " HTTP " + connection.responseCode)
+                connection.inputStream.use { input -> destination.outputStream().buffered().use { output -> input.copyTo(output) } }
+            } finally { connection.disconnect() }
+            if (destination.length() < 100) throw GradleException("ochwpro asset is empty: " + file)
+        }
+        download("ochw-wasm/ochw_model_fp16.safetensors", "ochw_model_fp16.safetensors")
+        download("ochw-wasm/char_index.json", "char_index.json")
+        download("LICENSE", "LICENSE-MIT.txt")
+        logger.lifecycle("Bundled ochwpro offline handwriting model (" + dir.resolve("ochw_model_fp16.safetensors").length() + " bytes)")
+    }
+}
+
 tasks.named("preBuild") {
-    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie)
+    dependsOn(cargoNdk, stageData, downloadNotoEmojiLottie, downloadOchwproModel)
 }
 
 
