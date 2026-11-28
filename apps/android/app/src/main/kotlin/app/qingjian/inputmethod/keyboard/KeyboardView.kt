@@ -80,6 +80,9 @@ class KeyboardView(
         /** 滑完一笔：[input] 是轨迹与各字母键几何的 JSON，交 Rust 解码。 */
         fun onSwipe(input: String)
 
+        /** 手写找字：整段笔迹序列化后在抬手时提交，识别必须在后台线程进行。 */
+        fun onHandwriting(strokesJson: String)
+
         /** 删除键按下（在它删字之前）：上划清空的撤销要记下这一刻光标前的文字。 */
         fun onBackspaceDown()
 
@@ -493,6 +496,10 @@ class KeyboardView(
     private var surfaceCandidateLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
+    private var handwritingPointer = -1
+    private val handwritingStrokes = mutableListOf<MutableList<Pair<Float, Float>>>()
+    private var handwritingCurrent: MutableList<Pair<Float, Float>>? = null
+
     /**
      * 可能是上滑的那根手指与它落下的键（[Key.flick]，开着「上滑输入」时）；-1 是没在看。
      * 往上划过 [FLICK_DP] 且一路都在往上的扇形里（[FLICK_SLOPE]）就 [flickArmed]，抬手出上滑的字，不出键本身、也不算滑行；
@@ -707,12 +714,72 @@ class KeyboardView(
         }
     }
 
+    private fun addHandwritingPoint(x: Float, y: Float) {
+        val points = handwritingCurrent ?: return
+        val previous = points.lastOrNull()
+        if (previous == null || hypot(x - previous.first, y - previous.second) >= resources.displayMetrics.density * 1.5f) {
+            points += x to y
+        }
+    }
+
+    private fun trackHandwriting(event: MotionEvent): Boolean {
+        val pointerIndex = event.findPointerIndex(handwritingPointer)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (pointerIndex >= 0) {
+                addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
+                invalidate()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointerIndex >= 0) addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
+                val json = buildString {
+                    append("{\"strokes\":[")
+                    handwritingStrokes.forEachIndexed { strokeIndex, stroke ->
+                        if (strokeIndex > 0) append(',')
+                        append('[')
+                        stroke.forEachIndexed { pointIndex, point ->
+                            if (pointIndex > 0) append(',')
+                            append('[').append(point.first).append(',').append(point.second).append(']')
+                        }
+                        append(']')
+                    }
+                    append("]}")
+                }
+                clearHandwriting()
+                if (json.contains("[[")) listener.onHandwriting(json)
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                clearHandwriting()
+                invalidate()
+            }
+        }
+        return true
+    }
+
+    private fun clearHandwriting() {
+        handwritingPointer = -1
+        handwritingCurrent = null
+        handwritingStrokes.clear()
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         // ACTION_DOWN starts a fresh gesture; clear any shortcut state left by an interrupted
         // pointer sequence before the side column or a new key can consume this event.
         if (event.actionMasked == MotionEvent.ACTION_DOWN) endEditShortcut()
+        // 手写模式独占键盘按键区域的整段单指轨迹；在抬手前不触发任何按键或滑动选词。
+        if (handwritingPointer >= 0) return trackHandwriting(event)
         if (side.onTouch(event, ::invalidate)) return true
+        if (settings.keyboardHandwriting && event.actionMasked == MotionEvent.ACTION_DOWN &&
+            slotAt(event.getX(event.actionIndex), event.getY(event.actionIndex)) != null
+        ) {
+            handwritingPointer = event.getPointerId(event.actionIndex)
+            handwritingStrokes.clear()
+            handwritingCurrent = mutableListOf<Pair<Float, Float>>().also { handwritingStrokes += it }
+            addHandwritingPoint(event.getX(event.actionIndex), event.getY(event.actionIndex))
+            invalidate()
+            return true
+        }
         val index = event.actionIndex
         val pointer = event.getPointerId(index)
         when (event.actionMasked) {
