@@ -90,7 +90,9 @@ class CatalogPanel(
         Tabs(ink, scrollable(true) { x, y -> bottomTabsContain(x, y) }, Tabs.Style.PILL)
     }.apply {
         labels = sections().map { it.name }
-        selected = (if (symbols) symbolSection else emojiSection).coerceIn(0, (labels.size - 1).coerceAtLeast(0))
+        selected = (if (symbols) {
+            if (top.selected == 1) symbolEmojiSection else symbolSection
+        } else emojiSection).coerceIn(0, (labels.size - 1).coerceAtLeast(0))
     }
 
     /** 当前大类下的分类：符号就是全部；表情看顶上选的是 Emoji 还是颜文字。 */
@@ -349,7 +351,9 @@ class CatalogPanel(
 
             y > bottom.top || categoryColumn.contains(x, y) -> categories.indexAt(x, y)?.let {
                 categories.selected = it
-                if (symbols) symbolSection = it else emojiSection = it
+                if (symbols && top.selected == 0) symbolSection = it
+                else if (symbols) symbolEmojiSection = it
+                else emojiSection = it
                 gridScroll.reset()
             }
 
@@ -431,7 +435,7 @@ class CatalogPanel(
         Haptics.hold(context)
         holdRawX = rawX
         tracking = false
-        choices = listOf(item) + if (symbols) emptyList() else Catalog.skinTones(item)
+        choices = listOf(item) + if (symbols && top.selected == 0) emptyList() else Catalog.skinTones(item)
         popup.show(
             choices.map { ChoicePopup.Item(it) }, initial = 0,
             fingerScreenX = screenCentreX(), bottom = pressedCell.top, centred = true,
@@ -523,6 +527,7 @@ class CatalogPanel(
 
         // 面板每次打开都新建，停在哪一类、锁没锁记在这里
         var symbolSection = 0
+        var symbolEmojiSection = 0
         var symbolEmojiPage = 0
         var emojiTop = 0
         var emojiSection = 0
