@@ -1139,7 +1139,8 @@ class FunctionPanel(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (textEffectPage && tabs.selected == 0) {
-            val controlsTop = card.top + ink.dp(8f + 28f + 48f)
+            val targetTop = card.top + ink.dp(8f + 28f)
+            val controlsTop = targetTop + ink.dp(48f)
             val contentY = event.y + effectScroll.offset
             val slider = when {
                 contentY in (controlsTop + ink.dp(34f))..(controlsTop + ink.dp(62f)) -> 0
