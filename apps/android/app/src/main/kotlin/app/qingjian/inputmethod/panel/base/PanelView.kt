@@ -49,7 +49,7 @@ abstract class PanelView(
         val label: String,
         val bounds: RectF,
         val selected: Boolean = false,
-        /** 非空表示真实开关状态；让 TalkBack 获得可切换控件语义，而非仅朗读按钮文字。 */
+        /** 非空表示真实勾选状态，供开关、单选和多选 Canvas 控件使用。 */
         val checked: Boolean? = null,
         val enabled: Boolean = true,
         val rangeMin: Float? = null,
@@ -408,7 +408,7 @@ abstract class PanelView(
                             onTap(width - ink.dp(BACK_WIDTH_DP) / 2f, headerHeight / 2f)
                         virtualViewId >= ELEMENT_ACCESSIBILITY_BASE -> {
                             val item = accessibilityElementForId(virtualViewId - ELEMENT_ACCESSIBILITY_BASE) ?: return false
-                            if (!item.enabled || item.rangeMin != null || item.onScroll != null) return false
+                            if (!item.enabled || item.rangeMin != null || item.onScroll != null || item.onScrollResult != null) return false
                             val visible = Rect(item.bounds.left.toInt(), item.bounds.top.toInt(), item.bounds.right.toInt(), item.bounds.bottom.toInt())
                             if (!visible.intersect(0, 0, width, height)) return false
                             onTap(visible.exactCenterX(), visible.exactCenterY())

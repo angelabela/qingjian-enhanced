@@ -60,22 +60,27 @@ class PiecesPanel(
                 label + if (selected[index]) "，已选中" else "，未选中",
                 RectF(lefts[index], top, lefts[index] + widths[index], top + rowHeight),
                 selected = selected[index],
+                checked = selected[index],
+                role = "android.widget.CheckBox",
                 virtualId = 10000 + index,
             )
         }
         val each = (width - ink.dp(20f)) / buttons.size
+        val allSelected = selected.isNotEmpty() && selected.all { it }
         buttons.forEachIndexed { index, label ->
             val left = ink.dp(10f) + each * index + ink.dp(4f)
             val top = barTop() + ink.dp(8f)
             val right = ink.dp(10f) + each * (index + 1) - ink.dp(4f)
             elements += AccessibilityElement(
                 when (index) {
-                    0 -> if (selected.all { it }) "取消全选" else "全选"
+                    0 -> if (allSelected) "取消全选" else "全选"
                     1 -> "复制已选内容"
                     else -> "完成拆词并返回键盘"
                 },
                 RectF(left, top, right, height - ink.dp(8f)),
-                selected = index == 0 && selected.all { it },
+                selected = index == 0 && allSelected,
+                checked = if (index == 0) allSelected else null,
+                role = if (index == 0) "android.widget.CheckBox" else null,
                 virtualId = 20000 + index,
             )
         }
