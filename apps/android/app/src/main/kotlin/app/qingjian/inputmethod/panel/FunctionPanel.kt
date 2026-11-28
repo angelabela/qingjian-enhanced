@@ -1402,6 +1402,9 @@ class FunctionPanel(
                     x in (card.left + ink.dp(12f))..(card.right - ink.dp(12f))) {
                     selectedTextPreset = preset
                     setTextChoice(if (selectedTextTarget == 0) Settings.KEY_CANDIDATE_TEXT_PRESET else Settings.KEY_KEYBOARD_TEXT_PRESET, preset.name)
+                    // 候选栏样式引擎在输入视图创建时读取预设；立即重建并恢复文字工具面板，
+                    // 否则界面显示已选中，但当前候选绘制层仍持有旧的 STANDARD 配置。
+                    actions.refreshKeyboardSettings()
                     invalidate()
                     return
                 }
