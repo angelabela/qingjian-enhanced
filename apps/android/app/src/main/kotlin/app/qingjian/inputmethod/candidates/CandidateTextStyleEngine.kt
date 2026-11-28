@@ -244,25 +244,43 @@ class CandidateTextStyleEngine(
             )
         }
         if (paint.textSize > 0f) {
-            val strokeColor = if (config.preset == Settings.TextEffectPreset.CONTRAST_OUTLINE) {
-                if (relativeLuminance(adaptiveTextColor ?: style.color) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-            } else style.strokeColor
-            // 先绘制正文，再叠加描边，确保描边不会被正文覆盖。
-            canvas.drawText(displayText, x, baseline, paint)
+            val effectiveTextColor = adaptiveTextColor ?: style.color
+            val strokeColor = when (config.preset) {
+                Settings.TextEffectPreset.CONTRAST_OUTLINE ->
+                    if (relativeLuminance(effectiveTextColor) > 0.5f) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                Settings.TextEffectPreset.NEON_OUTLINE -> {
+                    // 霓虹描边使用与正文分离的互补色，避免同色描边与字形融为一体。
+                    val hsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(effectiveTextColor, hsv)
+                    hsv[0] = (hsv[0] + 155f) % 360f
+                    hsv[1] = 0.96f
+                    hsv[2] = 1f
+                    android.graphics.Color.HSVToColor(0xFF, hsv)
+                }
+                else -> style.strokeColor
+            }
             if (strokeColor != null) {
+                // 描边必须先画、正文后画：边缘保留独立颜色，内部仍由文字颜色完整填充。
                 val stroke = TextPaint(paint).apply {
-                    this.shader = null
-                    this.color = strokeColor
-                    this.style = Paint.Style.STROKE
-                    strokeWidth = style.strokeWidthDp.coerceAtLeast(0f) * density
+                    shader = null
+                    color = strokeColor
+                    style = Paint.Style.STROKE
+                    strokeWidth = when (config.preset) {
+                        Settings.TextEffectPreset.NEON_OUTLINE -> 2.1f * density
+                        Settings.TextEffectPreset.CONTRAST_OUTLINE -> 2.35f * density
+                        else -> style.strokeWidthDp.coerceAtLeast(0f) * density
+                    }
+                    strokeJoin = Paint.Join.ROUND
+                    strokeMiter = 2f
                     clearShadowLayer()
                     if (config.preset == Settings.TextEffectPreset.NEON_OUTLINE) {
-                        setShadowLayer(3.2f * density, 0f, 0f,
-                            (strokeColor and 0x00FFFFFF) or (0xCC shl 24))
+                        setShadowLayer(4.2f * density, 0f, 0f,
+                            (strokeColor and 0x00FFFFFF) or (0xDD shl 24))
                     }
                 }
                 canvas.drawText(displayText, x, baseline, stroke)
             }
+            canvas.drawText(displayText, x, baseline, paint)
         } else {
             canvas.drawText(displayText, x, baseline, paint)
         }
