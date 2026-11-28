@@ -477,7 +477,15 @@ class CandidateBarView(
             return true
         }
 
-        override fun onLongPress(e: MotionEvent) = openTranslations(e)
+        override fun onLongPress(e: MotionEvent) {
+            val candidateIndex = strip.indexAt(e.x - strip.leftInsetPx(stripWidth) + scrollX)
+            if (candidateIndex >= 0 && strip.isEmojiCandidate(candidateIndex)) {
+                strip.resumeEmojiForLongPress()
+                invalidate()
+            } else {
+                openTranslations(e)
+            }
+        }
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             tap(e.x, e.y)
@@ -736,6 +744,9 @@ class CandidateBarView(
             // 拼音光标拖动不再只依赖 GestureDetector 的 onScroll 阈值回调；
             // 直接消费每一帧 ACTION_MOVE，避免悬浮层/父容器分发导致拖动时光标不更新。
             val handled = gestures.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                strip.pauseEmojiAfterLongPress()
+            }
             if (onPreedit && (event.actionMasked == MotionEvent.ACTION_UP ||
                 event.actionMasked == MotionEvent.ACTION_CANCEL)) {
                 onPreedit = false
