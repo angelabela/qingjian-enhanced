@@ -1549,10 +1549,10 @@ class ClipboardPanel(
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(22), dp(22), dp(18))
+            setPadding(dp(14), dp(14), dp(14), dp(12))
             background = GradientDrawable().apply {
                 setColor(palette.surface)
-                cornerRadius = dp(26).toFloat()
+                cornerRadius = dp(20).toFloat()
                 setStroke(dp(1).coerceAtLeast(1), palette.faint)
             }
             elevation = dp(18).toFloat()
@@ -1560,26 +1560,26 @@ class ClipboardPanel(
         }
         card.addView(TextView(context).apply {
             text = heading
-            textSize = 18f
+            textSize = 16f
             setTextColor(palette.text)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(8))
+            setPadding(0, 0, 0, dp(6))
         }, LinearLayout.LayoutParams(-1, -2))
         card.addView(TextView(context).apply {
             text = detail
-            textSize = 14f
+            textSize = 12.5f
             setTextColor(palette.gloss)
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(16))
+            setPadding(0, 0, 0, dp(10))
         }, LinearLayout.LayoutParams(-1, -2))
         options.forEach { option ->
             card.addView(TextView(context).apply {
                 text = option.label
-                textSize = 15.5f
+                textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                minHeight = dp(48)
+                minHeight = dp(40)
                 setTextColor(if (option.primary) palette.onBrand else palette.text)
                 background = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
@@ -1588,10 +1588,10 @@ class ClipboardPanel(
                 }
                 setOnClickListener { option.onClick() }
             }, LinearLayout.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(8)
+                bottomMargin = dp(6)
             })
         }
-        val popupWidth = minOf(dp(360), (resources.displayMetrics.widthPixels - dp(40)).coerceAtLeast(dp(260)))
+        val popupWidth = minOf(dp(300), (resources.displayMetrics.widthPixels - dp(48)).coerceAtLeast(dp(220)))
         val popup = PopupWindow(card, popupWidth, WindowManager.LayoutParams.WRAP_CONTENT, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
