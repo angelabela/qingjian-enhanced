@@ -24,11 +24,32 @@ const MAX_CUSTOM_PHRASE_WIDTH: f32 = 120.0;
 const CANDIDATE_SIZE: f32 = 19.0;
 
 /// 每个候选只带第一条译文（词性 + 释义），长的截断；更多的译文在长按气泡里。`text_scale` 是设置里的字号档，宽度与字号一起放大。
+/// 内部输入残片（如 `:fhd`、`1:zhud`）不能成为候选，也不能占据布局槽位。
+/// 只拦截明确的控制前缀与不可显示控制字符，不按普通单词的字母内容猜测。
+fn displayable_candidate(candidate: &FrameCandidate) -> bool {
+    let text = candidate.text.trim();
+    if text.is_empty() || text.chars().any(char::is_control) {
+        return false;
+    }
+    if text.starts_with(':') {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    let mut digits = 0;
+    while digits < bytes.len() && bytes[digits].is_ascii_digit() {
+        digits += 1;
+    }
+    !(digits > 0
+        && digits < bytes.len()
+        && bytes[digits] == b':'
+        && bytes.get(digits + 1).is_some_and(|byte| byte.is_ascii_alphabetic()))
+}
+
 fn visible_indices(candidates: &[FrameCandidate]) -> Vec<usize> {
     candidates
         .iter()
         .enumerate()
-        .filter(|(_, candidate)| !candidate.cloud)
+        .filter(|(_, candidate)| !candidate.cloud && displayable_candidate(candidate))
         .map(|(index, _)| index)
         .collect()
 }
