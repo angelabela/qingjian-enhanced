@@ -110,16 +110,15 @@ class CatalogPanel(
             // 没有底排：左列分类 + 左下返回，中间网格，右列删除 / 锁定，都占满整高
             val sideWidth = w / SIDE_FRACTION
             bottom.set(0f, h.toFloat(), w.toFloat(), h.toFloat())
-            categoryColumn.set(0f, headerHeight, sideWidth, h - bottomHeight)
+            categoryColumn.set(0f, 0f, sideWidth, h - bottomHeight)
             back.set(0f, h - bottomHeight, sideWidth, h.toFloat())
-            side.set(w - sideWidth, headerHeight, w.toFloat(), h - bottomHeight)
-            grid.set(sideWidth, headerHeight, side.left, h - bottomHeight)
+            side.set(w - sideWidth, 0f, w.toFloat(), h - bottomHeight)
+            grid.set(sideWidth, 0f, side.left, h - bottomHeight)
             top.setBounds(sideWidth, 0f, side.left, headerHeight)
             categories.setBounds(categoryColumn.left, categoryColumn.top, categoryColumn.right, categoryColumn.bottom)
         } else if (symbols) {
-            side.set(w - w / SIDE_FRACTION, headerHeight, w.toFloat(), h - bottomHeight)
-            grid.set(0f, headerHeight, side.left, h - bottomHeight)
-            top.setBounds(0f, 0f, grid.right, headerHeight)
+            side.set(w - w / SIDE_FRACTION, 0f, w.toFloat(), h - bottomHeight)
+            grid.set(0f, 0f, side.left, h - bottomHeight)
         } else {
             grid.set(0f, headerHeight, w.toFloat(), h - bottomHeight)
         }
@@ -333,7 +332,7 @@ class CatalogPanel(
 
     override fun onTap(x: Float, y: Float) {
         when {
-            y < headerHeight -> top.indexAt(x)?.let { chooseTop(it) }
+            !symbols && y < headerHeight -> top.indexAt(x)?.let { chooseTop(it) }
 
             y > bottom.top && x > bottom.right - ink.dp(BOTTOM_KEY_DP) ->
                 if (symbols) actions.closePanel() else actions.deleteBackward()
