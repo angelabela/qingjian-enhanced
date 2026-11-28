@@ -82,6 +82,9 @@ class KeyboardView(
         /** 滑完一笔：[input] 是轨迹与各字母键几何的 JSON，交 Rust 解码。 */
         fun onSwipe(input: String)
 
+        /** 新字符开始书写：取消上一个候选的自动提交。 */
+        fun onHandwritingStarted() {}
+
         /** 手写找字：整段笔迹序列化后在抬手时提交，识别必须在后台线程进行。 */
         fun onHandwriting(strokesJson: String)
 
@@ -498,21 +501,13 @@ class KeyboardView(
     private var surfaceCandidateLastStep = 0
     private val spaceHold = Runnable { onSpaceHold() }
 
-    private val handwritingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-        strokeWidth = resources.displayMetrics.density * 3.2f
-        color = 0xFF42A5F5.toInt()
-    }
-    private val handwritingPath = Path()
     private var handwritingPointer = -1
     private val handwritingHandler = Handler(Looper.getMainLooper())
     private val handwritingFinish = Runnable { finishHandwriting() }
     private val handwritingStrokes = mutableListOf<MutableList<Pair<Float, Float>>>()
     private var handwritingCurrent: MutableList<Pair<Float, Float>>? = null
     private val handwritingEnabled: Boolean
-        get() = settings.keyboardHandwriting || settings.keyboardHandwritingWords
+        get() = settings.keyboardHandwriting
 
     /**
      * 可能是上滑的那根手指与它落下的键（[Key.flick]，开着「上滑输入」时）；-1 是没在看。
@@ -709,17 +704,6 @@ class KeyboardView(
             )
         }
         if (side.enabled) painter.drawSide(canvas, side)
-        if (handwritingPointer >= 0) {
-            handwritingStrokes.forEach { stroke ->
-                if (stroke.isNotEmpty()) {
-                    val path = Path().apply {
-                        moveTo(stroke.first().first, stroke.first().second)
-                        stroke.drop(1).forEach { lineTo(it.first, it.second) }
-                    }
-                    canvas.drawPath(path, handwritingPaint)
-                }
-            }
-        }
         if (isShown && slots.any { it.key is Key.Space }) postInvalidateDelayed(32L)
         val flicking = flickSlot?.takeIf { flickArmed }
         if (flicking == null) trail.draw(canvas)
@@ -751,24 +735,25 @@ class KeyboardView(
         val pointerIndex = event.findPointerIndex(handwritingPointer)
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> if (pointerIndex >= 0) {
-                addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
-                invalidate()
+                if (isInsideLetterRows(event.getX(pointerIndex), event.getY(pointerIndex))) {
+                    addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
                     event.getPointerId(event.actionIndex) != handwritingPointer
                 ) return true
-                if (pointerIndex >= 0) addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
+                if (pointerIndex >= 0 && isInsideLetterRows(event.getX(pointerIndex), event.getY(pointerIndex))) {
+                    addHandwritingPoint(event.getX(pointerIndex), event.getY(pointerIndex))
+                }
                 // 抬笔只结束当前笔画；保留之前笔画，允许同一个字分多笔写。
                 handwritingPointer = -1
                 handwritingCurrent = null
                 handwritingHandler.removeCallbacks(handwritingFinish)
                 handwritingHandler.postDelayed(handwritingFinish, HANDWRITING_PAUSE_MS)
-                invalidate()
             }
             MotionEvent.ACTION_CANCEL -> {
                 clearHandwriting()
-                invalidate()
             }
         }
         return true
@@ -797,7 +782,17 @@ class KeyboardView(
         }
         clearHandwriting()
         listener.onHandwriting(json)
-        invalidate()
+    }
+
+    /** 手写仅限三排字母键的整体矩形区域，侧边栏、数字/功能键不参与轨迹。 */
+    private fun isInsideLetterRows(x: Float, y: Float): Boolean {
+        val letters = slots.filter { it.key is Key.Letter }
+        if (letters.isEmpty()) return false
+        val left = letters.minOf { it.bounds.left }
+        val top = letters.minOf { it.bounds.top }
+        val right = letters.maxOf { it.bounds.right }
+        val bottom = letters.maxOf { it.bounds.bottom }
+        return x >= left && x <= right && y >= top && y <= bottom
     }
 
     private fun clearHandwriting() {
@@ -815,15 +810,17 @@ class KeyboardView(
         // 手写模式独占键盘按键区域的整段单指轨迹；在抬手前不触发任何按键或滑动选词。
         if (handwritingPointer >= 0) return trackHandwriting(event)
         if (side.onTouch(event, ::invalidate)) return true
+        val downX = event.getX(event.actionIndex)
+        val downY = event.getY(event.actionIndex)
         if (handwritingEnabled && event.actionMasked == MotionEvent.ACTION_DOWN &&
-            slotAt(event.getX(event.actionIndex), event.getY(event.actionIndex)) != null
+            slotAt(downX, downY)?.key is Key.Letter && isInsideLetterRows(downX, downY)
         ) {
             // 在停笔超时前再次落笔，取消提交并把新轨迹作为同一汉字的下一笔。
             handwritingHandler.removeCallbacks(handwritingFinish)
+            if (handwritingStrokes.isEmpty()) listener.onHandwritingStarted()
             handwritingPointer = event.getPointerId(event.actionIndex)
             handwritingCurrent = mutableListOf<Pair<Float, Float>>().also { handwritingStrokes += it }
-            addHandwritingPoint(event.getX(event.actionIndex), event.getY(event.actionIndex))
-            invalidate()
+            addHandwritingPoint(downX, downY)
             return true
         }
         val index = event.actionIndex
