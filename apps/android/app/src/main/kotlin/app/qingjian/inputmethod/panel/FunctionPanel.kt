@@ -1220,9 +1220,12 @@ class FunctionPanel(
                 when (event.actionMasked) {
                     MotionEvent.ACTION_MOVE -> updateTextSlider(event.x, adjustingTextSlider)
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        updateTextSlider(event.x, adjustingTextSlider)
+                        val completedSlider = adjustingTextSlider
+                        updateTextSlider(event.x, completedSlider)
                         adjustingTextSlider = -1
                         parent?.requestDisallowInterceptTouchEvent(false)
+                        // 字色、字号、字重在松手时一次性刷新绘制层，避免拖动过程中反复重建输入视图。
+                        if (completedSlider in 0..2) actions.refreshKeyboardSettings()
                     }
                 }
                 return true
