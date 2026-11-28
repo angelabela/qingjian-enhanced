@@ -51,7 +51,6 @@ class SpriteTranslateService : AccessibilityService() {
         const val SPRITE = 56f        // 小精灵
         const val CROSS = 22f         // 准星缩至原尺寸的 1/4
         const val DIST = 66f          // 准星中心到小精灵中心的距离
-        const val BOX = 2 * (DIST + CROSS / 2)   // 准星窗口：能装下任何方向的准星
         const val IDLE_MS = 350L      // 手指停住多久后收起准星
         const val QUERY_GAP_MS = 48L  // 取字节节流；视觉跟随不受此间隔限制
         const val DEBOUNCE_MS = 120L  // 指到新文字后等多久再翻译
@@ -145,7 +144,7 @@ class SpriteTranslateService : AccessibilityService() {
             translatorLoadFailed = !loaded
         }
         crossView = CrosshairView(this, dp(CROSS))
-        crossLp = lp(dp(BOX), dp(BOX), touchable = false)
+        crossLp = lp(screenW, screenH, touchable = false)
 
         bubble = TextView(this).apply {
             setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
@@ -179,6 +178,9 @@ class SpriteTranslateService : AccessibilityService() {
         readScreen()
         mascotX = mascotX.coerceIn(0, max(0, screenW - mascotWidth))
         mascotY = mascotY.coerceIn(0, max(0, screenH - mascotHeight))
+        crossLp.width = screenW
+        crossLp.height = screenH
+        runCatching { wm.updateViewLayout(crossView, crossLp) }
         placeAll(); chooseOffset()
     }
 
@@ -233,18 +235,11 @@ class SpriteTranslateService : AccessibilityService() {
 
     // ───────── 准星：位置、展开/收起 ─────────
 
-    /** 准星窗口以小精灵中心为中心，跟着小精灵走。 */
+    /** 准星层固定铺满屏幕；拖动时只更新 Canvas 坐标，避免每帧调用 WindowManager 重新布局。 */
     private fun placeAll() {
-        val cx = mascotX + mascotWidth / 2
-        val cy = mascotY + mascotHeight / 2
-        val nextX = cx - crossLp.width / 2
-        val nextY = cy - crossLp.height / 2
-        if (crossLp.x != nextX || crossLp.y != nextY) {
-            crossLp.x = nextX
-            crossLp.y = nextY
-            wm.updateViewLayout(crossView, crossLp)
-        }
-        crossView.invalidate()
+        val cx = mascotX + mascotWidth / 2f
+        val cy = mascotY + mascotHeight / 2f
+        crossView.setMascotCenter(cx, cy)
     }
 
     /** 当前方位还在屏幕内就不动（避免来回跳）；否则按优先级换到另一侧，并带动画过渡。 */
@@ -502,6 +497,16 @@ class SpriteTranslateService : AccessibilityService() {
 
 /** 十字准星：reveal 0→1 从小精灵中心"长出来"，1→0 缩回小精灵中心。 */
 private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
+    private var mascotCenterX = 0f
+    private var mascotCenterY = 0f
+
+    fun setMascotCenter(x: Float, y: Float) {
+        if (mascotCenterX == x && mascotCenterY == y) return
+        mascotCenterX = x
+        mascotCenterY = y
+        invalidate()
+    }
+
     fun setMode(mode: String) {
         val color = if (mode == FloatingMascotService.MODE_COPY) 0xFFFFA34F.toInt() else 0xFF2EE6A8.toInt()
         line.color = color
@@ -510,9 +515,11 @@ private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
     }
 
     var offX = 0f      // 准星中心相对小精灵中心的偏移（像素）
+        set(v) { if (field != v) { field = v; invalidate() } }
     var offY = 0f
+        set(v) { if (field != v) { field = v; invalidate() } }
     var reveal = 0f
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) { field = v; invalidate() } }
 
     private val d = ctx.resources.displayMetrics.density
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -526,20 +533,24 @@ private class CrosshairView(ctx: Context, private val sizePx: Int) : View(ctx) {
         val r = reveal
         if (r <= 0.01f) return
         val a = (255 * r.coerceIn(0f, 1f)).toInt()
-        val cx = width / 2f; val cy = height / 2f
-        val px = cx + offX * r; val py = cy + offY * r        // 收起时回到小精灵中心
+        val cx = mascotCenterX; val cy = mascotCenterY
+        val px = cx + offX * r; val py = cy + offY * r
         val arm = sizePx / 2f * r
         val ring = 3.2f * d * r
         edge.alpha = a * 0x99 / 255; line.alpha = a; link.alpha = a / 2
 
-        c.drawLine(cx, cy, px, py, link)                      // 小精灵到准星的虚线
-        for (p in arrayOf(edge, line)) {                      // 先描黑边再画彩线，亮暗背景都看得清
-            c.drawCircle(px, py, ring, p)
-            c.drawLine(px - arm, py, px - ring, py, p)
-            c.drawLine(px + ring, py, px + arm, py, p)
-            c.drawLine(px, py - arm, px, py - ring, p)
-            c.drawLine(px, py + ring, px, py + arm, p)
-        }
+        c.drawLine(cx, cy, px, py, link)
+        drawCross(c, px, py, arm, ring, edge)
+        drawCross(c, px, py, arm, ring, line)
+    }
+
+    private fun drawCross(c: Canvas, x: Float, y: Float, arm: Float, ring: Float, paint: Paint) {
+        c.drawCircle(x, y, ring, paint)
+        c.drawLine(x - arm, y, x - ring, y, paint)
+        c.drawLine(x + ring, y, x + arm, y, paint)
+        c.drawLine(x, y - arm, x, y - ring, paint)
+        c.drawLine(x, y + ring, x, y + arm, paint)
+    }
     }
 }
 
