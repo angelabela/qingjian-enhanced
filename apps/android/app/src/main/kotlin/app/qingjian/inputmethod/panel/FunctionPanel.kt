@@ -806,9 +806,9 @@ class FunctionPanel(
         val viewportBottom = card.bottom - ink.dp(6f)
         val targetTopForScroll = card.top + ink.dp(8f + 28f)
         val presetRowTop = targetTopForScroll + ink.dp(218f)
-        val rowStepForScroll = ink.dp(64f)
+        val rowStepForScroll = ink.dp(52f)
         val selectionTopForScroll = presetRowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * rowStepForScroll + ink.dp(8f)
-        val contentBottom = selectionTopForScroll + ink.dp(128f)
+        val contentBottom = selectionTopForScroll + ink.dp(196f)
         effectScroll.max = (contentBottom - viewportBottom).coerceAtLeast(0f)
         canvas.save()
         canvas.clipRect(card.left, viewportTop, card.right, viewportBottom)
@@ -914,7 +914,7 @@ class FunctionPanel(
         drawSwitch(canvas, card.right - ink.dp(38f), syncY, syncTextEffectsEnabled())
 
         val rowTop = targetTop + ink.dp(218f)
-        val rowStep = ink.dp(64f)
+        val rowStep = ink.dp(52f)
         val itemGap = ink.dp(8f)
         val itemWidth = (card.width() - ink.dp(24f) - itemGap) / 2f
         labels.forEachIndexed { index, preset ->
@@ -922,7 +922,7 @@ class FunctionPanel(
             val row = index / 2
             val itemLeft = card.left + ink.dp(12f) + column * (itemWidth + itemGap)
             val bounds = RectF(itemLeft, rowTop + row * rowStep,
-                itemLeft + itemWidth, rowTop + row * rowStep + ink.dp(56f))
+                itemLeft + itemWidth, rowTop + row * rowStep + ink.dp(44f))
             val selected = selectedTextPreset == preset
             ink.round(canvas, bounds, 11f, if (selected) palette.functionalKey else palette.surface)
             ink.fill.style = android.graphics.Paint.Style.STROKE
@@ -931,14 +931,14 @@ class FunctionPanel(
             canvas.drawRoundRect(bounds, 11f, 11f, ink.fill)
             ink.fill.style = android.graphics.Paint.Style.FILL
             val sample = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                this.textSize = ink.dp((18f * textSize / 20f).coerceIn(11f, 30f))
+                this.textSize = ink.dp((15f * textSize / 20f).coerceIn(10f, 25f))
                 textAlign = android.graphics.Paint.Align.CENTER
                 color = textColor
                 typeface = weight.typeface
                 isFakeBoldText = weight.weight >= 600
             }
             val sampleX = bounds.centerX()
-            val sampleY = bounds.top + ink.dp(27f)
+            val sampleY = bounds.top + ink.dp(21f)
             when (preset) {
                 Settings.TextEffectPreset.BOLD_DEPTH -> { sample.isFakeBoldText = true; sample.setShadowLayer(1.2f * ink.dp(1f), 0f, ink.dp(1f), 0x66000000) }
                 Settings.TextEffectPreset.SOFT_GLOW -> sample.setShadowLayer(ink.dp(4f), 0f, 0f, textColor)
@@ -961,7 +961,7 @@ class FunctionPanel(
             sample.clearShadowLayer()
             sample.shader = null
             ink.text(canvas, preset.label, 10.5f, if (selected) palette.brand else palette.text,
-                bounds.centerX(), bounds.bottom - ink.dp(7f), maxWidth = itemWidth - ink.dp(10f))
+                bounds.centerX(), bounds.bottom - ink.dp(5f), maxWidth = itemWidth - ink.dp(10f))
             if (selected) {
                 ink.fill.color = palette.brand
                 canvas.drawCircle(bounds.right - ink.dp(8f), bounds.top + ink.dp(8f), ink.dp(3f), ink.fill)
@@ -986,14 +986,14 @@ class FunctionPanel(
                 maxWidth = selectionWidth - ink.dp(3f))
         }
         val selectionColor = currentCandidateSelectionColor()
-        val selectionColorLabelY = selectionTop + ink.dp(64f)
+        val selectionColorLabelY = selectionTop + ink.dp(72f)
         ink.textStart(canvas, "选中框颜色 RGB", 11f, palette.text,
             card.left + ink.dp(14f), selectionColorLabelY, card.right - ink.dp(112f))
         val selectionRestoreRect = RectF(card.right - ink.dp(98f), selectionTop + ink.dp(68f),
             card.right - ink.dp(10f), selectionTop + ink.dp(94f))
         ink.round(canvas, selectionRestoreRect, 9f, palette.functionalKey)
         ink.text(canvas, "恢复主题色", 9.5f, palette.text, selectionRestoreRect.centerX(), selectionRestoreRect.centerY())
-        val selectionColorY = selectionTop + ink.dp(112f)
+        val selectionColorY = selectionTop + ink.dp(120f)
         val selectionColorRect = RectF(left, selectionColorY - ink.dp(6f), right, selectionColorY + ink.dp(6f))
         ink.fill.shader = android.graphics.LinearGradient(selectionColorRect.left, 0f, selectionColorRect.right, 0f,
             rainbow, null, android.graphics.Shader.TileMode.CLAMP)
@@ -1011,6 +1011,32 @@ class FunctionPanel(
         canvas.drawCircle(selectionMarkerX, selectionColorY, ink.dp(7f), ink.fill)
         ink.fill.color = selectionColor
         canvas.drawCircle(selectionMarkerX, selectionColorY, ink.dp(4.5f), ink.fill)
+
+        // 候选文字入场动画：独立于字形特效，修改后刷新候选栏以立即预览。
+        val entryTop = selectionTop + ink.dp(150f)
+        ink.textStart(canvas, "候选文字入场效果", 11f, palette.text,
+            card.left + ink.dp(14f), entryTop + ink.dp(10f), card.right - ink.dp(14f))
+        val entryLabels = listOf("淡入滑入", "上浮淡入", "缩放显现", "左侧滑入", "柔和弹入")
+        val selectedEntry = Settings.preferences(context).getInt(Settings.KEY_CANDIDATE_ENTRY_EFFECT, 0).coerceIn(0, 4)
+        val entryGap = ink.dp(4f)
+        val entryWidth = (card.width() - ink.dp(24f) - entryGap * 4f) / 5f
+        entryLabels.forEachIndexed { index, label ->
+            val bounds = RectF(
+                card.left + ink.dp(12f) + index * (entryWidth + entryGap),
+                entryTop + ink.dp(18f),
+                card.left + ink.dp(12f) + index * (entryWidth + entryGap) + entryWidth,
+                entryTop + ink.dp(44f),
+            )
+            val selected = selectedEntry == index
+            ink.round(canvas, bounds, 7f, if (selected) palette.functionalKey else palette.surface)
+            ink.fill.style = android.graphics.Paint.Style.STROKE
+            ink.fill.strokeWidth = ink.dp(if (selected) 1.2f else 0.5f)
+            ink.fill.color = if (selected) palette.brand else palette.faint
+            canvas.drawRoundRect(bounds, ink.dp(7f), ink.dp(7f), ink.fill)
+            ink.fill.style = android.graphics.Paint.Style.FILL
+            ink.text(canvas, label, 8f, if (selected) palette.brand else palette.text,
+                bounds.centerX(), bounds.centerY(), maxWidth = entryWidth - ink.dp(2f))
+        }
         canvas.restore()
     }
 
@@ -1140,6 +1166,19 @@ class FunctionPanel(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (textEffectPage && tabs.selected == 0) {
             val targetTop = card.top + ink.dp(8f + 28f)
+            val rowTopForRgb = targetTop + ink.dp(218f)
+            val selectionTopForRgb = rowTopForRgb +
+                ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(52f) + ink.dp(8f)
+            val rgbY = selectionTopForRgb + ink.dp(120f) - effectScroll.offset
+            val rgbHit = RectF(card.left + ink.dp(8f), rgbY - ink.dp(18f),
+                card.right - ink.dp(8f), rgbY + ink.dp(18f))
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && card.contains(event.x, event.y) &&
+                rgbHit.contains(event.x, event.y)) {
+                adjustingTextSlider = 3
+                parent?.requestDisallowInterceptTouchEvent(true)
+                updateTextSlider(event.x, 3)
+                return true
+            }
             val controlsTop = targetTop + ink.dp(48f)
             val contentY = event.y + effectScroll.offset
             val slider = when {
@@ -1148,14 +1187,14 @@ class FunctionPanel(
                     if (event.x < card.centerX()) 1 else 2
                 else -> {
                     val rowTop = targetTop + ink.dp(218f)
-                    val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(64f) + ink.dp(8f)
-                    if (contentY in (selectionTop + ink.dp(98f))..(selectionTop + ink.dp(126f))) 3 else -1
+                    val selectionTop = rowTop + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(52f) + ink.dp(8f)
+                    if (contentY in (selectionTop + ink.dp(104f))..(selectionTop + ink.dp(136f))) 3 else -1
                 }
             }
             val sliderTrackY = when (slider) {
                 0 -> controlsTop + ink.dp(49f)
                 1, 2 -> controlsTop + ink.dp(118f)
-                3 -> targetTop + ink.dp(218f) + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(64f) + ink.dp(120f)
+                3 -> targetTop + ink.dp(218f) + ((Settings.TextEffectPreset.entries.size + 1) / 2) * ink.dp(52f) + ink.dp(128f)
                 else -> -1f
             }
             val trackLeft = when (slider) {
@@ -1353,7 +1392,7 @@ class FunctionPanel(
                     return
                 }
                 val rowTop = targetTop + ink.dp(218f)
-                val rowStep = ink.dp(64f)
+                val rowStep = ink.dp(52f)
                 val row = ((contentY - rowTop) / rowStep).toInt()
                 val column = if (x < card.centerX()) 0 else 1
                 val index = row * 2 + column
@@ -1392,14 +1431,27 @@ class FunctionPanel(
                 }
                 // 选中框 RGB 色带既支持拖动，也支持单击定位；单击必须在本面板内消费，
                 // 不能落入 PanelView 的默认点击/返回处理。
-                val selectionColorY = selectionTop + ink.dp(112f)
+                val selectionColorY = selectionTop + ink.dp(120f)
                 val selectionColorRect = RectF(
-                    card.left + ink.dp(14f), selectionColorY - ink.dp(10f),
-                    card.right - ink.dp(14f), selectionColorY + ink.dp(10f),
+                    card.left + ink.dp(14f), selectionColorY - ink.dp(16f),
+                    card.right - ink.dp(14f), selectionColorY + ink.dp(16f),
                 )
                 if (selectionColorRect.contains(x, contentY)) {
                     updateTextSlider(x, 3)
                     invalidate()
+                    return
+                }
+                val entryTop = selectionTop + ink.dp(150f)
+                if (contentY in (entryTop + ink.dp(14f))..(entryTop + ink.dp(48f))) {
+                    val gap = ink.dp(4f)
+                    val width = (card.width() - ink.dp(24f) - gap * 4f) / 5f
+                    val index = ((x - (card.left + ink.dp(12f))) / (width + gap)).toInt()
+                    if (index in 0..4) {
+                        Settings.preferences(context).edit()
+                            .putInt(Settings.KEY_CANDIDATE_ENTRY_EFFECT, index).apply()
+                        actions.refreshKeyboardSettings()
+                        invalidate()
+                    }
                     return
                 }
             }
