@@ -1221,7 +1221,7 @@ class QingjianInputMethodService :
         KeySounds.play(this, key)
         if (ClipboardPanel.handleSearchKey(key)) return
         // 空格默认确认首选候选：在 Core 清空候选快照前捕获文字与当前候选样式。
-        if (key is Key.Space && shownPreedit.isNotEmpty() && shownCandidates.isNotEmpty()) {
+        if (key is Key.Space && shownCandidates.isNotEmpty()) {
             pendingCandidateCommitIndex = 0
             panel?.bar?.animateCandidateCommit(0)
         }
@@ -2226,8 +2226,15 @@ class QingjianInputMethodService :
     /** 在后台线程执行本机 ochwpro 推理；结果作为临时候选显示，点击后直接上屏。 */
     override fun onHandwriting(strokesJson: String) {
         val request = ++handwritingRequestId
+        val wordMode = Settings.load(this).keyboardHandwritingWords
         Thread({
-            val raw = runCatching { engine.recognizeHandwriting(strokesJson) }.getOrNull()
+            val inference = runCatching {
+                if (wordMode) engine.recognizeHandwritingWords(strokesJson)
+                else engine.recognizeHandwriting(strokesJson)
+            }
+            inference.exceptionOrNull()?.let { android.util.Log.e("QJ_HANDWRITING", "offline recognition failed (wordMode=$wordMode)", it) }
+            val raw = inference.getOrNull()
+            if (raw == null) android.util.Log.e("QJ_HANDWRITING", "offline recognition returned null (wordMode=$wordMode)")
             val texts = runCatching {
                 val array = org.json.JSONArray(raw ?: return@runCatching emptyList<String>())
                 buildList {
@@ -2241,12 +2248,12 @@ class QingjianInputMethodService :
             Handler(Looper.getMainLooper()).post {
                 if (request != handwritingRequestId || !isInputViewShown) return@post
                 if (texts.isEmpty()) {
-                    toast("没有识别到字符，请再写一次")
+                    toast(if (wordMode) "没有识别到词语，请放慢书写并稍后停笔" else "没有识别到字符，请放慢书写并稍后停笔")
                     return@post
                 }
                 handwritingCandidates = texts
                 panel?.bar?.show("", texts.map { Candidate(it, emptyList()) })
-                AppLog.info("[HANDWRITING] ochwpro candidates=" + texts.joinToString(""))
+                AppLog.info("[HANDWRITING] mode=" + if (wordMode) "word" else "char" + " candidate_count=" + texts.size)
             }
         }, "qingjian-handwriting").start()
     }
