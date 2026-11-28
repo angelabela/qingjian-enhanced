@@ -151,8 +151,37 @@ class CandidateStrip(
         (candidateRevealProgress(index) * 255f).roundToInt().coerceIn(0, 255)
 
     /** 候选从右侧轻微位移并渐入，最终精确落回原布局位置。 */
-    private fun candidateRevealOffset(index: Int): Float =
-        (1f - candidateRevealProgress(index)) * CANDIDATE_REVEAL_OFFSET_DP * density
+    private fun candidateRevealOffset(index: Int): Float {
+        val distance = (1f - candidateRevealProgress(index)) * CANDIDATE_REVEAL_OFFSET_DP * density
+        return when (entryEffect.coerceIn(0, 4)) {
+            0 -> distance
+            3 -> -distance
+            else -> 0f
+        }
+    }
+
+    /** 将候选字、释义和补充候选统一应用同一入场变换，避免动画只作用于文字的一部分。 */
+    private fun applyCandidateReveal(canvas: Canvas, index: Int, rect: RectF) {
+        val progress = candidateRevealProgress(index)
+        val remaining = 1f - progress
+        val dx = when (entryEffect.coerceIn(0, 4)) {
+            0 -> CANDIDATE_REVEAL_OFFSET_DP * density * remaining
+            3 -> -CANDIDATE_REVEAL_OFFSET_DP * density * remaining
+            else -> 0f
+        }
+        val dy = when (entryEffect.coerceIn(0, 4)) {
+            1 -> -10f * density * remaining
+            4 -> -4f * density * remaining
+            else -> 0f
+        }
+        val scale = when (entryEffect.coerceIn(0, 4)) {
+            2 -> 0.78f + 0.22f * progress
+            4 -> 0.88f + 0.12f * progress
+            else -> 1f
+        }
+        canvas.translate(dx, dy)
+        if (scale != 1f) canvas.scale(scale, scale, rect.centerX(), rect.centerY())
+    }
 
     /** 供外层 View 在最后一个候选完成显现前持续请求下一帧。 */
     fun advanceTextFade(): Boolean {
@@ -471,7 +500,7 @@ class CandidateStrip(
                 else -> CandidateTextStyleEngine.Role.CANDIDATE
             }
             val revealSave = canvas.save()
-            canvas.translate(candidateRevealOffset(index), 0f)
+            applyCandidateReveal(canvas, index, candidateRect)
             val candidateRect = RectF(word.left, word.top + shift, word.right, word.bottom + shift)
             val animated = image.emoji.contains(index) && animatedEmojiCount < 2 &&
                 emojiAnimations.draw(canvas, candidate.text, candidateRect)
@@ -534,7 +563,7 @@ class CandidateStrip(
                     if (hit.rect.right < scrollX || hit.rect.left > scrollX + contentViewWidth) return@forEachIndexed
                     val segment = segments.getOrNull(segmentIndex) ?: return@forEachIndexed
                     val revealSave = canvas.save()
-                    canvas.translate(candidateRevealOffset(candidateIndex), 0f)
+                    applyCandidateReveal(canvas, candidateIndex, RectF(hit.rect))
                     textStyles.drawReplacing(
                         canvas, segment, RectF(hit.rect), CandidateTextStyleEngine.Role.GLOSS,
                         eraseUnderlay = false, alphaMultiplier = candidateRevealAlpha(candidateIndex),
@@ -561,7 +590,7 @@ class CandidateStrip(
             // 没有 Rust hit 矩形的云端/补充候选也必须走同一套 Android 样式引擎，
             // 不能再用 extraText 的 markColor + 粗体直接 drawText，否则会露出黑色粗体且丢失释义。
             val revealSave = canvas.save()
-            canvas.translate(candidateRevealOffset(index), 0f)
+            applyCandidateReveal(canvas, index, rect)
             val alpha = candidateRevealAlpha(index)
             val role = when {
                 image.emoji.contains(index) -> CandidateTextStyleEngine.Role.EMOJI
@@ -668,7 +697,7 @@ class CandidateStrip(
             fallbackCandidateIndices += index
             if (rect.right < scrollX || rect.left > scrollX + viewWidth) return@forEachIndexed
             val revealSave = canvas.save()
-            canvas.translate(candidateRevealOffset(index), 0f)
+            applyCandidateReveal(canvas, index, rect)
             val alpha = candidateRevealAlpha(index)
             val role = when {
                 candidate.text.codePoints().anyMatch { Character.getType(it) == Character.OTHER_SYMBOL.toInt() } ->
