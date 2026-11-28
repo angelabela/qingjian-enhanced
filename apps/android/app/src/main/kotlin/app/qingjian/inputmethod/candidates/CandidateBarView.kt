@@ -9,6 +9,8 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.graphics.Rect
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -316,6 +318,24 @@ class CandidateBarView(
     private var lastShownCandidates: List<Candidate>? = null
 
     private val popup = ChoicePopup(this, palette)
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private var idleFadeStartedAt = 0L
+    private val hideIdleCandidates = Runnable {
+        if (strip.isEmpty || !isAttachedToWindow) return@Runnable
+        idleFadeStartedAt = android.os.SystemClock.uptimeMillis()
+        invalidate()
+        postInvalidateOnAnimation()
+    }
+    private var commitFlyText: String? = null
+    private var commitFlyStartedAt = 0L
+    private var commitFlyFromX = 0f
+    private var commitFlyFromY = 0f
+    private val commitFlyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = palette.text
+        textAlign = Paint.Align.CENTER
+        textSize = 20f * resources.displayMetrics.scaledDensity
+        setShadowLayer(5f * density, 0f, 0f, palette.brand)
+    }
 
     private val divider = Paint().apply {
         color = palette.faint
@@ -493,11 +513,44 @@ class CandidateBarView(
         clearReplacedAccessibilityTargets(candidates)
         strip.show(preedit, candidates, animateCandidates)
         strip.onCandidatesChanged()
+        idleFadeStartedAt = 0L
+        idleHandler.removeCallbacks(hideIdleCandidates)
+        if (preedit.isEmpty() && candidates.isNotEmpty()) {
+            idleHandler.postDelayed(hideIdleCandidates, 5_000L)
+        }
         scroller.forceFinished(true)
         if (!preserveScroll) scrollTo(0, 0)
         repaint()
         if (preserveScroll) scrollTo(previousScroll.coerceIn(0, maxScroll()), 0)
         notifyAccessibilityContentChanged()
+    }
+
+    /** 选中候选上屏前保存其视觉位置，随后向键盘/应用面板上沿飞出。 */
+    fun animateCandidateCommit(index: Int) {
+        val candidate = strip.candidates.getOrNull(index) ?: return
+        val rect = strip.wordRect(index) ?: return
+        commitFlyText = candidate.text
+        commitFlyFromX = rect.centerX() + strip.leftInsetPx(stripWidth) - scrollX
+        commitFlyFromY = rect.centerY()
+        commitFlyStartedAt = android.os.SystemClock.uptimeMillis()
+        idleFadeStartedAt = 0L
+        idleHandler.removeCallbacks(hideIdleCandidates)
+        postInvalidateOnAnimation()
+    }
+
+    private fun drawCommitFly(canvas: Canvas) {
+        val text = commitFlyText ?: return
+        val elapsed = android.os.SystemClock.uptimeMillis() - commitFlyStartedAt
+        val progress = (elapsed.toFloat() / 420f).coerceIn(0f, 1f)
+        val eased = 1f - (1f - progress) * (1f - progress)
+        val x = commitFlyFromX + (width * 0.5f - commitFlyFromX) * eased
+        val y = commitFlyFromY - height * 0.78f * eased
+        commitFlyPaint.alpha = ((1f - progress) * 255f).toInt().coerceIn(0, 255)
+        canvas.save()
+        canvas.scale(1f - 0.16f * eased, 1f - 0.16f * eased, x, y)
+        canvas.drawText(text, x, y - (commitFlyPaint.ascent() + commitFlyPaint.descent()) / 2f, commitFlyPaint)
+        canvas.restore()
+        if (progress >= 1f) commitFlyText = null else postInvalidateOnAnimation()
     }
 
     /** 空格横滑预选候选；不重新计算 Rust 布局，只更新独立选中层。 */
@@ -606,6 +659,7 @@ class CandidateBarView(
             toolbar.drawNotice(canvas, width, notice!!.first)
         strip.isEmpty -> {
             toolbar.draw(canvas, width)
+            drawCommitFly(canvas)
             postInvalidateOnAnimation()
         }
         else -> {
@@ -614,21 +668,47 @@ class CandidateBarView(
                 popupIndex in strip.candidates.indices -> popupIndex
                 else -> 0
             }
+            val idleElapsed = if (idleFadeStartedAt == 0L) 0L else
+                android.os.SystemClock.uptimeMillis() - idleFadeStartedAt
+            val idleAlpha = if (idleFadeStartedAt == 0L) 255 else
+                (255f * (1f - (idleElapsed / 460f).coerceIn(0f, 1f))).toInt().coerceIn(0, 255)
+            val idleLayer = canvas.saveLayerAlpha(
+                scrollX.toFloat(), 0f, (scrollX + width).toFloat(), height.toFloat(), idleAlpha,
+            )
             strip.draw(canvas, scrollX, stripWidth)
             // 选中候选与首选共用同一套呼吸光效；有选中项时首选光效自动让位。
             drawCandidatePulse(canvas, activeHighlightIndex)
             if (strip.advanceTextFade()) postInvalidateOnAnimation()
+            canvas.restoreToCount(idleLayer)
+            if (idleFadeStartedAt != 0L) {
+                if (idleElapsed >= 460L) {
+                    idleFadeStartedAt = 0L
+                    lastShownPreedit = ""
+                    lastShownCandidates = emptyList()
+                    strip.show("", emptyList(), animateCandidates = false)
+                    repaint()
+                } else postInvalidateOnAnimation()
+            }
             if (expandable) drawExpand(canvas)
             // 视频背景模式下候选栏与键盘共用同一动态画面，不绘制底部分界线。
             if (!transparentBackground) {
                 canvas.drawRect(scrollX.toFloat(), height - divider.strokeWidth, scrollX + width.toFloat(), height.toFloat(), divider)
             }
+            drawCommitFly(canvas)
             Unit
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent): Boolean = when {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !strip.isEmpty) {
+            idleFadeStartedAt = 0L
+            idleHandler.removeCallbacks(hideIdleCandidates)
+            if (strip.candidates.isNotEmpty() && strip.candidates.none { false }) {
+                idleHandler.postDelayed(hideIdleCandidates, 5_000L)
+            }
+        }
+        return when {
         resizing -> resizeHandle.onTouch(event, width)
         popup.showing -> onPopupTouch(event)
         else -> {
@@ -648,6 +728,7 @@ class CandidateBarView(
                 gestures.setIsLongpressEnabled(true)
             }
             handled || onPreedit
+        }
         }
     }
 
