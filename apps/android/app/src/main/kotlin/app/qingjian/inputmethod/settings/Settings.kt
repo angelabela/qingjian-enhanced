@@ -294,6 +294,7 @@ data class Settings(
         const val KEY_LIQUID_GLASS_ICONS = "liquid_glass_toolbar_icons"
         const val KEY_CANDIDATE_SELECTION_EFFECT = "candidate_selection_effect"
         const val KEY_CANDIDATE_SELECTION_COLOR = "candidate_selection_color"
+        const val KEY_CANDIDATE_ENTRY_EFFECT = "candidate_entry_effect"
         const val KEY_CANDIDATE_TEXT_PRESET = "candidate_text_preset"
         const val KEY_KEYBOARD_TEXT_PRESET = "keyboard_text_preset"
         const val KEY_AI_LOADING_EFFECT = "quick_ai_loading_effect"
