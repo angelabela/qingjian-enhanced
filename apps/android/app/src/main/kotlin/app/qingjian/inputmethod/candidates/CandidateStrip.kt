@@ -187,6 +187,8 @@ class CandidateStrip(
             this.image = null
             return
         }
+        // frame_id 只表示 Rust 内部先后；候选帧与布局异步抵达时，还必须确认内容本身相同。
+        if (image.candidateTexts != candidates.map { it.text }) return
         val expectedLocalCandidates = candidates.indices.filter {
             !candidates[it].cloud && isDisplayableCandidate(candidates[it])
         }
