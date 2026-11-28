@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.view.MotionEvent
 import app.qingjian.inputmethod.core.store.Catalog
 import app.qingjian.inputmethod.core.store.CatalogSection
+import app.qingjian.inputmethod.candidates.NotoEmojiAnimations
 import app.qingjian.inputmethod.keyboard.Haptics
 import app.qingjian.inputmethod.keyboard.layout.Key
 import app.qingjian.inputmethod.keyboard.paint.KeyIcons
@@ -42,6 +43,7 @@ class CatalogPanel(
     override val hasHeader get() = !symbols
 
     private val groupName = if (symbols) Catalog.SYMBOLS else Catalog.EMOJI
+    private val emojiSections = Catalog.group(Catalog.EMOJI).filter { it.name != Catalog.KAOMOJI }
 
     // 「常用」按用户用过的排，每次打开面板取一次；开着时不重排，格子不会在手指底下挪
     private val all: List<CatalogSection> = Catalog.group(groupName).map { section ->
@@ -75,9 +77,12 @@ class CatalogPanel(
     private val gridScroll = scrollable(false) { x, y -> grid.contains(x, y) }
 
     private val top = Tabs(ink, scrollable(true) { _, _ -> false }, Tabs.Style.UNDERLINE).apply {
-        labels = listOf("Emoji", "颜文字")
-        selected = emojiTop
+        labels = if (symbols) listOf("符号", "Emoji") else listOf("Emoji", "颜文字")
+        selected = if (symbols) symbolEmojiPage else emojiTop
     }
+
+    private val emojiAnimationsDelegate = lazy { NotoEmojiAnimations(context, this) }
+    private val emojiAnimations by emojiAnimationsDelegate
 
     private val categories = if (leftColumn) {
         Tabs(ink, scrollable(false) { x, y -> categoryColumn.contains(x, y) }, Tabs.Style.COLUMN)
@@ -90,6 +95,7 @@ class CatalogPanel(
 
     /** 当前大类下的分类：符号就是全部；表情看顶上选的是 Emoji 还是颜文字。 */
     private fun sections() = when {
+        symbols && top.selected == 1 -> emojiSections
         symbols -> all
         top.selected == 1 -> kaomoji
         else -> emoji
@@ -112,8 +118,9 @@ class CatalogPanel(
             grid.set(sideWidth, 0f, side.left, h.toFloat())
             categories.setBounds(categoryColumn.left, categoryColumn.top, categoryColumn.right, categoryColumn.bottom)
         } else if (symbols) {
-            side.set(w - w / SIDE_FRACTION, 0f, w.toFloat(), h - bottomHeight)
-            grid.set(0f, 0f, side.left, h - bottomHeight)
+            side.set(w - w / SIDE_FRACTION, headerHeight, w.toFloat(), h - bottomHeight)
+            grid.set(0f, headerHeight, side.left, h - bottomHeight)
+            top.setBounds(0f, 0f, grid.right, headerHeight)
         } else {
             grid.set(0f, headerHeight, w.toFloat(), h - bottomHeight)
         }
@@ -123,6 +130,7 @@ class CatalogPanel(
     /** 一行几格：emoji 八格；符号一字一格六格（网格窄了四格），宽的（颜文字、单位）四格或两格，总是偶数。 */
     private fun columns(): Int {
         val section = section ?: return 1
+        if (symbols && top.selected == 1) return 8
         if (!symbols) return if (section.name == Catalog.KAOMOJI) 3 else 8
         val widest = section.items.maxOfOrNull { item -> item.sumOf { if (it.code < 0x80) 6 else 10 } } ?: 10
         return when {
@@ -133,7 +141,7 @@ class CatalogPanel(
     }
 
     private fun rowHeight(columns: Int) = when {
-        symbols -> grid.height() / 4
+        symbols && top.selected == 0 -> grid.height() / 4
         columns == 8 -> grid.width() / 8
         else -> ink.dp(52f)
     }
@@ -141,6 +149,16 @@ class CatalogPanel(
     override fun accessibilityElements(): List<AccessibilityElement> {
         if (grid.isEmpty) return emptyList()
         val elements = mutableListOf<AccessibilityElement>()
+        if (symbols) {
+            top.labels.indices.forEach { index ->
+                top.accessibilityBounds(index)?.let { bounds ->
+                    elements += AccessibilityElement(
+                        top.labels[index] + if (index == top.selected) "，当前页面" else "",
+                        bounds, selected = index == top.selected, virtualId = 3000 + index,
+                    )
+                }
+            }
+        }
         categories.labels.indices.forEach { index ->
             categories.accessibilityBounds(index)?.let { bounds ->
                 elements += AccessibilityElement(
@@ -220,7 +238,7 @@ class CatalogPanel(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (!symbols) drawHeader(canvas, top)
+        if (!symbols) drawHeader(canvas, top) else top.draw(canvas)
         drawGrid(canvas)
         if (symbols) drawSide(canvas)
         drawBottom(canvas)
@@ -235,7 +253,7 @@ class CatalogPanel(
         val rows = (items.size + columns - 1) / columns
         gridScroll.max = rows * rowHeight - grid.height()
         val textSize = when {
-            !symbols && columns == 8 -> 27f
+            columns == 8 -> 27f
             columns >= 5 -> 22f
             else -> 16f
         }
@@ -248,7 +266,17 @@ class CatalogPanel(
             for (column in 0 until columns) {
                 val item = items.getOrNull(row * columns + column) ?: break
                 val cx = grid.left + cellWidth * (column + 0.5f)
-                ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2, maxWidth = cellWidth - ink.dp(8f))
+                if (symbols && top.selected == 1) {
+                    val cell = RectF(grid.left + cellWidth * column, y,
+                        grid.left + cellWidth * (column + 1), y + rowHeight)
+                    if (!emojiAnimations.draw(canvas, item, cell)) {
+                        ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
+                            maxWidth = cellWidth - ink.dp(8f))
+                    }
+                } else {
+                    ink.text(canvas, item, textSize, palette.text, cx, y + rowHeight / 2,
+                        maxWidth = cellWidth - ink.dp(8f))
+                }
             }
             if (symbols) ink.line(canvas, grid.left, y + rowHeight, grid.right, y + rowHeight, palette.faint)
         }
@@ -313,7 +341,7 @@ class CatalogPanel(
 
     override fun onTap(x: Float, y: Float) {
         when {
-            !symbols && y < headerHeight -> top.indexAt(x)?.let { chooseTop(it) }
+            y < headerHeight && (symbols || !symbols) -> top.indexAt(x)?.let { chooseTop(it) }
 
             y > bottom.top && x > bottom.right - ink.dp(BOTTOM_KEY_DP) ->
                 if (symbols) actions.closePanel() else actions.deleteBackward()
@@ -342,11 +370,20 @@ class CatalogPanel(
     private fun chooseTop(index: Int) {
         if (index == top.selected) return
         top.selected = index
-        emojiTop = index
+        if (symbols) {
+            symbolEmojiPage = index
+            if (emojiAnimationsDelegate.isInitialized()) {
+                if (index == 1) emojiAnimations.resumeAll() else emojiAnimations.pauseAll()
+            }
+            symbolSection = 0
+        } else {
+            emojiTop = index
+            emojiSection = 0
+        }
         categories.labels = sections().map { it.name }
         categories.selected = 0
-        emojiSection = 0
         gridScroll.reset()
+        invalidate()
     }
 
     /** 落在网格哪一格：条目与它的格子（视图坐标）。 */
@@ -370,7 +407,7 @@ class CatalogPanel(
     private fun commit(item: String) {
         actions.commitText(item)
         Catalog.recordUse(context, item)
-        if (symbols && !locked) actions.closePanel()
+        if (symbols && top.selected == 0 && !locked) actions.closePanel()
     }
 
     /** 手指落下就在格子上方放大显示这一格：手指挡住的看得见。 */
@@ -439,8 +476,14 @@ class CatalogPanel(
         return handled
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (symbols && top.selected == 1 && emojiAnimationsDelegate.isInitialized()) emojiAnimations.resumeAll()
+    }
+
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        if (emojiAnimationsDelegate.isInitialized()) emojiAnimations.pauseAll()
         if (popup.showing) popup.finish()
     }
 
@@ -479,6 +522,7 @@ class CatalogPanel(
 
         // 面板每次打开都新建，停在哪一类、锁没锁记在这里
         var symbolSection = 0
+        var symbolEmojiPage = 0
         var emojiTop = 0
         var emojiSection = 0
         var locked = false
