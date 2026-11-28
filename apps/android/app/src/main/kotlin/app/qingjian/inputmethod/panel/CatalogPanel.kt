@@ -420,7 +420,7 @@ class CatalogPanel(
         choices = listOf(item) + if (symbols) emptyList() else Catalog.skinTones(item)
         if (!symbols && emojiTop == 0) {
             animatedHoldItem = item
-            emojiAnimations.resumeForLongPress()
+            emojiAnimations.resumeForLongPress(item)
             postInvalidateOnAnimation()
         }
         if (choices.size > 1) {
