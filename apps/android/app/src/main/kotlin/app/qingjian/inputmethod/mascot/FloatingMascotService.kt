@@ -41,6 +41,11 @@ class FloatingMascotService : Service() {
     private var collapsedHeightPx = 0
     private var expandedWidthPx = 0
     private var expandedHeightPx = 0
+    private var dragMovePosted = false
+    private val dragMoveDispatch = Runnable {
+        dragMovePosted = false
+        sendMascotDragBroadcast(SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE)
+    }
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             mascotView?.visibility = if (intent.action == Intent.ACTION_SCREEN_OFF) View.GONE else View.VISIBLE
@@ -64,8 +69,8 @@ class FloatingMascotService : Service() {
         }
         windowManager = getSystemService(WindowManager::class.java)
         val density = resources.displayMetrics.density
-        collapsedWidthPx = (64f * density).toInt()
-        collapsedHeightPx = (68f * density).toInt()
+        collapsedWidthPx = (68f * density).toInt()
+        collapsedHeightPx = (76f * density).toInt()
         expandedWidthPx = (250f * density).toInt()
         expandedHeightPx = (120f * density).toInt()
         windowParams = WindowManager.LayoutParams(
@@ -170,6 +175,25 @@ class FloatingMascotService : Service() {
     /** 把同一只悬浮小精灵的拖动轨迹交给翻译无障碍服务；不再创建第二只可拖动精灵。 */
     private fun dispatchMascotTranslationDrag(action: String) {
         val pet = mascotView ?: return
+        if (action == SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE) {
+            // 同一帧内的多个触摸 MOVE 合并，只广播最新坐标，避免消息队列堆积造成准星拖尾。
+            if (!dragMovePosted) {
+                dragMovePosted = true
+                pet.postOnAnimation(dragMoveDispatch)
+            }
+            return
+        }
+        if (action == SpriteTranslateService.ACTION_MASCOT_DRAG_STOP) {
+            pet.removeCallbacks(dragMoveDispatch)
+            dragMovePosted = false
+            // 松手前先同步最后一个位置，再发 STOP，复制命中点不会落后一帧。
+            sendMascotDragBroadcast(SpriteTranslateService.ACTION_MASCOT_DRAG_MOVE)
+        }
+        sendMascotDragBroadcast(action)
+    }
+
+    private fun sendMascotDragBroadcast(action: String) {
+        val pet = mascotView ?: return
         val x = windowParams.x + pet.mascotOffsetPx
         val y = windowParams.y
         sendBroadcast(Intent(action).setPackage(packageName)
@@ -256,7 +280,7 @@ class FloatingMascotService : Service() {
     private class MascotView(context: Context) : View(context) {
         private val appContext = context
         private val density = resources.displayMetrics.density
-        private val dialogueText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12.5f; color = 0xFF51445C.toInt() }
+        private val dialogueText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f; color = 0xFF51445C.toInt() }
         private val dialogueBody = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF5FFFFFF.toInt() }
         private val dialogueBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = density; color = 0x55A58BB8 }
         private val dialogueAccent = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x267F6BE0 }
@@ -278,7 +302,7 @@ class FloatingMascotService : Service() {
         var bubbleOnLeft: Boolean = false
             private set
         val dialogueWindowWidthPx: Int get() = ((bubbleWidthDp + 84f) * density).toInt()
-        val dialogueWindowHeightPx: Int get() = (maxOf(68f, bubbleHeightDp + 16f) * density).toInt()
+        val dialogueWindowHeightPx: Int get() = (maxOf(76f, bubbleHeightDp + 16f) * density).toInt()
         private val bubbleLeftDp: Float get() = if (bubbleOnLeft) 8f else 68f
         private val mascotLeftDp: Float get() = if (bubbleOnLeft) bubbleWidthDp + 16f else 0f
         val mascotOffsetPx: Int get() = (mascotLeftDp * density).toInt()
@@ -291,7 +315,7 @@ class FloatingMascotService : Service() {
 
         private fun updateDialogueMetrics() {
             // TextPaint 的测量单位是 px；气泡布局单位是 dp。先统一换算，避免高密度屏幕把气泡撑大。
-            val maxTextWidthPx = 196f * density
+            val maxTextWidthPx = (if (tipItems.isNotEmpty()) 160f else 172f) * density
             val values = if (tipItems.isNotEmpty()) tipItems.map { it.first } else listOf(messageText)
             val lines = values.flatMap { value ->
                 var rest = value.trim()
@@ -305,8 +329,8 @@ class FloatingMascotService : Service() {
             }
             dialogueLineCount = lines.size.coerceAtLeast(1)
             val widestDp = (lines.maxOfOrNull { dialogueText.measureText(it) } ?: 80f) / density
-            bubbleWidthDp = (widestDp + 20f).coerceIn(72f, 224f)
-            bubbleHeightDp = (dialogueLineCount * 15f + 12f).coerceIn(30f, 160f)
+            bubbleWidthDp = (widestDp + 24f).coerceIn(68f, 196f)
+            bubbleHeightDp = (dialogueLineCount * 13f + 12f).coerceIn(28f, 148f)
         }
 
         private fun setDialogueExpanded(expanded: Boolean) {
@@ -336,7 +360,7 @@ class FloatingMascotService : Service() {
         fun setTips(items: List<Pair<String, Int>>, surface: Int, text: Int, cloud: Int, accent: Int, border: Int) {
             tipItems = items.take(3)
             pendingPhoneNumber = null
-            dialogueText.textSize = 10.5f
+            dialogueText.textSize = 9.5f
             dialogueText.color = text
             dialogueBody.color = Color.argb(242, Color.red(surface), Color.green(surface), Color.blue(surface))
             dialogueBorder.color = border
@@ -381,7 +405,7 @@ class FloatingMascotService : Service() {
                     firstLine = false
                     lineCount++
                 }
-                val rowBottom = rowTop + lineCount.coerceAtLeast(1) * 15f
+                val rowBottom = rowTop + lineCount.coerceAtLeast(1) * 13f
                 val hit = py in rowTop..rowBottom
                 rowTop = rowBottom
                 hit
@@ -400,7 +424,7 @@ class FloatingMascotService : Service() {
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBody)
             canvas.drawRoundRect(rect, 12f, 12f, dialogueBorder)
             if (tipItems.isNotEmpty()) {
-                var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 15f) / 2f - dialogueText.ascent()
+                var baseline = 8f + (bubbleHeightDp - dialogueLineCount * 13f) / 2f - dialogueText.ascent()
                 tipItems.take(3).forEach { item ->
                     var rest = item.first
                     var firstLine = true
@@ -411,7 +435,7 @@ class FloatingMascotService : Service() {
                         canvas.drawText(visible, bubbleLeftDp + if (firstLine) 10f else 6f, baseline, dialogueText)
                         rest = rest.substring(count)
                         firstLine = false
-                        baseline += 15f
+                        baseline += 13f
                     }
                 }
             } else {
@@ -448,7 +472,7 @@ class FloatingMascotService : Service() {
         fun setMessage(value: String, duration: Long = 12_000L, animation: String = "idle") {
             tipItems = emptyList()
             pendingPhoneNumber = null
-            dialogueText.textSize = 12.5f
+            dialogueText.textSize = 11f
             dialogueText.color = 0xFF51445C.toInt()
             dialogueBody.color = 0xF5FFFFFF.toInt()
             dialogueBorder.color = 0x55A58BB8
@@ -487,7 +511,11 @@ class FloatingMascotService : Service() {
             val active = elapsed < 1_900f
             val bounce = if (active && animationType == "happy") -abs(sin(elapsed / 105f)).toFloat() * 7f else 0f
             val nod = if (active && animationType == "thanks") abs(sin(elapsed / 125f)).toFloat() * 2.8f else 0f
-            canvas.translate(mascotLeftDp, sin(now / 560.0).toFloat() * 1.5f + bounce + nod)
+            // 顶部预留 8dp，再做上浮动画，避免耳朵在负向弹跳时被窗口裁掉。
+            canvas.translate(mascotLeftDp, 8f + sin(now / 560.0).toFloat() * 1.5f + bounce + nod)
+            canvas.translate(32f, 38f)
+            canvas.scale(0.88f, 0.88f)
+            canvas.translate(-32f, -38f)
             val breathe = sin(now / 760.0).toFloat()
             val bob = sin(now / 510.0).toFloat() * 1.7f + breathe * 0.7f
             val squash = if (active) sin(elapsed / 95f).toFloat() * 0.025f else sin(now / 1700.0).toFloat() * 0.012f
