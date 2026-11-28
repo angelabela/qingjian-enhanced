@@ -48,6 +48,8 @@ class CandidateStrip(
     }
     private val extraFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markColor and 0x18FFFFFF }
     private val fallbackRects = ArrayList<RectF>()
+    /** 回退布局矩形对应的原始候选下标；过滤后不能再把矩形序号当作候选序号。 */
+    private val fallbackCandidateIndices = ArrayList<Int>()
     private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = markColor
         strokeWidth = 1.6f * density
@@ -168,13 +170,26 @@ class CandidateStrip(
     }
 
     /** Replace the current layout snapshot and reject stale asynchronous frames. */
+    /** 与 Rust strip::displayable_candidate 保持完全一致，所有布局路径共用此准入规则。 */
+    private fun isDisplayableCandidate(candidate: Candidate): Boolean {
+        val value = candidate.text.trim()
+        if (value.isEmpty() || value.any { Character.isISOControl(it) }) return false
+        if (value.startsWith(':')) return false
+        var digits = 0
+        while (digits < value.length && value[digits] in '0'..'9') digits++
+        return !(digits > 0 && digits < value.length && value[digits] == ':' &&
+            value.getOrNull(digits + 1)?.let { it in 'A'..'Z' || it in 'a'..'z' } == true)
+    }
+
     fun paint(image: StripImage?) {
         if (image != null && image.frameId < lastAcceptedFrameId) return
         if (image == null || image.width <= 0 || image.height <= 0) {
             this.image = null
             return
         }
-        val expectedLocalCandidates = candidates.indices.filter { !candidates[it].cloud }
+        val expectedLocalCandidates = candidates.indices.filter {
+            !candidates[it].cloud && isDisplayableCandidate(candidates[it])
+        }
         if (image.candidateIndices != expectedLocalCandidates) return
         if (awaitingCandidateFrame && image.frameId <= lastAcceptedFrameId) return
         // 本地候选缺少主矩形属于布局协议错误，不能降级伪装成云候选补充项。
@@ -194,7 +209,10 @@ class CandidateStrip(
     }
 
     fun indexAt(contentX: Float): Int {
-        val frame = image ?: return fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
+        val frame = image ?: run {
+            val rectIndex = fallbackRects.indexOfFirst { contentX >= it.left && contentX <= it.right }
+            return fallbackCandidateIndices.getOrNull(rectIndex) ?: -1
+        }
         frame.candidateAt(contentX).takeIf { it >= 0 }?.let { return it }
         val extras = extraCandidates()
         val relativeX = contentX - frame.width - EXTRA_START_GAP_DP * density
@@ -613,7 +631,8 @@ class CandidateStrip(
     }
 
     /** 布局快照暂不可用时，仍按候选数据绘制可见、可点击的候选。 */
-    private fun fallbackWidth(): Float = (if (preedit.isNotEmpty()) 52f * density else 8f * density) + candidates.size * 56f * density + 8f * density
+    private fun fallbackWidth(): Float = (if (preedit.isNotEmpty()) 52f * density else 8f * density) +
+        candidates.count(::isDisplayableCandidate) * 56f * density + 8f * density
 
     private fun drawFallback(canvas: Canvas, scrollX: Int, viewWidth: Int) {
         if (!transparentBackground) {
@@ -621,6 +640,7 @@ class CandidateStrip(
             canvas.drawRect(scrollX.toFloat(), 0f, (scrollX + viewWidth).toFloat(), barHeight, fill)
         }
         fallbackRects.clear()
+        fallbackCandidateIndices.clear()
         val start = if (preedit.isNotEmpty()) 52f * density else 8f * density
         if (preedit.isNotEmpty()) {
             val preeditRect = RectF(8f * density, 4f * density, start - 4f * density, barHeight * 0.52f)
@@ -633,10 +653,13 @@ class CandidateStrip(
             }
         }
         val cell = 56f * density
+        var visibleSlot = 0
         candidates.forEachIndexed { index, candidate ->
-            val left = start + index * cell
+            if (!isDisplayableCandidate(candidate)) return@forEachIndexed
+            val left = start + visibleSlot++ * cell
             val rect = RectF(left + density, 4f * density, left + cell - density, barHeight - 4f * density)
             fallbackRects += rect
+            fallbackCandidateIndices += index
             if (rect.right < scrollX || rect.left > scrollX + viewWidth) return@forEachIndexed
             val revealSave = canvas.save()
             canvas.translate(candidateRevealOffset(index), 0f)
@@ -671,7 +694,8 @@ class CandidateStrip(
         val markerSize = CONTACT_MARK_DP * density
         candidates.forEachIndexed { index, candidate ->
             if (!candidate.contact) return@forEachIndexed
-            val word = fallbackRects.getOrNull(index) ?: return@forEachIndexed
+            val rectIndex = fallbackCandidateIndices.indexOf(index)
+            val word = fallbackRects.getOrNull(rectIndex) ?: return@forEachIndexed
             if (word.right < scrollX || word.left > scrollX + viewWidth) return@forEachIndexed
             val cx = word.right - markerSize * 0.75f
             val cy = word.top + markerSize * 0.85f
