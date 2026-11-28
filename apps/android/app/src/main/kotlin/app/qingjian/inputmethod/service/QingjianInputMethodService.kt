@@ -145,6 +145,7 @@ class QingjianInputMethodService :
     /** 候选条上最新的拼音与候选，展开候选时交给 [CandidateGrid][app.qingjian.inputmethod.candidates.CandidateGrid]。 */
     private var shownPreedit = ""
     private var shownCandidates: List<Candidate> = emptyList()
+    private var pendingCandidateCommitIndex = -1
 
     /** 拖动调高度开始时的百分比；拖动中不为 null。 */
     private var resizeFrom: Int? = null
@@ -1063,6 +1064,11 @@ class QingjianInputMethodService :
     }
 
     override fun showComposition(preedit: String, candidates: List<Candidate>, animateCandidates: Boolean) {
+        // 所有候选确认路径（四码直上屏、空格、点击、手势）在候选清空前捕获当前候选并统一飞出。
+        if (preedit.isEmpty() && candidates.isEmpty() && shownCandidates.isNotEmpty()) {
+            panel?.bar?.animateCandidateCommit(pendingCandidateCommitIndex.takeIf { it >= 0 } ?: 0)
+            pendingCandidateCommitIndex = -1
+        }
         // 引擎在同一轮输入中可能重复发出完全相同的快照；不重复 render/JNI 绘制，
         // 避免候选条二次闪现。Candidate 是 data class，比较包含候选文字、云端标记及释义。
         if (shownPreedit == preedit && shownCandidates == candidates) {
@@ -1606,6 +1612,7 @@ class QingjianInputMethodService :
         spaceCandidateSwipeIndex = -1
         panel?.bar?.setGestureSelection(-1)
         if (commit && selected in shownCandidates.indices) {
+            pendingCandidateCommitIndex = selected
             cancelPendingCandidateRerank()
             composer.select(originalCandidateIndex(selected))
         }
@@ -1613,7 +1620,11 @@ class QingjianInputMethodService :
 
     override fun onSideItem(item: String) = composer.onSideItem(item)
 
-    override fun onSelect(index: Int) { cancelPendingCandidateRerank(); composer.select(originalCandidateIndex(index)) }
+    override fun onSelect(index: Int) {
+        pendingCandidateCommitIndex = index
+        cancelPendingCandidateRerank()
+        composer.select(originalCandidateIndex(index))
+    }
 
     override fun onSmartAction(text: String, action: String) {
         val number = Regex("(?<!\\d)(?:\\+?86[- ]?)?(1[3-9]\\d{9})(?!\\d)")
