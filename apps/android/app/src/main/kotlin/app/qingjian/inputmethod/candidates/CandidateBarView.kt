@@ -686,15 +686,27 @@ class CandidateBarView(
                     floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
                 )
                 firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
-                // 柔光呼吸的高光主体增加轻微柔化，避免边缘过硬；每帧绘制后清除避免串到其他样式。
-                firstCandidateGlow.setShadowLayer(8.5f * density, 0f, 0f, accent)
+                // Android 12+ 使用 GPU RenderEffect 做真正的高斯模糊；旧系统保留阴影回退。
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    firstCandidateGlow.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
+                        8f * density, 8f * density, android.graphics.Shader.TileMode.CLAMP))
+                } else {
+                    firstCandidateGlow.setShadowLayer(8.5f * density, 0f, 0f, accent)
+                }
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
+                firstCandidateGlow.setRenderEffect(null)
                 firstCandidateGlow.clearShadowLayer()
                 firstCandidateGlow.shader = null
                 firstCandidateRing.color = accent
                 firstCandidateRing.alpha = (135f + breath * 105f).toInt()
-                firstCandidateRing.setShadowLayer(5.5f * density, 0f, 0f, accent)
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    firstCandidateRing.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
+                        3.5f * density, 3.5f * density, android.graphics.Shader.TileMode.CLAMP))
+                } else {
+                    firstCandidateRing.setShadowLayer(5.5f * density, 0f, 0f, accent)
+                }
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
+                firstCandidateRing.setRenderEffect(null)
                 firstCandidateRing.clearShadowLayer()
                 firstCandidateSheen.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.top,
