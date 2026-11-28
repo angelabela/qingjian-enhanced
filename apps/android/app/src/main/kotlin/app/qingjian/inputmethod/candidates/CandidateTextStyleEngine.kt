@@ -264,7 +264,7 @@ class CandidateTextStyleEngine(
                 val stroke = TextPaint(paint).apply {
                     shader = null
                     color = strokeColor
-                    style = Paint.Style.STROKE
+                    this.style = Paint.Style.STROKE
                     strokeWidth = when (config.preset) {
                         Settings.TextEffectPreset.NEON_OUTLINE -> 2.1f * density
                         Settings.TextEffectPreset.CONTRAST_OUTLINE -> 2.35f * density
