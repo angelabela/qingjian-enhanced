@@ -686,27 +686,15 @@ class CandidateBarView(
                     floatArrayOf(0f, 0.52f, 1f), android.graphics.Shader.TileMode.CLAMP,
                 )
                 firstCandidateGlow.alpha = (175f + breath * 70f).toInt()
-                // Android 12+ 使用 GPU RenderEffect 做真正的高斯模糊；旧系统保留阴影回退。
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    firstCandidateGlow.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
-                        8f * density, 8f * density, android.graphics.Shader.TileMode.CLAMP))
-                } else {
-                    firstCandidateGlow.setShadowLayer(8.5f * density, 0f, 0f, accent)
-                }
+                // 扩大柔光阴影半径，让选中高光边缘更明显地扩散。
+                firstCandidateGlow.setShadowLayer(12f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(glow, 11f * density, 11f * density, firstCandidateGlow)
-                if (android.os.Build.VERSION.SDK_INT >= 31) firstCandidateGlow.setRenderEffect(null)
                 firstCandidateGlow.clearShadowLayer()
                 firstCandidateGlow.shader = null
                 firstCandidateRing.color = accent
                 firstCandidateRing.alpha = (135f + breath * 105f).toInt()
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    firstCandidateRing.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
-                        3.5f * density, 3.5f * density, android.graphics.Shader.TileMode.CLAMP))
-                } else {
-                    firstCandidateRing.setShadowLayer(5.5f * density, 0f, 0f, accent)
-                }
+                firstCandidateRing.setShadowLayer(7f * density, 0f, 0f, accent)
                 canvas.drawRoundRect(outline, 9f * density, 9f * density, firstCandidateRing)
-                if (android.os.Build.VERSION.SDK_INT >= 31) firstCandidateRing.setRenderEffect(null)
                 firstCandidateRing.clearShadowLayer()
                 firstCandidateSheen.shader = android.graphics.LinearGradient(
                     rect.left, rect.top, rect.right, rect.top,
