@@ -35,7 +35,7 @@ class Toolbar(
     private val barHeight: Float,
     private val tools: List<ToolbarTool>,
 ) {
-    private val logo = context.getDrawable(R.drawable.ic_brand)
+    private val logo = context.getDrawable(R.drawable.ic_launcher_foreground)
     private val logoSlot = 62f * density
     private val hideSlot = 62f * density
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
